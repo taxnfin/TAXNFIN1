@@ -2203,6 +2203,21 @@ async def update_cfdi_reconciliation(cfdi_id: str, status: str, request: Request
     await audit_log(company_id, 'CFDI', cfdi_id, 'UPDATE_RECONCILIATION', current_user['id'])
     return {'status': 'success', 'message': f'Estado actualizado a {status}'}
 
+@api_router.put("/cfdi/{cfdi_id}/notes")
+async def update_cfdi_notes(cfdi_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
+    """Update notes for a CFDI"""
+    company_id = await get_active_company_id(request, current_user)
+    cfdi = await db.cfdis.find_one({'id': cfdi_id, 'company_id': company_id}, {'_id': 0})
+    if not cfdi:
+        raise HTTPException(status_code=404, detail="CFDI no encontrado")
+    
+    body = await request.json()
+    notas = body.get('notas', '')
+    
+    await db.cfdis.update_one({'id': cfdi_id}, {'$set': {'notas': notas}})
+    await audit_log(company_id, 'CFDI', cfdi_id, 'UPDATE_NOTES', current_user['id'])
+    return {'status': 'success', 'message': 'Notas actualizadas'}
+
 # ===== EXPORTAR DIOT =====
 @api_router.get("/export/diot")
 async def export_diot(request: Request, current_user: Dict = Depends(get_current_user), fecha_desde: str = None, fecha_hasta: str = None):
