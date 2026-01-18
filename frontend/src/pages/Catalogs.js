@@ -574,12 +574,21 @@ const Catalogs = () => {
               </DialogHeader>
               <form onSubmit={handleUpdateAccount} className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Nombre</Label>
+                  <Label>Nombre de la Cuenta</Label>
                   <Input value={accountForm.nombre} onChange={(e) => setAccountForm({...accountForm, nombre: e.target.value})} required />
                 </div>
                 <div className="space-y-2">
                   <Label>Banco</Label>
-                  <Input value={accountForm.banco} onChange={(e) => setAccountForm({...accountForm, banco: e.target.value})} required />
+                  <Select value={accountForm.banco} onValueChange={(v) => setAccountForm({...accountForm, banco: v})}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar banco" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BANCOS_MEXICO.map(banco => (
+                        <SelectItem key={banco} value={banco}>{banco}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Número de Cuenta</Label>
@@ -588,7 +597,16 @@ const Catalogs = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Moneda</Label>
-                    <Input value={accountForm.moneda} onChange={(e) => setAccountForm({...accountForm, moneda: e.target.value})} />
+                    <Select value={accountForm.moneda} onValueChange={(v) => setAccountForm({...accountForm, moneda: v})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar moneda" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MONEDAS.map(moneda => (
+                          <SelectItem key={moneda} value={moneda}>{moneda}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Saldo Inicial</Label>
