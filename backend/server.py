@@ -1424,10 +1424,16 @@ async def upload_cfdi(request: Request, file: UploadFile = File(...), current_us
     emisor_rfc = parsed['emisor_rfc'].upper().strip()
     emisor_nombre = parsed['emisor_nombre'].upper().strip()
     
-    # Clasificación simple de CFDI:
-    # - Si el EMISOR es la empresa (mismo RFC o nombre) = INGRESO (la empresa emitió, cobrará)
-    # - Si el EMISOR es diferente = EGRESO/GASTO (otra empresa emitió, la empresa pagará)
-    if company_rfc and emisor_rfc == company_rfc:
+    # Clasificación de CFDI:
+    # 1. Si es nómina/sueldos -> SIEMPRE es egreso (pago a empleados)
+    # 2. Si el EMISOR es la empresa (mismo RFC o nombre) = INGRESO (la empresa emitió, cobrará)
+    # 3. Si el EMISOR es diferente = EGRESO/GASTO (otra empresa emitió, la empresa pagará)
+    
+    if parsed.get('is_nomina'):
+        # Nómina/sueldos SIEMPRE es egreso, incluso si el RFC es de la empresa
+        tipo_cfdi = 'egreso'
+        logger.info(f"CFDI {parsed['uuid']} clasificado como EGRESO (nómina/sueldos)")
+    elif company_rfc and emisor_rfc == company_rfc:
         tipo_cfdi = 'ingreso'
     elif company_nombre and emisor_nombre == company_nombre:
         tipo_cfdi = 'ingreso'
