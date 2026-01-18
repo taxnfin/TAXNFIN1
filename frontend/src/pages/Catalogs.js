@@ -7,9 +7,50 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Plus, Download, Upload, FileSpreadsheet, Pencil, Trash2, AlertTriangle } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+
+// Lista de bancos en México
+const BANCOS_MEXICO = [
+  'BBVA México',
+  'Santander México',
+  'Banorte',
+  'Citibanamex',
+  'HSBC México',
+  'Scotiabank',
+  'Banco Azteca',
+  'Inbursa',
+  'Banco del Bajío',
+  'Banregio',
+  'Afirme',
+  'Multiva',
+  'Banca Mifel',
+  'Banco Autofin',
+  'BanCoppel',
+  'Banco Compartamos',
+  'Banco Inmobiliario Mexicano',
+  'Bansi',
+  'CI Banco',
+  'Intercam Banco',
+  'Monex',
+  'Actinver',
+  'Invex',
+  'Ve Por Más',
+  'Banco Base',
+  'Banco Forjadores',
+  'Banco Sabadell',
+  'Bancrea',
+  'ABC Capital',
+  'American Express',
+  'Bank of America',
+  'JP Morgan',
+  'Deutsche Bank',
+  'Otro'
+];
+
+const MONEDAS = ['MXN', 'USD', 'EUR', 'GBP', 'CAD', 'JPY', 'CHF'];
 
 const Catalogs = () => {
   const [companies, setCompanies] = useState([]);
