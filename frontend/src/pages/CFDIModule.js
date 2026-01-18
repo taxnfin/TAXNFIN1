@@ -284,6 +284,25 @@ const CFDIModule = () => {
     }
   };
 
+  // View CFDI Detail
+  const handleViewDetail = (cfdi) => {
+    setCfdiDetail(cfdi);
+    setCfdiNotes(cfdi.notas || '');
+    setDetailDialogOpen(true);
+  };
+
+  const handleSaveNotes = async () => {
+    if (!cfdiDetail) return;
+    
+    try {
+      await api.put(`/cfdi/${cfdiDetail.id}/notes`, { notas: cfdiNotes });
+      toast.success('Notas guardadas');
+      loadData();
+    } catch (error) {
+      toast.error('Error guardando notas');
+    }
+  };
+
   // AI Categorization Functions
   const handleAiCategorizeSingle = async (cfdiId) => {
     setAiCategorizingSingle(cfdiId);
