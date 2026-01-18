@@ -486,7 +486,7 @@ const Catalogs = () => {
                           <Button 
                             variant="ghost" 
                             size="sm" 
-                            onClick={() => setDeleteConfirm({ open: true, account })}
+                            onClick={() => setDeleteConfirm({ open: true, type: 'account', item: account })}
                             className="h-8 w-8 p-0 text-red-600 hover:text-red-800 hover:bg-red-50"
                             data-testid={`delete-account-${account.id}`}
                           >
