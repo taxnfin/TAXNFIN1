@@ -547,7 +547,7 @@ const Catalogs = () => {
           </Dialog>
 
           {/* Delete Confirmation Dialog */}
-          <AlertDialog open={deleteConfirm.open} onOpenChange={(open) => setDeleteConfirm({ ...deleteConfirm, open })}>
+          <AlertDialog open={deleteConfirm.open && deleteConfirm.type === 'account'} onOpenChange={(open) => !open && setDeleteConfirm({ open: false, type: null, item: null })}>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle className="flex items-center gap-2">
@@ -556,7 +556,7 @@ const Catalogs = () => {
                 </AlertDialogTitle>
                 <AlertDialogDescription>
                   Esta acción no se puede deshacer. Se eliminará permanentemente la cuenta 
-                  <strong> "{deleteConfirm.account?.nombre}"</strong> del banco {deleteConfirm.account?.banco}.
+                  <strong> "{deleteConfirm.item?.nombre}"</strong> del banco {deleteConfirm.item?.banco}.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
