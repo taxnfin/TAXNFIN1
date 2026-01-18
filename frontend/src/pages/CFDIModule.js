@@ -1170,6 +1170,225 @@ const CFDIModule = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* CFDI Detail Dialog */}
+      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="text-[#0F172A]" />
+              Detalle de Factura
+            </DialogTitle>
+          </DialogHeader>
+          
+          {cfdiDetail && (
+            <div className="space-y-6">
+              {/* Header Info */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* Emisor */}
+                <div className="p-4 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0]">
+                  <h3 className="text-sm font-semibold text-[#64748B] mb-3 uppercase">Emisor</h3>
+                  <div className="space-y-2">
+                    <div>
+                      <Label className="text-xs text-[#94A3B8]">RFC (EMISOR)</Label>
+                      <div className="font-mono font-semibold text-[#0F172A]">{cfdiDetail.emisor_rfc}</div>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-[#94A3B8]">RAZÓN SOCIAL (EMISOR)</Label>
+                      <div className="font-medium text-[#0F172A]">{cfdiDetail.emisor_nombre || 'N/A'}</div>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Receptor */}
+                <div className="p-4 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0]">
+                  <h3 className="text-sm font-semibold text-[#64748B] mb-3 uppercase">Receptor</h3>
+                  <div className="space-y-2">
+                    <div>
+                      <Label className="text-xs text-[#94A3B8]">RFC (RECEPTOR)</Label>
+                      <div className="font-mono font-semibold text-[#0F172A]">{cfdiDetail.receptor_rfc}</div>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-[#94A3B8]">RAZÓN SOCIAL (RECEPTOR)</Label>
+                      <div className="font-medium text-[#0F172A]">{cfdiDetail.receptor_nombre || 'N/A'}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Document Info */}
+              <div className="grid grid-cols-4 gap-4">
+                <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
+                  <Label className="text-xs text-[#94A3B8]">UUID</Label>
+                  <div className="font-mono text-xs text-[#0F172A] break-all">{cfdiDetail.uuid}</div>
+                </div>
+                <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
+                  <Label className="text-xs text-[#94A3B8]">TIPO DE FACTURA</Label>
+                  <div className={`font-semibold ${cfdiDetail.tipo_cfdi === 'ingreso' ? 'text-green-600' : 'text-red-600'}`}>
+                    {cfdiDetail.tipo_cfdi === 'ingreso' ? '↑ INGRESO' : '↓ EGRESO'}
+                  </div>
+                </div>
+                <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
+                  <Label className="text-xs text-[#94A3B8]">MÉTODO DE PAGO</Label>
+                  <div className="font-medium text-[#0F172A]">{cfdiDetail.metodo_pago || 'PUE'}</div>
+                </div>
+                <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
+                  <Label className="text-xs text-[#94A3B8]">FORMA DE PAGO</Label>
+                  <div className="font-medium text-[#0F172A]">{cfdiDetail.forma_pago || 'N/A'}</div>
+                </div>
+              </div>
+
+              {/* Dates and Status */}
+              <div className="grid grid-cols-4 gap-4">
+                <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
+                  <Label className="text-xs text-[#94A3B8]">FECHA DE EMISIÓN</Label>
+                  <div className="font-mono text-[#0F172A]">{format(new Date(cfdiDetail.fecha_emision), 'dd/MM/yyyy HH:mm')}</div>
+                </div>
+                <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
+                  <Label className="text-xs text-[#94A3B8]">FECHA TIMBRADO</Label>
+                  <div className="font-mono text-[#0F172A]">
+                    {cfdiDetail.fecha_timbrado ? format(new Date(cfdiDetail.fecha_timbrado), 'dd/MM/yyyy HH:mm') : 'N/A'}
+                  </div>
+                </div>
+                <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
+                  <Label className="text-xs text-[#94A3B8]">USO DEL CFDI</Label>
+                  <div className="font-medium text-[#0F172A]">{cfdiDetail.uso_cfdi || 'G03'}</div>
+                </div>
+                <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
+                  <Label className="text-xs text-[#94A3B8]">ESTADO</Label>
+                  <div className={`font-semibold ${cfdiDetail.estado_cancelacion === 'cancelado' ? 'text-red-600' : 'text-green-600'}`}>
+                    {cfdiDetail.estado_cancelacion === 'cancelado' ? '❌ CANCELADO' : '✅ VIGENTE'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Amounts Table */}
+              <div className="border border-[#E2E8F0] rounded-lg overflow-hidden">
+                <div className="bg-[#0F172A] text-white px-4 py-2">
+                  <h3 className="font-semibold text-sm">DESGLOSE DE IMPORTES ({cfdiDetail.moneda || 'MXN'})</h3>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-[#F8FAFC]">
+                      <TableHead className="font-semibold">CONCEPTO</TableHead>
+                      <TableHead className="text-right font-semibold">IMPORTE</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell>Subtotal</TableCell>
+                      <TableCell className="text-right font-mono">
+                        ${(cfdiDetail.subtotal || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>Descuento</TableCell>
+                      <TableCell className="text-right font-mono text-[#94A3B8]">
+                        ${(cfdiDetail.descuento || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="bg-[#F8FAFC]">
+                      <TableCell className="font-semibold">IVA (16%)</TableCell>
+                      <TableCell className="text-right font-mono">
+                        ${((cfdiDetail.impuestos || 0)).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>ISR Retenido</TableCell>
+                      <TableCell className="text-right font-mono text-[#94A3B8]">
+                        ${(cfdiDetail.isr_retenido || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>IVA Retenido</TableCell>
+                      <TableCell className="text-right font-mono text-[#94A3B8]">
+                        ${(cfdiDetail.iva_retenido || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>IEPS</TableCell>
+                      <TableCell className="text-right font-mono text-[#94A3B8]">
+                        ${(cfdiDetail.ieps || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>Impuestos Locales</TableCell>
+                      <TableCell className="text-right font-mono text-[#94A3B8]">
+                        ${(cfdiDetail.impuestos_locales || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="bg-[#0F172A] text-white">
+                      <TableCell className="font-bold text-lg">TOTAL</TableCell>
+                      <TableCell className="text-right font-mono font-bold text-lg">
+                        ${(cfdiDetail.total || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Category Info */}
+              {(cfdiDetail.category_id || cfdiDetail.customer_id || cfdiDetail.vendor_id) && (
+                <div className="p-4 bg-[#F0F9FF] rounded-lg border border-[#0EA5E9]">
+                  <h3 className="text-sm font-semibold text-[#0369A1] mb-3">CLASIFICACIÓN</h3>
+                  <div className="grid grid-cols-3 gap-4">
+                    {cfdiDetail.category_id && (
+                      <div>
+                        <Label className="text-xs text-[#0369A1]">CATEGORÍA</Label>
+                        <div className="font-medium">{getCategoryName(cfdiDetail.category_id)}</div>
+                        {cfdiDetail.subcategory_id && (
+                          <div className="text-sm text-[#64748B]">
+                            └ {getSubcategoryName(cfdiDetail.category_id, cfdiDetail.subcategory_id)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {cfdiDetail.customer_id && (
+                      <div>
+                        <Label className="text-xs text-[#0369A1]">CLIENTE</Label>
+                        <div className="font-medium text-blue-600">👤 {getCustomerName(cfdiDetail.customer_id)}</div>
+                      </div>
+                    )}
+                    {cfdiDetail.vendor_id && (
+                      <div>
+                        <Label className="text-xs text-[#0369A1]">PROVEEDOR</Label>
+                        <div className="font-medium text-orange-600">🏢 {getVendorName(cfdiDetail.vendor_id)}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Notes */}
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold text-[#64748B]">NOTAS DE LA FACTURA</Label>
+                <Textarea
+                  value={cfdiNotes}
+                  onChange={(e) => setCfdiNotes(e.target.value)}
+                  placeholder="Agregar notas sobre esta factura..."
+                  className="min-h-[80px]"
+                />
+                <div className="flex justify-end">
+                  <Button size="sm" variant="outline" onClick={handleSaveNotes}>
+                    Guardar Notas
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>Cerrar</Button>
+            <Button onClick={() => {
+              setDetailDialogOpen(false);
+              handleCategorizeClick(cfdiDetail);
+            }}>
+              <Tag size={16} className="mr-2" />
+              Categorizar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
