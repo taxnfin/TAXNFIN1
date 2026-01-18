@@ -50,6 +50,9 @@ const CFDIModule = () => {
   const [aiResultsDialogOpen, setAiResultsDialogOpen] = useState(false);
   const [aiResults, setAiResults] = useState([]);
   const [newRfcDialog, setNewRfcDialog] = useState({ open: false, data: null, cfdiId: null });
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [cfdiDetail, setCfdiDetail] = useState(null);
+  const [cfdiNotes, setCfdiNotes] = useState('');
 
   useEffect(() => {
     loadData();
