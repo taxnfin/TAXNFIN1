@@ -1,53 +1,130 @@
-import { useEffect } from "react";
-import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import Transactions from './pages/Transactions';
+import CFDIModule from './pages/CFDIModule';
+import BankModule from './pages/BankModule';
+import PaymentsModule from './pages/PaymentsModule';
+import Catalogs from './pages/Catalogs';
+import Reports from './pages/Reports';
+import Admin from './pages/Admin';
+import AdvancedFeatures from './pages/AdvancedFeatures';
+import FXRatesModule from './pages/FXRatesModule';
+import CategoriesModule from './pages/CategoriesModule';
+import Layout from './components/Layout';
+import { Toaster } from './components/ui/sonner';
+import api from './api/axios';
+import './App.css';
+import './App.css';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+function App() {
+  const [user, setUser] = useState(null);
+  const [companies, setCompanies] = useState([]);
+  const [selectedCompany, setSelectedCompany] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-const Home = () => {
-  const helloWorldApi = async () => {
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const storedUser = localStorage.getItem('user');
+    const storedCompany = localStorage.getItem('selectedCompany');
+    
+    if (token && storedUser) {
+      setUser(JSON.parse(storedUser));
+      if (storedCompany) {
+        setSelectedCompany(JSON.parse(storedCompany));
+      }
+    }
+    setLoading(false);
+  }, []);
+
+  // Fetch companies when user logs in
+  useEffect(() => {
+    if (user) {
+      fetchCompanies();
+    }
+  }, [user]);
+
+  const fetchCompanies = async () => {
     try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
+      const response = await api.get('/companies');
+      setCompanies(response.data);
+      
+      // If no company selected, select the user's company or first one
+      if (!selectedCompany && response.data.length > 0) {
+        const userCompany = response.data.find(c => c.id === user.company_id);
+        const companyToSelect = userCompany || response.data[0];
+        setSelectedCompany(companyToSelect);
+        localStorage.setItem('selectedCompany', JSON.stringify(companyToSelect));
+      }
+    } catch (error) {
+      console.error('Error fetching companies:', error);
     }
   };
 
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
+  const handleLogin = (userData, token) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(userData));
+    setUser(userData);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('selectedCompany');
+    setUser(null);
+    setSelectedCompany(null);
+    setCompanies([]);
+  };
+
+  const handleCompanyChange = (company) => {
+    setSelectedCompany(company);
+    localStorage.setItem('selectedCompany', JSON.stringify(company));
+    // Reload the page to refresh data for new company
+    window.location.reload();
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center min-h-screen">Cargando...</div>;
+  }
 
   return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
-
-function App() {
-  return (
-    <div className="App">
+    <>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
+          <Route path="/login" element={user ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
+          <Route
+            path="/"
+            element={
+              user ? (
+                <Layout 
+                  user={user} 
+                  onLogout={handleLogout}
+                  companies={companies}
+                  selectedCompany={selectedCompany}
+                  onCompanyChange={handleCompanyChange}
+                />
+              ) : (
+                <Navigate to="/login" />
+              )
+            }
+          >
+            <Route index element={<Dashboard />} />
+            <Route path="transactions" element={<Transactions />} />
+            <Route path="cfdi" element={<CFDIModule />} />
+            <Route path="bank" element={<BankModule />} />
+            <Route path="payments" element={<PaymentsModule />} />
+            <Route path="fx-rates" element={<FXRatesModule />} />
+            <Route path="categories" element={<CategoriesModule />} />
+            <Route path="catalogs" element={<Catalogs />} />
+            <Route path="reports" element={<Reports />} />
+            <Route path="advanced" element={<AdvancedFeatures />} />
+            <Route path="admin" element={<Admin />} />
           </Route>
         </Routes>
       </BrowserRouter>
-    </div>
+      <Toaster position="top-right" richColors />
+    </>
   );
 }
 
