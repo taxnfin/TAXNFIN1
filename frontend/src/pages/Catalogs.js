@@ -17,14 +17,19 @@ const Catalogs = () => {
   const [vendors, setVendors] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [dialogs, setDialogs] = useState({ company: false, account: false, vendor: false, customer: false, editAccount: false });
-  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, account: null });
+  const [dialogs, setDialogs] = useState({ 
+    company: false, account: false, vendor: false, customer: false, 
+    editAccount: false, editVendor: false, editCustomer: false 
+  });
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, type: null, item: null });
   
   const [companyForm, setCompanyForm] = useState({ nombre: '', rfc: '', moneda_base: 'MXN', pais: 'México' });
   const [accountForm, setAccountForm] = useState({ nombre: '', numero_cuenta: '', banco: '', moneda: 'MXN', saldo_inicial: 0 });
   const [editingAccount, setEditingAccount] = useState(null);
   const [vendorForm, setVendorForm] = useState({ nombre: '', rfc: '', email: '', telefono: '' });
+  const [editingVendor, setEditingVendor] = useState(null);
   const [customerForm, setCustomerForm] = useState({ nombre: '', rfc: '', email: '', telefono: '' });
+  const [editingCustomer, setEditingCustomer] = useState(null);
 
   useEffect(() => {
     loadData();
