@@ -777,6 +777,7 @@ const Catalogs = () => {
                       <TableHead>RFC</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Teléfono</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -786,6 +787,28 @@ const Catalogs = () => {
                         <TableCell className="mono">{customer.rfc || '-'}</TableCell>
                         <TableCell>{customer.email || '-'}</TableCell>
                         <TableCell>{customer.telefono || '-'}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => handleEditCustomer(customer)}
+                              className="h-8 w-8 p-0 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                              data-testid={`edit-customer-${customer.id}`}
+                            >
+                              <Pencil size={14} />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => setDeleteConfirm({ open: true, type: 'customer', item: customer })}
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-800 hover:bg-red-50"
+                              data-testid={`delete-customer-${customer.id}`}
+                            >
+                              <Trash2 size={14} />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -793,6 +816,134 @@ const Catalogs = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Edit Vendor Dialog */}
+          <Dialog open={dialogs.editVendor} onOpenChange={(open) => {
+            setDialogs({...dialogs, editVendor: open});
+            if (!open) {
+              setEditingVendor(null);
+              setVendorForm({ nombre: '', rfc: '', email: '', telefono: '' });
+            }
+          }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Editar Proveedor</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleUpdateVendor} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Nombre</Label>
+                  <Input value={vendorForm.nombre} onChange={(e) => setVendorForm({...vendorForm, nombre: e.target.value})} required />
+                </div>
+                <div className="space-y-2">
+                  <Label>RFC</Label>
+                  <Input value={vendorForm.rfc} onChange={(e) => setVendorForm({...vendorForm, rfc: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input type="email" value={vendorForm.email} onChange={(e) => setVendorForm({...vendorForm, email: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Teléfono</Label>
+                  <Input value={vendorForm.telefono} onChange={(e) => setVendorForm({...vendorForm, telefono: e.target.value})} />
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setDialogs({...dialogs, editVendor: false})}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit">Guardar Cambios</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          {/* Edit Customer Dialog */}
+          <Dialog open={dialogs.editCustomer} onOpenChange={(open) => {
+            setDialogs({...dialogs, editCustomer: open});
+            if (!open) {
+              setEditingCustomer(null);
+              setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '' });
+            }
+          }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Editar Cliente</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleUpdateCustomer} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Nombre</Label>
+                  <Input value={customerForm.nombre} onChange={(e) => setCustomerForm({...customerForm, nombre: e.target.value})} required />
+                </div>
+                <div className="space-y-2">
+                  <Label>RFC</Label>
+                  <Input value={customerForm.rfc} onChange={(e) => setCustomerForm({...customerForm, rfc: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input type="email" value={customerForm.email} onChange={(e) => setCustomerForm({...customerForm, email: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Teléfono</Label>
+                  <Input value={customerForm.telefono} onChange={(e) => setCustomerForm({...customerForm, telefono: e.target.value})} />
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setDialogs({...dialogs, editCustomer: false})}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit">Guardar Cambios</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          {/* Delete Vendor Confirmation */}
+          <AlertDialog open={deleteConfirm.open && deleteConfirm.type === 'vendor'} onOpenChange={(open) => !open && setDeleteConfirm({ open: false, type: null, item: null })}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                  ¿Eliminar proveedor?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta acción no se puede deshacer. Se eliminará permanentemente el proveedor 
+                  <strong> "{deleteConfirm.item?.nombre}"</strong>.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={handleDeleteVendor}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Delete Customer Confirmation */}
+          <AlertDialog open={deleteConfirm.open && deleteConfirm.type === 'customer'} onOpenChange={(open) => !open && setDeleteConfirm({ open: false, type: null, item: null })}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                  ¿Eliminar cliente?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta acción no se puede deshacer. Se eliminará permanentemente el cliente 
+                  <strong> "{deleteConfirm.item?.nombre}"</strong>.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={handleDeleteCustomer}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </TabsContent>
       </Tabs>
     </div>
