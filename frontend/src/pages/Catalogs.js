@@ -112,15 +112,97 @@ const Catalogs = () => {
   };
 
   const handleDeleteAccount = async () => {
-    if (!deleteConfirm.account) return;
+    if (!deleteConfirm.item || deleteConfirm.type !== 'account') return;
     
     try {
-      await api.delete(`/bank-accounts/${deleteConfirm.account.id}`);
+      await api.delete(`/bank-accounts/${deleteConfirm.item.id}`);
       toast.success('Cuenta bancaria eliminada');
-      setDeleteConfirm({ open: false, account: null });
+      setDeleteConfirm({ open: false, type: null, item: null });
       loadData();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error eliminando cuenta');
+    }
+  };
+
+  // ===== VENDOR HANDLERS =====
+  const handleEditVendor = (vendor) => {
+    setEditingVendor(vendor);
+    setVendorForm({
+      nombre: vendor.nombre,
+      rfc: vendor.rfc || '',
+      email: vendor.email || '',
+      telefono: vendor.telefono || ''
+    });
+    setDialogs({ ...dialogs, editVendor: true });
+  };
+
+  const handleUpdateVendor = async (e) => {
+    e.preventDefault();
+    if (!editingVendor) return;
+    
+    try {
+      await api.put(`/vendors/${editingVendor.id}`, vendorForm);
+      toast.success('Proveedor actualizado');
+      setDialogs({ ...dialogs, editVendor: false });
+      setEditingVendor(null);
+      loadData();
+      setVendorForm({ nombre: '', rfc: '', email: '', telefono: '' });
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error actualizando proveedor');
+    }
+  };
+
+  const handleDeleteVendor = async () => {
+    if (!deleteConfirm.item || deleteConfirm.type !== 'vendor') return;
+    
+    try {
+      await api.delete(`/vendors/${deleteConfirm.item.id}`);
+      toast.success('Proveedor eliminado');
+      setDeleteConfirm({ open: false, type: null, item: null });
+      loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error eliminando proveedor');
+    }
+  };
+
+  // ===== CUSTOMER HANDLERS =====
+  const handleEditCustomer = (customer) => {
+    setEditingCustomer(customer);
+    setCustomerForm({
+      nombre: customer.nombre,
+      rfc: customer.rfc || '',
+      email: customer.email || '',
+      telefono: customer.telefono || ''
+    });
+    setDialogs({ ...dialogs, editCustomer: true });
+  };
+
+  const handleUpdateCustomer = async (e) => {
+    e.preventDefault();
+    if (!editingCustomer) return;
+    
+    try {
+      await api.put(`/customers/${editingCustomer.id}`, customerForm);
+      toast.success('Cliente actualizado');
+      setDialogs({ ...dialogs, editCustomer: false });
+      setEditingCustomer(null);
+      loadData();
+      setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '' });
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error actualizando cliente');
+    }
+  };
+
+  const handleDeleteCustomer = async () => {
+    if (!deleteConfirm.item || deleteConfirm.type !== 'customer') return;
+    
+    try {
+      await api.delete(`/customers/${deleteConfirm.item.id}`);
+      toast.success('Cliente eliminado');
+      setDeleteConfirm({ open: false, type: null, item: null });
+      loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error eliminando cliente');
     }
   };
 
