@@ -654,6 +654,7 @@ const Catalogs = () => {
                       <TableHead>RFC</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Teléfono</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -663,6 +664,28 @@ const Catalogs = () => {
                         <TableCell className="mono">{vendor.rfc || '-'}</TableCell>
                         <TableCell>{vendor.email || '-'}</TableCell>
                         <TableCell>{vendor.telefono || '-'}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => handleEditVendor(vendor)}
+                              className="h-8 w-8 p-0 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                              data-testid={`edit-vendor-${vendor.id}`}
+                            >
+                              <Pencil size={14} />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => setDeleteConfirm({ open: true, type: 'vendor', item: vendor })}
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-800 hover:bg-red-50"
+                              data-testid={`delete-vendor-${vendor.id}`}
+                            >
+                              <Trash2 size={14} />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
