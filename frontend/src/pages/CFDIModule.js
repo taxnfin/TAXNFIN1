@@ -780,6 +780,15 @@ const CFDIModule = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleViewDetail(cfdi)}
+                            title="Ver detalles"
+                            data-testid={`view-cfdi-${cfdi.id}`}
+                          >
+                            <Eye size={16} className="text-[#64748B]" />
+                          </Button>
                           {!cfdi.category_id && (
                             <Button
                               variant="ghost"
