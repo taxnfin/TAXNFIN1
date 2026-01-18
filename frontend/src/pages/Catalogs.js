@@ -465,21 +465,39 @@ const Catalogs = () => {
                   </DialogHeader>
                   <form onSubmit={handleCreateAccount} className="space-y-4">
                     <div className="space-y-2">
-                      <Label>Nombre</Label>
-                      <Input data-testid="account-nombre-input" value={accountForm.nombre} onChange={(e) => setAccountForm({...accountForm, nombre: e.target.value})} required />
+                      <Label>Nombre de la Cuenta</Label>
+                      <Input data-testid="account-nombre-input" value={accountForm.nombre} onChange={(e) => setAccountForm({...accountForm, nombre: e.target.value})} placeholder="Ej: Cuenta Principal" required />
                     </div>
                     <div className="space-y-2">
                       <Label>Banco</Label>
-                      <Input data-testid="account-banco-input" value={accountForm.banco} onChange={(e) => setAccountForm({...accountForm, banco: e.target.value})} required />
+                      <Select value={accountForm.banco} onValueChange={(v) => setAccountForm({...accountForm, banco: v})}>
+                        <SelectTrigger data-testid="account-banco-input">
+                          <SelectValue placeholder="Seleccionar banco" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {BANCOS_MEXICO.map(banco => (
+                            <SelectItem key={banco} value={banco}>{banco}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label>Número de Cuenta</Label>
-                      <Input data-testid="account-numero-input" value={accountForm.numero_cuenta} onChange={(e) => setAccountForm({...accountForm, numero_cuenta: e.target.value})} required />
+                      <Input data-testid="account-numero-input" value={accountForm.numero_cuenta} onChange={(e) => setAccountForm({...accountForm, numero_cuenta: e.target.value})} placeholder="Ej: 0123456789" required />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Moneda</Label>
-                        <Input value={accountForm.moneda} onChange={(e) => setAccountForm({...accountForm, moneda: e.target.value})} />
+                        <Select value={accountForm.moneda} onValueChange={(v) => setAccountForm({...accountForm, moneda: v})}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar moneda" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {MONEDAS.map(moneda => (
+                              <SelectItem key={moneda} value={moneda}>{moneda}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="space-y-2">
                         <Label>Saldo Inicial</Label>
