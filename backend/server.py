@@ -937,6 +937,39 @@ async def list_vendors(request: Request, current_user: Dict = Depends(get_curren
             v['created_at'] = datetime.fromisoformat(v['created_at'])
     return vendors
 
+@api_router.put("/vendors/{vendor_id}")
+async def update_vendor(vendor_id: str, vendor_data: VendorCreate, request: Request, current_user: Dict = Depends(get_current_user)):
+    company_id = await get_active_company_id(request, current_user)
+    existing = await db.vendors.find_one({'id': vendor_id, 'company_id': company_id}, {'_id': 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    
+    update_data = vendor_data.model_dump()
+    await db.vendors.update_one(
+        {'id': vendor_id, 'company_id': company_id},
+        {'$set': update_data}
+    )
+    await audit_log(company_id, 'Vendor', vendor_id, 'UPDATE', current_user['id'], existing, update_data)
+    
+    updated = await db.vendors.find_one({'id': vendor_id}, {'_id': 0})
+    if isinstance(updated.get('created_at'), str):
+        updated['created_at'] = datetime.fromisoformat(updated['created_at'])
+    return updated
+
+@api_router.delete("/vendors/{vendor_id}")
+async def delete_vendor(vendor_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
+    company_id = await get_active_company_id(request, current_user)
+    existing = await db.vendors.find_one({'id': vendor_id, 'company_id': company_id}, {'_id': 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    
+    await db.vendors.update_one(
+        {'id': vendor_id},
+        {'$set': {'activo': False}}
+    )
+    await audit_log(company_id, 'Vendor', vendor_id, 'DELETE', current_user['id'])
+    return {'status': 'success', 'message': 'Proveedor eliminado'}
+
 @api_router.post("/customers", response_model=Customer)
 async def create_customer(customer_data: CustomerCreate, request: Request, current_user: Dict = Depends(get_current_user)):
     company_id = await get_active_company_id(request, current_user)
