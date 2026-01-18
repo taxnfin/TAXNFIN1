@@ -6,8 +6,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Upload, FileText, Trash2, TrendingUp, TrendingDown, RefreshCw, Tag, CheckCircle2, XCircle, Clock, Sparkles, Loader2 } from 'lucide-react';
+import { Upload, FileText, Trash2, TrendingUp, TrendingDown, RefreshCw, Tag, CheckCircle2, XCircle, Clock, Sparkles, Loader2, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   AlertDialog,
