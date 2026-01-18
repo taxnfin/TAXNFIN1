@@ -1,0 +1,134 @@
+{
+  "identity": {
+    "persona": "E1: The Anti-AI Designer",
+    "mission": "Create a fintech interface that feels like a Swiss watch—precise, dense, and authoritative. Reject the 'soft SaaS' aesthetic for a 'hard data' look.",
+    "principles": [
+      "Fusion over Imitation: Mix Swiss Print Design with Bloomberg Terminal density.",
+      "Emotion First: The emotion is 'Control'. The user must feel like a pilot in a cockpit.",
+      "Content is King: Data is the hero. No decorative fluff that distracts from the numbers.",
+      "Zoom In: Use high-contrast focus states to highlight the active row/cell.",
+      "Negative Space: Use it to group logic, not just to fill space."
+    ]
+  },
+  "typography": {
+    "headings": {
+      "family": "Manrope",
+      "weights": ["600", "700", "800"],
+      "usage": "Page titles, Section headers, KPI values",
+      "tracking": "-0.02em"
+    },
+    "body": {
+      "family": "Public Sans",
+      "weights": ["400", "500"],
+      "usage": "General UI text, labels, descriptions",
+      "tracking": "0"
+    },
+    "mono": {
+      "family": "JetBrains Mono",
+      "weights": ["400", "500"],
+      "usage": "Financial data, tables, transaction IDs, dates",
+      "tracking": "-0.01em"
+    }
+  },
+  "colors": {
+    "palette_name": "The Executive Suite",
+    "mode": "light",
+    "primary": {
+      "name": "Deep Obsidian",
+      "hex": "#0F172A",
+      "usage": "Primary actions, active states, strong borders"
+    },
+    "secondary": {
+      "name": "Slate Mist",
+      "hex": "#F1F5F9",
+      "usage": "Backgrounds, subtle containers"
+    },
+    "accent_success": {
+      "name": "Emerald Ledger",
+      "hex": "#10B981",
+      "usage": "Positive cashflow, 'Paid' status"
+    },
+    "accent_danger": {
+      "name": "Audit Red",
+      "hex": "#EF4444",
+      "usage": "Negative cashflow, 'Overdue' status, alerts"
+    },
+    "accent_warning": {
+      "name": "Compliance Amber",
+      "hex": "#F59E0B",
+      "usage": "Pending actions, warnings"
+    },
+    "background": {
+      "default": "#F8FAFC",
+      "paper": "#FFFFFF",
+      "subtle": "#F1F5F9"
+    },
+    "text": {
+      "primary": "#0F172A",
+      "secondary": "#64748B",
+      "muted": "#94A3B8"
+    },
+    "border": {
+      "default": "#E2E8F0",
+      "strong": "#CBD5E1"
+    }
+  },
+  "layout": {
+    "grid_system": "Mode B: High Density Grid",
+    "container_padding": "p-6 md:p-8 lg:p-12",
+    "gap_strategy": "gap-4",
+    "dashboard_structure": {
+      "hero": "Bento Grid (KPIs + Cashflow Chart)",
+      "main": "Dense Data Tables (13-week view)",
+      "sidebar": "Fixed, collapsible, high contrast"
+    }
+  },
+  "components": {
+    "radius": "rounded-sm",
+    "shadows": "shadow-sm",
+    "buttons": {
+      "style": "Sharp or minimal radius (2px). High contrast text.",
+      "hover": "translate-y-[-1px] shadow-md transition-all duration-200"
+    },
+    "cards": {
+      "style": "Flat, 1px border (border-slate-200), no shadow by default. White background.",
+      "hover": "border-slate-300 shadow-sm"
+    },
+    "tables": {
+      "density": "Compact (py-2 px-3)",
+      "header": "Uppercase, text-xs, tracking-wider, text-slate-500, bg-slate-50/50",
+      "row_hover": "bg-slate-50 transition-colors duration-150",
+      "font": "Mono for all numerical values"
+    },
+    "inputs": {
+      "style": "bg-white border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+    }
+  },
+  "visual_enhancers": {
+    "surface_strategy": "Grid Borders (The Technical Look)",
+    "textures": "Subtle noise overlay on sidebar or dark backgrounds to prevent banding.",
+    "micro_interactions": "Row highlight on hover. Subtle scale on KPI cards.",
+    "empty_states": "Use abstract geometric lines or minimal illustrations. No cartoons."
+  },
+  "images": {
+    "login_background": {
+      "url": "https://images.unsplash.com/photo-1646320570932-e1b727f8d243",
+      "description": "Modern Mexico City architecture, high angle, professional tone.",
+      "usage": "Full screen background for Login/Auth pages with a dark overlay (bg-slate-900/80)."
+    },
+    "empty_state_abstract": {
+      "url": "https://images.unsplash.com/photo-1684610529682-553625a1ffed",
+      "description": "Abstract data particles, minimal.",
+      "usage": "Use for 'Processing' states or 404 pages, heavily desaturated."
+    }
+  },
+  "universal_guidelines": [
+    "NO 'AI Slop': Avoid generic gradients, centered layouts, and 'soft' shadows everywhere.",
+    "Density is Good: This is a tool for pros. Don't be afraid of dense information if it's organized.",
+    "Contrast is King: Ensure text is legible. Use APCA standards.",
+    "Motion: Snappy, not floaty. 150ms-200ms ease-out.",
+    "Data-TestID: All interactive elements MUST have data-testid attributes.",
+    "Theme: Default to Light Mode (Paper/Ink metaphor) but support Dark Mode (Obsidian/Light) perfectly."
+  ],
+  "instructions_to_main_agent": "You are building a high-precision financial tool. Prioritize data visibility. Use the 'Manrope' font for headings to give it a modern edge, but keep 'JetBrains Mono' for the numbers—CFOs need to scan digits quickly. The dashboard should feel like a cockpit: dense, organized, and responsive. Use the provided image URLs for the login and empty states. Do not use placeholder images."
+}
