@@ -519,7 +519,11 @@ async def initialize_cashflow_weeks(company_id: str):
 def parse_cfdi_xml(xml_content: str) -> Dict[str, Any]:
     try:
         root = etree.fromstring(xml_content.encode('utf-8'))
-        ns = {'cfdi': 'http://www.sat.gob.mx/cfd/4', 'tfd': 'http://www.sat.gob.mx/TimbreFiscalDigital'}
+        ns = {
+            'cfdi': 'http://www.sat.gob.mx/cfd/4', 
+            'tfd': 'http://www.sat.gob.mx/TimbreFiscalDigital',
+            'nomina12': 'http://www.sat.gob.mx/nomina12'
+        }
         
         timbre = root.find('.//tfd:TimbreFiscalDigital', ns)
         uuid = timbre.get('UUID') if timbre is not None else None
@@ -539,6 +543,20 @@ def parse_cfdi_xml(xml_content: str) -> Dict[str, Any]:
         tipo_raw = root.get('TipoDeComprobante', 'I').lower()
         tipo_cfdi = tipo_comprobante_map.get(tipo_raw, 'ingreso')
         
+        # Check for payroll (nómina) complement - ALWAYS treat as egreso
+        nomina_element = root.find('.//nomina12:Nomina', ns)
+        is_nomina = nomina_element is not None
+        
+        # Check for payroll keywords in concepts
+        conceptos = root.findall('.//cfdi:Concepto', ns)
+        conceptos_text = ' '.join([
+            (c.get('Descripcion', '') + ' ' + c.get('ClaveProdServ', '')).lower() 
+            for c in conceptos
+        ])
+        payroll_keywords = ['sueldo', 'salario', 'nómina', 'nomina', 'pago de nómina', 
+                           'aguinaldo', 'liquidación', 'finiquito', '84111505']
+        has_payroll_keywords = any(kw in conceptos_text for kw in payroll_keywords)
+        
         return {
             'uuid': uuid,
             'tipo_cfdi': tipo_cfdi,
@@ -551,7 +569,8 @@ def parse_cfdi_xml(xml_content: str) -> Dict[str, Any]:
             'moneda': root.get('Moneda', 'MXN'),
             'subtotal': float(root.get('SubTotal', 0)),
             'total': float(root.get('Total', 0)),
-            'impuestos': float(root.get('Total', 0)) - float(root.get('SubTotal', 0))
+            'impuestos': float(root.get('Total', 0)) - float(root.get('SubTotal', 0)),
+            'is_nomina': is_nomina or has_payroll_keywords
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error parseando XML CFDI: {str(e)}")
