@@ -309,7 +309,7 @@ const AgingModule = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-red-700">{formatCurrency(totalCxP)}</div>
+            <div className="text-3xl font-bold text-red-700">{formatCurrency(totalCxPMXN, 'MXN')}</div>
             <div className="text-sm text-red-600 mt-1">
               {Object.values(cxpBuckets).reduce((s, b) => s + b.cfdis.length, 0)} facturas pendientes de pago
             </div>
