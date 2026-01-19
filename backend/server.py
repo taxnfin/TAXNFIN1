@@ -2004,6 +2004,7 @@ async def complete_payment(payment_id: str, request: Request, current_user: Dict
     if not existing:
         raise HTTPException(status_code=404, detail="Pago no encontrado")
     
+    # Update payment status
     await db.payments.update_one(
         {'id': payment_id},
         {'$set': {
@@ -2011,6 +2012,30 @@ async def complete_payment(payment_id: str, request: Request, current_user: Dict
             'fecha_pago': datetime.now(timezone.utc).isoformat()
         }}
     )
+    
+    # If payment is linked to a CFDI, update the paid/collected amount
+    if existing.get('cfdi_id'):
+        cfdi = await db.cfdis.find_one({'id': existing['cfdi_id']}, {'_id': 0})
+        if cfdi:
+            if existing['tipo'] == 'cobro':
+                # Update monto_cobrado for income CFDI
+                current_cobrado = cfdi.get('monto_cobrado', 0) or 0
+                new_cobrado = current_cobrado + existing['monto']
+                await db.cfdis.update_one(
+                    {'id': existing['cfdi_id']},
+                    {'$set': {'monto_cobrado': new_cobrado}}
+                )
+                logger.info(f"Updated CFDI {existing['cfdi_id']} monto_cobrado: {current_cobrado} -> {new_cobrado}")
+            else:
+                # Update monto_pagado for expense CFDI
+                current_pagado = cfdi.get('monto_pagado', 0) or 0
+                new_pagado = current_pagado + existing['monto']
+                await db.cfdis.update_one(
+                    {'id': existing['cfdi_id']},
+                    {'$set': {'monto_pagado': new_pagado}}
+                )
+                logger.info(f"Updated CFDI {existing['cfdi_id']} monto_pagado: {current_pagado} -> {new_pagado}")
+    
     await audit_log(company_id, 'Payment', payment_id, 'COMPLETE', current_user['id'])
     return {'status': 'success', 'message': 'Pago completado'}
 
