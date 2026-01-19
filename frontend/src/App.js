@@ -119,6 +119,7 @@ function App() {
             <Route path="categories" element={<CategoriesModule />} />
             <Route path="catalogs" element={<Catalogs />} />
             <Route path="reports" element={<Reports />} />
+            <Route path="projections" element={<CashflowProjections />} />
             <Route path="advanced" element={<AdvancedFeatures />} />
             <Route path="admin" element={<Admin />} />
           </Route>
