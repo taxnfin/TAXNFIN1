@@ -228,7 +228,8 @@ const CashflowProjections = () => {
 
   // Calculate running totals including custom concepts
   const calculateRunningTotals = () => {
-    let saldoInicial = 0;
+    // Use the bank account balance as initial amount
+    let saldoInicial = saldoInicialBancos;
     const totals = [];
     
     weeklyData.forEach((week, idx) => {
