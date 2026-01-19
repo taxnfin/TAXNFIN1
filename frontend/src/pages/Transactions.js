@@ -98,25 +98,30 @@ const AgingModule = () => {
 
     // Group by aging bucket
     const buckets = {
-      'vigente': { label: 'Vigente', cfdis: [], total: 0, color: 'bg-green-100 text-green-800' },
-      '1-30': { label: '1-30 días', cfdis: [], total: 0, color: 'bg-yellow-100 text-yellow-800' },
-      '31-60': { label: '31-60 días', cfdis: [], total: 0, color: 'bg-orange-100 text-orange-800' },
-      '61-90': { label: '61-90 días', cfdis: [], total: 0, color: 'bg-red-100 text-red-800' },
-      '91-120': { label: '91-120 días', cfdis: [], total: 0, color: 'bg-red-200 text-red-900' },
-      '120+': { label: '+120 días', cfdis: [], total: 0, color: 'bg-red-300 text-red-900' }
+      'vigente': { label: 'Vigente', cfdis: [], total: 0, totalMXN: 0, color: 'bg-green-100 text-green-800' },
+      '1-30': { label: '1-30 días', cfdis: [], total: 0, totalMXN: 0, color: 'bg-yellow-100 text-yellow-800' },
+      '31-60': { label: '31-60 días', cfdis: [], total: 0, totalMXN: 0, color: 'bg-orange-100 text-orange-800' },
+      '61-90': { label: '61-90 días', cfdis: [], total: 0, totalMXN: 0, color: 'bg-red-100 text-red-800' },
+      '91-120': { label: '91-120 días', cfdis: [], total: 0, totalMXN: 0, color: 'bg-red-200 text-red-900' },
+      '120+': { label: '+120 días', cfdis: [], total: 0, totalMXN: 0, color: 'bg-red-300 text-red-900' }
     };
 
     filtered.forEach(cfdi => {
       const bucket = getAgingBucket(cfdi.fecha_emision);
       const amountField = isIngreso ? 'monto_cobrado' : 'monto_pagado';
       const pendiente = cfdi.total - (cfdi[amountField] || 0);
+      const moneda = cfdi.moneda || 'MXN';
+      const pendienteMXN = convertToMXN(pendiente, moneda);
       
       buckets[bucket].cfdis.push({
         ...cfdi,
         pendiente,
+        pendienteMXN,
+        moneda,
         diasVencido: differenceInDays(new Date(), new Date(cfdi.fecha_emision))
       });
       buckets[bucket].total += pendiente;
+      buckets[bucket].totalMXN += pendienteMXN;
     });
 
     return buckets;
