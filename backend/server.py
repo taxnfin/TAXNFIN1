@@ -1583,8 +1583,17 @@ async def upload_cfdi(request: Request, file: UploadFile = File(...), current_us
         fecha_timbrado=datetime.fromisoformat(parsed['fecha_timbrado']),
         moneda=parsed['moneda'],
         subtotal=parsed['subtotal'],
+        descuento=parsed.get('descuento', 0),
         impuestos=parsed['impuestos'],
         total=parsed['total'],
+        metodo_pago=parsed.get('metodo_pago', ''),
+        forma_pago=parsed.get('forma_pago', ''),
+        uso_cfdi=parsed.get('uso_cfdi', ''),
+        iva_trasladado=parsed.get('iva_trasladado', 0),
+        isr_retenido=parsed.get('isr_retenido', 0),
+        iva_retenido=parsed.get('iva_retenido', 0),
+        ieps=parsed.get('ieps', 0),
+        estado_cancelacion='vigente',
         xml_original=xml_str
     )
     
