@@ -1569,7 +1569,10 @@ async def get_cashflow_weeks(request: Request, current_user: Dict = Depends(get_
     for i, week in enumerate(weeks):
         for field in ['fecha_inicio', 'fecha_fin', 'created_at']:
             if isinstance(week.get(field), str):
-                week[field] = datetime.fromisoformat(week[field])
+                week[field] = datetime.fromisoformat(week[field].replace('Z', '+00:00'))
+            # Ensure timezone aware
+            if week.get(field) and week[field].tzinfo is None:
+                week[field] = week[field].replace(tzinfo=timezone.utc)
         
         week_start = week['fecha_inicio']
         week_end = week['fecha_fin']
@@ -1581,8 +1584,10 @@ async def get_cashflow_weeks(request: Request, current_user: Dict = Depends(get_
             cfdi_date = cfdi.get('fecha_emision')
             if isinstance(cfdi_date, str):
                 cfdi_date = datetime.fromisoformat(cfdi_date.replace('Z', '+00:00'))
+            if cfdi_date and cfdi_date.tzinfo is None:
+                cfdi_date = cfdi_date.replace(tzinfo=timezone.utc)
             
-            if week_start <= cfdi_date <= week_end:
+            if cfdi_date and week_start <= cfdi_date <= week_end:
                 if cfdi.get('tipo_cfdi') == 'ingreso':
                     week_ingresos += cfdi.get('total', 0)
                 else:
