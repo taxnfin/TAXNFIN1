@@ -15,7 +15,8 @@ import {
   Building,
   DollarSign,
   CreditCard,
-  Tags
+  Tags,
+  TrendingUp
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -29,6 +30,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
 
   const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+    { name: 'Proyecciones', href: '/projections', icon: TrendingUp, highlight: true },
     { name: 'Transacciones', href: '/transactions', icon: ArrowRightLeft },
     { name: 'CFDI / SAT', href: '/cfdi', icon: FileText },
     { name: 'Bancario', href: '/bank', icon: Building2 },
@@ -37,7 +39,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
     { name: 'Categorías', href: '/categories', icon: Tags },
     { name: 'Catálogos', href: '/catalogs', icon: FolderOpen },
     { name: 'Reportes', href: '/reports', icon: BarChart3 },
-    { name: 'IA & Avanzado', href: '/advanced', icon: Sparkles, highlight: true },
+    { name: 'IA & Avanzado', href: '/advanced', icon: Sparkles },
     { name: 'Admin', href: '/admin', icon: Settings },
   ];
 
