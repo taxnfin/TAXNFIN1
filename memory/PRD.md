@@ -241,19 +241,32 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
    - Fila "SALDO INICIAL BANCOS" visible en la tabla de 13 semanas
    - Cálculo correcto del saldo final acumulado
    - Conceptos de Cobranza y Egresos ahora se muestran correctamente (incluyendo "Sin categoría")
+   - **NUEVO**: Inicio de semana configurable por empresa (Lunes-Domingo)
+   - **NUEVO**: Conceptos manuales de proyección guardados en backend
 
 2. **Módulo Aging de Cartera (CxC/CxP)**
    - Reemplazó el módulo de Transacciones
    - Análisis de antigüedad por buckets: Vigente, 1-30, 31-60, 61-90, 91-120, +120 días
-   - Tabs separados para Cuentas por Cobrar y Cuentas por Pagar
-   - Detalle de facturas pendientes con cliente/proveedor, UUID, fecha, método pago
+   - **NUEVO**: Columna "Moneda" para mostrar moneda de facturación
+   - **NUEVO**: Columna "Pendiente MXN" para conversión a moneda base
+   - **NUEVO**: Tipos de cambio en header (USD, EUR)
+   - **NUEVO**: Botón "Actualizar T.C." para sincronizar desde Banxico/OpenExchange
 
-3. **Módulo de Cobranza y Pagos**
+3. **Tipos de Cambio Banxico y OpenExchange**
+   - Integración con API de Banxico (USD, EUR, GBP, JPY, CAD)
+   - Integración con OpenExchange Rates (CHF, CNY)
+   - Endpoint `/api/fx-rates/sync` para actualizar tasas en tiempo real
+   - Endpoint `/api/fx-rates/latest` para obtener tasas más recientes
+
+4. **Módulo de Cobranza y Pagos**
    - Nuevo campo `es_real` (True = Real, False = Proyección)
    - Switch toggle en el formulario de creación
    - Filtro Real/Proyección en la lista de pagos
-   - Columna REAL/PROY. en la tabla
-   - Backend actualizado con filtro `es_real` en endpoint `/api/payments`
+
+5. **Backend - Nuevos Endpoints**
+   - `PUT /api/companies/{id}` - Actualizar empresa (incluyendo inicio_semana)
+   - `POST/GET/PUT/DELETE /api/manual-projections` - CRUD conceptos manuales
+   - `POST /api/fx-rates/sync` - Sincronizar tipos de cambio
 
 ---
 
