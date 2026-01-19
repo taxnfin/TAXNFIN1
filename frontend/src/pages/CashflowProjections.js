@@ -242,28 +242,41 @@ const CashflowProjections = () => {
     return `$${(amount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  // Add custom concept
-  const handleAddConcept = () => {
+  // Add custom concept - saves to backend
+  const handleAddConcept = async () => {
     if (!newConcept.nombre || !newConcept.monto) {
       toast.error('Completa nombre y monto');
       return;
     }
     
-    const concept = {
-      id: Date.now(),
-      ...newConcept,
-      monto: parseFloat(newConcept.monto)
-    };
-    
-    setCustomConcepts([...customConcepts, concept]);
-    setNewConcept({ nombre: '', tipo: 'egreso', monto: '', semana: 1, mes: 1, recurrente: false });
-    setConceptDialogOpen(false);
-    toast.success('Concepto agregado');
+    try {
+      const conceptData = {
+        nombre: newConcept.nombre,
+        tipo: newConcept.tipo,
+        monto: parseFloat(newConcept.monto),
+        semana: viewMode === 'weekly' ? parseInt(newConcept.semana) : null,
+        mes: viewMode === 'monthly' ? parseInt(newConcept.mes) : null,
+        recurrente: newConcept.recurrente
+      };
+      
+      const response = await api.post('/manual-projections', conceptData);
+      setCustomConcepts([...customConcepts, response.data]);
+      setNewConcept({ nombre: '', tipo: 'egreso', monto: '', semana: 1, mes: 1, recurrente: false });
+      setConceptDialogOpen(false);
+      toast.success('Concepto agregado');
+    } catch (error) {
+      toast.error('Error al guardar concepto');
+    }
   };
 
-  const handleDeleteConcept = (id) => {
-    setCustomConcepts(customConcepts.filter(c => c.id !== id));
-    toast.success('Concepto eliminado');
+  const handleDeleteConcept = async (id) => {
+    try {
+      await api.delete(`/manual-projections/${id}`);
+      setCustomConcepts(customConcepts.filter(c => c.id !== id));
+      toast.success('Concepto eliminado');
+    } catch (error) {
+      toast.error('Error al eliminar concepto');
+    }
   };
 
   // Get CFDIs for selected party
