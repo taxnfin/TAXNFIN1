@@ -113,6 +113,7 @@ class Company(BaseModel):
     moneda_base: str = "MXN"
     pais: str = "México"
     activo: bool = True
+    inicio_semana: int = 1  # 0=Domingo, 1=Lunes, 2=Martes, etc. Default: Lunes
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class CompanyCreate(BaseModel):
@@ -120,6 +121,7 @@ class CompanyCreate(BaseModel):
     rfc: str
     moneda_base: str = "MXN"
     pais: str = "México"
+    inicio_semana: int = 1  # 0=Domingo, 1=Lunes, etc.
 
 class User(BaseModel):
     model_config = ConfigDict(extra="ignore")
