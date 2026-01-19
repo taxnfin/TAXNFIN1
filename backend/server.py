@@ -159,6 +159,7 @@ class BankAccount(BaseModel):
     moneda: str = "MXN"
     pais_banco: str = "México"
     saldo_inicial: float = 0.0
+    fecha_saldo: Optional[datetime] = None  # Fecha del saldo inicial para tipo de cambio histórico
     activo: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -169,6 +170,7 @@ class BankAccountCreate(BaseModel):
     moneda: str = "MXN"
     pais_banco: str = "México"
     saldo_inicial: float = 0.0
+    fecha_saldo: Optional[datetime] = None  # Fecha del saldo inicial para tipo de cambio histórico
 
 class Vendor(BaseModel):
     model_config = ConfigDict(extra="ignore")
