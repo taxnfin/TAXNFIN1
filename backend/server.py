@@ -411,6 +411,7 @@ class Payment(BaseModel):
     beneficiario: Optional[str] = None
     notas: Optional[str] = None
     domiciliacion_activa: bool = False
+    es_real: bool = True  # True = movimiento real, False = proyección
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class PaymentCreate(BaseModel):
@@ -428,6 +429,7 @@ class PaymentCreate(BaseModel):
     beneficiario: Optional[str] = None
     notas: Optional[str] = None
     domiciliacion_activa: bool = False
+    es_real: bool = True  # True = movimiento real, False = proyección
 
 class AuditLog(BaseModel):
     model_config = ConfigDict(extra="ignore")
