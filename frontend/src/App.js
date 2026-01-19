@@ -12,6 +12,7 @@ import Admin from './pages/Admin';
 import AdvancedFeatures from './pages/AdvancedFeatures';
 import FXRatesModule from './pages/FXRatesModule';
 import CategoriesModule from './pages/CategoriesModule';
+import CashflowProjections from './pages/CashflowProjections';
 import Layout from './components/Layout';
 import { Toaster } from './components/ui/sonner';
 import api from './api/axios';
