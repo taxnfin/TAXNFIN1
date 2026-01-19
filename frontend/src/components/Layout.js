@@ -31,10 +31,10 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
   const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
     { name: 'Proyecciones', href: '/projections', icon: TrendingUp, highlight: true },
-    { name: 'Transacciones', href: '/transactions', icon: ArrowRightLeft },
+    { name: 'Aging CxC/CxP', href: '/transactions', icon: ArrowRightLeft },
     { name: 'CFDI / SAT', href: '/cfdi', icon: FileText },
     { name: 'Bancario', href: '/bank', icon: Building2 },
-    { name: 'Pagos', href: '/payments', icon: CreditCard },
+    { name: 'Cobranza y Pagos', href: '/payments', icon: CreditCard },
     { name: 'Tipos de Cambio', href: '/fx-rates', icon: DollarSign },
     { name: 'Categorías', href: '/categories', icon: Tags },
     { name: 'Catálogos', href: '/catalogs', icon: FolderOpen },
