@@ -1032,7 +1032,9 @@ async def delete_bank_account(account_id: str, request: Request, current_user: D
 
 @api_router.get("/bank-accounts/summary")
 async def get_bank_accounts_summary(request: Request, current_user: Dict = Depends(get_current_user)):
-    """Get summary of all bank accounts with balances by currency"""
+    """Get summary of all bank accounts with balances by currency.
+    Uses historical exchange rates based on fecha_saldo for each account.
+    """
     company_id = await get_active_company_id(request, current_user)
     
     accounts = await db.bank_accounts.find({'company_id': company_id, 'activo': True}, {'_id': 0}).to_list(1000)
@@ -1042,39 +1044,45 @@ async def get_bank_accounts_summary(request: Request, current_user: Dict = Depen
     by_bank = {}
     total_mxn = 0
     
-    # Get FX rates - support both old and new field names
-    rates = {'MXN': 1.0, 'USD': 17.50, 'EUR': 19.00}
-    rates_docs = await db.fx_rates.find({'company_id': company_id}).sort('fecha_vigencia', -1).to_list(100)
-    for r in rates_docs:
-        moneda = r.get('moneda_cotizada') or r.get('moneda_origen')
-        tasa = r.get('tipo_cambio') or r.get('tasa')
-        if moneda and tasa:
-            rates[moneda] = tasa
-    
     for acc in accounts:
         moneda = acc.get('moneda', 'MXN')
         banco = acc.get('banco', 'Sin banco')
         saldo = acc.get('saldo_inicial', 0)
+        fecha_saldo = acc.get('fecha_saldo')
         
-        # By currency
+        # Get historical exchange rate for the date the balance was recorded
+        if fecha_saldo:
+            if isinstance(fecha_saldo, str):
+                fecha_saldo = datetime.fromisoformat(fecha_saldo.replace('Z', '+00:00'))
+            rate = await get_fx_rate_by_date(company_id, moneda, fecha_saldo)
+        else:
+            # No date specified, use current rate
+            rate = await get_fx_rate_by_date(company_id, moneda, None)
+        
+        # By currency (original amounts)
         if moneda not in by_currency:
-            by_currency[moneda] = {'saldo': 0, 'cuentas': 0}
+            by_currency[moneda] = {'saldo': 0, 'cuentas': 0, 'saldo_mxn': 0}
         by_currency[moneda]['saldo'] += saldo
         by_currency[moneda]['cuentas'] += 1
+        
+        # Convert to MXN using historical rate
+        saldo_mxn = saldo * rate if moneda != 'MXN' else saldo
+        by_currency[moneda]['saldo_mxn'] += saldo_mxn
         
         # By bank
         if banco not in by_bank:
             by_bank[banco] = {'saldo_mxn': 0, 'cuentas': [], 'monedas': set()}
         
-        # Convert to MXN for bank totals
-        saldo_mxn = saldo * rates.get(moneda, 1) if moneda != 'MXN' else saldo
         by_bank[banco]['saldo_mxn'] += saldo_mxn
         by_bank[banco]['cuentas'].append({
             'id': acc.get('id', ''),
             'nombre': acc.get('nombre', acc.get('nombre_banco', 'Sin nombre')),
             'numero_cuenta': acc.get('numero_cuenta', ''),
             'moneda': moneda,
-            'saldo': saldo
+            'saldo': saldo,
+            'saldo_mxn': saldo_mxn,
+            'fecha_saldo': acc.get('fecha_saldo'),
+            'tipo_cambio_usado': rate
         })
         by_bank[banco]['monedas'].add(moneda)
         
