@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { TrendingUp, TrendingDown, Clock, AlertTriangle, Calendar, Download, FileText, Building2, User } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, AlertTriangle, Calendar, Download, FileText, Building2, User, RefreshCw } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -14,6 +14,8 @@ const AgingModule = () => {
   const [cfdis, setCfdis] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [vendors, setVendors] = useState([]);
+  const [fxRates, setFxRates] = useState({});
+  const [syncingRates, setSyncingRates] = useState(false);
   const [activeTab, setActiveTab] = useState('cxc'); // cxc = Cuentas por Cobrar, cxp = Cuentas por Pagar
 
   useEffect(() => {
@@ -23,14 +25,16 @@ const AgingModule = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cfdiRes, custRes, vendRes] = await Promise.all([
+      const [cfdiRes, custRes, vendRes, fxRes] = await Promise.all([
         api.get('/cfdi?limit=500'),
         api.get('/customers'),
-        api.get('/vendors')
+        api.get('/vendors'),
+        api.get('/fx-rates/latest')
       ]);
       setCfdis(cfdiRes.data);
       setCustomers(custRes.data);
       setVendors(vendRes.data);
+      setFxRates(fxRes.data || {});
     } catch (error) {
       toast.error('Error cargando datos');
     } finally {
@@ -38,8 +42,31 @@ const AgingModule = () => {
     }
   };
 
-  const formatCurrency = (amount) => {
-    return `$${(amount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const syncFxRates = async () => {
+    setSyncingRates(true);
+    try {
+      const res = await api.post('/fx-rates/sync');
+      if (res.data.rates) {
+        setFxRates(res.data.rates);
+        toast.success(`Tipos de cambio actualizados desde ${Object.keys(res.data.rates).join(', ')}`);
+      }
+    } catch (error) {
+      toast.error('Error sincronizando tipos de cambio');
+    } finally {
+      setSyncingRates(false);
+    }
+  };
+
+  const formatCurrency = (amount, moneda = 'MXN') => {
+    const symbol = moneda === 'USD' ? 'US$' : moneda === 'EUR' ? '€' : '$';
+    return `${symbol}${(amount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  // Convert to MXN using fx rates
+  const convertToMXN = (amount, moneda) => {
+    if (!moneda || moneda === 'MXN') return amount;
+    const rate = fxRates[moneda] || 1;
+    return amount * rate;
   };
 
   // Calculate aging bucket
