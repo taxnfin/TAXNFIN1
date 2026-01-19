@@ -236,37 +236,36 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 ## Latest Updates (January 19, 2026)
 
 ### Completed in This Session ✅
-1. **Proyecciones de Flujo de Efectivo Mejoradas**
-   - Agregado saldo inicial de bancos (usando `/api/bank-accounts/summary`)
-   - Fila "SALDO INICIAL BANCOS" visible en la tabla de 13 semanas
-   - Cálculo correcto del saldo final acumulado
-   - Conceptos de Cobranza y Egresos ahora se muestran correctamente (incluyendo "Sin categoría")
-   - **NUEVO**: Inicio de semana configurable por empresa (Lunes-Domingo)
-   - **NUEVO**: Conceptos manuales de proyección guardados en backend
 
-2. **Módulo Aging de Cartera (CxC/CxP)**
-   - Reemplazó el módulo de Transacciones
-   - Análisis de antigüedad por buckets: Vigente, 1-30, 31-60, 61-90, 91-120, +120 días
-   - **NUEVO**: Columna "Moneda" para mostrar moneda de facturación
-   - **NUEVO**: Columna "Pendiente MXN" para conversión a moneda base
-   - **NUEVO**: Tipos de cambio en header (USD, EUR)
-   - **NUEVO**: Botón "Actualizar T.C." para sincronizar desde Banxico/OpenExchange
+**Tipos de Cambio Históricos y Bancos**
+1. Almacenamiento de tipos de cambio diarios históricos
+2. Nuevo campo `fecha_saldo` en cuentas bancarias
+3. Conversión a MXN usando tipo de cambio de la fecha del saldo
+4. Helper `get_fx_rate_by_date()` para obtener TC por fecha
 
-3. **Tipos de Cambio Banxico y OpenExchange**
-   - Integración con API de Banxico (USD, EUR, GBP, JPY, CAD)
-   - Integración con OpenExchange Rates (CHF, CNY)
-   - Endpoint `/api/fx-rates/sync` para actualizar tasas en tiempo real
-   - Endpoint `/api/fx-rates/latest` para obtener tasas más recientes
+**Proyecciones Mejoradas**
+1. Inicio de semana configurable por empresa (Lunes-Domingo)
+2. Conceptos manuales de proyección guardados en backend
+3. **NUEVO**: Desglose de categorías y subcategorías expandibles
+4. Subcategorías con indentación visual └
 
-4. **Módulo de Cobranza y Pagos**
-   - Nuevo campo `es_real` (True = Real, False = Proyección)
-   - Switch toggle en el formulario de creación
-   - Filtro Real/Proyección en la lista de pagos
+**Módulo de Aging**
+1. Columna "Moneda" para moneda de facturación
+2. Columna "Pendiente MXN" con conversión
+3. Botón "Actualizar T.C." para sync Banxico/OpenExchange
+4. Tipos de cambio en header
 
-5. **Backend - Nuevos Endpoints**
-   - `PUT /api/companies/{id}` - Actualizar empresa (incluyendo inicio_semana)
-   - `POST/GET/PUT/DELETE /api/manual-projections` - CRUD conceptos manuales
-   - `POST /api/fx-rates/sync` - Sincronizar tipos de cambio
+**Módulo de Reportes - ARREGLADO**
+1. Endpoint `/cashflow/weeks` genera 13 semanas dinámicamente
+2. Calcula ingresos/egresos por semana desde CFDIs
+3. Usa tipos de cambio históricos para saldos bancarios
+4. Balance corrido semana a semana
+
+**Tipos de Cambio Banxico + OpenExchange**
+- Integración con API de Banxico (USD, EUR, GBP, JPY, CAD)
+- Integración con OpenExchange Rates (CHF, CNY)
+- Endpoint `/api/fx-rates/sync` para actualizar
+- Endpoint `/api/fx-rates/latest` para obtener tasas
 
 ---
 
