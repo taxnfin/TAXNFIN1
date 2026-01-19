@@ -48,8 +48,13 @@ const AgingModule = () => {
     try {
       const res = await api.post('/fx-rates/sync');
       if (res.data.rates) {
-        setFxRates(res.data.rates);
-        toast.success(`Tipos de cambio actualizados desde ${Object.keys(res.data.rates).join(', ')}`);
+        // Convert array to object { moneda: tasa_mxn }
+        const ratesObj = {};
+        res.data.rates.forEach(r => {
+          ratesObj[r.moneda] = r.tasa_mxn;
+        });
+        setFxRates(ratesObj);
+        toast.success(`Tipos de cambio actualizados (Banxico y OpenExchange)`);
       }
     } catch (error) {
       toast.error('Error sincronizando tipos de cambio');
