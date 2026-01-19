@@ -8,10 +8,21 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { TrendingUp, TrendingDown, Calendar, Building2, User, FileText, ChevronDown, ChevronRight, Download, Plus, Trash2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Calendar, Building2, User, FileText, ChevronDown, ChevronRight, Download, Plus, Trash2, Settings } from 'lucide-react';
 import { format, addWeeks, startOfWeek, addMonths, startOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
+
+const DIAS_SEMANA = [
+  { value: 0, label: 'Domingo' },
+  { value: 1, label: 'Lunes' },
+  { value: 2, label: 'Martes' },
+  { value: 3, label: 'Miércoles' },
+  { value: 4, label: 'Jueves' },
+  { value: 5, label: 'Viernes' },
+  { value: 6, label: 'Sábado' }
+];
 
 const CashflowProjections = () => {
   const [loading, setLoading] = useState(true);
@@ -25,6 +36,10 @@ const CashflowProjections = () => {
   const [expandedRows, setExpandedRows] = useState({});
   const [selectedPartyType, setSelectedPartyType] = useState('all');
   const [selectedParty, setSelectedParty] = useState('');
+  
+  // Company config
+  const [companyConfig, setCompanyConfig] = useState({ inicio_semana: 1 });
+  const [configDialogOpen, setConfigDialogOpen] = useState(false);
   
   // Custom concepts state
   const [customConcepts, setCustomConcepts] = useState([]);
@@ -46,12 +61,13 @@ const CashflowProjections = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes] = await Promise.all([
+      const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes] = await Promise.all([
         api.get('/cfdi?limit=500'),
         api.get('/categories'),
         api.get('/customers'),
         api.get('/vendors'),
-        api.get('/bank-accounts/summary')
+        api.get('/bank-accounts/summary'),
+        api.get('/manual-projections')
       ]);
       
       setCfdis(cfdiRes.data);
@@ -63,8 +79,24 @@ const CashflowProjections = () => {
       const totalBancosMXN = bankSummaryRes.data?.total_mxn || 0;
       setSaldoInicialBancos(totalBancosMXN);
       
-      // Process data for weekly and monthly views
-      processWeeklyData(cfdiRes.data, catRes.data);
+      // Load custom concepts from backend
+      setCustomConcepts(conceptsRes.data || []);
+      
+      // Get company config for week start day
+      const companyId = localStorage.getItem('company_id');
+      if (companyId) {
+        try {
+          const compRes = await api.get(`/companies/${companyId}`);
+          const weekStart = compRes.data?.inicio_semana ?? 1;
+          setCompanyConfig({ ...compRes.data, inicio_semana: weekStart });
+          processWeeklyData(cfdiRes.data, catRes.data, weekStart);
+        } catch {
+          processWeeklyData(cfdiRes.data, catRes.data, 1);
+        }
+      } else {
+        processWeeklyData(cfdiRes.data, catRes.data, 1);
+      }
+      
       processMonthlyData(cfdiRes.data, catRes.data);
     } catch (error) {
       toast.error('Error cargando datos');
@@ -73,7 +105,24 @@ const CashflowProjections = () => {
     }
   };
 
-  const processWeeklyData = (cfdisData, categoriesData) => {
+  const handleSaveWeekStart = async (newWeekStart) => {
+    try {
+      const companyId = localStorage.getItem('company_id');
+      if (!companyId) {
+        toast.error('No se encontró la empresa activa');
+        return;
+      }
+      await api.put(`/companies/${companyId}`, { inicio_semana: newWeekStart });
+      setCompanyConfig(prev => ({ ...prev, inicio_semana: newWeekStart }));
+      processWeeklyData(cfdis, categories, newWeekStart);
+      setConfigDialogOpen(false);
+      toast.success(`Inicio de semana cambiado a ${DIAS_SEMANA.find(d => d.value === newWeekStart)?.label}`);
+    } catch (error) {
+      toast.error('Error al guardar configuración');
+    }
+  };
+
+  const processWeeklyData = (cfdisData, categoriesData, weekStartDay = 1) => {
     // Generate 13 weeks - include current week and look back one week for recent CFDIs
     const weeks = [];
     const today = new Date();
