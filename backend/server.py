@@ -904,6 +904,28 @@ async def get_company(company_id: str, current_user: Dict = Depends(get_current_
         company['created_at'] = datetime.fromisoformat(company['created_at'])
     return Company(**company)
 
+class CompanyUpdate(BaseModel):
+    nombre: Optional[str] = None
+    rfc: Optional[str] = None
+    moneda_base: Optional[str] = None
+    pais: Optional[str] = None
+    inicio_semana: Optional[int] = None  # 0=Domingo, 1=Lunes, etc.
+
+@api_router.put("/companies/{company_id}")
+async def update_company(company_id: str, data: CompanyUpdate, current_user: Dict = Depends(get_current_user)):
+    company = await db.companies.find_one({'id': company_id, 'activo': True}, {'_id': 0})
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    
+    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+    if update_data:
+        await db.companies.update_one({'id': company_id}, {'$set': update_data})
+    
+    updated = await db.companies.find_one({'id': company_id}, {'_id': 0})
+    if isinstance(updated.get('created_at'), str):
+        updated['created_at'] = datetime.fromisoformat(updated['created_at'])
+    return updated
+
 @api_router.post("/bank-accounts", response_model=BankAccount)
 async def create_bank_account(account_data: BankAccountCreate, request: Request, current_user: Dict = Depends(get_current_user)):
     company_id = await get_active_company_id(request, current_user)
