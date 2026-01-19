@@ -433,6 +433,34 @@ class PaymentCreate(BaseModel):
     domiciliacion_activa: bool = False
     es_real: bool = True  # True = movimiento real, False = proyección
 
+# Concepto Manual de Proyección
+class ManualProjectionConcept(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    company_id: str
+    nombre: str
+    tipo: str  # "ingreso" o "egreso"
+    monto: float
+    moneda: str = "MXN"
+    semana: Optional[int] = None  # Semana específica (1-13) o None si es para vista mensual
+    mes: Optional[int] = None  # Mes (1-12) o None si es para vista semanal
+    recurrente: bool = False  # Si aplica a todas las semanas/meses
+    categoria: Optional[str] = None
+    notas: Optional[str] = None
+    activo: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class ManualProjectionConceptCreate(BaseModel):
+    nombre: str
+    tipo: str  # "ingreso" o "egreso"
+    monto: float
+    moneda: str = "MXN"
+    semana: Optional[int] = None
+    mes: Optional[int] = None
+    recurrente: bool = False
+    categoria: Optional[str] = None
+    notas: Optional[str] = None
+
 class AuditLog(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
