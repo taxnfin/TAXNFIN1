@@ -267,6 +267,21 @@ const AgingModule = () => {
           </h1>
           <p className="text-[#64748B]">Análisis de antigüedad de Cuentas por Cobrar y por Pagar</p>
         </div>
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-gray-500">
+            TC: USD ${fxRates.USD?.toFixed(2) || 'N/A'} | EUR ${fxRates.EUR?.toFixed(2) || 'N/A'}
+          </div>
+          <Button 
+            variant="outline" 
+            className="gap-2" 
+            onClick={syncFxRates}
+            disabled={syncingRates}
+            data-testid="sync-fx-rates-btn"
+          >
+            <RefreshCw size={14} className={syncingRates ? 'animate-spin' : ''} />
+            {syncingRates ? 'Actualizando...' : 'Actualizar T.C.'}
+          </Button>
+        </div>
       </div>
 
       {/* Summary */}
@@ -279,7 +294,7 @@ const AgingModule = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-green-700">{formatCurrency(totalCxC)}</div>
+            <div className="text-3xl font-bold text-green-700">{formatCurrency(totalCxCMXN, 'MXN')}</div>
             <div className="text-sm text-green-600 mt-1">
               {Object.values(cxcBuckets).reduce((s, b) => s + b.cfdis.length, 0)} facturas pendientes de cobro
             </div>
