@@ -126,7 +126,7 @@ const CashflowProjections = () => {
     // Generate 13 weeks - include current week and look back one week for recent CFDIs
     const weeks = [];
     const today = new Date();
-    const currentWeekStart = startOfWeek(today, { weekStartsOn: 1 }); // Monday
+    const currentWeekStart = startOfWeek(today, { weekStartsOn: weekStartDay });
     const startDate = addWeeks(currentWeekStart, -1); // Start one week before to capture recent CFDIs
     
     for (let i = 0; i < 14; i++) { // 14 weeks to include past week + 13 future
