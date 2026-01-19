@@ -74,27 +74,28 @@ const CashflowProjections = () => {
   };
 
   const processWeeklyData = (cfdisData, categoriesData) => {
-    // Generate 13 weeks starting from current week
+    // Generate 13 weeks - include current week and look back one week for recent CFDIs
     const weeks = [];
     const today = new Date();
-    const startDate = startOfWeek(today, { weekStartsOn: 1 }); // Monday
+    const currentWeekStart = startOfWeek(today, { weekStartsOn: 1 }); // Monday
+    const startDate = addWeeks(currentWeekStart, -1); // Start one week before to capture recent CFDIs
     
-    for (let i = 0; i < 13; i++) {
+    for (let i = 0; i < 14; i++) { // 14 weeks to include past week + 13 future
       const weekStart = addWeeks(startDate, i);
       const weekEnd = addWeeks(weekStart, 1);
       
       weeks.push({
-        weekNum: i + 1,
+        weekNum: i,
         weekStart,
         weekEnd,
-        label: `Sem ${i + 1}`,
+        label: i === 0 ? 'Anterior' : `Sem ${i}`,
         dateLabel: format(weekStart, 'dd MMM', { locale: es }),
         ingresos: { total: 0, byCategory: {}, byCfdi: [] },
         egresos: { total: 0, byCategory: {}, byCfdi: [] }
       });
     }
     
-    // Classify CFDIs by week
+    // Classify CFDIs by week based on fecha_emision
     cfdisData.forEach(cfdi => {
       const cfdiDate = new Date(cfdi.fecha_emision);
       const weekIdx = weeks.findIndex(w => cfdiDate >= w.weekStart && cfdiDate < w.weekEnd);
@@ -118,7 +119,13 @@ const CashflowProjections = () => {
       }
     });
     
-    setWeeklyData(weeks);
+    // Remove the first "Anterior" week if it has no data
+    if (weeks[0].ingresos.total === 0 && weeks[0].egresos.total === 0) {
+      weeks.shift();
+    }
+    
+    // Keep only 13 weeks
+    setWeeklyData(weeks.slice(0, 13));
   };
 
   const processMonthlyData = (cfdisData, categoriesData) => {
