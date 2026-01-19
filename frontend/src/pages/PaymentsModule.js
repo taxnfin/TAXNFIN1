@@ -8,9 +8,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Plus, Check, CreditCard, TrendingUp, TrendingDown, CheckCircle2, FileText, User, Building2, AlertCircle } from 'lucide-react';
+import { Plus, Check, CreditCard, TrendingUp, TrendingDown, CheckCircle2, FileText, User, Building2, AlertCircle, Trash2, AlertTriangle } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { Checkbox } from '@/components/ui/checkbox';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 const PAYMENT_METHODS = [
   { value: 'transferencia', label: 'Transferencia' },
@@ -37,13 +38,14 @@ const PaymentsModule = () => {
   const [filterEstatus, setFilterEstatus] = useState('all');
   const [filterFechaDesde, setFilterFechaDesde] = useState('');
   const [filterFechaHasta, setFilterFechaHasta] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, payment: null });
   
-  // New states for clients/vendors and invoices
+  // States for clients/vendors and invoices
   const [customers, setCustomers] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [pendingCfdis, setPendingCfdis] = useState([]);
   const [selectedParty, setSelectedParty] = useState('');
-  const [selectedCfdi, setSelectedCfdi] = useState(null);
+  const [selectedCfdis, setSelectedCfdis] = useState([]); // Multiple selection
   const [useCustomAmount, setUseCustomAmount] = useState(false);
   
   const [formData, setFormData] = useState({
@@ -56,7 +58,7 @@ const PaymentsModule = () => {
     beneficiario: '',
     referencia: '',
     domiciliacion_activa: false,
-    cfdi_id: null,
+    cfdi_ids: [],
     customer_id: null,
     vendor_id: null
   });
@@ -103,28 +105,23 @@ const PaymentsModule = () => {
   // Load pending CFDIs for selected party
   const loadPendingCfdis = async (partyId, tipo) => {
     try {
-      // Get CFDIs that match the party (customer for cobro, vendor for pago)
       const tipoCfdi = tipo === 'cobro' ? 'ingreso' : 'egreso';
       const res = await api.get(`/cfdi?tipo=${tipoCfdi}&limit=200`);
       
-      // Filter CFDIs that belong to this party and have pending balance
       const partyField = tipo === 'cobro' ? 'customer_id' : 'vendor_id';
       const rfcField = tipo === 'cobro' ? 'receptor_rfc' : 'emisor_rfc';
       
-      // Get party info to match by RFC
       const parties = tipo === 'cobro' ? customers : vendors;
       const party = parties.find(p => p.id === partyId);
       
       const filtered = res.data.filter(cfdi => {
-        // Match by party_id or RFC
         const matchesParty = cfdi[partyField] === partyId || 
                             (party && cfdi[rfcField] === party.rfc);
         
-        // Calculate pending balance
         const amountField = tipo === 'cobro' ? 'monto_cobrado' : 'monto_pagado';
         const pendingAmount = cfdi.total - (cfdi[amountField] || 0);
         
-        return matchesParty && pendingAmount > 0 && cfdi.estado_cancelacion !== 'cancelado';
+        return matchesParty && pendingAmount > 0.01 && cfdi.estado_cancelacion !== 'cancelado';
       }).map(cfdi => ({
         ...cfdi,
         saldo_pendiente: cfdi.total - (tipo === 'cobro' ? (cfdi.monto_cobrado || 0) : (cfdi.monto_pagado || 0))
@@ -140,22 +137,20 @@ const PaymentsModule = () => {
   // Handle party selection
   const handlePartyChange = (partyId) => {
     setSelectedParty(partyId);
-    setSelectedCfdi(null);
+    setSelectedCfdis([]);
     setFormData(prev => ({
       ...prev,
       [formData.tipo === 'cobro' ? 'customer_id' : 'vendor_id']: partyId,
-      cfdi_id: null,
+      cfdi_ids: [],
       monto: ''
     }));
     
-    // Find party name for beneficiario
     const parties = formData.tipo === 'cobro' ? customers : vendors;
     const party = parties.find(p => p.id === partyId);
     if (party) {
       setFormData(prev => ({ ...prev, beneficiario: party.nombre }));
     }
     
-    // Load pending CFDIs for this party
     if (partyId) {
       loadPendingCfdis(partyId, formData.tipo);
     } else {
@@ -163,18 +158,60 @@ const PaymentsModule = () => {
     }
   };
 
-  // Handle CFDI selection
-  const handleCfdiSelect = (cfdi) => {
-    setSelectedCfdi(cfdi);
+  // Handle CFDI selection (multiple)
+  const handleCfdiToggle = (cfdi) => {
+    const isSelected = selectedCfdis.some(c => c.id === cfdi.id);
+    let newSelectedCfdis;
+    
+    if (isSelected) {
+      newSelectedCfdis = selectedCfdis.filter(c => c.id !== cfdi.id);
+    } else {
+      newSelectedCfdis = [...selectedCfdis, cfdi];
+    }
+    
+    setSelectedCfdis(newSelectedCfdis);
+    
+    // Calculate total amount from selected CFDIs
+    const totalAmount = newSelectedCfdis.reduce((sum, c) => sum + c.saldo_pendiente, 0);
+    const cfdiIds = newSelectedCfdis.map(c => c.id);
+    const references = newSelectedCfdis.map(c => c.uuid?.substring(0, 8)).join(', ');
+    
     setFormData(prev => ({
       ...prev,
-      cfdi_id: cfdi.id,
-      monto: cfdi.saldo_pendiente.toFixed(2),
-      concepto: `Pago de factura ${cfdi.uuid?.substring(0, 8)}... - ${cfdi.emisor_nombre || cfdi.receptor_nombre}`,
-      referencia: cfdi.uuid,
-      moneda: cfdi.moneda || 'MXN'
+      cfdi_ids: cfdiIds,
+      monto: totalAmount.toFixed(2),
+      referencia: references,
+      concepto: newSelectedCfdis.length > 0 
+        ? `Pago de ${newSelectedCfdis.length} factura(s)` 
+        : ''
     }));
-    setUseCustomAmount(false);
+    
+    if (!useCustomAmount) {
+      setFormData(prev => ({ ...prev, monto: totalAmount.toFixed(2) }));
+    }
+  };
+
+  // Select all CFDIs
+  const handleSelectAll = () => {
+    if (selectedCfdis.length === pendingCfdis.length) {
+      // Deselect all
+      setSelectedCfdis([]);
+      setFormData(prev => ({ ...prev, cfdi_ids: [], monto: '', referencia: '', concepto: '' }));
+    } else {
+      // Select all
+      setSelectedCfdis([...pendingCfdis]);
+      const totalAmount = pendingCfdis.reduce((sum, c) => sum + c.saldo_pendiente, 0);
+      const cfdiIds = pendingCfdis.map(c => c.id);
+      const references = pendingCfdis.map(c => c.uuid?.substring(0, 8)).join(', ');
+      
+      setFormData(prev => ({
+        ...prev,
+        cfdi_ids: cfdiIds,
+        monto: totalAmount.toFixed(2),
+        referencia: references,
+        concepto: `Pago de ${pendingCfdis.length} factura(s)`
+      }));
+    }
   };
 
   // Handle type change
@@ -184,23 +221,42 @@ const PaymentsModule = () => {
       tipo,
       customer_id: null,
       vendor_id: null,
-      cfdi_id: null,
+      cfdi_ids: [],
       monto: '',
       beneficiario: ''
     }));
     setSelectedParty('');
-    setSelectedCfdi(null);
+    setSelectedCfdis([]);
     setPendingCfdis([]);
+    setUseCustomAmount(false);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/payments', {
-        ...formData,
-        monto: parseFloat(formData.monto)
-      });
-      toast.success('Pago registrado');
+      // Create payment for each selected CFDI or single payment
+      if (selectedCfdis.length > 0 && !useCustomAmount) {
+        // Create individual payments for each CFDI
+        for (const cfdi of selectedCfdis) {
+          await api.post('/payments', {
+            ...formData,
+            cfdi_id: cfdi.id,
+            monto: cfdi.saldo_pendiente,
+            concepto: `Pago factura ${cfdi.uuid?.substring(0, 8)}...`,
+            referencia: cfdi.uuid
+          });
+        }
+        toast.success(`${selectedCfdis.length} pago(s) registrado(s)`);
+      } else {
+        // Single payment with custom or total amount
+        await api.post('/payments', {
+          ...formData,
+          cfdi_id: selectedCfdis.length === 1 ? selectedCfdis[0].id : null,
+          monto: parseFloat(formData.monto)
+        });
+        toast.success('Pago registrado');
+      }
+      
       setDialogOpen(false);
       loadData();
       resetForm();
@@ -220,12 +276,12 @@ const PaymentsModule = () => {
       beneficiario: '',
       referencia: '',
       domiciliacion_activa: false,
-      cfdi_id: null,
+      cfdi_ids: [],
       customer_id: null,
       vendor_id: null
     });
     setSelectedParty('');
-    setSelectedCfdi(null);
+    setSelectedCfdis([]);
     setPendingCfdis([]);
     setUseCustomAmount(false);
   };
@@ -240,9 +296,23 @@ const PaymentsModule = () => {
     }
   };
 
+  const handleDelete = async () => {
+    if (!deleteConfirm.payment) return;
+    
+    try {
+      await api.delete(`/payments/${deleteConfirm.payment.id}`);
+      toast.success('Pago eliminado');
+      setDeleteConfirm({ open: false, payment: null });
+      loadData();
+    } catch (error) {
+      toast.error('Error eliminando pago');
+    }
+  };
+
   if (loading) return <div className="p-8">Cargando...</div>;
 
   const currentParties = formData.tipo === 'cobro' ? customers : vendors;
+  const totalSelectedAmount = selectedCfdis.reduce((sum, c) => sum + c.saldo_pendiente, 0);
 
   return (
     <div className="p-8 space-y-6" data-testid="payments-page">
@@ -261,10 +331,10 @@ const PaymentsModule = () => {
               Nuevo Pago/Cobro
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Registrar Pago/Cobro</DialogTitle>
-              <DialogDescription>Programa un nuevo pago o cobro asociado a una factura</DialogDescription>
+              <DialogDescription>Selecciona las facturas pendientes y registra el pago</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Tipo y Método */}
@@ -338,13 +408,20 @@ const PaymentsModule = () => {
                 </Select>
               </div>
 
-              {/* Facturas Pendientes */}
+              {/* Facturas Pendientes - Multiple Selection */}
               {selectedParty && (
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <FileText size={16} className="text-purple-500" />
-                    Facturas Pendientes de {formData.tipo === 'cobro' ? 'Cobro' : 'Pago'}
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-2">
+                      <FileText size={16} className="text-purple-500" />
+                      Facturas Pendientes ({pendingCfdis.length})
+                    </Label>
+                    {pendingCfdis.length > 0 && (
+                      <Button type="button" variant="outline" size="sm" onClick={handleSelectAll}>
+                        {selectedCfdis.length === pendingCfdis.length ? 'Deseleccionar todo' : 'Seleccionar todo'}
+                      </Button>
+                    )}
+                  </div>
                   
                   {pendingCfdis.length === 0 ? (
                     <div className="p-4 bg-gray-50 rounded-lg text-center text-gray-500 flex items-center justify-center gap-2">
@@ -352,13 +429,19 @@ const PaymentsModule = () => {
                       No hay facturas pendientes para este {formData.tipo === 'cobro' ? 'cliente' : 'proveedor'}
                     </div>
                   ) : (
-                    <div className="border rounded-lg max-h-48 overflow-y-auto">
+                    <div className="border rounded-lg max-h-60 overflow-y-auto">
                       <Table>
                         <TableHeader>
                           <TableRow className="bg-gray-50">
-                            <TableHead className="w-10"></TableHead>
+                            <TableHead className="w-10">
+                              <Checkbox 
+                                checked={selectedCfdis.length === pendingCfdis.length && pendingCfdis.length > 0}
+                                onCheckedChange={handleSelectAll}
+                              />
+                            </TableHead>
                             <TableHead>UUID</TableHead>
                             <TableHead>Fecha</TableHead>
+                            <TableHead>Emisor/Receptor</TableHead>
                             <TableHead className="text-right">Total</TableHead>
                             <TableHead className="text-right">Pagado</TableHead>
                             <TableHead className="text-right">Pendiente</TableHead>
@@ -366,23 +449,29 @@ const PaymentsModule = () => {
                         </TableHeader>
                         <TableBody>
                           {pendingCfdis.map(cfdi => {
-                            const isSelected = selectedCfdi?.id === cfdi.id;
+                            const isSelected = selectedCfdis.some(c => c.id === cfdi.id);
                             const pagado = formData.tipo === 'cobro' ? (cfdi.monto_cobrado || 0) : (cfdi.monto_pagado || 0);
                             
                             return (
                               <TableRow 
                                 key={cfdi.id} 
                                 className={`cursor-pointer hover:bg-blue-50 ${isSelected ? 'bg-blue-100' : ''}`}
-                                onClick={() => handleCfdiSelect(cfdi)}
+                                onClick={() => handleCfdiToggle(cfdi)}
                               >
-                                <TableCell>
-                                  <Checkbox checked={isSelected} />
+                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                  <Checkbox 
+                                    checked={isSelected} 
+                                    onCheckedChange={() => handleCfdiToggle(cfdi)}
+                                  />
                                 </TableCell>
                                 <TableCell className="font-mono text-xs">
                                   {cfdi.uuid?.substring(0, 8)}...
                                 </TableCell>
                                 <TableCell className="text-sm">
                                   {format(new Date(cfdi.fecha_emision), 'dd/MM/yy')}
+                                </TableCell>
+                                <TableCell className="text-sm max-w-[150px] truncate">
+                                  {formData.tipo === 'cobro' ? cfdi.receptor_nombre : cfdi.emisor_nombre}
                                 </TableCell>
                                 <TableCell className="text-right font-mono">
                                   ${cfdi.total.toLocaleString('es-MX', {minimumFractionDigits: 2})}
@@ -403,19 +492,23 @@ const PaymentsModule = () => {
                 </div>
               )}
 
-              {/* Selected CFDI Info */}
-              {selectedCfdi && (
+              {/* Selected Summary */}
+              {selectedCfdis.length > 0 && (
                 <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                   <div className="flex justify-between items-center">
                     <div>
-                      <div className="text-sm font-medium text-blue-800">Factura Seleccionada</div>
-                      <div className="text-xs text-blue-600">{selectedCfdi.emisor_nombre || selectedCfdi.receptor_nombre}</div>
+                      <div className="text-sm font-medium text-blue-800">
+                        {selectedCfdis.length} factura(s) seleccionada(s)
+                      </div>
+                      <div className="text-xs text-blue-600">
+                        {selectedCfdis.map(c => c.uuid?.substring(0, 8)).join(', ')}
+                      </div>
                     </div>
                     <div className="text-right">
                       <div className="text-lg font-bold text-blue-800">
-                        ${selectedCfdi.saldo_pendiente.toLocaleString('es-MX', {minimumFractionDigits: 2})} {selectedCfdi.moneda}
+                        ${totalSelectedAmount.toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
                       </div>
-                      <div className="text-xs text-blue-600">Saldo pendiente</div>
+                      <div className="text-xs text-blue-600">Total pendiente</div>
                     </div>
                   </div>
                 </div>
@@ -425,7 +518,7 @@ const PaymentsModule = () => {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Monto a {formData.tipo === 'cobro' ? 'Cobrar' : 'Pagar'}</Label>
-                  {selectedCfdi && (
+                  {selectedCfdis.length > 0 && (
                     <div className="flex items-center gap-2">
                       <Checkbox 
                         id="customAmount"
@@ -433,12 +526,12 @@ const PaymentsModule = () => {
                         onCheckedChange={(checked) => {
                           setUseCustomAmount(checked);
                           if (!checked) {
-                            setFormData(prev => ({ ...prev, monto: selectedCfdi.saldo_pendiente.toFixed(2) }));
+                            setFormData(prev => ({ ...prev, monto: totalSelectedAmount.toFixed(2) }));
                           }
                         }}
                       />
                       <Label htmlFor="customAmount" className="text-sm text-gray-600 cursor-pointer">
-                        Pago parcial (monto diferente)
+                        Usar monto diferente (pago parcial)
                       </Label>
                     </div>
                   )}
@@ -450,8 +543,8 @@ const PaymentsModule = () => {
                     value={formData.monto}
                     onChange={(e) => setFormData({...formData, monto: e.target.value})}
                     required
-                    disabled={selectedCfdi && !useCustomAmount}
-                    className={`flex-1 ${selectedCfdi && !useCustomAmount ? 'bg-gray-100' : ''}`}
+                    disabled={selectedCfdis.length > 0 && !useCustomAmount}
+                    className={`flex-1 text-lg font-bold ${selectedCfdis.length > 0 && !useCustomAmount ? 'bg-gray-100' : ''}`}
                     placeholder="0.00"
                   />
                   <Select value={formData.moneda} onValueChange={(v) => setFormData({...formData, moneda: v})}>
@@ -465,10 +558,10 @@ const PaymentsModule = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                {selectedCfdi && useCustomAmount && parseFloat(formData.monto) > selectedCfdi.saldo_pendiente && (
+                {selectedCfdis.length > 0 && useCustomAmount && parseFloat(formData.monto) > totalSelectedAmount && (
                   <p className="text-xs text-red-500 flex items-center gap-1">
                     <AlertCircle size={12} />
-                    El monto excede el saldo pendiente (${selectedCfdi.saldo_pendiente.toFixed(2)})
+                    El monto excede el total pendiente (${totalSelectedAmount.toFixed(2)})
                   </p>
                 )}
               </div>
@@ -517,7 +610,9 @@ const PaymentsModule = () => {
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-                <Button type="submit" className="bg-[#0F172A]">Registrar {formData.tipo === 'cobro' ? 'Cobro' : 'Pago'}</Button>
+                <Button type="submit" className="bg-[#0F172A]">
+                  Registrar {formData.tipo === 'cobro' ? 'Cobro' : 'Pago'}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -732,21 +827,32 @@ const PaymentsModule = () => {
                       </span>
                     </TableCell>
                     <TableCell className="text-center">
-                      {payment.estatus === 'pendiente' && (
+                      <div className="flex items-center justify-center gap-1">
+                        {payment.estatus === 'pendiente' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-green-600 hover:text-green-800 hover:bg-green-50"
+                            onClick={() => handleComplete(payment.id)}
+                            title="Marcar como completado"
+                          >
+                            <Check size={16} />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="text-green-600 hover:text-green-800 hover:bg-green-50"
-                          onClick={() => handleComplete(payment.id)}
-                          title="Marcar como completado"
+                          className="text-red-600 hover:text-red-800 hover:bg-red-50"
+                          onClick={() => setDeleteConfirm({ open: true, payment })}
+                          title="Eliminar pago"
                         >
-                          <Check size={16} />
+                          <Trash2 size={16} />
                         </Button>
-                      )}
+                      </div>
                       {payment.fecha_pago && (
-                        <span className="text-xs text-[#64748B]">
+                        <div className="text-xs text-[#64748B] mt-1">
                           Pagado: {format(new Date(payment.fecha_pago), 'dd/MM/yy')}
-                        </span>
+                        </div>
                       )}
                     </TableCell>
                   </TableRow>
@@ -756,6 +862,32 @@ const PaymentsModule = () => {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteConfirm.open} onOpenChange={(open) => !open && setDeleteConfirm({ open: false, payment: null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              ¿Eliminar este pago?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. Se eliminará permanentemente el pago de 
+              <strong> ${deleteConfirm.payment?.monto?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {deleteConfirm.payment?.moneda}</strong>
+              {deleteConfirm.payment?.concepto && ` - "${deleteConfirm.payment.concepto}"`}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDelete}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
