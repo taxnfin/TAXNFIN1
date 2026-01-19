@@ -257,8 +257,10 @@ const CashflowProjections = () => {
   if (loading) return <div className="p-8">Cargando proyecciones...</div>;
 
   const weeklyTotals = calculateRunningTotals();
-  const grandTotalIngresos = weeklyData.reduce((sum, w) => sum + w.ingresos.total, 0);
-  const grandTotalEgresos = weeklyData.reduce((sum, w) => sum + w.egresos.total, 0);
+  const customConceptsIngresos = customConcepts.filter(c => c.tipo === 'ingreso');
+  const customConceptsEgresos = customConcepts.filter(c => c.tipo === 'egreso');
+  const grandTotalIngresos = weeklyTotals.reduce((sum, w) => sum + w.ingresos.total, 0);
+  const grandTotalEgresos = weeklyTotals.reduce((sum, w) => sum + w.egresos.total, 0);
   const grandTotalFlujo = grandTotalIngresos - grandTotalEgresos;
 
   return (
@@ -269,13 +271,119 @@ const CashflowProjections = () => {
           <h1 className="text-3xl font-bold text-[#0F172A]" style={{fontFamily: 'Manrope'}}>
             Proyección de Flujo de Efectivo
           </h1>
-          <p className="text-[#64748B]">Modelo de 13 semanas rolling con desglose por categoría</p>
+          <p className="text-[#64748B]">Modelo de 13 semanas con conceptos personalizados</p>
         </div>
-        <Button variant="outline" className="gap-2">
-          <Download size={16} />
-          Exportar Excel
-        </Button>
+        <div className="flex gap-2">
+          <Dialog open={conceptDialogOpen} onOpenChange={setConceptDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2 bg-[#0F172A]">
+                <Plus size={16} />
+                Agregar Concepto
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Agregar Concepto Manual</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Nombre del concepto</Label>
+                  <Input 
+                    value={newConcept.nombre}
+                    onChange={(e) => setNewConcept({...newConcept, nombre: e.target.value})}
+                    placeholder="Ej: Nómina, Renta, Venta proyectada..."
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Tipo</Label>
+                    <Select value={newConcept.tipo} onValueChange={(v) => setNewConcept({...newConcept, tipo: v})}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ingreso">
+                          <span className="flex items-center gap-2"><TrendingUp size={14} className="text-green-500" /> Ingreso</span>
+                        </SelectItem>
+                        <SelectItem value="egreso">
+                          <span className="flex items-center gap-2"><TrendingDown size={14} className="text-red-500" /> Egreso</span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Monto</Label>
+                    <Input 
+                      type="number"
+                      step="0.01"
+                      value={newConcept.monto}
+                      onChange={(e) => setNewConcept({...newConcept, monto: e.target.value})}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Semana</Label>
+                    <Select value={String(newConcept.semana)} onValueChange={(v) => setNewConcept({...newConcept, semana: parseInt(v)})}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[1,2,3,4,5,6,7,8,9,10,11,12,13].map(s => (
+                          <SelectItem key={s} value={String(s)}>Semana {s}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 flex items-end">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={newConcept.recurrente}
+                        onChange={(e) => setNewConcept({...newConcept, recurrente: e.target.checked})}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm">Recurrente (todas las semanas)</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setConceptDialogOpen(false)}>Cancelar</Button>
+                <Button onClick={handleAddConcept}>Agregar</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Button variant="outline" className="gap-2">
+            <Download size={16} />
+            Exportar Excel
+          </Button>
+        </div>
       </div>
+
+      {/* Custom Concepts Summary */}
+      {customConcepts.length > 0 && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-blue-800">Conceptos Manuales Agregados ({customConcepts.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {customConcepts.map(c => (
+                <div key={c.id} className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${c.tipo === 'ingreso' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                  {c.tipo === 'ingreso' ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                  {c.nombre}: {formatCurrency(c.monto)}
+                  {c.recurrente && <span className="text-xs">(Rec.)</span>}
+                  <button onClick={() => handleDeleteConcept(c.id)} className="ml-1 hover:text-red-600">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* View Mode Tabs */}
       <Tabs value={viewMode} onValueChange={setViewMode}>
@@ -294,12 +402,12 @@ const CashflowProjections = () => {
           </TabsTrigger>
         </TabsList>
 
-        {/* WEEKLY VIEW - 13 Week Cash Flow Model */}
+        {/* WEEKLY VIEW */}
         <TabsContent value="weekly" className="mt-4">
           <Card>
             <CardHeader className="bg-[#0F172A] text-white rounded-t-lg">
               <CardTitle className="flex items-center justify-between">
-                <span>13-Week Cash Flow Model</span>
+                <span>Modelo de Flujo de Efectivo - 13 Semanas</span>
                 <span className="text-sm font-normal">
                   {format(new Date(), 'MMMM yyyy', { locale: es })}
                 </span>
