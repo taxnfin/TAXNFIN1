@@ -180,6 +180,30 @@ const CashflowProjections = () => {
     return `$${(amount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
+  // Add custom concept
+  const handleAddConcept = () => {
+    if (!newConcept.nombre || !newConcept.monto) {
+      toast.error('Completa nombre y monto');
+      return;
+    }
+    
+    const concept = {
+      id: Date.now(),
+      ...newConcept,
+      monto: parseFloat(newConcept.monto)
+    };
+    
+    setCustomConcepts([...customConcepts, concept]);
+    setNewConcept({ nombre: '', tipo: 'egreso', monto: '', semana: 1, mes: 1, recurrente: false });
+    setConceptDialogOpen(false);
+    toast.success('Concepto agregado');
+  };
+
+  const handleDeleteConcept = (id) => {
+    setCustomConcepts(customConcepts.filter(c => c.id !== id));
+    toast.success('Concepto eliminado');
+  };
+
   // Get CFDIs for selected party
   const getPartyCfdis = () => {
     if (!selectedParty) return [];
@@ -196,17 +220,29 @@ const CashflowProjections = () => {
     });
   };
 
-  // Calculate running totals
+  // Calculate running totals including custom concepts
   const calculateRunningTotals = () => {
-    let saldoInicial = 0; // Would come from bank accounts
+    let saldoInicial = 0;
     const totals = [];
     
     weeklyData.forEach((week, idx) => {
-      const flujoNeto = week.ingresos.total - week.egresos.total;
+      // Add custom concepts for this week
+      const customIngresos = customConcepts
+        .filter(c => c.tipo === 'ingreso' && (c.semana === idx + 1 || c.recurrente))
+        .reduce((sum, c) => sum + c.monto, 0);
+      const customEgresos = customConcepts
+        .filter(c => c.tipo === 'egreso' && (c.semana === idx + 1 || c.recurrente))
+        .reduce((sum, c) => sum + c.monto, 0);
+      
+      const totalIngresos = week.ingresos.total + customIngresos;
+      const totalEgresos = week.egresos.total + customEgresos;
+      const flujoNeto = totalIngresos - totalEgresos;
       const saldoFinal = saldoInicial + flujoNeto;
       
       totals.push({
         ...week,
+        ingresos: { ...week.ingresos, total: totalIngresos, custom: customIngresos },
+        egresos: { ...week.egresos, total: totalEgresos, custom: customEgresos },
         saldoInicial,
         flujoNeto,
         saldoFinal
