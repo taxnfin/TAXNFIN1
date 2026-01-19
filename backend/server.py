@@ -990,11 +990,14 @@ async def get_bank_accounts_summary(request: Request, current_user: Dict = Depen
     by_bank = {}
     total_mxn = 0
     
-    # Get FX rates
+    # Get FX rates - support both old and new field names
     rates = {'MXN': 1.0, 'USD': 17.50, 'EUR': 19.00}
     rates_docs = await db.fx_rates.find({'company_id': company_id}).sort('fecha_vigencia', -1).to_list(100)
     for r in rates_docs:
-        rates[r['moneda_cotizada']] = r['tipo_cambio']
+        moneda = r.get('moneda_cotizada') or r.get('moneda_origen')
+        tasa = r.get('tipo_cambio') or r.get('tasa')
+        if moneda and tasa:
+            rates[moneda] = tasa
     
     for acc in accounts:
         moneda = acc.get('moneda', 'MXN')
