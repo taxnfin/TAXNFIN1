@@ -434,7 +434,7 @@ const CashflowProjections = () => {
                       <TableCell className="sticky left-0 bg-green-50">
                         <div className="flex items-center gap-2">
                           <TrendingUp className="text-green-600" size={16} />
-                          INGRESOS (RECEIPTS)
+                          INGRESOS
                         </div>
                       </TableCell>
                       {weeklyData.map((week, idx) => (
@@ -484,7 +484,7 @@ const CashflowProjections = () => {
                       <TableCell className="sticky left-0 bg-red-50">
                         <div className="flex items-center gap-2">
                           <TrendingDown className="text-red-600" size={16} />
-                          EGRESOS (DISBURSEMENTS)
+                          EGRESOS
                         </div>
                       </TableCell>
                       {weeklyData.map((week, idx) => (
@@ -532,7 +532,7 @@ const CashflowProjections = () => {
                     {/* NET CASH FLOW */}
                     <TableRow className="bg-blue-100 font-bold border-t-2 border-blue-300">
                       <TableCell className="sticky left-0 bg-blue-100">
-                        FLUJO NETO (NET CASH FLOW)
+                        FLUJO NETO
                       </TableCell>
                       {weeklyTotals.map((week, idx) => (
                         <TableCell 
@@ -550,7 +550,7 @@ const CashflowProjections = () => {
                     {/* ENDING CASH BALANCE */}
                     <TableRow className="bg-[#0F172A] text-white font-bold">
                       <TableCell className="sticky left-0 bg-[#0F172A]">
-                        SALDO FINAL (ENDING CASH)
+                        SALDO FINAL
                       </TableCell>
                       {weeklyTotals.map((week, idx) => (
                         <TableCell 
