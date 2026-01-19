@@ -270,7 +270,20 @@ const BankModule = () => {
                     placeholder="0.00"
                     className="text-lg font-mono"
                   />
-                  <p className="text-xs text-[#94A3B8]">Este saldo se usará como punto de partida para el análisis de cashflow</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    Fecha del Saldo
+                    <span className="text-xs text-[#64748B] font-normal">(para tipo de cambio histórico)</span>
+                  </Label>
+                  <Input
+                    type="date"
+                    value={accountFormData.fecha_saldo}
+                    onChange={(e) => setAccountFormData({...accountFormData, fecha_saldo: e.target.value})}
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-[#94A3B8]">Se usará el tipo de cambio de esta fecha para convertir a MXN</p>
                 </div>
 
                 <DialogFooter>
