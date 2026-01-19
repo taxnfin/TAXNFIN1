@@ -29,6 +29,7 @@ const CashflowProjections = () => {
   // Custom concepts state
   const [customConcepts, setCustomConcepts] = useState([]);
   const [conceptDialogOpen, setConceptDialogOpen] = useState(false);
+  const [saldoInicialBancos, setSaldoInicialBancos] = useState(0);
   const [newConcept, setNewConcept] = useState({
     nombre: '',
     tipo: 'egreso',
