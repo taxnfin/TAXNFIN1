@@ -277,15 +277,13 @@ All critical features implemented and tested.
 
 ### P1 - High Priority
 1. **Restaurar datos de Ortech** - Usuario solicitó que NO se eliminen datos, posiblemente necesita re-subir XMLs
-2. **Auth0 Integration** - Implement identity management using Auth0 (user requested)
-3. **Refactor `server.py`** - Split into modular structure (routes/, models/, core/)
+2. **Refactor `server.py`** - Split into modular structure (routes/, models/, core/)
 
 ### P2 - Medium Priority
-1. **Conceptos manuales de proyección** - Backend endpoints para guardar conceptos personalizados
+1. **Scheduler automático de tipos de cambio** - Actualizar automáticamente cada día
 2. **Secure Bank Connections** - Integrate with Plaid or Fintoc for real bank data
-3. **Real Bank API Integration** - Connect to actual bank APIs (requires partnerships)
-4. **Email notifications** - Add email alerts alongside SMS
-5. **User management UI** - Admin panel for managing users and roles
+3. **Email notifications** - Add email alerts alongside SMS
+4. **User management UI** - Admin panel for managing users and roles
 
 ### P3 - Nice to Have
 1. **ISO 27001 Compliance** - Security and compliance standards (process-oriented)
