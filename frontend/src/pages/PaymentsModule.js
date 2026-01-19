@@ -322,8 +322,8 @@ const PaymentsModule = () => {
     <div className="p-8 space-y-6" data-testid="payments-page">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{fontFamily: 'Manrope'}}>Historial de Pagos</h1>
-          <p className="text-[#64748B]">Gestión de cobros y pagos programados</p>
+          <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{fontFamily: 'Manrope'}}>Cobranza y Pagos</h1>
+          <p className="text-[#64748B]">Gestión de cobros y pagos (reales y proyectados)</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={(open) => {
           setDialogOpen(open);
@@ -341,6 +341,42 @@ const PaymentsModule = () => {
               <DialogDescription>Selecciona las facturas pendientes y registra el pago</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Es Real o Proyección */}
+              <div className="p-4 bg-gray-50 rounded-lg border">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {formData.es_real ? (
+                      <Eye size={20} className="text-green-600" />
+                    ) : (
+                      <EyeOff size={20} className="text-blue-600" />
+                    )}
+                    <div>
+                      <Label className="text-base font-semibold">
+                        {formData.es_real ? 'Movimiento Real' : 'Proyección'}
+                      </Label>
+                      <p className="text-xs text-gray-500">
+                        {formData.es_real 
+                          ? 'Este pago/cobro ya se realizó o está confirmado'
+                          : 'Este pago/cobro es estimado o proyectado'
+                        }
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm ${!formData.es_real ? 'font-semibold text-blue-600' : 'text-gray-400'}`}>
+                      Proyección
+                    </span>
+                    <Switch 
+                      checked={formData.es_real}
+                      onCheckedChange={(checked) => setFormData({...formData, es_real: checked})}
+                    />
+                    <span className={`text-sm ${formData.es_real ? 'font-semibold text-green-600' : 'text-gray-400'}`}>
+                      Real
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               {/* Tipo y Método */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
