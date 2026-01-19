@@ -759,6 +759,19 @@ const PaymentsModule = () => {
               </Select>
             </div>
             <div className="space-y-1">
+              <Label className="text-xs">Real/Proyección</Label>
+              <Select value={filterEsReal} onValueChange={setFilterEsReal}>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="real">Solo Reales</SelectItem>
+                  <SelectItem value="proyeccion">Solo Proyecciones</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
               <Label className="text-xs">Estatus</Label>
               <Select value={filterEstatus} onValueChange={setFilterEstatus}>
                 <SelectTrigger className="w-32">
