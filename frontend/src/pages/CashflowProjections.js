@@ -154,16 +154,32 @@ const CashflowProjections = () => {
         const isIngreso = cfdi.tipo_cfdi === 'ingreso';
         const section = isIngreso ? week.ingresos : week.egresos;
         
-        // Get category name
+        // Get category and subcategory name
         const category = categoriesData.find(c => c.id === cfdi.category_id);
         const categoryName = category?.nombre || 'Sin categoría';
         
+        // Get subcategory if exists
+        let subcategoryName = null;
+        if (cfdi.subcategory_id && category?.subcategorias) {
+          const subcategory = category.subcategorias.find(s => s.id === cfdi.subcategory_id);
+          subcategoryName = subcategory?.nombre || null;
+        }
+        
         section.total += cfdi.total;
         if (!section.byCategory[categoryName]) {
-          section.byCategory[categoryName] = { total: 0, cfdis: [] };
+          section.byCategory[categoryName] = { total: 0, cfdis: [], bySubcategory: {} };
         }
         section.byCategory[categoryName].total += cfdi.total;
         section.byCategory[categoryName].cfdis.push(cfdi);
+        
+        // Track by subcategory
+        const subKey = subcategoryName || 'Sin subcategoría';
+        if (!section.byCategory[categoryName].bySubcategory[subKey]) {
+          section.byCategory[categoryName].bySubcategory[subKey] = { total: 0, cfdis: [] };
+        }
+        section.byCategory[categoryName].bySubcategory[subKey].total += cfdi.total;
+        section.byCategory[categoryName].bySubcategory[subKey].cfdis.push(cfdi);
+        
         section.byCfdi.push(cfdi);
       }
     });
