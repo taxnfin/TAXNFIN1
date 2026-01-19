@@ -3,10 +3,13 @@ import api from '@/api/axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { TrendingUp, TrendingDown, Calendar, Building2, User, FileText, ChevronDown, ChevronRight, Download } from 'lucide-react';
+import { TrendingUp, TrendingDown, Calendar, Building2, User, FileText, ChevronDown, ChevronRight, Download, Plus, Trash2 } from 'lucide-react';
 import { format, addWeeks, startOfWeek, addMonths, startOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -18,10 +21,22 @@ const CashflowProjections = () => {
   const [categories, setCategories] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [vendors, setVendors] = useState([]);
-  const [viewMode, setViewMode] = useState('weekly'); // weekly or monthly
+  const [viewMode, setViewMode] = useState('weekly');
   const [expandedRows, setExpandedRows] = useState({});
   const [selectedPartyType, setSelectedPartyType] = useState('all');
   const [selectedParty, setSelectedParty] = useState('');
+  
+  // Custom concepts state
+  const [customConcepts, setCustomConcepts] = useState([]);
+  const [conceptDialogOpen, setConceptDialogOpen] = useState(false);
+  const [newConcept, setNewConcept] = useState({
+    nombre: '',
+    tipo: 'egreso',
+    monto: '',
+    semana: 1,
+    mes: 1,
+    recurrente: false
+  });
 
   useEffect(() => {
     loadData();
