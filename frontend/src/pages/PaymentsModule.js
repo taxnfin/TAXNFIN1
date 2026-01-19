@@ -818,7 +818,7 @@ const PaymentsModule = () => {
       {/* Payments Table */}
       <Card className="border-[#E2E8F0]">
         <CardHeader>
-          <CardTitle>Listado de Pagos y Cobros</CardTitle>
+          <CardTitle>Listado de Cobranza y Pagos</CardTitle>
           <CardDescription>{payments.length} registros encontrados</CardDescription>
         </CardHeader>
         <CardContent>
@@ -827,6 +827,7 @@ const PaymentsModule = () => {
               <TableRow>
                 <TableHead>Fecha Venc.</TableHead>
                 <TableHead>Tipo</TableHead>
+                <TableHead>Real/Proy.</TableHead>
                 <TableHead>Concepto</TableHead>
                 <TableHead>Beneficiario</TableHead>
                 <TableHead>Referencia</TableHead>
@@ -839,13 +840,17 @@ const PaymentsModule = () => {
             <TableBody>
               {payments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-[#94A3B8] py-8">
+                  <TableCell colSpan={10} className="text-center text-[#94A3B8] py-8">
                     No hay pagos registrados. Crea el primero.
                   </TableCell>
                 </TableRow>
               ) : (
-                payments.map((payment) => (
-                  <TableRow key={payment.id}>
+                payments.filter(p => {
+                  if (filterEsReal === 'real') return p.es_real === true;
+                  if (filterEsReal === 'proyeccion') return p.es_real === false;
+                  return true;
+                }).map((payment) => (
+                  <TableRow key={payment.id} className={payment.es_real === false ? 'bg-blue-50/30' : ''}>
                     <TableCell className="mono text-sm">
                       {format(new Date(payment.fecha_vencimiento), 'dd/MM/yyyy')}
                       {payment.domiciliacion_activa && (
@@ -859,7 +864,18 @@ const PaymentsModule = () => {
                         {payment.tipo === 'cobro' ? '↑ Cobro' : '↓ Pago'}
                       </span>
                     </TableCell>
-                    <TableCell className="max-w-[200px] truncate">{payment.concepto}</TableCell>
+                    <TableCell>
+                      <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 w-fit ${
+                        payment.es_real === false ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                      }`}>
+                        {payment.es_real === false ? (
+                          <><EyeOff size={12} /> Proyección</>
+                        ) : (
+                          <><Eye size={12} /> Real</>
+                        )}
+                      </span>
+                    </TableCell>
+                    <TableCell className="max-w-[180px] truncate">{payment.concepto}</TableCell>
                     <TableCell className="text-sm">{payment.beneficiario || '-'}</TableCell>
                     <TableCell className="text-xs font-mono text-gray-500">
                       {payment.referencia ? payment.referencia.substring(0, 12) + (payment.referencia.length > 12 ? '...' : '') : '-'}
