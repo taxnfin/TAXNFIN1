@@ -145,6 +145,8 @@ const AgingModule = () => {
 
   const totalCxC = Object.values(cxcBuckets).reduce((s, b) => s + b.total, 0);
   const totalCxP = Object.values(cxpBuckets).reduce((s, b) => s + b.total, 0);
+  const totalCxCMXN = Object.values(cxcBuckets).reduce((s, b) => s + b.totalMXN, 0);
+  const totalCxPMXN = Object.values(cxpBuckets).reduce((s, b) => s + b.totalMXN, 0);
 
   const renderAgingTable = (buckets, tipo) => {
     const allCfdis = Object.values(buckets).flatMap(b => b.cfdis);
@@ -154,7 +156,7 @@ const AgingModule = () => {
         {/* Summary Cards */}
         <div className="grid grid-cols-6 gap-4">
           {Object.entries(buckets).map(([key, bucket]) => (
-            <Card key={key} className={`${bucket.total > 0 ? '' : 'opacity-50'}`}>
+            <Card key={key} className={`${bucket.totalMXN > 0 ? '' : 'opacity-50'}`}>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <Clock size={14} />
@@ -162,8 +164,8 @@ const AgingModule = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className={`text-xl font-bold ${bucket.total > 0 ? (key === 'vigente' ? 'text-green-600' : 'text-red-600') : 'text-gray-400'}`}>
-                  {formatCurrency(bucket.total)}
+                <div className={`text-lg font-bold ${bucket.totalMXN > 0 ? (key === 'vigente' ? 'text-green-600' : 'text-red-600') : 'text-gray-400'}`}>
+                  {formatCurrency(bucket.totalMXN, 'MXN')}
                 </div>
                 <div className="text-xs text-gray-500">{bucket.cfdis.length} factura(s)</div>
               </CardContent>
@@ -194,16 +196,17 @@ const AgingModule = () => {
                   <TableHead>UUID</TableHead>
                   <TableHead>Fecha Emisión</TableHead>
                   <TableHead>Días</TableHead>
-                  <TableHead>Método Pago</TableHead>
-                  <TableHead className="text-right">Total Factura</TableHead>
+                  <TableHead>Moneda</TableHead>
+                  <TableHead className="text-right">Total Original</TableHead>
                   <TableHead className="text-right">Pagado</TableHead>
                   <TableHead className="text-right">Pendiente</TableHead>
+                  <TableHead className="text-right bg-blue-50">Pendiente MXN</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {allCfdis.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
                       No hay facturas pendientes de {tipo === 'cxc' ? 'cobro' : 'pago'}
                     </TableCell>
                   </TableRow>
@@ -234,13 +237,14 @@ const AgingModule = () => {
                           </span>
                         </TableCell>
                         <TableCell>
-                          <span className={`text-xs px-2 py-1 rounded ${cfdi.metodo_pago === 'PPD' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
-                            {cfdi.metodo_pago || 'PUE'}
+                          <span className={`text-xs px-2 py-1 rounded ${cfdi.moneda === 'USD' ? 'bg-green-100 text-green-800' : cfdi.moneda === 'EUR' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
+                            {cfdi.moneda || 'MXN'}
                           </span>
                         </TableCell>
-                        <TableCell className="text-right font-mono">{formatCurrency(cfdi.total)}</TableCell>
-                        <TableCell className="text-right font-mono text-green-600">{formatCurrency(pagado)}</TableCell>
-                        <TableCell className="text-right font-mono font-bold text-orange-600">{formatCurrency(cfdi.pendiente)}</TableCell>
+                        <TableCell className="text-right font-mono">{formatCurrency(cfdi.total, cfdi.moneda)}</TableCell>
+                        <TableCell className="text-right font-mono text-green-600">{formatCurrency(pagado, cfdi.moneda)}</TableCell>
+                        <TableCell className="text-right font-mono font-bold text-orange-600">{formatCurrency(cfdi.pendiente, cfdi.moneda)}</TableCell>
+                        <TableCell className="text-right font-mono font-bold bg-blue-50 text-blue-700">{formatCurrency(cfdi.pendienteMXN, 'MXN')}</TableCell>
                       </TableRow>
                     );
                   })
