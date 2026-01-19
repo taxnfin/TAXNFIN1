@@ -521,9 +521,15 @@ def parse_cfdi_xml(xml_content: str) -> Dict[str, Any]:
         root = etree.fromstring(xml_content.encode('utf-8'))
         ns = {
             'cfdi': 'http://www.sat.gob.mx/cfd/4', 
+            'cfdi3': 'http://www.sat.gob.mx/cfd/3',
             'tfd': 'http://www.sat.gob.mx/TimbreFiscalDigital',
             'nomina12': 'http://www.sat.gob.mx/nomina12'
         }
+        
+        # Detect CFDI version (3.3 or 4.0)
+        cfdi_ns = 'cfdi' if root.tag.startswith('{http://www.sat.gob.mx/cfd/4}') else 'cfdi3'
+        if cfdi_ns == 'cfdi3':
+            ns['cfdi'] = 'http://www.sat.gob.mx/cfd/3'
         
         timbre = root.find('.//tfd:TimbreFiscalDigital', ns)
         uuid = timbre.get('UUID') if timbre is not None else None
@@ -542,6 +548,46 @@ def parse_cfdi_xml(xml_content: str) -> Dict[str, Any]:
         }
         tipo_raw = root.get('TipoDeComprobante', 'I').lower()
         tipo_cfdi = tipo_comprobante_map.get(tipo_raw, 'ingreso')
+        
+        # Extract MetodoPago, FormaPago and other fields from XML
+        metodo_pago = root.get('MetodoPago', '')  # PUE or PPD
+        forma_pago = root.get('FormaPago', '')    # 01, 02, 03, etc.
+        uso_cfdi = receptor.get('UsoCFDI', '') if receptor is not None else ''
+        descuento = float(root.get('Descuento', 0) or 0)
+        
+        # Extract tax details from Impuestos node
+        impuestos_node = root.find('cfdi:Impuestos', ns)
+        total_impuestos_trasladados = float(impuestos_node.get('TotalImpuestosTrasladados', 0) or 0) if impuestos_node is not None else 0
+        total_impuestos_retenidos = float(impuestos_node.get('TotalImpuestosRetenidos', 0) or 0) if impuestos_node is not None else 0
+        
+        # Extract individual tax amounts
+        iva_trasladado = 0
+        isr_retenido = 0
+        iva_retenido = 0
+        ieps = 0
+        
+        if impuestos_node is not None:
+            # Traslados (IVA, IEPS)
+            traslados = impuestos_node.find('cfdi:Traslados', ns)
+            if traslados is not None:
+                for traslado in traslados.findall('cfdi:Traslado', ns):
+                    impuesto = traslado.get('Impuesto', '')
+                    importe = float(traslado.get('Importe', 0) or 0)
+                    if impuesto == '002':  # IVA
+                        iva_trasladado += importe
+                    elif impuesto == '003':  # IEPS
+                        ieps += importe
+            
+            # Retenciones (ISR, IVA)
+            retenciones = impuestos_node.find('cfdi:Retenciones', ns)
+            if retenciones is not None:
+                for retencion in retenciones.findall('cfdi:Retencion', ns):
+                    impuesto = retencion.get('Impuesto', '')
+                    importe = float(retencion.get('Importe', 0) or 0)
+                    if impuesto == '001':  # ISR
+                        isr_retenido += importe
+                    elif impuesto == '002':  # IVA Retenido
+                        iva_retenido += importe
         
         # Check for payroll (nómina) complement - ALWAYS treat as egreso
         nomina_element = root.find('.//nomina12:Nomina', ns)
@@ -568,8 +614,16 @@ def parse_cfdi_xml(xml_content: str) -> Dict[str, Any]:
             'fecha_timbrado': fecha_timbrado,
             'moneda': root.get('Moneda', 'MXN'),
             'subtotal': float(root.get('SubTotal', 0)),
+            'descuento': descuento,
             'total': float(root.get('Total', 0)),
-            'impuestos': float(root.get('Total', 0)) - float(root.get('SubTotal', 0)),
+            'metodo_pago': metodo_pago,
+            'forma_pago': forma_pago,
+            'uso_cfdi': uso_cfdi,
+            'impuestos': total_impuestos_trasladados,
+            'iva_trasladado': iva_trasladado,
+            'isr_retenido': isr_retenido,
+            'iva_retenido': iva_retenido,
+            'ieps': ieps,
             'is_nomina': is_nomina or has_payroll_keywords
         }
     except Exception as e:
