@@ -1497,6 +1497,32 @@ async def get_cashflow_weeks(request: Request, current_user: Dict = Depends(get_
     company_id = await get_active_company_id(request, current_user)
     weeks = await db.cashflow_weeks.find({'company_id': company_id}, {'_id': 0}).sort('fecha_inicio', 1).to_list(13)
     
+    # If no weeks exist, generate them dynamically
+    if not weeks:
+        today = datetime.now(timezone.utc)
+        start_of_current_week = today - timedelta(days=today.weekday())
+        
+        weeks = []
+        for i in range(13):
+            week_start = start_of_current_week + timedelta(weeks=i)
+            week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
+            weeks.append({
+                'id': str(uuid.uuid4()),
+                'company_id': company_id,
+                'año': week_start.year,
+                'numero_semana': week_start.isocalendar()[1],
+                'fecha_inicio': week_start,
+                'fecha_fin': week_end,
+                'total_ingresos_reales': 0,
+                'total_egresos_reales': 0,
+                'total_ingresos_proyectados': 0,
+                'total_egresos_proyectados': 0,
+                'saldo_inicial': 0,
+                'saldo_final_real': 0,
+                'saldo_final_proyectado': 0,
+                'created_at': today
+            })
+    
     # Get FX rates for conversion
     fx_rates = await db.fx_rates.find(
         {'company_id': company_id},
@@ -1516,14 +1542,26 @@ async def get_cashflow_weeks(request: Request, current_user: Dict = Depends(get_
     if 'EUR' not in fx_map:
         fx_map['EUR'] = 19.00
     
-    # Get initial balance from bank accounts - CONVERT TO MXN
-    bank_accounts = await db.bank_accounts.find({'company_id': company_id}, {'_id': 0, 'saldo_inicial': 1, 'moneda': 1}).to_list(100)
+    # Get initial balance from bank accounts with historical rates
+    bank_accounts = await db.bank_accounts.find({'company_id': company_id, 'activo': True}, {'_id': 0}).to_list(100)
     saldo_inicial_total = 0.0
     for acc in bank_accounts:
         saldo = acc.get('saldo_inicial', 0)
         moneda = acc.get('moneda', 'MXN')
-        tasa = fx_map.get(moneda, 1.0)
+        fecha_saldo = acc.get('fecha_saldo')
+        
+        # Use historical rate if fecha_saldo is available
+        if fecha_saldo:
+            if isinstance(fecha_saldo, str):
+                fecha_saldo = datetime.fromisoformat(fecha_saldo.replace('Z', '+00:00'))
+            tasa = await get_fx_rate_by_date(company_id, moneda, fecha_saldo)
+        else:
+            tasa = fx_map.get(moneda, 1.0)
+        
         saldo_inicial_total += saldo * tasa
+    
+    # Get CFDIs for calculating real inflows/outflows per week
+    cfdis = await db.cfdis.find({'company_id': company_id}, {'_id': 0}).to_list(1000)
     
     # Track running balance
     running_balance = saldo_inicial_total
@@ -1533,28 +1571,37 @@ async def get_cashflow_weeks(request: Request, current_user: Dict = Depends(get_
             if isinstance(week.get(field), str):
                 week[field] = datetime.fromisoformat(week[field])
         
-        transactions = await db.transactions.find({
-            'company_id': company_id,
-            'cashflow_week_id': week['id']
-        }, {'_id': 0}).to_list(1000)
+        week_start = week['fecha_inicio']
+        week_end = week['fecha_fin']
         
-        week['total_ingresos_reales'] = sum(t['monto'] for t in transactions if t['tipo_transaccion'] == 'ingreso' and t.get('es_real'))
-        week['total_egresos_reales'] = sum(t['monto'] for t in transactions if t['tipo_transaccion'] == 'egreso' and t.get('es_real'))
-        week['total_ingresos_proyectados'] = sum(t['monto'] for t in transactions if t['tipo_transaccion'] == 'ingreso' and t.get('es_proyeccion'))
-        week['total_egresos_proyectados'] = sum(t['monto'] for t in transactions if t['tipo_transaccion'] == 'egreso' and t.get('es_proyeccion'))
+        # Calculate from CFDIs
+        week_ingresos = 0
+        week_egresos = 0
+        for cfdi in cfdis:
+            cfdi_date = cfdi.get('fecha_emision')
+            if isinstance(cfdi_date, str):
+                cfdi_date = datetime.fromisoformat(cfdi_date.replace('Z', '+00:00'))
+            
+            if week_start <= cfdi_date <= week_end:
+                if cfdi.get('tipo_cfdi') == 'ingreso':
+                    week_ingresos += cfdi.get('total', 0)
+                else:
+                    week_egresos += cfdi.get('total', 0)
         
-        # Set saldo_inicial from running balance (first week uses bank account balance)
+        week['total_ingresos_reales'] = week_ingresos
+        week['total_egresos_reales'] = week_egresos
+        week['total_ingresos_proyectados'] = 0
+        week['total_egresos_proyectados'] = 0
+        
+        # Set saldo_inicial from running balance
         week['saldo_inicial'] = running_balance
         
         # Calculate saldo_final
-        week['saldo_final_real'] = week['saldo_inicial'] + week['total_ingresos_reales'] - week['total_egresos_reales']
-        week['saldo_final_proyectado'] = week['saldo_inicial'] + week['total_ingresos_proyectados'] - week['total_egresos_proyectados']
+        week['saldo_final_real'] = week['saldo_inicial'] + week_ingresos - week_egresos
+        week['saldo_final_proyectado'] = week['saldo_final_real']
         
-        # Update running balance for next week (use real if available, else projected)
-        if week['total_ingresos_reales'] > 0 or week['total_egresos_reales'] > 0:
-            running_balance = week['saldo_final_real']
-        else:
-            running_balance = week['saldo_final_proyectado']
+        # Update running balance for next week
+        running_balance = week['saldo_final_real']
     
     return weeks
 
