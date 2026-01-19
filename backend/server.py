@@ -1092,12 +1092,21 @@ async def get_bank_accounts_summary(request: Request, current_user: Dict = Depen
     for banco in by_bank:
         by_bank[banco]['monedas'] = list(by_bank[banco]['monedas'])
     
+    # Get current fx rates for display
+    fx_rates = {'MXN': 1.0}
+    rates_docs = await db.fx_rates.find({'company_id': company_id}).sort('fecha_vigencia', -1).to_list(100)
+    for r in rates_docs:
+        moneda = r.get('moneda_cotizada') or r.get('moneda_origen')
+        tasa = r.get('tipo_cambio') or r.get('tasa')
+        if moneda and tasa and moneda not in fx_rates:
+            fx_rates[moneda] = tasa
+    
     return {
         'total_cuentas': len(accounts),
         'total_mxn': total_mxn,
         'por_moneda': by_currency,
         'por_banco': by_bank,
-        'tipos_cambio': rates
+        'tipos_cambio': fx_rates
     }
 
 @api_router.post("/vendors", response_model=Vendor)
