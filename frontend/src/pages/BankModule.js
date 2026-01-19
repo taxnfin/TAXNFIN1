@@ -194,7 +194,8 @@ const BankModule = () => {
                 banco: 'BBVA',
                 moneda: 'MXN',
                 pais_banco: 'México',
-                saldo_inicial: ''
+                saldo_inicial: '',
+                fecha_saldo: format(new Date(), "yyyy-MM-dd")
               });
             }
           }}>
