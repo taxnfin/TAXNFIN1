@@ -708,25 +708,61 @@ const CashflowProjections = () => {
                         if (categoryTotal === 0) return null;
                         
                         return (
-                          <TableRow key={categoryKey} className="hover:bg-red-50/50">
-                            <TableCell className="sticky left-0 bg-white pl-8">
-                              <button 
-                                onClick={() => toggleRow(categoryKey)}
-                                className="flex items-center gap-1 text-gray-700 hover:text-red-600"
-                              >
-                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                {categoryName === 'Sin categoría' ? 'Proveedores Costo' : categoryName}
-                              </button>
-                            </TableCell>
-                            {weekTotals.map((total, idx) => (
-                              <TableCell key={idx} className="text-center text-red-600">
-                                {total > 0 ? formatCurrency(total) : '-'}
+                          <React.Fragment key={categoryKey}>
+                            <TableRow className="hover:bg-red-50/50">
+                              <TableCell className="sticky left-0 bg-white pl-8">
+                                <button 
+                                  onClick={() => toggleRow(categoryKey)}
+                                  className="flex items-center gap-1 text-gray-700 hover:text-red-600"
+                                >
+                                  {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                  {categoryName === 'Sin categoría' ? 'Proveedores Costo' : categoryName}
+                                </button>
                               </TableCell>
-                            ))}
-                            <TableCell className="text-center bg-red-50 text-red-700">
-                              {formatCurrency(categoryTotal)}
-                            </TableCell>
-                          </TableRow>
+                              {weekTotals.map((total, idx) => (
+                                <TableCell key={idx} className="text-center text-red-600">
+                                  {total > 0 ? formatCurrency(total) : '-'}
+                                </TableCell>
+                              ))}
+                              <TableCell className="text-center bg-red-50 text-red-700">
+                                {formatCurrency(categoryTotal)}
+                              </TableCell>
+                            </TableRow>
+                            {/* Subcategorías expandibles */}
+                            {isExpanded && (() => {
+                              const allSubcategories = new Set();
+                              weeklyData.forEach(w => {
+                                const cat = w.egresos.byCategory[categoryName];
+                                if (cat?.bySubcategory) {
+                                  Object.keys(cat.bySubcategory).forEach(sub => allSubcategories.add(sub));
+                                }
+                              });
+                              
+                              return Array.from(allSubcategories).map(subName => {
+                                const subTotals = weeklyData.map(w => 
+                                  w.egresos.byCategory[categoryName]?.bySubcategory?.[subName]?.total || 0
+                                );
+                                const subTotal = subTotals.reduce((s, t) => s + t, 0);
+                                if (subTotal === 0) return null;
+                                
+                                return (
+                                  <TableRow key={`${categoryKey}-${subName}`} className="bg-red-50/30">
+                                    <TableCell className="sticky left-0 bg-red-50/30 pl-14 text-sm text-gray-600">
+                                      └ {subName}
+                                    </TableCell>
+                                    {subTotals.map((total, idx) => (
+                                      <TableCell key={idx} className="text-center text-red-500 text-sm">
+                                        {total > 0 ? formatCurrency(total) : '-'}
+                                      </TableCell>
+                                    ))}
+                                    <TableCell className="text-center bg-red-50 text-red-600 text-sm">
+                                      {formatCurrency(subTotal)}
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              });
+                            })()}
+                          </React.Fragment>
                         );
                       });
                     })()}
