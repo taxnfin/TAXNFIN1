@@ -1,0 +1,682 @@
+import { useState, useEffect } from 'react';
+import api from '@/api/axios';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { toast } from 'sonner';
+import { TrendingUp, TrendingDown, Calendar, Building2, User, FileText, ChevronDown, ChevronRight, Download } from 'lucide-react';
+import { format, addWeeks, startOfWeek, addMonths, startOfMonth } from 'date-fns';
+import { es } from 'date-fns/locale';
+
+const CashflowProjections = () => {
+  const [loading, setLoading] = useState(true);
+  const [weeklyData, setWeeklyData] = useState([]);
+  const [monthlyData, setMonthlyData] = useState([]);
+  const [cfdis, setCfdis] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [vendors, setVendors] = useState([]);
+  const [viewMode, setViewMode] = useState('weekly'); // weekly or monthly
+  const [expandedRows, setExpandedRows] = useState({});
+  const [selectedPartyType, setSelectedPartyType] = useState('all');
+  const [selectedParty, setSelectedParty] = useState('');
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [cfdiRes, catRes, custRes, vendRes] = await Promise.all([
+        api.get('/cfdi?limit=500'),
+        api.get('/categories'),
+        api.get('/customers'),
+        api.get('/vendors')
+      ]);
+      
+      setCfdis(cfdiRes.data);
+      setCategories(catRes.data);
+      setCustomers(custRes.data);
+      setVendors(vendRes.data);
+      
+      // Process data for weekly and monthly views
+      processWeeklyData(cfdiRes.data, catRes.data);
+      processMonthlyData(cfdiRes.data, catRes.data);
+    } catch (error) {
+      toast.error('Error cargando datos');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const processWeeklyData = (cfdisData, categoriesData) => {
+    // Generate 13 weeks starting from current week
+    const weeks = [];
+    const today = new Date();
+    const startDate = startOfWeek(today, { weekStartsOn: 1 }); // Monday
+    
+    for (let i = 0; i < 13; i++) {
+      const weekStart = addWeeks(startDate, i);
+      const weekEnd = addWeeks(weekStart, 1);
+      
+      weeks.push({
+        weekNum: i + 1,
+        weekStart,
+        weekEnd,
+        label: `Sem ${i + 1}`,
+        dateLabel: format(weekStart, 'dd MMM', { locale: es }),
+        ingresos: { total: 0, byCategory: {}, byCfdi: [] },
+        egresos: { total: 0, byCategory: {}, byCfdi: [] }
+      });
+    }
+    
+    // Classify CFDIs by week
+    cfdisData.forEach(cfdi => {
+      const cfdiDate = new Date(cfdi.fecha_emision);
+      const weekIdx = weeks.findIndex(w => cfdiDate >= w.weekStart && cfdiDate < w.weekEnd);
+      
+      if (weekIdx !== -1) {
+        const week = weeks[weekIdx];
+        const isIngreso = cfdi.tipo_cfdi === 'ingreso';
+        const section = isIngreso ? week.ingresos : week.egresos;
+        
+        // Get category name
+        const category = categoriesData.find(c => c.id === cfdi.category_id);
+        const categoryName = category?.nombre || 'Sin categoría';
+        
+        section.total += cfdi.total;
+        if (!section.byCategory[categoryName]) {
+          section.byCategory[categoryName] = { total: 0, cfdis: [] };
+        }
+        section.byCategory[categoryName].total += cfdi.total;
+        section.byCategory[categoryName].cfdis.push(cfdi);
+        section.byCfdi.push(cfdi);
+      }
+    });
+    
+    setWeeklyData(weeks);
+  };
+
+  const processMonthlyData = (cfdisData, categoriesData) => {
+    // Generate 6 months
+    const months = [];
+    const today = new Date();
+    const startDate = startOfMonth(today);
+    
+    for (let i = 0; i < 6; i++) {
+      const monthStart = addMonths(startDate, i);
+      const monthEnd = addMonths(monthStart, 1);
+      
+      months.push({
+        monthNum: i + 1,
+        monthStart,
+        monthEnd,
+        label: format(monthStart, 'MMM yyyy', { locale: es }),
+        ingresos: { total: 0, byCategory: {}, byParty: {} },
+        egresos: { total: 0, byCategory: {}, byParty: {} }
+      });
+    }
+    
+    // Classify CFDIs by month
+    cfdisData.forEach(cfdi => {
+      const cfdiDate = new Date(cfdi.fecha_emision);
+      const monthIdx = months.findIndex(m => cfdiDate >= m.monthStart && cfdiDate < m.monthEnd);
+      
+      if (monthIdx !== -1) {
+        const month = months[monthIdx];
+        const isIngreso = cfdi.tipo_cfdi === 'ingreso';
+        const section = isIngreso ? month.ingresos : month.egresos;
+        
+        // Get category name
+        const category = categoriesData.find(c => c.id === cfdi.category_id);
+        const categoryName = category?.nombre || 'Sin categoría';
+        
+        // Get party name
+        const partyName = isIngreso ? cfdi.receptor_nombre : cfdi.emisor_nombre;
+        
+        section.total += cfdi.total;
+        
+        // By category
+        if (!section.byCategory[categoryName]) {
+          section.byCategory[categoryName] = 0;
+        }
+        section.byCategory[categoryName] += cfdi.total;
+        
+        // By party
+        if (!section.byParty[partyName]) {
+          section.byParty[partyName] = { total: 0, cfdis: [] };
+        }
+        section.byParty[partyName].total += cfdi.total;
+        section.byParty[partyName].cfdis.push(cfdi);
+      }
+    });
+    
+    setMonthlyData(months);
+  };
+
+  const toggleRow = (key) => {
+    setExpandedRows(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const formatCurrency = (amount) => {
+    return `$${(amount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  // Get CFDIs for selected party
+  const getPartyCfdis = () => {
+    if (!selectedParty) return [];
+    
+    return cfdis.filter(cfdi => {
+      if (selectedPartyType === 'customer') {
+        const customer = customers.find(c => c.id === selectedParty);
+        return customer && (cfdi.customer_id === selectedParty || cfdi.receptor_rfc === customer.rfc);
+      } else if (selectedPartyType === 'vendor') {
+        const vendor = vendors.find(v => v.id === selectedParty);
+        return vendor && (cfdi.vendor_id === selectedParty || cfdi.emisor_rfc === vendor.rfc);
+      }
+      return false;
+    });
+  };
+
+  // Calculate running totals
+  const calculateRunningTotals = () => {
+    let saldoInicial = 0; // Would come from bank accounts
+    const totals = [];
+    
+    weeklyData.forEach((week, idx) => {
+      const flujoNeto = week.ingresos.total - week.egresos.total;
+      const saldoFinal = saldoInicial + flujoNeto;
+      
+      totals.push({
+        ...week,
+        saldoInicial,
+        flujoNeto,
+        saldoFinal
+      });
+      
+      saldoInicial = saldoFinal;
+    });
+    
+    return totals;
+  };
+
+  if (loading) return <div className="p-8">Cargando proyecciones...</div>;
+
+  const weeklyTotals = calculateRunningTotals();
+  const grandTotalIngresos = weeklyData.reduce((sum, w) => sum + w.ingresos.total, 0);
+  const grandTotalEgresos = weeklyData.reduce((sum, w) => sum + w.egresos.total, 0);
+  const grandTotalFlujo = grandTotalIngresos - grandTotalEgresos;
+
+  return (
+    <div className="p-6 space-y-6 bg-[#F8FAFC] min-h-screen" data-testid="cashflow-projections-page">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-[#0F172A]" style={{fontFamily: 'Manrope'}}>
+            Proyección de Flujo de Efectivo
+          </h1>
+          <p className="text-[#64748B]">Modelo de 13 semanas rolling con desglose por categoría</p>
+        </div>
+        <Button variant="outline" className="gap-2">
+          <Download size={16} />
+          Exportar Excel
+        </Button>
+      </div>
+
+      {/* View Mode Tabs */}
+      <Tabs value={viewMode} onValueChange={setViewMode}>
+        <TabsList>
+          <TabsTrigger value="weekly" className="gap-2">
+            <Calendar size={16} />
+            Vista Semanal (13 semanas)
+          </TabsTrigger>
+          <TabsTrigger value="monthly" className="gap-2">
+            <Calendar size={16} />
+            Vista Mensual
+          </TabsTrigger>
+          <TabsTrigger value="byParty" className="gap-2">
+            <Building2 size={16} />
+            Por Cliente/Proveedor
+          </TabsTrigger>
+        </TabsList>
+
+        {/* WEEKLY VIEW - 13 Week Cash Flow Model */}
+        <TabsContent value="weekly" className="mt-4">
+          <Card>
+            <CardHeader className="bg-[#0F172A] text-white rounded-t-lg">
+              <CardTitle className="flex items-center justify-between">
+                <span>13-Week Cash Flow Model</span>
+                <span className="text-sm font-normal">
+                  {format(new Date(), 'MMMM yyyy', { locale: es })}
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-100">
+                      <TableHead className="sticky left-0 bg-gray-100 min-w-[200px] font-bold">CONCEPTO</TableHead>
+                      {weeklyData.map((week, idx) => (
+                        <TableHead key={idx} className="text-center min-w-[100px]">
+                          <div className="font-bold">{week.label}</div>
+                          <div className="text-xs text-gray-500">{week.dateLabel}</div>
+                        </TableHead>
+                      ))}
+                      <TableHead className="text-center min-w-[120px] bg-blue-50 font-bold">TOTAL</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {/* RECEIPTS / INGRESOS Section */}
+                    <TableRow className="bg-green-50 font-bold">
+                      <TableCell className="sticky left-0 bg-green-50">
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="text-green-600" size={16} />
+                          INGRESOS (RECEIPTS)
+                        </div>
+                      </TableCell>
+                      {weeklyData.map((week, idx) => (
+                        <TableCell key={idx} className="text-center text-green-700 font-bold">
+                          {formatCurrency(week.ingresos.total)}
+                        </TableCell>
+                      ))}
+                      <TableCell className="text-center bg-green-100 text-green-800 font-bold">
+                        {formatCurrency(grandTotalIngresos)}
+                      </TableCell>
+                    </TableRow>
+                    
+                    {/* Ingresos by Category */}
+                    {categories.filter(c => c.tipo === 'ingreso').map(category => {
+                      const categoryKey = `ing-${category.id}`;
+                      const isExpanded = expandedRows[categoryKey];
+                      const weekTotals = weeklyData.map(w => w.ingresos.byCategory[category.nombre]?.total || 0);
+                      const categoryTotal = weekTotals.reduce((sum, t) => sum + t, 0);
+                      
+                      if (categoryTotal === 0) return null;
+                      
+                      return (
+                        <TableRow key={categoryKey} className="hover:bg-green-50/50">
+                          <TableCell className="sticky left-0 bg-white pl-8">
+                            <button 
+                              onClick={() => toggleRow(categoryKey)}
+                              className="flex items-center gap-1 text-gray-700 hover:text-green-600"
+                            >
+                              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                              {category.nombre}
+                            </button>
+                          </TableCell>
+                          {weekTotals.map((total, idx) => (
+                            <TableCell key={idx} className="text-center text-green-600">
+                              {total > 0 ? formatCurrency(total) : '-'}
+                            </TableCell>
+                          ))}
+                          <TableCell className="text-center bg-green-50 text-green-700">
+                            {formatCurrency(categoryTotal)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+
+                    {/* OPERATING DISBURSEMENTS / EGRESOS Section */}
+                    <TableRow className="bg-red-50 font-bold">
+                      <TableCell className="sticky left-0 bg-red-50">
+                        <div className="flex items-center gap-2">
+                          <TrendingDown className="text-red-600" size={16} />
+                          EGRESOS (DISBURSEMENTS)
+                        </div>
+                      </TableCell>
+                      {weeklyData.map((week, idx) => (
+                        <TableCell key={idx} className="text-center text-red-700 font-bold">
+                          {formatCurrency(week.egresos.total)}
+                        </TableCell>
+                      ))}
+                      <TableCell className="text-center bg-red-100 text-red-800 font-bold">
+                        {formatCurrency(grandTotalEgresos)}
+                      </TableCell>
+                    </TableRow>
+                    
+                    {/* Egresos by Category */}
+                    {categories.filter(c => c.tipo === 'egreso').map(category => {
+                      const categoryKey = `egr-${category.id}`;
+                      const isExpanded = expandedRows[categoryKey];
+                      const weekTotals = weeklyData.map(w => w.egresos.byCategory[category.nombre]?.total || 0);
+                      const categoryTotal = weekTotals.reduce((sum, t) => sum + t, 0);
+                      
+                      if (categoryTotal === 0) return null;
+                      
+                      return (
+                        <TableRow key={categoryKey} className="hover:bg-red-50/50">
+                          <TableCell className="sticky left-0 bg-white pl-8">
+                            <button 
+                              onClick={() => toggleRow(categoryKey)}
+                              className="flex items-center gap-1 text-gray-700 hover:text-red-600"
+                            >
+                              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                              {category.nombre}
+                            </button>
+                          </TableCell>
+                          {weekTotals.map((total, idx) => (
+                            <TableCell key={idx} className="text-center text-red-600">
+                              {total > 0 ? formatCurrency(total) : '-'}
+                            </TableCell>
+                          ))}
+                          <TableCell className="text-center bg-red-50 text-red-700">
+                            {formatCurrency(categoryTotal)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+
+                    {/* NET CASH FLOW */}
+                    <TableRow className="bg-blue-100 font-bold border-t-2 border-blue-300">
+                      <TableCell className="sticky left-0 bg-blue-100">
+                        FLUJO NETO (NET CASH FLOW)
+                      </TableCell>
+                      {weeklyTotals.map((week, idx) => (
+                        <TableCell 
+                          key={idx} 
+                          className={`text-center font-bold ${week.flujoNeto >= 0 ? 'text-green-700' : 'text-red-700'}`}
+                        >
+                          {formatCurrency(week.flujoNeto)}
+                        </TableCell>
+                      ))}
+                      <TableCell className={`text-center font-bold ${grandTotalFlujo >= 0 ? 'text-green-800 bg-green-100' : 'text-red-800 bg-red-100'}`}>
+                        {formatCurrency(grandTotalFlujo)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* ENDING CASH BALANCE */}
+                    <TableRow className="bg-[#0F172A] text-white font-bold">
+                      <TableCell className="sticky left-0 bg-[#0F172A]">
+                        SALDO FINAL (ENDING CASH)
+                      </TableCell>
+                      {weeklyTotals.map((week, idx) => (
+                        <TableCell 
+                          key={idx} 
+                          className={`text-center font-bold ${week.saldoFinal >= 0 ? 'text-green-400' : 'text-red-400'}`}
+                        >
+                          {formatCurrency(week.saldoFinal)}
+                        </TableCell>
+                      ))}
+                      <TableCell className="text-center font-bold">
+                        {formatCurrency(weeklyTotals[weeklyTotals.length - 1]?.saldoFinal || 0)}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* MONTHLY VIEW */}
+        <TabsContent value="monthly" className="mt-4">
+          <Card>
+            <CardHeader className="bg-[#0F172A] text-white rounded-t-lg">
+              <CardTitle>Proyección Mensual</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-100">
+                      <TableHead className="sticky left-0 bg-gray-100 min-w-[250px] font-bold">CONCEPTO</TableHead>
+                      {monthlyData.map((month, idx) => (
+                        <TableHead key={idx} className="text-center min-w-[130px] capitalize">
+                          {month.label}
+                        </TableHead>
+                      ))}
+                      <TableHead className="text-center min-w-[130px] bg-blue-50 font-bold">TOTAL</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {/* INGRESOS */}
+                    <TableRow className="bg-green-100 font-bold">
+                      <TableCell className="sticky left-0 bg-green-100">
+                        <TrendingUp className="inline mr-2 text-green-600" size={16} />
+                        INGRESOS
+                      </TableCell>
+                      {monthlyData.map((month, idx) => (
+                        <TableCell key={idx} className="text-center text-green-700">
+                          {formatCurrency(month.ingresos.total)}
+                        </TableCell>
+                      ))}
+                      <TableCell className="text-center bg-green-200 text-green-800">
+                        {formatCurrency(monthlyData.reduce((s, m) => s + m.ingresos.total, 0))}
+                      </TableCell>
+                    </TableRow>
+                    
+                    {/* Ingresos by Category */}
+                    {categories.filter(c => c.tipo === 'ingreso').map(category => {
+                      const monthTotals = monthlyData.map(m => m.ingresos.byCategory[category.nombre] || 0);
+                      const total = monthTotals.reduce((s, t) => s + t, 0);
+                      if (total === 0) return null;
+                      
+                      return (
+                        <TableRow key={`monthly-ing-${category.id}`} className="hover:bg-green-50">
+                          <TableCell className="sticky left-0 bg-white pl-8">{category.nombre}</TableCell>
+                          {monthTotals.map((t, idx) => (
+                            <TableCell key={idx} className="text-center text-green-600">
+                              {t > 0 ? formatCurrency(t) : '-'}
+                            </TableCell>
+                          ))}
+                          <TableCell className="text-center bg-green-50">
+                            {formatCurrency(total)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+
+                    {/* EGRESOS */}
+                    <TableRow className="bg-red-100 font-bold">
+                      <TableCell className="sticky left-0 bg-red-100">
+                        <TrendingDown className="inline mr-2 text-red-600" size={16} />
+                        EGRESOS
+                      </TableCell>
+                      {monthlyData.map((month, idx) => (
+                        <TableCell key={idx} className="text-center text-red-700">
+                          {formatCurrency(month.egresos.total)}
+                        </TableCell>
+                      ))}
+                      <TableCell className="text-center bg-red-200 text-red-800">
+                        {formatCurrency(monthlyData.reduce((s, m) => s + m.egresos.total, 0))}
+                      </TableCell>
+                    </TableRow>
+                    
+                    {/* Egresos by Category */}
+                    {categories.filter(c => c.tipo === 'egreso').map(category => {
+                      const monthTotals = monthlyData.map(m => m.egresos.byCategory[category.nombre] || 0);
+                      const total = monthTotals.reduce((s, t) => s + t, 0);
+                      if (total === 0) return null;
+                      
+                      return (
+                        <TableRow key={`monthly-egr-${category.id}`} className="hover:bg-red-50">
+                          <TableCell className="sticky left-0 bg-white pl-8">{category.nombre}</TableCell>
+                          {monthTotals.map((t, idx) => (
+                            <TableCell key={idx} className="text-center text-red-600">
+                              {t > 0 ? formatCurrency(t) : '-'}
+                            </TableCell>
+                          ))}
+                          <TableCell className="text-center bg-red-50">
+                            {formatCurrency(total)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+
+                    {/* FLUJO NETO */}
+                    <TableRow className="bg-blue-100 font-bold border-t-2">
+                      <TableCell className="sticky left-0 bg-blue-100">FLUJO NETO</TableCell>
+                      {monthlyData.map((month, idx) => {
+                        const neto = month.ingresos.total - month.egresos.total;
+                        return (
+                          <TableCell key={idx} className={`text-center ${neto >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                            {formatCurrency(neto)}
+                          </TableCell>
+                        );
+                      })}
+                      <TableCell className="text-center bg-blue-200">
+                        {formatCurrency(monthlyData.reduce((s, m) => s + m.ingresos.total - m.egresos.total, 0))}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* BY PARTY VIEW */}
+        <TabsContent value="byParty" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Facturas por Cliente / Proveedor</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-4 mb-4">
+                <div className="w-48">
+                  <Select value={selectedPartyType} onValueChange={(v) => { setSelectedPartyType(v); setSelectedParty(''); }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Seleccionar tipo...</SelectItem>
+                      <SelectItem value="customer">
+                        <div className="flex items-center gap-2">
+                          <User size={14} className="text-blue-500" />
+                          Clientes
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="vendor">
+                        <div className="flex items-center gap-2">
+                          <Building2 size={14} className="text-orange-500" />
+                          Proveedores
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {selectedPartyType !== 'all' && (
+                  <div className="flex-1">
+                    <Select value={selectedParty} onValueChange={setSelectedParty}>
+                      <SelectTrigger>
+                        <SelectValue placeholder={selectedPartyType === 'customer' ? 'Seleccionar cliente...' : 'Seleccionar proveedor...'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(selectedPartyType === 'customer' ? customers : vendors).map(party => (
+                          <SelectItem key={party.id} value={party.id}>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{party.nombre}</span>
+                              <span className="text-xs text-gray-500">{party.rfc}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              {/* Party CFDIs Table */}
+              {selectedParty && (
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50">
+                        <TableHead>UUID</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Categoría</TableHead>
+                        <TableHead>Método Pago</TableHead>
+                        <TableHead className="text-right">Subtotal</TableHead>
+                        <TableHead className="text-right">IVA</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead className="text-right">Pagado</TableHead>
+                        <TableHead className="text-right">Pendiente</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {getPartyCfdis().length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                            No hay facturas para este {selectedPartyType === 'customer' ? 'cliente' : 'proveedor'}
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        getPartyCfdis().map(cfdi => {
+                          const category = categories.find(c => c.id === cfdi.category_id);
+                          const pagado = cfdi.tipo_cfdi === 'ingreso' ? (cfdi.monto_cobrado || 0) : (cfdi.monto_pagado || 0);
+                          const pendiente = cfdi.total - pagado;
+                          
+                          return (
+                            <TableRow key={cfdi.id} className="hover:bg-gray-50">
+                              <TableCell className="font-mono text-xs">{cfdi.uuid?.substring(0, 8)}...</TableCell>
+                              <TableCell>{format(new Date(cfdi.fecha_emision), 'dd/MM/yy')}</TableCell>
+                              <TableCell>
+                                <span className={`text-xs px-2 py-1 rounded ${cfdi.tipo_cfdi === 'ingreso' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                  {cfdi.tipo_cfdi === 'ingreso' ? '↑ Ingreso' : '↓ Egreso'}
+                                </span>
+                              </TableCell>
+                              <TableCell>{category?.nombre || 'Sin categoría'}</TableCell>
+                              <TableCell className="text-xs">{cfdi.metodo_pago || 'PUE'}</TableCell>
+                              <TableCell className="text-right font-mono">{formatCurrency(cfdi.subtotal)}</TableCell>
+                              <TableCell className="text-right font-mono text-gray-500">{formatCurrency(cfdi.impuestos)}</TableCell>
+                              <TableCell className="text-right font-mono font-bold">{formatCurrency(cfdi.total)}</TableCell>
+                              <TableCell className="text-right font-mono text-green-600">{formatCurrency(pagado)}</TableCell>
+                              <TableCell className={`text-right font-mono font-bold ${pendiente > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                                {formatCurrency(pendiente)}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                  
+                  {/* Summary */}
+                  {getPartyCfdis().length > 0 && (
+                    <div className="p-4 bg-gray-50 border-t">
+                      <div className="flex justify-between items-center">
+                        <div className="text-sm text-gray-600">
+                          <FileText className="inline mr-2" size={14} />
+                          {getPartyCfdis().length} factura(s)
+                        </div>
+                        <div className="flex gap-8">
+                          <div className="text-right">
+                            <div className="text-xs text-gray-500">Total Facturado</div>
+                            <div className="font-bold">{formatCurrency(getPartyCfdis().reduce((s, c) => s + c.total, 0))}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xs text-gray-500">Total Pagado</div>
+                            <div className="font-bold text-green-600">
+                              {formatCurrency(getPartyCfdis().reduce((s, c) => s + (c.tipo_cfdi === 'ingreso' ? (c.monto_cobrado || 0) : (c.monto_pagado || 0)), 0))}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xs text-gray-500">Saldo Pendiente</div>
+                            <div className="font-bold text-orange-600">
+                              {formatCurrency(getPartyCfdis().reduce((s, c) => {
+                                const pagado = c.tipo_cfdi === 'ingreso' ? (c.monto_cobrado || 0) : (c.monto_pagado || 0);
+                                return s + (c.total - pagado);
+                              }, 0))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+};
+
+export default CashflowProjections;
