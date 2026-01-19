@@ -1905,6 +1905,7 @@ async def list_payments(
     current_user: Dict = Depends(get_current_user),
     tipo: Optional[str] = Query(None, description="cobro o pago"),
     estatus: Optional[str] = Query(None),
+    es_real: Optional[str] = Query(None, description="real o proyeccion"),
     fecha_desde: Optional[str] = Query(None),
     fecha_hasta: Optional[str] = Query(None),
     limit: int = Query(100, le=1000),
@@ -1917,6 +1918,10 @@ async def list_payments(
         query['tipo'] = tipo
     if estatus:
         query['estatus'] = estatus
+    if es_real == 'real':
+        query['es_real'] = True
+    elif es_real == 'proyeccion':
+        query['es_real'] = False
     if fecha_desde:
         query['fecha_vencimiento'] = {'$gte': fecha_desde}
     if fecha_hasta:
