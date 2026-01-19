@@ -347,12 +347,52 @@ const CashflowProjections = () => {
           <h1 className="text-3xl font-bold text-[#0F172A]" style={{fontFamily: 'Manrope'}}>
             Proyección de Flujo de Efectivo
           </h1>
-          <p className="text-[#64748B]">Modelo de 13 semanas con conceptos personalizados</p>
+          <p className="text-[#64748B]">
+            Modelo de 13 semanas | Inicio de semana: {DIAS_SEMANA.find(d => d.value === companyConfig.inicio_semana)?.label || 'Lunes'}
+          </p>
         </div>
         <div className="flex gap-2">
+          {/* Config Dialog for Week Start */}
+          <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="gap-2" data-testid="config-week-start-btn">
+                <Settings size={16} />
+                Configurar
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Configuración de Proyecciones</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Inicio de Semana para esta Empresa</Label>
+                  <Select 
+                    value={companyConfig.inicio_semana?.toString()} 
+                    onValueChange={(v) => handleSaveWeekStart(parseInt(v))}
+                  >
+                    <SelectTrigger data-testid="week-start-select">
+                      <SelectValue placeholder="Selecciona un día" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DIAS_SEMANA.map(dia => (
+                        <SelectItem key={dia.value} value={dia.value.toString()}>
+                          {dia.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-gray-500">
+                    Este ajuste afecta cómo se agrupan las semanas en las proyecciones de flujo de efectivo.
+                  </p>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+          
           <Dialog open={conceptDialogOpen} onOpenChange={setConceptDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="gap-2 bg-[#0F172A]">
+              <Button className="gap-2 bg-[#0F172A]" data-testid="add-concept-btn">
                 <Plus size={16} />
                 Agregar Concepto
               </Button>
