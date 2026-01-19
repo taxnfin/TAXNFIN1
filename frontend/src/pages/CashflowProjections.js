@@ -46,17 +46,22 @@ const CashflowProjections = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cfdiRes, catRes, custRes, vendRes] = await Promise.all([
+      const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes] = await Promise.all([
         api.get('/cfdi?limit=500'),
         api.get('/categories'),
         api.get('/customers'),
-        api.get('/vendors')
+        api.get('/vendors'),
+        api.get('/bank-accounts/summary')
       ]);
       
       setCfdis(cfdiRes.data);
       setCategories(catRes.data);
       setCustomers(custRes.data);
       setVendors(vendRes.data);
+      
+      // Get initial bank balance
+      const totalBancosMXN = bankSummaryRes.data?.total_mxn || 0;
+      setSaldoInicialBancos(totalBancosMXN);
       
       // Process data for weekly and monthly views
       processWeeklyData(cfdiRes.data, catRes.data);
