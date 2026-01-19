@@ -233,21 +233,46 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
+## Latest Updates (January 19, 2026)
+
+### Completed in This Session ✅
+1. **Proyecciones de Flujo de Efectivo Mejoradas**
+   - Agregado saldo inicial de bancos (usando `/api/bank-accounts/summary`)
+   - Fila "SALDO INICIAL BANCOS" visible en la tabla de 13 semanas
+   - Cálculo correcto del saldo final acumulado
+   - Conceptos de Cobranza y Egresos ahora se muestran correctamente (incluyendo "Sin categoría")
+
+2. **Módulo Aging de Cartera (CxC/CxP)**
+   - Reemplazó el módulo de Transacciones
+   - Análisis de antigüedad por buckets: Vigente, 1-30, 31-60, 61-90, 91-120, +120 días
+   - Tabs separados para Cuentas por Cobrar y Cuentas por Pagar
+   - Detalle de facturas pendientes con cliente/proveedor, UUID, fecha, método pago
+
+3. **Módulo de Cobranza y Pagos**
+   - Nuevo campo `es_real` (True = Real, False = Proyección)
+   - Switch toggle en el formulario de creación
+   - Filtro Real/Proyección en la lista de pagos
+   - Columna REAL/PROY. en la tabla
+   - Backend actualizado con filtro `es_real` en endpoint `/api/payments`
+
+---
+
 ## Backlog (P0 - P2)
 
 ### P0 - Critical (None currently)
 All critical features implemented and tested.
 
 ### P1 - High Priority
-1. **Auth0 Integration** - Implement identity management using Auth0 (user requested)
-2. **Refactor `server.py`** - Split into modular structure (routes/, models/, core/)
-3. **Fix SAT scraping** - Properly configure selenium or use alternative approach
+1. **Restaurar datos de Ortech** - Usuario solicitó que NO se eliminen datos, posiblemente necesita re-subir XMLs
+2. **Auth0 Integration** - Implement identity management using Auth0 (user requested)
+3. **Refactor `server.py`** - Split into modular structure (routes/, models/, core/)
 
 ### P2 - Medium Priority
-1. **Secure Bank Connections** - Integrate with Plaid or Fintoc for real bank data
-2. **Real Bank API Integration** - Connect to actual bank APIs (requires partnerships)
-3. **Email notifications** - Add email alerts alongside SMS
-4. **User management UI** - Admin panel for managing users and roles
+1. **Conceptos manuales de proyección** - Backend endpoints para guardar conceptos personalizados
+2. **Secure Bank Connections** - Integrate with Plaid or Fintoc for real bank data
+3. **Real Bank API Integration** - Connect to actual bank APIs (requires partnerships)
+4. **Email notifications** - Add email alerts alongside SMS
+5. **User management UI** - Admin panel for managing users and roles
 
 ### P3 - Nice to Have
 1. **ISO 27001 Compliance** - Security and compliance standards (process-oriented)
