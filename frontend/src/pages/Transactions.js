@@ -34,7 +34,8 @@ const AgingModule = () => {
       setCfdis(cfdiRes.data);
       setCustomers(custRes.data);
       setVendors(vendRes.data);
-      setFxRates(fxRes.data || {});
+      // Extract rates object from response
+      setFxRates(fxRes.data?.rates || {});
     } catch (error) {
       toast.error('Error cargando datos');
     } finally {
