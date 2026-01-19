@@ -1914,6 +1914,65 @@ async def list_reconciliations(
                 r[field] = datetime.fromisoformat(r[field])
     return reconciliations
 
+# ===== CONCEPTOS MANUALES DE PROYECCIÓN =====
+@api_router.post("/manual-projections", response_model=ManualProjectionConcept)
+async def create_manual_projection(data: ManualProjectionConceptCreate, request: Request, current_user: Dict = Depends(get_current_user)):
+    company_id = await get_active_company_id(request, current_user)
+    concept = ManualProjectionConcept(company_id=company_id, **data.model_dump())
+    doc = concept.model_dump()
+    if doc.get('created_at'):
+        doc['created_at'] = doc['created_at'].isoformat()
+    await db.manual_projections.insert_one(doc)
+    await audit_log(company_id, 'ManualProjection', concept.id, 'CREATE', current_user['id'])
+    return concept
+
+@api_router.get("/manual-projections")
+async def list_manual_projections(
+    request: Request, 
+    current_user: Dict = Depends(get_current_user),
+    tipo: Optional[str] = Query(None, description="ingreso o egreso"),
+    activo: Optional[bool] = Query(True)
+):
+    company_id = await get_active_company_id(request, current_user)
+    query = {'company_id': company_id}
+    if tipo:
+        query['tipo'] = tipo
+    if activo is not None:
+        query['activo'] = activo
+    concepts = await db.manual_projections.find(query, {'_id': 0}).sort('created_at', -1).to_list(500)
+    return concepts
+
+@api_router.put("/manual-projections/{concept_id}")
+async def update_manual_projection(
+    concept_id: str, 
+    data: ManualProjectionConceptCreate, 
+    request: Request, 
+    current_user: Dict = Depends(get_current_user)
+):
+    company_id = await get_active_company_id(request, current_user)
+    existing = await db.manual_projections.find_one({'id': concept_id, 'company_id': company_id}, {'_id': 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Concepto no encontrado")
+    
+    update_data = data.model_dump()
+    await db.manual_projections.update_one(
+        {'id': concept_id},
+        {'$set': update_data}
+    )
+    await audit_log(company_id, 'ManualProjection', concept_id, 'UPDATE', current_user['id'])
+    updated = await db.manual_projections.find_one({'id': concept_id}, {'_id': 0})
+    return updated
+
+@api_router.delete("/manual-projections/{concept_id}")
+async def delete_manual_projection(concept_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
+    company_id = await get_active_company_id(request, current_user)
+    existing = await db.manual_projections.find_one({'id': concept_id, 'company_id': company_id}, {'_id': 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Concepto no encontrado")
+    await db.manual_projections.delete_one({'id': concept_id})
+    await audit_log(company_id, 'ManualProjection', concept_id, 'DELETE', current_user['id'])
+    return {"message": "Concepto eliminado exitosamente"}
+
 # ===== PAGOS =====
 @api_router.post("/payments", response_model=Payment)
 async def create_payment(payment_data: PaymentCreate, request: Request, current_user: Dict = Depends(get_current_user)):
