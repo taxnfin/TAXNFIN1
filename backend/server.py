@@ -2681,13 +2681,13 @@ async def get_latest_fx_rates(request: Request, current_user: Dict = Depends(get
     company = await db.companies.find_one({'id': company_id}, {'_id': 0, 'moneda_base': 1})
     moneda_base = company.get('moneda_base', 'MXN') if company else 'MXN'
     
-    # Get latest rate for each currency pair
+    # Get latest rate for each currency pair - support both old and new field names
     pipeline = [
-        {'$match': {'company_id': company_id, 'moneda_base': moneda_base}},
+        {'$match': {'company_id': company_id}},
         {'$sort': {'fecha_vigencia': -1}},
         {'$group': {
-            '_id': '$moneda_cotizada',
-            'tipo_cambio': {'$first': '$tipo_cambio'},
+            '_id': {'$ifNull': ['$moneda_cotizada', '$moneda_origen']},
+            'tasa': {'$first': {'$ifNull': ['$tipo_cambio', '$tasa']}},
             'fecha_vigencia': {'$first': '$fecha_vigencia'}
         }}
     ]
@@ -2703,7 +2703,8 @@ async def get_latest_fx_rates(request: Request, current_user: Dict = Depends(get
     
     result = {moneda_base: 1.0}  # Base currency is always 1
     for r in rates:
-        result[r['_id']] = r['tipo_cambio']
+        if r['_id'] and r.get('tasa'):
+            result[r['_id']] = r['tasa']
     
     # Fill in defaults for missing currencies
     for currency, rate in default_rates.items():
