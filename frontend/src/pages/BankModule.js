@@ -100,7 +100,8 @@ const BankModule = () => {
     try {
       const data = {
         ...accountFormData,
-        saldo_inicial: parseFloat(accountFormData.saldo_inicial) || 0
+        saldo_inicial: parseFloat(accountFormData.saldo_inicial) || 0,
+        fecha_saldo: accountFormData.fecha_saldo ? `${accountFormData.fecha_saldo}T00:00:00Z` : null
       };
       
       if (editingAccount) {
@@ -119,7 +120,8 @@ const BankModule = () => {
         banco: 'BBVA',
         moneda: 'MXN',
         pais_banco: 'México',
-        saldo_inicial: ''
+        saldo_inicial: '',
+        fecha_saldo: format(new Date(), "yyyy-MM-dd")
       });
       loadData();
     } catch (error) {
@@ -135,7 +137,8 @@ const BankModule = () => {
       banco: account.banco,
       moneda: account.moneda,
       pais_banco: account.pais_banco || 'México',
-      saldo_inicial: account.saldo_inicial?.toString() || '0'
+      saldo_inicial: account.saldo_inicial?.toString() || '0',
+      fecha_saldo: account.fecha_saldo ? account.fecha_saldo.split('T')[0] : format(new Date(), "yyyy-MM-dd")
     });
     setAccountDialogOpen(true);
   };
