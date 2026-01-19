@@ -278,6 +278,7 @@ const PaymentsModule = () => {
       fecha_vencimiento: format(addDays(new Date(), 7), "yyyy-MM-dd'T'HH:mm"),
       beneficiario: '',
       referencia: '',
+      es_real: true,
       domiciliacion_activa: false,
       cfdi_ids: [],
       customer_id: null,
