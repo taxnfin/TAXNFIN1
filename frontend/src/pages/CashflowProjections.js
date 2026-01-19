@@ -436,6 +436,24 @@ const CashflowProjections = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
+                    {/* SALDO INICIAL DE BANCOS Row */}
+                    <TableRow className="bg-blue-100 font-bold border-b-2 border-blue-300">
+                      <TableCell className="sticky left-0 bg-blue-100">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="text-blue-600" size={16} />
+                          SALDO INICIAL BANCOS
+                        </div>
+                      </TableCell>
+                      {weeklyData.map((week, idx) => (
+                        <TableCell key={idx} className="text-center text-blue-700 font-bold">
+                          {idx === 0 ? formatCurrency(saldoInicialBancos) : '-'}
+                        </TableCell>
+                      ))}
+                      <TableCell className="text-center bg-blue-200 text-blue-800 font-bold">
+                        {formatCurrency(saldoInicialBancos)}
+                      </TableCell>
+                    </TableRow>
+
                     {/* RECEIPTS / INGRESOS Section */}
                     <TableRow className="bg-green-50 font-bold">
                       <TableCell className="sticky left-0 bg-green-50">
@@ -454,37 +472,45 @@ const CashflowProjections = () => {
                       </TableCell>
                     </TableRow>
                     
-                    {/* Ingresos by Category */}
-                    {categories.filter(c => c.tipo === 'ingreso').map(category => {
-                      const categoryKey = `ing-${category.id}`;
-                      const isExpanded = expandedRows[categoryKey];
-                      const weekTotals = weeklyData.map(w => w.ingresos.byCategory[category.nombre]?.total || 0);
-                      const categoryTotal = weekTotals.reduce((sum, t) => sum + t, 0);
+                    {/* Ingresos by Category - Show "Cobranza" or category name, also show "Sin categoría" */}
+                    {(() => {
+                      // Collect all unique category names from ingresos including "Sin categoría"
+                      const allIngresoCategories = new Set();
+                      weeklyData.forEach(w => {
+                        Object.keys(w.ingresos.byCategory).forEach(cat => allIngresoCategories.add(cat));
+                      });
                       
-                      if (categoryTotal === 0) return null;
-                      
-                      return (
-                        <TableRow key={categoryKey} className="hover:bg-green-50/50">
-                          <TableCell className="sticky left-0 bg-white pl-8">
-                            <button 
-                              onClick={() => toggleRow(categoryKey)}
-                              className="flex items-center gap-1 text-gray-700 hover:text-green-600"
-                            >
-                              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                              {category.nombre}
-                            </button>
-                          </TableCell>
-                          {weekTotals.map((total, idx) => (
-                            <TableCell key={idx} className="text-center text-green-600">
-                              {total > 0 ? formatCurrency(total) : '-'}
+                      return Array.from(allIngresoCategories).map(categoryName => {
+                        const categoryKey = `ing-${categoryName}`;
+                        const isExpanded = expandedRows[categoryKey];
+                        const weekTotals = weeklyData.map(w => w.ingresos.byCategory[categoryName]?.total || 0);
+                        const categoryTotal = weekTotals.reduce((sum, t) => sum + t, 0);
+                        
+                        if (categoryTotal === 0) return null;
+                        
+                        return (
+                          <TableRow key={categoryKey} className="hover:bg-green-50/50">
+                            <TableCell className="sticky left-0 bg-white pl-8">
+                              <button 
+                                onClick={() => toggleRow(categoryKey)}
+                                className="flex items-center gap-1 text-gray-700 hover:text-green-600"
+                              >
+                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                {categoryName === 'Sin categoría' ? 'Cobranza' : categoryName}
+                              </button>
                             </TableCell>
-                          ))}
-                          <TableCell className="text-center bg-green-50 text-green-700">
-                            {formatCurrency(categoryTotal)}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                            {weekTotals.map((total, idx) => (
+                              <TableCell key={idx} className="text-center text-green-600">
+                                {total > 0 ? formatCurrency(total) : '-'}
+                              </TableCell>
+                            ))}
+                            <TableCell className="text-center bg-green-50 text-green-700">
+                              {formatCurrency(categoryTotal)}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      });
+                    })()}
 
                     {/* OPERATING DISBURSEMENTS / EGRESOS Section */}
                     <TableRow className="bg-red-50 font-bold">
@@ -504,37 +530,45 @@ const CashflowProjections = () => {
                       </TableCell>
                     </TableRow>
                     
-                    {/* Egresos by Category */}
-                    {categories.filter(c => c.tipo === 'egreso').map(category => {
-                      const categoryKey = `egr-${category.id}`;
-                      const isExpanded = expandedRows[categoryKey];
-                      const weekTotals = weeklyData.map(w => w.egresos.byCategory[category.nombre]?.total || 0);
-                      const categoryTotal = weekTotals.reduce((sum, t) => sum + t, 0);
+                    {/* Egresos by Category - Show all including "Sin categoría" as "Proveedores Costo" */}
+                    {(() => {
+                      // Collect all unique category names from egresos including "Sin categoría"
+                      const allEgresoCategories = new Set();
+                      weeklyData.forEach(w => {
+                        Object.keys(w.egresos.byCategory).forEach(cat => allEgresoCategories.add(cat));
+                      });
                       
-                      if (categoryTotal === 0) return null;
-                      
-                      return (
-                        <TableRow key={categoryKey} className="hover:bg-red-50/50">
-                          <TableCell className="sticky left-0 bg-white pl-8">
-                            <button 
-                              onClick={() => toggleRow(categoryKey)}
-                              className="flex items-center gap-1 text-gray-700 hover:text-red-600"
-                            >
-                              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                              {category.nombre}
-                            </button>
-                          </TableCell>
-                          {weekTotals.map((total, idx) => (
-                            <TableCell key={idx} className="text-center text-red-600">
-                              {total > 0 ? formatCurrency(total) : '-'}
+                      return Array.from(allEgresoCategories).map(categoryName => {
+                        const categoryKey = `egr-${categoryName}`;
+                        const isExpanded = expandedRows[categoryKey];
+                        const weekTotals = weeklyData.map(w => w.egresos.byCategory[categoryName]?.total || 0);
+                        const categoryTotal = weekTotals.reduce((sum, t) => sum + t, 0);
+                        
+                        if (categoryTotal === 0) return null;
+                        
+                        return (
+                          <TableRow key={categoryKey} className="hover:bg-red-50/50">
+                            <TableCell className="sticky left-0 bg-white pl-8">
+                              <button 
+                                onClick={() => toggleRow(categoryKey)}
+                                className="flex items-center gap-1 text-gray-700 hover:text-red-600"
+                              >
+                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                {categoryName === 'Sin categoría' ? 'Proveedores Costo' : categoryName}
+                              </button>
                             </TableCell>
-                          ))}
-                          <TableCell className="text-center bg-red-50 text-red-700">
-                            {formatCurrency(categoryTotal)}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                            {weekTotals.map((total, idx) => (
+                              <TableCell key={idx} className="text-center text-red-600">
+                                {total > 0 ? formatCurrency(total) : '-'}
+                              </TableCell>
+                            ))}
+                            <TableCell className="text-center bg-red-50 text-red-700">
+                              {formatCurrency(categoryTotal)}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      });
+                    })()}
 
                     {/* NET CASH FLOW */}
                     <TableRow className="bg-blue-100 font-bold border-t-2 border-blue-300">
