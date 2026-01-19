@@ -288,9 +288,19 @@ class CFDI(BaseModel):
     fecha_timbrado: datetime
     moneda: str = "MXN"
     subtotal: float
+    descuento: float = 0.0
     impuestos: float
     total: float
+    metodo_pago: Optional[str] = None  # PUE or PPD
+    forma_pago: Optional[str] = None   # 01, 02, 03, etc.
+    uso_cfdi: Optional[str] = None     # G01, G02, G03, etc.
+    iva_trasladado: float = 0.0
+    isr_retenido: float = 0.0
+    iva_retenido: float = 0.0
+    ieps: float = 0.0
+    impuestos_locales: float = 0.0
     estatus: CFDIStatus = CFDIStatus.VIGENTE
+    estado_cancelacion: Optional[str] = None  # vigente, cancelado
     xml_original: Optional[str] = None
     monto_cobrado: float = 0.0
     monto_pagado: float = 0.0
@@ -299,6 +309,7 @@ class CFDI(BaseModel):
     estado_conciliacion: str = "pendiente"
     customer_id: Optional[str] = None  # Para CFDIs de ingreso - asociar cliente
     vendor_id: Optional[str] = None    # Para CFDIs de egreso - asociar proveedor
+    notas: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class CFDICreate(BaseModel):
