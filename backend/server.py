@@ -2860,11 +2860,14 @@ async def get_cfdi_summary(
     company = await db.companies.find_one({'id': company_id}, {'_id': 0, 'moneda_base': 1})
     moneda_base = company.get('moneda_base', 'MXN') if company else 'MXN'
     
-    # Get rates
+    # Get rates - support both old and new field names
     rates_doc = await db.fx_rates.find({'company_id': company_id}).sort('fecha_vigencia', -1).to_list(100)
     rates = {'MXN': 1.0, 'USD': 17.50, 'EUR': 19.00}  # Defaults
     for r in rates_doc:
-        rates[r['moneda_cotizada']] = r['tipo_cambio']
+        moneda = r.get('moneda_cotizada') or r.get('moneda_origen')
+        tasa = r.get('tipo_cambio') or r.get('tasa')
+        if moneda and tasa:
+            rates[moneda] = tasa
     
     # Calculate totals by currency and converted
     totals_by_currency = {'ingresos': {}, 'egresos': {}}
