@@ -310,6 +310,13 @@ const CashflowProjections = () => {
     }
   };
 
+  // Convert amount from MXN to selected currency
+  const convertToCurrency = (amountMXN) => {
+    if (selectedCurrency === 'MXN') return amountMXN;
+    const rate = fxRates[selectedCurrency] || 1;
+    return amountMXN / rate; // Divide to convert FROM MXN TO target currency
+  };
+
   // Get CFDIs for selected party
   const getPartyCfdis = () => {
     if (!selectedParty) return [];
