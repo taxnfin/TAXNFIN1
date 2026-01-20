@@ -13,10 +13,10 @@ import AdvancedFeatures from './pages/AdvancedFeatures';
 import FXRatesModule from './pages/FXRatesModule';
 import CategoriesModule from './pages/CategoriesModule';
 import CashflowProjections from './pages/CashflowProjections';
+import DIOTModule from './pages/DIOTModule';
 import Layout from './components/Layout';
 import { Toaster } from './components/ui/sonner';
 import api from './api/axios';
-import './App.css';
 import './App.css';
 
 function App() {
