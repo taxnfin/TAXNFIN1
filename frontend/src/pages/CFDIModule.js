@@ -423,13 +423,119 @@ const CFDIModule = () => {
   };
 
   const selectedCategoryForDialog = categories.find(c => c.id === categorizeData.category_id);
+  
+  // Get subcategories for selected filter category
+  const selectedFilterCategory = categories.find(c => c.id === filterCategory);
+  const availableSubcategories = selectedFilterCategory?.subcategorias || [];
 
   // Filter CFDIs
   const filteredCfdis = cfdis.filter(cfdi => {
+    // Category filter
     if (filterCategory !== 'all' && cfdi.category_id !== filterCategory) return false;
+    
+    // Subcategory filter
+    if (filterSubcategory !== 'all' && cfdi.subcategory_id !== filterSubcategory) return false;
+    
+    // Reconciliation filter
     if (filterReconciliation !== 'all' && (cfdi.estado_conciliacion || 'pendiente') !== filterReconciliation) return false;
+    
+    // Date from filter
+    if (filterDateFrom) {
+      const cfdiDate = new Date(cfdi.fecha_emision);
+      const fromDate = new Date(filterDateFrom);
+      if (cfdiDate < fromDate) return false;
+    }
+    
+    // Date to filter
+    if (filterDateTo) {
+      const cfdiDate = new Date(cfdi.fecha_emision);
+      const toDate = new Date(filterDateTo);
+      toDate.setHours(23, 59, 59, 999); // End of day
+      if (cfdiDate > toDate) return false;
+    }
+    
     return true;
   });
+
+  // Export to Excel function
+  const exportToExcel = async () => {
+    setExporting(true);
+    try {
+      // Prepare data for export
+      const exportData = filteredCfdis.map(cfdi => {
+        const category = getCategoryName(cfdi.category_id);
+        const subcategory = getSubcategoryName(cfdi.category_id, cfdi.subcategory_id);
+        const customer = getCustomerName(cfdi.customer_id);
+        const vendor = getVendorName(cfdi.vendor_id);
+        
+        return {
+          'Fecha Emisión': format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy'),
+          'UUID': cfdi.uuid,
+          'Tipo': cfdi.tipo_cfdi === 'ingreso' ? 'Ingreso' : 'Egreso',
+          'Emisor RFC': cfdi.emisor_rfc,
+          'Emisor Nombre': cfdi.emisor_nombre,
+          'Receptor RFC': cfdi.receptor_rfc,
+          'Receptor Nombre': cfdi.receptor_nombre,
+          'Categoría': category,
+          'Subcategoría': subcategory,
+          'Cliente': customer,
+          'Proveedor': vendor,
+          'Subtotal': cfdi.subtotal || 0,
+          'IVA': cfdi.iva || 0,
+          'Total': cfdi.total,
+          'Moneda': cfdi.moneda || 'MXN',
+          'Método Pago': cfdi.metodo_pago || '',
+          'Forma Pago': cfdi.forma_pago || '',
+          'Estado Conciliación': cfdi.estado_conciliacion || 'pendiente'
+        };
+      });
+      
+      // Create CSV content
+      const headers = Object.keys(exportData[0] || {});
+      const csvContent = [
+        headers.join(','),
+        ...exportData.map(row => 
+          headers.map(h => {
+            let val = row[h];
+            // Escape commas and quotes
+            if (typeof val === 'string' && (val.includes(',') || val.includes('"'))) {
+              val = `"${val.replace(/"/g, '""')}"`;
+            }
+            return val;
+          }).join(',')
+        )
+      ].join('\n');
+      
+      // Add BOM for Excel UTF-8 compatibility
+      const BOM = '\uFEFF';
+      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      
+      // Create download link
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `cfdis_${format(new Date(), 'yyyy-MM-dd_HHmm')}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast.success(`${filteredCfdis.length} CFDIs exportados a Excel`);
+    } catch (error) {
+      toast.error('Error al exportar');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Clear all filters
+  const clearFilters = () => {
+    setFilterCategory('all');
+    setFilterSubcategory('all');
+    setFilterReconciliation('all');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+  };
 
   // Convert amount to view currency
   const convertAmount = (amount, fromCurrency) => {
