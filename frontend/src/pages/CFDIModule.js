@@ -459,7 +459,8 @@ const CFDIModule = () => {
   });
 
   // Export to Excel function
-  const exportToExcel = async () => {
+  // Export to Excel using xlsx library
+  const handleExportToExcel = () => {
     if (filteredCfdis.length === 0) {
       toast.error('No hay CFDIs para exportar');
       return;
@@ -467,79 +468,12 @@ const CFDIModule = () => {
     
     setExporting(true);
     try {
-      // Prepare data for export
-      const exportData = filteredCfdis.map(cfdi => {
-        const category = getCategoryName(cfdi.category_id);
-        const subcategory = getSubcategoryName(cfdi.category_id, cfdi.subcategory_id);
-        const customer = getCustomerName(cfdi.customer_id);
-        const vendor = getVendorName(cfdi.vendor_id);
-        
-        return {
-          'Fecha Emisión': cfdi.fecha_emision ? format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy') : '',
-          'UUID': cfdi.uuid || '',
-          'Tipo': cfdi.tipo_cfdi === 'ingreso' ? 'Ingreso' : 'Egreso',
-          'Emisor RFC': cfdi.emisor_rfc || '',
-          'Emisor Nombre': cfdi.emisor_nombre || '',
-          'Receptor RFC': cfdi.receptor_rfc || '',
-          'Receptor Nombre': cfdi.receptor_nombre || '',
-          'Categoría': category || '',
-          'Subcategoría': subcategory || '',
-          'Cliente': customer || '',
-          'Proveedor': vendor || '',
-          'Subtotal': cfdi.subtotal || 0,
-          'IVA': cfdi.iva || 0,
-          'Total': cfdi.total || 0,
-          'Moneda': cfdi.moneda || 'MXN',
-          'Método Pago': cfdi.metodo_pago || '',
-          'Forma Pago': cfdi.forma_pago || '',
-          'Estado Conciliación': cfdi.estado_conciliacion || 'pendiente'
-        };
-      });
-      
-      if (exportData.length === 0) {
-        toast.error('No hay datos para exportar');
-        setExporting(false);
-        return;
+      const success = exportCFDIs(filteredCfdis, categories);
+      if (success) {
+        toast.success(`${filteredCfdis.length} CFDIs exportados a Excel`);
+      } else {
+        toast.error('Error al exportar');
       }
-      
-      // Create CSV content with proper escaping
-      const headers = Object.keys(exportData[0]);
-      const csvRows = [headers.join(',')];
-      
-      for (const row of exportData) {
-        const values = headers.map(header => {
-          let val = row[header];
-          if (val === null || val === undefined) val = '';
-          val = String(val);
-          // Escape quotes and wrap in quotes if contains comma, quote, or newline
-          if (val.includes(',') || val.includes('"') || val.includes('\n')) {
-            val = '"' + val.replace(/"/g, '""') + '"';
-          }
-          return val;
-        });
-        csvRows.push(values.join(','));
-      }
-      
-      const csvContent = csvRows.join('\n');
-      
-      // Add BOM for Excel UTF-8 compatibility
-      const BOM = '\uFEFF';
-      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      
-      // Create and trigger download
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `cfdis_${format(new Date(), 'yyyy-MM-dd_HHmm')}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      // Clean up
-      setTimeout(() => URL.revokeObjectURL(url), 100);
-      
-      toast.success(`${filteredCfdis.length} CFDIs exportados a Excel`);
     } catch (error) {
       console.error('Export error:', error);
       toast.error('Error al exportar: ' + (error.message || 'Error desconocido'));
