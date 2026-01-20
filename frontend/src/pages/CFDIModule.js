@@ -781,7 +781,7 @@ const CFDIModule = () => {
               <Button 
                 variant="default"
                 size="sm"
-                onClick={exportToExcel}
+                onClick={handleExportToExcel}
                 disabled={exporting || filteredCfdis.length === 0}
                 className="bg-green-600 hover:bg-green-700"
                 data-testid="export-excel-btn"
