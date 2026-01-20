@@ -449,6 +449,16 @@ const CashflowProjections = () => {
             </SelectContent>
           </Select>
           
+          <Button 
+            variant="outline" 
+            className="gap-2"
+            onClick={exportProjectionsToExcel}
+            data-testid="export-projections-btn"
+          >
+            <Download size={16} />
+            Exportar Excel
+          </Button>
+          
           <Dialog open={conceptDialogOpen} onOpenChange={setConceptDialogOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2 bg-[#0F172A]" data-testid="add-concept-btn">
