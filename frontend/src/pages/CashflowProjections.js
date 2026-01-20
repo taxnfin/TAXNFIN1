@@ -388,7 +388,12 @@ const CashflowProjections = () => {
             Proyección de Flujo de Efectivo
           </h1>
           <p className="text-[#64748B]">
-            Modelo de 13 semanas | Inicio de semana: {DIAS_SEMANA.find(d => d.value === companyConfig.inicio_semana)?.label || 'Lunes'}
+            Modelo de 13 semanas | Inicio: {DIAS_SEMANA.find(d => d.value === companyConfig.inicio_semana)?.label || 'Lunes'}
+            {selectedCurrency !== 'MXN' && (
+              <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-sm">
+                TC: 1 {selectedCurrency} = ${fxRates[selectedCurrency]?.toFixed(4) || '?'} MXN
+              </span>
+            )}
           </p>
         </div>
         <div className="flex gap-2">
