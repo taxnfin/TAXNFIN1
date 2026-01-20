@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { TrendingUp, TrendingDown, Calendar, Building2, User, FileText, ChevronDown, ChevronRight, Download, Plus, Trash2, Settings } from 'lucide-react';
 import { format, addWeeks, startOfWeek, addMonths, startOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { exportProjections } from '@/utils/excelExport';
 
 const DIAS_SEMANA = [
   { value: 0, label: 'Domingo' },
