@@ -1,0 +1,71 @@
+{
+  "summary": "Testing completed for DIOT Module and Bank Module (Estados de Cuenta) features. All backend APIs working correctly. Frontend UI components verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/tests/test_diot_bank_module.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "DIOT Module correctly shows empty state when no paid egreso invoices exist",
+    "Export buttons correctly show 'No hay datos para exportar' toast when no data",
+    "Bank Module Estados de Cuenta tab has all required fields in the dialog",
+    "Bank transaction creation via API works correctly (verified with pytest)"
+  ],
+  "updated_files": [
+    "/app/tests/test_diot_bank_module.py"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11 tests passed)",
+    "frontend": "100%"
+  },
+  "test_credentials": {
+    "email": "admin@demo.com",
+    "password": "admin123"
+  },
+  "seed_data_creation": "Created TEST_Deposito de prueba bank transaction via API for testing",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "DIOT and Bank Module features fully tested. DIOT shows 0 records because no paid egreso invoices exist - this is correct behavior. Bank accounts exist: BBVA MXN $500,000 and Citibanamex USD $25,000. Test bank transaction created via API is visible in Estados de Cuenta tab.",
+  "test_results": {
+    "diot_module": {
+      "navigation": "PASS - DIOT accessible from sidebar menu",
+      "date_filters": "PASS - Fecha Desde and Fecha Hasta filters present and working",
+      "export_excel_button": "PASS - Button present with data-testid='export-diot-excel'",
+      "export_txt_button": "PASS - Button present with data-testid='export-diot-txt'",
+      "empty_state": "PASS - Shows 'No hay facturas de egreso pagadas' when no data",
+      "summary_cards": "PASS - Shows Total Operaciones: 0, Monto Total: $0.00, IVA Total: $0.00",
+      "api_endpoint": "PASS - GET /api/diot/preview returns {records: [], summary: {...}}"
+    },
+    "bank_module_estados_cuenta": {
+      "tab_visible": "PASS - 'Estados de Cuenta' tab visible in Bank Module",
+      "add_movement_button": "PASS - 'Agregar Movimiento' button present with data-testid='add-statement-movement-btn'",
+      "dialog_fields": {
+        "cuenta_bancaria": "PASS - Bank account selector present",
+        "fecha_movimiento": "PASS - Movement date field present",
+        "fecha_valor": "PASS - Value date field present",
+        "descripcion": "PASS - Description field present",
+        "referencia": "PASS - Reference field present",
+        "tipo_movimiento": "PASS - Movement type selector (Depósito/Retiro) present",
+        "monto": "PASS - Amount field present",
+        "saldo": "PASS - Balance after movement field present"
+      },
+      "api_create_transaction": "PASS - POST /api/bank-transactions creates movement correctly",
+      "api_list_transactions": "PASS - GET /api/bank-transactions returns list of movements"
+    },
+    "backend_pytest": {
+      "total_tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "test_file": "/app/tests/test_diot_bank_module.py"
+    }
+  }
+}
