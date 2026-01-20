@@ -107,7 +107,7 @@ export const exportMultiSheetExcel = (sheets, filename) => {
     const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     
     const timestamp = format(new Date(), 'yyyy-MM-dd_HHmm');
-    saveAs(blob, `${filename}_${timestamp}.xlsx`);
+    downloadFile(blob, `${filename}_${timestamp}.xlsx`);
     
     return true;
   } catch (error) {
