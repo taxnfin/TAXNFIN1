@@ -318,6 +318,19 @@ const PaymentsModule = () => {
 
   const currentParties = formData.tipo === 'cobro' ? customers : vendors;
   const totalSelectedAmount = selectedCfdis.reduce((sum, c) => sum + c.saldo_pendiente, 0);
+  
+  const handleExportPayments = () => {
+    if (payments.length === 0) {
+      toast.error('No hay pagos para exportar');
+      return;
+    }
+    const success = exportPayments(payments);
+    if (success) {
+      toast.success(`${payments.length} pagos exportados a Excel`);
+    } else {
+      toast.error('Error al exportar');
+    }
+  };
 
   return (
     <div className="p-8 space-y-6" data-testid="payments-page">
@@ -326,10 +339,20 @@ const PaymentsModule = () => {
           <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{fontFamily: 'Manrope'}}>Cobranza y Pagos</h1>
           <p className="text-[#64748B]">Gestión de cobros y pagos (reales y proyectados)</p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={(open) => {
-          setDialogOpen(open);
-          if (!open) resetForm();
-        }}>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            className="gap-2"
+            onClick={handleExportPayments}
+            data-testid="export-payments-btn"
+          >
+            <Download size={16} />
+            Exportar Excel
+          </Button>
+          <Dialog open={dialogOpen} onOpenChange={(open) => {
+            setDialogOpen(open);
+            if (!open) resetForm();
+          }}>
           <DialogTrigger asChild>
             <Button className="bg-[#0F172A] hover:bg-[#1E293B] gap-2" data-testid="new-payment-button">
               <Plus size={16} />
