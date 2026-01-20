@@ -44,7 +44,10 @@ const CFDIModule = () => {
   const [cfdiToCategorize, setCfdiToCategorize] = useState(null);
   const [categorizeData, setCategorizeData] = useState({ category_id: '', subcategory_id: '', customer_id: '', vendor_id: '' });
   const [filterCategory, setFilterCategory] = useState('all');
+  const [filterSubcategory, setFilterSubcategory] = useState('all');
   const [filterReconciliation, setFilterReconciliation] = useState('all');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
   const [aiCategorizingAll, setAiCategorizingAll] = useState(false);
   const [aiCategorizingSingle, setAiCategorizingSingle] = useState(null);
   const [aiResultsDialogOpen, setAiResultsDialogOpen] = useState(false);
@@ -53,6 +56,7 @@ const CFDIModule = () => {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [cfdiDetail, setCfdiDetail] = useState(null);
   const [cfdiNotes, setCfdiNotes] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     loadData();
