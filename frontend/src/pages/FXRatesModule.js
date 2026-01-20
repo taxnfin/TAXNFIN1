@@ -18,6 +18,8 @@ const CURRENCIES = [
   { code: 'GBP', name: 'Libra Esterlina', symbol: '£' },
   { code: 'CAD', name: 'Dólar Canadiense', symbol: '$' },
   { code: 'JPY', name: 'Yen Japonés', symbol: '¥' },
+  { code: 'CHF', name: 'Franco Suizo', symbol: 'CHF' },
+  { code: 'CNY', name: 'Yuan Chino', symbol: '¥' },
 ];
 
 const FXRatesModule = () => {
