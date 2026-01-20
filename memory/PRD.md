@@ -353,6 +353,22 @@ All critical features implemented and tested.
 
 ## Changelog
 
+### January 20, 2026 (Session 2)
+- **NEW: Reporte DIOT** - Declaración Informativa de Operaciones con Terceros
+  - Solo facturas de egreso (pagos a proveedores) que han sido pagadas
+  - Filtros por fecha
+  - Exportación a Excel (.xlsx) y TXT (formato SAT)
+  - Resumen con total de operaciones, monto y IVA
+  - Información de tipos de tercero y operación según SAT
+  - Nueva ruta `/diot` y entrada en menú lateral
+  - Endpoint: GET /api/diot/preview
+
+- **NEW: Estados de Cuenta Bancarios** - Pestaña en módulo Bancario
+  - Nueva pestaña "Estados de Cuenta" para captura manual de movimientos
+  - Diálogo completo para agregar movimientos: cuenta, fechas, descripción, referencia, tipo, monto, saldo
+  - Vista de tabla con estado de conciliación
+  - Permite capturar movimientos mientras se obtiene acceso a APIs bancarias
+
 ### January 20, 2026
 - **Fixed Excel Export Feature**: Completed implementation of XLSX export across all 4 modules
   - `CFDIModule.js`: Export CFDIs to Excel with categories, amounts, dates
