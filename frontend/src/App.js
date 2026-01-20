@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 import CFDIModule from './pages/CFDIModule';
 import BankModule from './pages/BankModule';
+import BankStatementsModule from './pages/BankStatementsModule';
 import PaymentsModule from './pages/PaymentsModule';
 import Catalogs from './pages/Catalogs';
 import Reports from './pages/Reports';
