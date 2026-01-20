@@ -313,91 +313,27 @@ const CashflowProjections = () => {
     }
   };
 
-  // Export projections to Excel
+  // Export projections to Excel using XLSX
   const exportProjectionsToExcel = () => {
     const totals = calculateRunningTotals();
-    const currencySymbol = selectedCurrency === 'USD' ? 'US$' : selectedCurrency === 'EUR' ? '€' : '$';
     
-    // Prepare data
-    const rows = [];
+    if (weeklyData.length === 0) {
+      toast.error('No hay datos para exportar');
+      return;
+    }
     
-    // Header row with weeks
-    const headerRow = ['Concepto', ...weeklyData.map(w => w.label), 'TOTAL'];
-    rows.push(headerRow);
-    
-    // SALDO INICIAL
-    rows.push(['SALDO INICIAL BANCOS', convertToCurrency(saldoInicialBancos).toFixed(2), ...Array(weeklyData.length - 1).fill('-'), convertToCurrency(saldoInicialBancos).toFixed(2)]);
-    
-    // INGRESOS Total
-    rows.push(['INGRESOS', ...totals.map(w => convertToCurrency(w.ingresos.total).toFixed(2)), convertToCurrency(grandTotalIngresos).toFixed(2)]);
-    
-    // Ingresos by category
-    const allIngresoCategories = new Set();
-    weeklyData.forEach(w => Object.keys(w.ingresos.byCategory).forEach(cat => allIngresoCategories.add(cat)));
-    
-    Array.from(allIngresoCategories).forEach(categoryName => {
-      const weekTotals = weeklyData.map(w => w.ingresos.byCategory[categoryName]?.total || 0);
-      const categoryTotal = weekTotals.reduce((sum, t) => sum + t, 0);
-      if (categoryTotal > 0) {
-        rows.push([`  ${categoryName === 'Sin categoría' ? 'Cobranza' : categoryName}`, ...weekTotals.map(t => convertToCurrency(t).toFixed(2)), convertToCurrency(categoryTotal).toFixed(2)]);
-        
-        // Subcategories
-        const allSubcategories = new Set();
-        weeklyData.forEach(w => {
-          const cat = w.ingresos.byCategory[categoryName];
-          if (cat?.bySubcategory) Object.keys(cat.bySubcategory).forEach(sub => allSubcategories.add(sub));
-        });
-        
-        Array.from(allSubcategories).forEach(subName => {
-          const subTotals = weeklyData.map(w => w.ingresos.byCategory[categoryName]?.bySubcategory?.[subName]?.total || 0);
-          const subTotal = subTotals.reduce((s, t) => s + t, 0);
-          if (subTotal > 0) {
-            rows.push([`    └ ${subName}`, ...subTotals.map(t => convertToCurrency(t).toFixed(2)), convertToCurrency(subTotal).toFixed(2)]);
-          }
-        });
+    try {
+      // Use the utility function from excelExport
+      const success = exportProjections(totals, saldoInicialBancos, selectedCurrency, fxRates[selectedCurrency] || 1);
+      if (success) {
+        toast.success(`Proyección exportada a Excel en ${selectedCurrency}`);
+      } else {
+        toast.error('Error al exportar');
       }
-    });
-    
-    // EGRESOS Total
-    rows.push(['EGRESOS', ...totals.map(w => convertToCurrency(w.egresos.total).toFixed(2)), convertToCurrency(grandTotalEgresos).toFixed(2)]);
-    
-    // Egresos by category
-    const allEgresoCategories = new Set();
-    weeklyData.forEach(w => Object.keys(w.egresos.byCategory).forEach(cat => allEgresoCategories.add(cat)));
-    
-    Array.from(allEgresoCategories).forEach(categoryName => {
-      const weekTotals = weeklyData.map(w => w.egresos.byCategory[categoryName]?.total || 0);
-      const categoryTotal = weekTotals.reduce((sum, t) => sum + t, 0);
-      if (categoryTotal > 0) {
-        rows.push([`  ${categoryName === 'Sin categoría' ? 'Proveedores Costo' : categoryName}`, ...weekTotals.map(t => convertToCurrency(t).toFixed(2)), convertToCurrency(categoryTotal).toFixed(2)]);
-      }
-    });
-    
-    // FLUJO NETO
-    rows.push(['FLUJO NETO', ...totals.map(w => convertToCurrency(w.flujoNeto).toFixed(2)), convertToCurrency(grandTotalFlujo).toFixed(2)]);
-    
-    // SALDO FINAL
-    rows.push(['SALDO FINAL', ...totals.map(w => convertToCurrency(w.saldoFinal).toFixed(2)), convertToCurrency(totals[totals.length - 1]?.saldoFinal || 0).toFixed(2)]);
-    
-    // Create CSV
-    const csvContent = rows.map(row => row.map(cell => {
-      if (typeof cell === 'string' && cell.includes(',')) return `"${cell}"`;
-      return cell;
-    }).join(',')).join('\n');
-    
-    const BOM = '\uFEFF';
-    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `proyeccion_flujo_${selectedCurrency}_${format(new Date(), 'yyyy-MM-dd')}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-    toast.success(`Proyección exportada en ${currencySymbol} ${selectedCurrency}`);
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Error al exportar: ' + (error.message || 'Error desconocido'));
+    }
   };
 
   // Convert amount from MXN to selected currency
