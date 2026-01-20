@@ -2765,15 +2765,35 @@ async def import_bank_statement(request: Request, file: UploadFile = File(...), 
         'detalle_errores': errors[:10]
     }
 
-@api_router.get("/fx-rates", response_model=List[FXRate])
+@api_router.get("/fx-rates")
 async def list_fx_rates(request: Request, current_user: Dict = Depends(get_current_user)):
+    """List all FX rates, normalizing field names from both old and new formats"""
     company_id = await get_active_company_id(request, current_user)
     rates = await db.fx_rates.find({'company_id': company_id}, {'_id': 0}).sort('fecha_vigencia', -1).to_list(1000)
+    
+    normalized = []
     for r in rates:
+        # Normalize field names (support both old and new formats)
+        rate_obj = {
+            'id': r.get('id', str(uuid.uuid4())),
+            'company_id': r.get('company_id'),
+            'moneda_base': r.get('moneda_base') or r.get('moneda_destino') or 'MXN',
+            'moneda_cotizada': r.get('moneda_cotizada') or r.get('moneda_origen'),
+            'tipo_cambio': r.get('tipo_cambio') or r.get('tasa') or 0,
+            'fuente': r.get('fuente', 'manual'),
+            'auto_sync': r.get('auto_sync', False),
+            'fecha_vigencia': r.get('fecha_vigencia'),
+            'created_at': r.get('created_at') or r.get('fecha_vigencia')
+        }
+        
+        # Convert date strings to datetime
         for field in ['fecha_vigencia', 'created_at']:
-            if isinstance(r.get(field), str):
-                r[field] = datetime.fromisoformat(r[field])
-    return rates
+            if isinstance(rate_obj.get(field), str):
+                rate_obj[field] = datetime.fromisoformat(rate_obj[field].replace('Z', '+00:00'))
+        
+        normalized.append(rate_obj)
+    
+    return normalized
 
 @api_router.post("/fx-rates", response_model=FXRate)
 async def create_fx_rate(rate_data: FXRateCreate, request: Request, current_user: Dict = Depends(get_current_user)):
