@@ -459,6 +459,11 @@ const CFDIModule = () => {
 
   // Export to Excel function
   const exportToExcel = async () => {
+    if (filteredCfdis.length === 0) {
+      toast.error('No hay CFDIs para exportar');
+      return;
+    }
+    
     setExporting(true);
     try {
       // Prepare data for export
@@ -469,20 +474,20 @@ const CFDIModule = () => {
         const vendor = getVendorName(cfdi.vendor_id);
         
         return {
-          'Fecha Emisión': format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy'),
-          'UUID': cfdi.uuid,
+          'Fecha Emisión': cfdi.fecha_emision ? format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy') : '',
+          'UUID': cfdi.uuid || '',
           'Tipo': cfdi.tipo_cfdi === 'ingreso' ? 'Ingreso' : 'Egreso',
-          'Emisor RFC': cfdi.emisor_rfc,
-          'Emisor Nombre': cfdi.emisor_nombre,
-          'Receptor RFC': cfdi.receptor_rfc,
-          'Receptor Nombre': cfdi.receptor_nombre,
-          'Categoría': category,
-          'Subcategoría': subcategory,
-          'Cliente': customer,
-          'Proveedor': vendor,
+          'Emisor RFC': cfdi.emisor_rfc || '',
+          'Emisor Nombre': cfdi.emisor_nombre || '',
+          'Receptor RFC': cfdi.receptor_rfc || '',
+          'Receptor Nombre': cfdi.receptor_nombre || '',
+          'Categoría': category || '',
+          'Subcategoría': subcategory || '',
+          'Cliente': customer || '',
+          'Proveedor': vendor || '',
           'Subtotal': cfdi.subtotal || 0,
           'IVA': cfdi.iva || 0,
-          'Total': cfdi.total,
+          'Total': cfdi.total || 0,
           'Moneda': cfdi.moneda || 'MXN',
           'Método Pago': cfdi.metodo_pago || '',
           'Forma Pago': cfdi.forma_pago || '',
@@ -490,39 +495,53 @@ const CFDIModule = () => {
         };
       });
       
-      // Create CSV content
-      const headers = Object.keys(exportData[0] || {});
-      const csvContent = [
-        headers.join(','),
-        ...exportData.map(row => 
-          headers.map(h => {
-            let val = row[h];
-            // Escape commas and quotes
-            if (typeof val === 'string' && (val.includes(',') || val.includes('"'))) {
-              val = `"${val.replace(/"/g, '""')}"`;
-            }
-            return val;
-          }).join(',')
-        )
-      ].join('\n');
+      if (exportData.length === 0) {
+        toast.error('No hay datos para exportar');
+        setExporting(false);
+        return;
+      }
+      
+      // Create CSV content with proper escaping
+      const headers = Object.keys(exportData[0]);
+      const csvRows = [headers.join(',')];
+      
+      for (const row of exportData) {
+        const values = headers.map(header => {
+          let val = row[header];
+          if (val === null || val === undefined) val = '';
+          val = String(val);
+          // Escape quotes and wrap in quotes if contains comma, quote, or newline
+          if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+            val = '"' + val.replace(/"/g, '""') + '"';
+          }
+          return val;
+        });
+        csvRows.push(values.join(','));
+      }
+      
+      const csvContent = csvRows.join('\n');
       
       // Add BOM for Excel UTF-8 compatibility
       const BOM = '\uFEFF';
       const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       
-      // Create download link
+      // Create and trigger download
       const link = document.createElement('a');
-      link.href = url;
-      link.download = `cfdis_${format(new Date(), 'yyyy-MM-dd_HHmm')}.csv`;
+      link.setAttribute('href', url);
+      link.setAttribute('download', `cfdis_${format(new Date(), 'yyyy-MM-dd_HHmm')}.csv`);
+      link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      
+      // Clean up
+      setTimeout(() => URL.revokeObjectURL(url), 100);
       
       toast.success(`${filteredCfdis.length} CFDIs exportados a Excel`);
     } catch (error) {
-      toast.error('Error al exportar');
+      console.error('Export error:', error);
+      toast.error('Error al exportar: ' + (error.message || 'Error desconocido'));
     } finally {
       setExporting(false);
     }
