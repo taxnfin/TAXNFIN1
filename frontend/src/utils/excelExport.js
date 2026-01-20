@@ -270,19 +270,29 @@ export const exportAging = (cxcData, cxpData) => {
 };
 
 export const exportProjections = (weeklyData, saldoInicial, currency = 'MXN', fxRate = 1) => {
-  const convert = (val) => currency === 'MXN' ? val : val / fxRate;
-  
-  const data = weeklyData.map((week, idx) => ({
-    'Semana': week.label || `Sem ${idx + 1}`,
-    'Fecha Inicio': week.weekStart ? format(new Date(week.weekStart), 'dd/MM/yyyy') : '',
-    'Saldo Inicial': convert(week.saldoInicial || (idx === 0 ? saldoInicial : 0)),
-    'Ingresos': convert(week.ingresos?.total || 0),
-    'Egresos': convert(week.egresos?.total || 0),
-    'Flujo Neto': convert(week.flujoNeto || 0),
-    'Saldo Final': convert(week.saldoFinal || 0)
-  }));
+  if (!weeklyData || weeklyData.length === 0) {
+    console.error('No data to export');
+    return false;
+  }
 
-  return exportToExcel(data, `Proyecciones_${currency}`, 'Proyecciones');
+  try {
+    const convert = (val) => currency === 'MXN' ? val : val / fxRate;
+    
+    const data = weeklyData.map((week, idx) => ({
+      'Semana': week.label || `Sem ${idx + 1}`,
+      'Fecha Inicio': week.weekStart ? format(new Date(week.weekStart), 'dd/MM/yyyy') : '',
+      'Saldo Inicial': convert(week.saldoInicial || (idx === 0 ? saldoInicial : 0)),
+      'Ingresos': convert(week.ingresos?.total || 0),
+      'Egresos': convert(week.egresos?.total || 0),
+      'Flujo Neto': convert(week.flujoNeto || 0),
+      'Saldo Final': convert(week.saldoFinal || 0)
+    }));
+
+    return exportToExcel(data, `Proyecciones_${currency}`, 'Proyecciones');
+  } catch (error) {
+    console.error('Error exporting projections:', error);
+    return false;
+  }
 };
 
 export const exportFxRates = (rates) => {
