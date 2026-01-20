@@ -353,6 +353,20 @@ All critical features implemented and tested.
 
 ## Changelog
 
+### January 20, 2026 (Session 3)
+- **NEW: Módulo Estados de Cuenta dedicado** (`/bank-statements`)
+  - Tabla completa de movimientos bancarios con filtros avanzados
+  - Búsqueda por descripción/referencia
+  - Filtro por cuenta bancaria y estado de conciliación
+  - Botón "Conectar Banco" con información de próxima integración
+  - Importación desde Excel de estados de cuenta
+  - Exportación a Excel de movimientos
+  - Formulario completo para agregar movimientos manualmente
+  - Diálogo de conciliación con CFDIs disponibles
+  - Tarjetas de resumen: Total Depósitos, Total Retiros, Flujo Neto, Pendientes Conciliar
+  - Botón eliminar movimiento
+  - Estados visuales: Pendiente/Conciliado
+
 ### January 20, 2026 (Session 2)
 - **NEW: Reporte DIOT** - Declaración Informativa de Operaciones con Terceros
   - Solo facturas de egreso (pagos a proveedores) que han sido pagadas
