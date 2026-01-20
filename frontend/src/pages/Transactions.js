@@ -264,6 +264,49 @@ const AgingModule = () => {
     );
   };
 
+  // Export Aging to Excel
+  const handleExportAging = () => {
+    const cxcBucketsData = processAging('cxc');
+    const cxpBucketsData = processAging('cxp');
+    
+    const cxcData = Object.values(cxcBucketsData).flatMap(bucket => 
+      bucket.cfdis.map(cfdi => ({
+        bucket: bucket.label,
+        cliente: getPartyName(cfdi, 'cxc'),
+        uuid: cfdi.uuid?.substring(0, 8),
+        fecha: cfdi.fecha_emision,
+        dias: cfdi.diasVencido,
+        moneda: cfdi.moneda || 'MXN',
+        total: cfdi.total,
+        pagado: cfdi.monto_cobrado || 0,
+        pendiente: cfdi.pendiente,
+        pendienteMXN: cfdi.pendienteMXN
+      }))
+    );
+    
+    const cxpData = Object.values(cxpBucketsData).flatMap(bucket => 
+      bucket.cfdis.map(cfdi => ({
+        bucket: bucket.label,
+        proveedor: getPartyName(cfdi, 'cxp'),
+        uuid: cfdi.uuid?.substring(0, 8),
+        fecha: cfdi.fecha_emision,
+        dias: cfdi.diasVencido,
+        moneda: cfdi.moneda || 'MXN',
+        total: cfdi.total,
+        pagado: cfdi.monto_pagado || 0,
+        pendiente: cfdi.pendiente,
+        pendienteMXN: cfdi.pendienteMXN
+      }))
+    );
+    
+    const success = exportAging(cxcData, cxpData);
+    if (success) {
+      toast.success('Aging exportado a Excel');
+    } else {
+      toast.error('Error al exportar');
+    }
+  };
+
   return (
     <div className="p-6 space-y-6 bg-[#F8FAFC] min-h-screen" data-testid="aging-page">
       {/* Header */}
@@ -278,6 +321,15 @@ const AgingModule = () => {
           <div className="text-sm text-gray-500">
             TC: USD ${fxRates.USD?.toFixed(2) || 'N/A'} | EUR ${fxRates.EUR?.toFixed(2) || 'N/A'}
           </div>
+          <Button 
+            variant="outline" 
+            className="gap-2"
+            onClick={handleExportAging}
+            data-testid="export-aging-btn"
+          >
+            <Download size={14} />
+            Exportar Excel
+          </Button>
           <Button 
             variant="outline" 
             className="gap-2" 
