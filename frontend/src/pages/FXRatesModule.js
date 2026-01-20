@@ -217,25 +217,24 @@ const FXRatesModule = () => {
       <Card className="border-[#E2E8F0]">
         <CardHeader>
           <CardTitle>Historial de Tipos de Cambio</CardTitle>
-          <CardDescription>{rates.length} registros de tipos de cambio</CardDescription>
+          <CardDescription>{rates.length} registros de tipos de cambio (Banxico + OpenExchange + Manual)</CardDescription>
         </CardHeader>
         <CardContent>
           <Table className="data-table">
             <TableHeader>
               <TableRow>
                 <TableHead>Fecha Vigencia</TableHead>
-                <TableHead>Moneda Base</TableHead>
-                <TableHead>Moneda Cotizada</TableHead>
-                <TableHead>Tipo de Cambio</TableHead>
-                <TableHead>Equivalencia</TableHead>
+                <TableHead>Moneda</TableHead>
+                <TableHead>Tipo de Cambio (MXN)</TableHead>
+                <TableHead>Fuente</TableHead>
                 <TableHead className="text-center">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rates.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-[#94A3B8] py-8">
-                    No hay tipos de cambio registrados. Agrega el primero.
+                  <TableCell colSpan={5} className="text-center text-[#94A3B8] py-8">
+                    No hay tipos de cambio registrados. Sincroniza con Banxico o agrega uno manualmente.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -243,18 +242,26 @@ const FXRatesModule = () => {
                   <TableRow key={rate.id}>
                     <TableCell className="mono">{format(new Date(rate.fecha_vigencia), 'dd/MM/yyyy HH:mm')}</TableCell>
                     <TableCell>
-                      <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-medium">
-                        {rate.moneda_base}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded font-medium">
+                      <span className={`px-2 py-1 text-xs rounded font-medium ${
+                        rate.moneda_cotizada === 'USD' ? 'bg-green-100 text-green-800' :
+                        rate.moneda_cotizada === 'EUR' ? 'bg-purple-100 text-purple-800' :
+                        rate.moneda_cotizada === 'GBP' ? 'bg-blue-100 text-blue-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
                         {rate.moneda_cotizada}
                       </span>
                     </TableCell>
-                    <TableCell className="mono font-semibold">{rate.tipo_cambio.toFixed(4)}</TableCell>
-                    <TableCell className="text-sm text-[#64748B]">
-                      1 {rate.moneda_base} = {rate.tipo_cambio.toFixed(4)} {rate.moneda_cotizada}
+                    <TableCell className="mono font-semibold">
+                      ${rate.tipo_cambio?.toFixed(4) || '0.0000'}
+                    </TableCell>
+                    <TableCell>
+                      <span className={`px-2 py-1 text-xs rounded ${
+                        rate.fuente === 'banxico' ? 'bg-blue-100 text-blue-800' :
+                        rate.fuente === 'openexchange' ? 'bg-orange-100 text-orange-800' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {rate.fuente || 'manual'} {rate.auto_sync && '🔄'}
+                      </span>
                     </TableCell>
                     <TableCell className="text-center">
                       <Button
