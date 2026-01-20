@@ -430,6 +430,20 @@ const CashflowProjections = () => {
             </DialogContent>
           </Dialog>
           
+          {/* Currency Selector */}
+          <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
+            <SelectTrigger className="w-32" data-testid="currency-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CURRENCIES.map(c => (
+                <SelectItem key={c.code} value={c.code}>
+                  {c.symbol} {c.code}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
           <Dialog open={conceptDialogOpen} onOpenChange={setConceptDialogOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2 bg-[#0F172A]" data-testid="add-concept-btn">
