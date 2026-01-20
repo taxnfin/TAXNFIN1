@@ -16,7 +16,8 @@ import {
   DollarSign,
   CreditCard,
   Tags,
-  TrendingUp
+  TrendingUp,
+  FileSpreadsheet
 } from 'lucide-react';
 import {
   DropdownMenu,
