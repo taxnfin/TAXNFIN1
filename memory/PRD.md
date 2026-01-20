@@ -233,39 +233,37 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
-## Latest Updates (January 19, 2026)
+## Latest Updates (January 20, 2026)
 
 ### Completed in This Session ✅
 
-**Tipos de Cambio Históricos y Bancos**
-1. Almacenamiento de tipos de cambio diarios históricos
-2. Nuevo campo `fecha_saldo` en cuentas bancarias
-3. Conversión a MXN usando tipo de cambio de la fecha del saldo
-4. Helper `get_fx_rate_by_date()` para obtener TC por fecha
+**Selector de Moneda en Proyecciones**
+1. Selector dropdown MXN/USD/EUR en la barra de herramientas
+2. Conversión automática usando tipos de cambio actuales
+3. Muestra el TC usado en el subtítulo cuando no es MXN
+4. Todos los montos (saldo, ingresos, egresos) convertidos
 
-**Proyecciones Mejoradas**
-1. Inicio de semana configurable por empresa (Lunes-Domingo)
-2. Conceptos manuales de proyección guardados en backend
-3. **NUEVO**: Desglose de categorías y subcategorías expandibles
-4. Subcategorías con indentación visual └
+**Tabla de Tipos de Cambio Históricos - ARREGLADA**
+1. Muestra 7 registros de Banxico y OpenExchange
+2. Columnas: Fecha, Moneda, Tipo de Cambio (MXN), Fuente
+3. Fuentes coloreadas: banxico (azul), openexchange (naranja)
+4. Normalización de campos entre formatos antiguos y nuevos
 
-**Módulo de Aging**
-1. Columna "Moneda" para moneda de facturación
-2. Columna "Pendiente MXN" con conversión
-3. Botón "Actualizar T.C." para sync Banxico/OpenExchange
-4. Tipos de cambio en header
+**Scheduler de Tipos de Cambio - VERIFICADO**
+1. Scheduler activo con APScheduler
+2. Sincronización matutina: 9:00 AM México
+3. Sincronización vespertina: 1:00 PM México (FIX oficial)
+4. Status endpoint: `/api/fx-rates/scheduler-status`
 
-**Módulo de Reportes - ARREGLADO**
-1. Endpoint `/cashflow/weeks` genera 13 semanas dinámicamente
-2. Calcula ingresos/egresos por semana desde CFDIs
-3. Usa tipos de cambio históricos para saldos bancarios
-4. Balance corrido semana a semana
+**Tipos de Cambio Históricos**
+1. Almacenamiento por fecha en `fecha_vigencia`
+2. Helper `get_fx_rate_by_date()` para TC histórico
+3. Fecha en saldo de bancos para conversión correcta
 
-**Tipos de Cambio Banxico + OpenExchange**
-- Integración con API de Banxico (USD, EUR, GBP, JPY, CAD)
-- Integración con OpenExchange Rates (CHF, CNY)
-- Endpoint `/api/fx-rates/sync` para actualizar
-- Endpoint `/api/fx-rates/latest` para obtener tasas
+**Categorías y Subcategorías en Proyecciones**
+1. Categorías expandibles (Cobranza, Proveedores, etc.)
+2. Subcategorías indentadas con └
+3. Click para expandir/colapsar
 
 ---
 
