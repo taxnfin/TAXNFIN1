@@ -41,6 +41,10 @@ const CashflowProjections = () => {
   const [companyConfig, setCompanyConfig] = useState({ inicio_semana: 1 });
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   
+  // Currency selector for projections
+  const [selectedCurrency, setSelectedCurrency] = useState('MXN');
+  const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.50, EUR: 19.00 });
+  
   // Custom concepts state
   const [customConcepts, setCustomConcepts] = useState([]);
   const [conceptDialogOpen, setConceptDialogOpen] = useState(false);
@@ -53,6 +57,13 @@ const CashflowProjections = () => {
     mes: 1,
     recurrente: false
   });
+
+  // Currency list
+  const CURRENCIES = [
+    { code: 'MXN', name: 'Peso Mexicano', symbol: '$' },
+    { code: 'USD', name: 'Dólar', symbol: 'US$' },
+    { code: 'EUR', name: 'Euro', symbol: '€' },
+  ];
 
   useEffect(() => {
     loadData();
