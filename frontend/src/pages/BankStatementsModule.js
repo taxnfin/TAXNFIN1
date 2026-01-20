@@ -179,41 +179,126 @@ const BankStatementsModule = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (bankAccounts.length === 0) {
+      toast.error('Primero crea una cuenta bancaria');
+      return;
+    }
+
     try {
       const reader = new FileReader();
       reader.onload = async (event) => {
         const data = new Uint8Array(event.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
+        if (jsonData.length === 0) {
+          toast.error('El archivo está vacío');
+          return;
+        }
+
         let imported = 0;
+        let errors = 0;
+
         for (const row of jsonData) {
           try {
-            // Map Excel columns to API format
+            // Parse date - handle multiple formats
+            let fechaMovimiento = new Date();
+            const fechaRaw = row['fecha_movimiento'] || row['Fecha'] || row['FECHA'] || row['fecha'];
+            if (fechaRaw) {
+              if (fechaRaw instanceof Date) {
+                fechaMovimiento = fechaRaw;
+              } else if (typeof fechaRaw === 'string') {
+                // Try parsing different date formats
+                const parsed = new Date(fechaRaw);
+                if (!isNaN(parsed.getTime())) {
+                  fechaMovimiento = parsed;
+                }
+              }
+            }
+
+            // Parse amount - handle Cargo/Abono columns (common in Mexican banks)
+            let monto = 0;
+            let tipoMovimiento = 'credito';
+            
+            if (row['monto'] !== undefined || row['Monto'] !== undefined || row['MONTO'] !== undefined) {
+              monto = parseFloat(row['monto'] || row['Monto'] || row['MONTO'] || 0);
+              // If negative, it's a debit
+              if (monto < 0) {
+                tipoMovimiento = 'debito';
+                monto = Math.abs(monto);
+              }
+            } else if (row['Cargo'] !== undefined || row['CARGO'] !== undefined || row['cargo'] !== undefined) {
+              const cargo = parseFloat(row['Cargo'] || row['CARGO'] || row['cargo'] || 0);
+              const abono = parseFloat(row['Abono'] || row['ABONO'] || row['abono'] || 0);
+              if (cargo > 0) {
+                monto = cargo;
+                tipoMovimiento = 'debito';
+              } else if (abono > 0) {
+                monto = abono;
+                tipoMovimiento = 'credito';
+              }
+            } else if (row['Deposito'] || row['Depósito'] || row['DEPOSITO']) {
+              monto = parseFloat(row['Deposito'] || row['Depósito'] || row['DEPOSITO'] || 0);
+              tipoMovimiento = 'credito';
+            } else if (row['Retiro'] || row['RETIRO']) {
+              monto = parseFloat(row['Retiro'] || row['RETIRO'] || 0);
+              tipoMovimiento = 'debito';
+            }
+
+            // Handle tipo_movimiento column
+            const tipoRaw = row['tipo_movimiento'] || row['Tipo'] || row['TIPO'] || '';
+            if (tipoRaw) {
+              const tipoLower = tipoRaw.toString().toLowerCase();
+              if (tipoLower.includes('deb') || tipoLower.includes('cargo') || tipoLower.includes('retiro')) {
+                tipoMovimiento = 'debito';
+              } else if (tipoLower.includes('cred') || tipoLower.includes('abono') || tipoLower.includes('dep')) {
+                tipoMovimiento = 'credito';
+              }
+            }
+
+            // Get description
+            const descripcion = row['descripcion'] || row['Descripción'] || row['DESCRIPCION'] || 
+                               row['Concepto'] || row['CONCEPTO'] || row['concepto'] || 
+                               row['Movimiento'] || 'Movimiento importado';
+
+            // Get reference
+            const referencia = row['referencia'] || row['Referencia'] || row['REFERENCIA'] || 
+                              row['Ref'] || row['REF'] || '';
+
+            // Get saldo
+            const saldo = parseFloat(row['saldo'] || row['Saldo'] || row['SALDO'] || 0);
+
+            // Skip rows with 0 amount
+            if (monto === 0) continue;
+
             const txnData = {
-              bank_account_id: bankAccounts[0]?.id, // Default to first account
-              fecha_movimiento: new Date().toISOString(),
-              fecha_valor: new Date().toISOString(),
-              descripcion: row['Descripción'] || row['Concepto'] || row['descripcion'] || 'Movimiento importado',
-              referencia: row['Referencia'] || row['referencia'] || '',
-              monto: parseFloat(row['Monto'] || row['monto'] || row['Cargo'] || row['Abono'] || 0),
-              tipo_movimiento: (row['Tipo'] || '').toLowerCase().includes('dep') ? 'credito' : 'debito',
-              saldo: parseFloat(row['Saldo'] || row['saldo'] || 0),
+              bank_account_id: filterAccount !== 'all' ? filterAccount : bankAccounts[0]?.id,
+              fecha_movimiento: fechaMovimiento.toISOString(),
+              fecha_valor: fechaMovimiento.toISOString(),
+              descripcion: String(descripcion).substring(0, 500),
+              referencia: String(referencia).substring(0, 100),
+              monto: monto,
+              tipo_movimiento: tipoMovimiento,
+              saldo: saldo,
               fuente: 'excel_import'
             };
 
-            if (txnData.monto !== 0) {
-              await api.post('/bank-transactions', txnData);
-              imported++;
-            }
+            await api.post('/bank-transactions', txnData);
+            imported++;
           } catch (err) {
-            console.error('Error importing row:', err);
+            console.error('Error importing row:', row, err);
+            errors++;
           }
         }
 
-        toast.success(`${imported} movimientos importados`);
+        if (imported > 0) {
+          toast.success(`${imported} movimientos importados correctamente`);
+        }
+        if (errors > 0) {
+          toast.warning(`${errors} filas con errores`);
+        }
         loadData();
       };
       reader.readAsArrayBuffer(file);
