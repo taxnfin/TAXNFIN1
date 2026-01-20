@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { Upload, FileText, Trash2, TrendingUp, TrendingDown, RefreshCw, Tag, CheckCircle2, XCircle, Clock, Sparkles, Loader2, Eye, Download, Calendar, Filter } from 'lucide-react';
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
+import { exportCFDIs } from '@/utils/excelExport';
 import {
   AlertDialog,
   AlertDialogAction,
