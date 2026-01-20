@@ -751,6 +751,25 @@ const CFDIModule = () => {
                 </SelectContent>
               </Select>
             </div>
+            
+            {/* Subcategory Filter - only show if category is selected */}
+            {filterCategory !== 'all' && availableSubcategories.length > 0 && (
+              <div className="space-y-1">
+                <Label className="text-xs">Subcategoría</Label>
+                <Select value={filterSubcategory} onValueChange={setFilterSubcategory}>
+                  <SelectTrigger className="w-48" data-testid="filter-subcategory">
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {availableSubcategories.map(sub => (
+                      <SelectItem key={sub.id} value={sub.id}>{sub.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            
             <div className="space-y-1">
               <Label className="text-xs">Estado Conciliación</Label>
               <Select value={filterReconciliation} onValueChange={setFilterReconciliation}>
@@ -765,16 +784,58 @@ const CFDIModule = () => {
                 </SelectContent>
               </Select>
             </div>
-            <Button 
-              variant="outline" 
-              className="self-end"
-              onClick={() => {
-                setFilterCategory('all');
-                setFilterReconciliation('all');
-              }}
-            >
-              Limpiar Filtros
-            </Button>
+            
+            {/* Date Filters */}
+            <div className="space-y-1">
+              <Label className="text-xs flex items-center gap-1">
+                <Calendar size={12} />
+                Desde
+              </Label>
+              <Input
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="w-36"
+                data-testid="filter-date-from"
+              />
+            </div>
+            
+            <div className="space-y-1">
+              <Label className="text-xs flex items-center gap-1">
+                <Calendar size={12} />
+                Hasta
+              </Label>
+              <Input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                className="w-36"
+                data-testid="filter-date-to"
+              />
+            </div>
+            
+            <div className="flex gap-2 self-end">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={clearFilters}
+              >
+                <Filter size={14} className="mr-1" />
+                Limpiar
+              </Button>
+              
+              <Button 
+                variant="default"
+                size="sm"
+                onClick={exportToExcel}
+                disabled={exporting || filteredCfdis.length === 0}
+                className="bg-green-600 hover:bg-green-700"
+                data-testid="export-excel-btn"
+              >
+                {exporting ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Download size={14} className="mr-1" />}
+                Exportar Excel
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
