@@ -353,6 +353,17 @@ All critical features implemented and tested.
 
 ## Changelog
 
+### January 20, 2026
+- **Fixed Excel Export Feature**: Completed implementation of XLSX export across all 4 modules
+  - `CFDIModule.js`: Export CFDIs to Excel with categories, amounts, dates
+  - `PaymentsModule.js`: Export payments/collections to Excel  
+  - `Transactions.js` (Aging): Export aging report with CxC and CxP sheets
+  - `CashflowProjections.js`: Fixed to use XLSX instead of CSV, includes 13-week model
+- Created centralized export utility at `/frontend/src/utils/excelExport.js`
+- Uses `xlsx` library (v0.18.5) and `file-saver` (v2.0.5) for proper .xlsx file generation
+- All exports include proper date formatting, auto-column widths, and Spanish labels
+- Testing: 100% success rate on all 4 export modules
+
 ### January 18, 2026 (Session 2)
 - Implemented AI-powered categorization using GPT-5.2 via Emergent LLM Key
 - Created `/app/backend/ai_categorization_service.py` for AI integration
