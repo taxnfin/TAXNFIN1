@@ -115,6 +115,7 @@ function App() {
             <Route path="transactions" element={<Transactions />} />
             <Route path="cfdi" element={<CFDIModule />} />
             <Route path="bank" element={<BankModule />} />
+            <Route path="bank-statements" element={<BankStatementsModule />} />
             <Route path="payments" element={<PaymentsModule />} />
             <Route path="fx-rates" element={<FXRatesModule />} />
             <Route path="categories" element={<CategoriesModule />} />
