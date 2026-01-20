@@ -240,6 +240,10 @@ const BankStatementsModule = () => {
             <Link2 size={16} />
             Conectar Banco
           </Button>
+          <Button variant="outline" onClick={downloadTemplate} className="gap-2" data-testid="download-template-btn">
+            <FileSpreadsheet size={16} />
+            Descargar Plantilla
+          </Button>
           <label className="cursor-pointer">
             <input type="file" accept=".xlsx,.xls,.csv" onChange={handleImportExcel} className="hidden" />
             <Button variant="outline" className="gap-2" asChild>
