@@ -237,33 +237,27 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ### Completed in This Session ✅
 
+**Filtros Avanzados en CFDIs**
+1. Filtro por **categoría** (dropdown)
+2. Filtro por **subcategoría** (aparece cuando se selecciona categoría)
+3. Filtro por **fecha desde/hasta**
+4. Botón **"Limpiar"** para resetear filtros
+5. Botón **"Exportar Excel"** exporta CFDIs filtrados a CSV
+
+**Exportar Proyecciones a Excel**
+1. Botón **"Exportar Excel"** en proyecciones
+2. Exporta en la **moneda seleccionada** (MXN/USD/EUR)
+3. Incluye: Saldo inicial, Ingresos por categoría/subcategoría, Egresos, Flujo neto, Saldo final
+
 **Selector de Moneda en Proyecciones**
-1. Selector dropdown MXN/USD/EUR en la barra de herramientas
-2. Conversión automática usando tipos de cambio actuales
-3. Muestra el TC usado en el subtítulo cuando no es MXN
-4. Todos los montos (saldo, ingresos, egresos) convertidos
+1. Dropdown MXN/USD/EUR en la barra de herramientas
+2. Conversión automática de todos los montos
+3. TC visible cuando no es MXN
 
-**Tabla de Tipos de Cambio Históricos - ARREGLADA**
-1. Muestra 7 registros de Banxico y OpenExchange
-2. Columnas: Fecha, Moneda, Tipo de Cambio (MXN), Fuente
-3. Fuentes coloreadas: banxico (azul), openexchange (naranja)
-4. Normalización de campos entre formatos antiguos y nuevos
-
-**Scheduler de Tipos de Cambio - VERIFICADO**
-1. Scheduler activo con APScheduler
-2. Sincronización matutina: 9:00 AM México
-3. Sincronización vespertina: 1:00 PM México (FIX oficial)
-4. Status endpoint: `/api/fx-rates/scheduler-status`
-
-**Tipos de Cambio Históricos**
-1. Almacenamiento por fecha en `fecha_vigencia`
-2. Helper `get_fx_rate_by_date()` para TC histórico
-3. Fecha en saldo de bancos para conversión correcta
-
-**Categorías y Subcategorías en Proyecciones**
-1. Categorías expandibles (Cobranza, Proveedores, etc.)
-2. Subcategorías indentadas con └
-3. Click para expandir/colapsar
+**Categorías y Subcategorías - CORREGIDO**
+1. Montos ahora cuadran correctamente
+2. Subcategorías expandibles con └
+3. Totales por categoría = suma de subcategorías
 
 ---
 
