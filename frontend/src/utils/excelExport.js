@@ -88,11 +88,12 @@ export const exportMultiSheetExcel = (sheets, filename) => {
       }
     });
     
-    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    
+    // Generate filename with timestamp
     const timestamp = format(new Date(), 'yyyy-MM-dd_HHmm');
-    downloadFile(blob, `${filename}_${timestamp}.xlsx`);
+    const fullFilename = `${filename}_${timestamp}.xlsx`;
+    
+    // Use XLSX native writeFile for browser download
+    XLSX.writeFile(wb, fullFilename);
     
     return true;
   } catch (error) {
