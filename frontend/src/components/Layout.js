@@ -17,7 +17,8 @@ import {
   CreditCard,
   Tags,
   TrendingUp,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Receipt
 } from 'lucide-react';
 import {
   DropdownMenu,
