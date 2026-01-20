@@ -533,6 +533,212 @@ const BankModule = () => {
           </Card>
         </TabsContent>
 
+        <TabsContent value="statements">
+          <Card className="border-[#E2E8F0]">
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle>Estados de Cuenta</CardTitle>
+                  <CardDescription>
+                    Agrega movimientos manualmente mientras se obtiene acceso a los bancos para conciliación automática
+                  </CardDescription>
+                </div>
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="gap-2 bg-[#0F172A]" data-testid="add-statement-movement-btn">
+                      <Plus size={16} />
+                      Agregar Movimiento
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Nuevo Movimiento de Estado de Cuenta</DialogTitle>
+                      <DialogDescription>Captura un movimiento del estado de cuenta bancario</DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Cuenta Bancaria</Label>
+                        <Select value={formData.bank_account_id} onValueChange={(v) => setFormData({...formData, bank_account_id: v})}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar cuenta..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {bankAccounts.map(acc => (
+                              <SelectItem key={acc.id} value={acc.id}>
+                                {acc.banco} - {acc.nombre} ({acc.moneda})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Fecha Movimiento</Label>
+                          <Input 
+                            type="datetime-local" 
+                            value={formData.fecha_movimiento}
+                            onChange={(e) => setFormData({...formData, fecha_movimiento: e.target.value})}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Fecha Valor</Label>
+                          <Input 
+                            type="datetime-local" 
+                            value={formData.fecha_valor}
+                            onChange={(e) => setFormData({...formData, fecha_valor: e.target.value})}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Descripción/Concepto</Label>
+                        <Input 
+                          value={formData.descripcion}
+                          onChange={(e) => setFormData({...formData, descripcion: e.target.value})}
+                          placeholder="Ej: Transferencia recibida, Pago de nómina..."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Referencia</Label>
+                        <Input 
+                          value={formData.referencia}
+                          onChange={(e) => setFormData({...formData, referencia: e.target.value})}
+                          placeholder="Número de referencia o folio"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Tipo de Movimiento</Label>
+                          <Select value={formData.tipo_movimiento} onValueChange={(v) => setFormData({...formData, tipo_movimiento: v})}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="credito">
+                                <span className="flex items-center gap-2 text-green-600">
+                                  <Plus size={14} /> Depósito (Crédito)
+                                </span>
+                              </SelectItem>
+                              <SelectItem value="debito">
+                                <span className="flex items-center gap-2 text-red-600">
+                                  <DollarSign size={14} /> Retiro (Débito)
+                                </span>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Monto</Label>
+                          <Input 
+                            type="number" 
+                            step="0.01"
+                            value={formData.monto}
+                            onChange={(e) => setFormData({...formData, monto: e.target.value})}
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Saldo después del movimiento</Label>
+                        <Input 
+                          type="number" 
+                          step="0.01"
+                          value={formData.saldo}
+                          onChange={(e) => setFormData({...formData, saldo: e.target.value})}
+                          placeholder="Saldo en el estado de cuenta"
+                        />
+                      </div>
+                      <DialogFooter>
+                        <Button type="submit" className="bg-[#0F172A]">Guardar Movimiento</Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {bankAccounts.length === 0 ? (
+                <div className="text-center py-8 text-[#94A3B8]">
+                  <Building2 size={48} className="mx-auto mb-4 opacity-50" />
+                  <p>Primero crea una cuenta bancaria para poder agregar movimientos</p>
+                </div>
+              ) : bankTransactions.length === 0 ? (
+                <div className="text-center py-8 text-[#94A3B8]">
+                  <CreditCard size={48} className="mx-auto mb-4 opacity-50" />
+                  <p>No hay movimientos registrados</p>
+                  <p className="text-sm mt-2">Captura los movimientos de tu estado de cuenta bancario para poder conciliar con los CFDIs</p>
+                </div>
+              ) : (
+                <Table className="data-table">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Cuenta</TableHead>
+                      <TableHead>Descripción</TableHead>
+                      <TableHead>Referencia</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead className="text-right">Monto</TableHead>
+                      <TableHead className="text-right">Saldo</TableHead>
+                      <TableHead className="text-center">Estado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {bankTransactions.map((txn) => {
+                      const account = bankAccounts.find(a => a.id === txn.bank_account_id);
+                      return (
+                        <TableRow key={txn.id}>
+                          <TableCell className="mono text-sm">{format(new Date(txn.fecha_movimiento), 'dd/MM/yyyy')}</TableCell>
+                          <TableCell>
+                            <span className="text-xs bg-[#F1F5F9] px-2 py-1 rounded">
+                              {account?.banco || 'N/A'}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate">{txn.descripcion}</TableCell>
+                          <TableCell className="mono text-sm text-[#64748B]">{txn.referencia || '-'}</TableCell>
+                          <TableCell>
+                            <span className={`text-xs px-2 py-1 rounded font-medium ${
+                              txn.tipo_movimiento === 'credito' 
+                                ? 'bg-green-100 text-green-700' 
+                                : 'bg-red-100 text-red-700'
+                            }`}>
+                              {txn.tipo_movimiento === 'credito' ? 'Depósito' : 'Retiro'}
+                            </span>
+                          </TableCell>
+                          <TableCell className={`text-right mono font-semibold ${
+                            txn.tipo_movimiento === 'credito' ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {txn.tipo_movimiento === 'credito' ? '+' : '-'}${Math.abs(txn.monto).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                          </TableCell>
+                          <TableCell className="text-right mono">${txn.saldo.toLocaleString('es-MX', {minimumFractionDigits: 2})}</TableCell>
+                          <TableCell className="text-center">
+                            {txn.conciliado ? (
+                              <span className="flex items-center justify-center gap-1 text-green-600">
+                                <CheckCircle size={16} />
+                                <span className="text-xs">Conciliado</span>
+                              </span>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs"
+                                onClick={() => {
+                                  setSelectedBankTxn(txn);
+                                  setReconcileDialogOpen(true);
+                                }}
+                              >
+                                Conciliar
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="movements">
           <Card className="border-[#E2E8F0]">
             <CardHeader>
