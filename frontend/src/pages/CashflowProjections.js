@@ -270,7 +270,9 @@ const CashflowProjections = () => {
   };
 
   const formatCurrency = (amount) => {
-    return `$${(amount || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const converted = convertToCurrency(amount || 0);
+    const symbol = selectedCurrency === 'USD' ? 'US$' : selectedCurrency === 'EUR' ? '€' : '$';
+    return `${symbol}${converted.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   // Add custom concept - saves to backend
