@@ -2,21 +2,6 @@ import * as XLSX from 'xlsx';
 import { format } from 'date-fns';
 
 /**
- * Download blob as file using native browser method
- */
-const downloadFile = (blob, filename) => {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
-
-/**
  * Export data to Excel file (.xlsx)
  * @param {Array} data - Array of objects to export
  * @param {string} filename - Base filename (without extension)
@@ -53,12 +38,12 @@ export const exportToExcel = (data, filename, sheetName = 'Datos', options = {})
     // Add worksheet to workbook
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
     
-    // Generate Excel file and download
-    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    
+    // Generate filename with timestamp
     const timestamp = format(new Date(), 'yyyy-MM-dd_HHmm');
-    downloadFile(blob, `${filename}_${timestamp}.xlsx`);
+    const fullFilename = `${filename}_${timestamp}.xlsx`;
+    
+    // Use XLSX native writeFile for browser download
+    XLSX.writeFile(wb, fullFilename);
     
     return true;
   } catch (error) {
