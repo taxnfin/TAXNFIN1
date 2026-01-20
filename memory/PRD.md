@@ -273,22 +273,25 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 All critical features implemented and tested.
 
 ### P1 - High Priority
-1. **Restaurar datos de Ortech** - Usuario solicitó que NO se eliminen datos, posiblemente necesita re-subir XMLs
-2. **Refactor `server.py`** - Split into modular structure (routes/, models/, core/)
+1. **Refactor `server.py`** - Split into modular structure:
+   - `/app/backend/routes/` - API endpoints
+   - `/app/backend/models/` - Pydantic models
+   - `/app/backend/services/` - Business logic
+   - `/app/backend/core/` - Auth, DB, config
+2. **Notificaciones automáticas** - Alertas por email/SMS para vencimientos
 
 ### P2 - Medium Priority
-1. **Scheduler automático de tipos de cambio** - Actualizar automáticamente cada día
-2. **Secure Bank Connections** - Integrate with Plaid or Fintoc for real bank data
-3. **Email notifications** - Add email alerts alongside SMS
-4. **User management UI** - Admin panel for managing users and roles
+1. **Restaurar datos de Ortech** - Si el usuario tiene XMLs
+2. **Secure Bank Connections** - Integrate with Plaid or Fintoc
+3. **Email notifications** - Add email alerts
+4. **User management UI** - Admin panel
 
 ### P3 - Nice to Have
-1. **ISO 27001 Compliance** - Security and compliance standards (process-oriented)
+1. **ISO 27001 Compliance**
 2. **Mobile-responsive improvements**
 3. **Dark mode theme**
 4. **Export to Excel with charts**
 5. **API rate limiting**
-6. **Audit log viewer UI**
 
 ---
 
