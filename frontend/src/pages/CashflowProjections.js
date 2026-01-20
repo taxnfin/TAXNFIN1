@@ -564,10 +564,6 @@ const CashflowProjections = () => {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <Button variant="outline" className="gap-2">
-            <Download size={16} />
-            Exportar Excel
-          </Button>
         </div>
       </div>
 
