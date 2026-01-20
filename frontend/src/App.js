@@ -120,6 +120,7 @@ function App() {
             <Route path="catalogs" element={<Catalogs />} />
             <Route path="reports" element={<Reports />} />
             <Route path="projections" element={<CashflowProjections />} />
+            <Route path="diot" element={<DIOTModule />} />
             <Route path="advanced" element={<AdvancedFeatures />} />
             <Route path="admin" element={<Admin />} />
           </Route>
