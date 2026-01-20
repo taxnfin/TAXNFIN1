@@ -127,6 +127,25 @@ const BankStatementsModule = () => {
     }
   };
 
+  const downloadTemplate = async () => {
+    try {
+      const response = await api.get('/bank-transactions/template', {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'plantilla_estado_cuenta.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Plantilla descargada');
+    } catch (error) {
+      toast.error('Error descargando plantilla');
+    }
+  };
+
   const exportToExcel = () => {
     if (filteredTransactions.length === 0) {
       toast.error('No hay movimientos para exportar');
