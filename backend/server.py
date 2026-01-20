@@ -2559,6 +2559,123 @@ async def update_cfdi_notes(cfdi_id: str, request: Request, current_user: Dict =
     await audit_log(company_id, 'CFDI', cfdi_id, 'UPDATE_NOTES', current_user['id'])
     return {'status': 'success', 'message': 'Notas actualizadas'}
 
+# ===== DIOT (Declaración Informativa de Operaciones con Terceros) =====
+@api_router.get("/diot/preview")
+async def get_diot_preview(request: Request, current_user: Dict = Depends(get_current_user), fecha_desde: str = None, fecha_hasta: str = None):
+    """Get DIOT data preview - only paid EGRESO CFDIs"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get paid payments (only egresos) in date range
+    payment_query = {'company_id': company_id}
+    if fecha_desde or fecha_hasta:
+        payment_query['fecha_pago'] = {}
+        if fecha_desde:
+            payment_query['fecha_pago']['$gte'] = datetime.fromisoformat(fecha_desde.replace('Z', '+00:00')) if 'T' in fecha_desde else datetime.strptime(fecha_desde, '%Y-%m-%d')
+        if fecha_hasta:
+            fecha_hasta_dt = datetime.fromisoformat(fecha_hasta.replace('Z', '+00:00')) if 'T' in fecha_hasta else datetime.strptime(fecha_hasta, '%Y-%m-%d')
+            fecha_hasta_dt = fecha_hasta_dt.replace(hour=23, minute=59, second=59)
+            payment_query['fecha_pago']['$lte'] = fecha_hasta_dt
+    
+    payments = await db.payments.find(payment_query, {'_id': 0}).to_list(10000)
+    paid_cfdi_ids = [p.get('cfdi_id') for p in payments if p.get('cfdi_id')]
+    
+    # Get EGRESO CFDIs that have been paid
+    cfdi_query = {
+        'company_id': company_id,
+        'tipo_cfdi': 'egreso',
+        'id': {'$in': paid_cfdi_ids}
+    }
+    
+    cfdis = await db.cfdis.find(cfdi_query, {'_id': 0}).to_list(10000)
+    
+    # Create lookup for payments by CFDI ID
+    payments_by_cfdi = {}
+    for p in payments:
+        cfdi_id = p.get('cfdi_id')
+        if cfdi_id:
+            if cfdi_id not in payments_by_cfdi:
+                payments_by_cfdi[cfdi_id] = []
+            payments_by_cfdi[cfdi_id].append(p)
+    
+    # Get categories
+    categories = {c['id']: c for c in await db.categories.find({'company_id': company_id}, {'_id': 0}).to_list(1000)}
+    subcategories = {s['id']: s for s in await db.subcategories.find({'company_id': company_id}, {'_id': 0}).to_list(1000)}
+    
+    records = []
+    total_iva = 0
+    total_monto = 0
+    
+    for cfdi in cfdis:
+        cfdi_payments = payments_by_cfdi.get(cfdi['id'], [])
+        if not cfdi_payments:
+            continue
+            
+        # Use the most recent payment date
+        latest_payment = max(cfdi_payments, key=lambda p: p.get('fecha_pago', datetime.min))
+        fecha_pago = latest_payment.get('fecha_pago')
+        if isinstance(fecha_pago, datetime):
+            fecha_pago_str = fecha_pago.strftime('%Y-%m-%d')
+        else:
+            fecha_pago_str = str(fecha_pago)[:10] if fecha_pago else ''
+        
+        # Determine tipo_tercero based on RFC
+        rfc = cfdi.get('emisor_rfc', '')
+        if len(rfc) == 13:
+            tipo_tercero = '04'  # Persona Moral Nacional
+            tipo_tercero_desc = 'Proveedor Nacional (PM)'
+        elif len(rfc) == 12:
+            tipo_tercero = '04'  # Persona Física Nacional
+            tipo_tercero_desc = 'Proveedor Nacional (PF)'
+        elif rfc.startswith('XEXX') or rfc.startswith('XAXX'):
+            tipo_tercero = '05'  # Extranjero
+            tipo_tercero_desc = 'Proveedor Extranjero'
+        else:
+            tipo_tercero = '04'
+            tipo_tercero_desc = 'Proveedor Nacional'
+        
+        subtotal = cfdi.get('subtotal', 0) or 0
+        impuestos = cfdi.get('impuestos', 0) or 0
+        total = cfdi.get('total', 0) or 0
+        
+        # Calculate IVA components
+        iva_16 = impuestos if impuestos > 0 else round(subtotal * 0.16, 2)
+        
+        categoria = categories.get(cfdi.get('category_id'), {}).get('nombre', '')
+        subcategoria = subcategories.get(cfdi.get('subcategory_id'), {}).get('nombre', '')
+        
+        records.append({
+            'tipo_tercero': tipo_tercero,
+            'tipo_tercero_desc': tipo_tercero_desc,
+            'tipo_operacion': '85',  # Otros (default)
+            'tipo_operacion_desc': 'Otros',
+            'rfc': rfc,
+            'nombre': cfdi.get('emisor_nombre', ''),
+            'pais': 'MX',
+            'nacionalidad': 'Nacional',
+            'valor_actos_pagados': total,
+            'valor_actos_0': 0,
+            'valor_actos_exentos': 0,
+            'valor_actos_16': subtotal,
+            'iva_retenido': 0,
+            'iva_acreditable': iva_16,
+            'fecha_pago': fecha_pago_str,
+            'uuid': cfdi.get('uuid', ''),
+            'categoria': categoria,
+            'subcategoria': subcategoria
+        })
+        
+        total_iva += iva_16
+        total_monto += total
+    
+    return {
+        'records': records,
+        'summary': {
+            'totalOperaciones': len(records),
+            'totalIVA': round(total_iva, 2),
+            'totalMonto': round(total_monto, 2)
+        }
+    }
+
 # ===== EXPORTAR DIOT =====
 @api_router.get("/export/diot")
 async def export_diot(request: Request, current_user: Dict = Depends(get_current_user), fecha_desde: str = None, fecha_hasta: str = None):
