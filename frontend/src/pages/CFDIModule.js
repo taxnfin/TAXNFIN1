@@ -8,8 +8,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Upload, FileText, Trash2, TrendingUp, TrendingDown, RefreshCw, Tag, CheckCircle2, XCircle, Clock, Sparkles, Loader2, Eye } from 'lucide-react';
+import { Upload, FileText, Trash2, TrendingUp, TrendingDown, RefreshCw, Tag, CheckCircle2, XCircle, Clock, Sparkles, Loader2, Eye, Download, Calendar, Filter } from 'lucide-react';
 import { format } from 'date-fns';
+import { Input } from '@/components/ui/input';
 import {
   AlertDialog,
   AlertDialogAction,
