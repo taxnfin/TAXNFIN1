@@ -36,6 +36,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
     { name: 'CFDI / SAT', href: '/cfdi', icon: FileText },
     { name: 'Bancario', href: '/bank', icon: Building2 },
     { name: 'Cobranza y Pagos', href: '/payments', icon: CreditCard },
+    { name: 'DIOT', href: '/diot', icon: FileSpreadsheet },
     { name: 'Tipos de Cambio', href: '/fx-rates', icon: DollarSign },
     { name: 'Categorías', href: '/categories', icon: Tags },
     { name: 'Catálogos', href: '/catalogs', icon: FolderOpen },
