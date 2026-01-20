@@ -449,6 +449,7 @@ const BankModule = () => {
       <Tabs defaultValue="accounts" className="w-full">
         <TabsList>
           <TabsTrigger value="accounts">Cuentas Bancarias</TabsTrigger>
+          <TabsTrigger value="statements">Estados de Cuenta</TabsTrigger>
           <TabsTrigger value="movements">Movimientos</TabsTrigger>
           <TabsTrigger value="reconciliations">Conciliaciones</TabsTrigger>
         </TabsList>
