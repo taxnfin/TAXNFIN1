@@ -72,13 +72,14 @@ const CashflowProjections = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes] = await Promise.all([
+      const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes, fxRes] = await Promise.all([
         api.get('/cfdi?limit=500'),
         api.get('/categories'),
         api.get('/customers'),
         api.get('/vendors'),
         api.get('/bank-accounts/summary'),
-        api.get('/manual-projections')
+        api.get('/manual-projections'),
+        api.get('/fx-rates/latest')
       ]);
       
       setCfdis(cfdiRes.data);
@@ -89,6 +90,9 @@ const CashflowProjections = () => {
       // Get initial bank balance
       const totalBancosMXN = bankSummaryRes.data?.total_mxn || 0;
       setSaldoInicialBancos(totalBancosMXN);
+      
+      // Load FX rates
+      setFxRates(fxRes.data?.rates || { MXN: 1, USD: 17.50, EUR: 19.00 });
       
       // Load custom concepts from backend
       setCustomConcepts(conceptsRes.data || []);
