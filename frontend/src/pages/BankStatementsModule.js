@@ -321,7 +321,10 @@ const BankStatementsModule = () => {
             const saldo = parseFloat(row['saldo'] || row['Saldo'] || row['SALDO'] || 0);
 
             // Skip rows with 0 amount
-            if (monto === 0 || isNaN(monto)) continue;
+            if (monto === 0 || isNaN(monto)) {
+              console.log('Skipping row with 0 or NaN monto');
+              continue;
+            }
 
             const txnData = {
               bank_account_id: importAccountId,
@@ -335,10 +338,12 @@ const BankStatementsModule = () => {
               fuente: 'excel_import'
             };
 
-            await api.post('/bank-transactions', txnData);
+            console.log('Sending transaction:', txnData);
+            const response = await api.post('/bank-transactions', txnData);
+            console.log('Transaction created:', response.data);
             imported++;
           } catch (err) {
-            console.error('Error importing row:', row, err);
+            console.error('Error importing row:', row, 'Error:', err.response?.data || err.message);
             errors++;
           }
         }
