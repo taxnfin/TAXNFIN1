@@ -3372,6 +3372,39 @@ def parse_bbva_pdf(text: str, tables: List, saldo_inicial: float = None) -> List
     return parse_generic_pdf(text, tables, saldo_inicial)
 
 
+# Keywords for deposit/withdrawal detection (shared across parsers)
+DEPOSIT_KEYWORDS = [
+    'DEPOSITO', 'ABONO', 'TRANSFERENCIA RECIBIDA', 'SPEI REC', 
+    'PAGO RECIBIDO', 'DEP ', 'COBRANZA', 'INGRESO', 'CREDITO',
+    'RECEPCION', 'BONIFICACION', 'DEVOLUCION', 'REEMBOLSO',
+    'TRANSFER IN', 'CREDIT', 'NOMINA', 'INTERES GANADO'
+]
+
+WITHDRAWAL_KEYWORDS = [
+    'RETIRO', 'CARGO', 'COMISION', 'IVA ', 'PAGO ', 'TRANSFERENCIA ENV',
+    'SPEI ENV', 'SERVICIO', 'ENVIO', 'DISPOSICION', 'CHEQUE',
+    'DOMICILIACION', 'ANUALIDAD', 'MANEJO', 'TRASPASO', 'COMPRA',
+    'TRANSFER OUT', 'DEBIT', 'FEE', 'PAYMENT'
+]
+
+
+def is_deposit_transaction(desc: str) -> bool:
+    """Determine if transaction is a deposit based on description keywords"""
+    desc_upper = desc.upper()
+    
+    # Check for deposit keywords
+    for kw in DEPOSIT_KEYWORDS:
+        if kw in desc_upper:
+            return True
+    
+    # Check for withdrawal keywords
+    for kw in WITHDRAWAL_KEYWORDS:
+        if kw in desc_upper:
+            return False
+    
+    return None  # Unknown - will default to withdrawal
+
+
 def parse_generic_pdf(text: str, tables: List, saldo_inicial: float = None) -> List[Dict]:
     """Parse generic bank statement with common patterns"""
     import re
