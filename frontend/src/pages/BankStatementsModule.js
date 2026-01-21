@@ -297,17 +297,6 @@ const BankStatementsModule = () => {
               tipoMovimiento = 'debito';
             }
 
-            // Handle tipo_movimiento column
-            const tipoRaw = row['tipo_movimiento'] || row['Tipo'] || row['TIPO'] || '';
-            if (tipoRaw) {
-              const tipoLower = tipoRaw.toString().toLowerCase();
-              if (tipoLower.includes('deb') || tipoLower.includes('cargo') || tipoLower.includes('retiro')) {
-                tipoMovimiento = 'debito';
-              } else if (tipoLower.includes('cred') || tipoLower.includes('abono') || tipoLower.includes('dep')) {
-                tipoMovimiento = 'credito';
-              }
-            }
-
             // Get description
             const descripcion = row['descripcion'] || row['Descripción'] || row['DESCRIPCION'] || 
                                row['Concepto'] || row['CONCEPTO'] || row['concepto'] || 
