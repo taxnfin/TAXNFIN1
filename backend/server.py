@@ -3392,12 +3392,27 @@ def is_deposit_transaction(desc: str) -> bool:
 
 
 def parse_generic_pdf(text: str, tables: List, saldo_inicial: float = None) -> List[Dict]:
-    """Parse generic bank statement with common patterns"""
+    """
+    Parse generic bank statement with common patterns.
+    Uses column position detection first, then falls back to keyword detection.
+    """
     import re
     from datetime import datetime
     
     transactions = []
     current_year = datetime.now().year
+    
+    def parse_amount(cell: str) -> float:
+        """Parse a monetary amount from a cell"""
+        if not cell or not cell.strip():
+            return 0
+        clean = re.sub(r'[\$\s]', '', str(cell))
+        clean = clean.replace(',', '')
+        try:
+            val = float(clean) if clean else 0
+            return val if val > 0 else 0
+        except:
+            return 0
     
     # Common date patterns
     date_patterns = [
@@ -3405,70 +3420,136 @@ def parse_generic_pdf(text: str, tables: List, saldo_inicial: float = None) -> L
         r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})',    # YYYY-MM-DD
     ]
     
+    months_es = {
+        'ENE': '01', 'FEB': '02', 'MAR': '03', 'ABR': '04',
+        'MAY': '05', 'JUN': '06', 'JUL': '07', 'AGO': '08',
+        'SEP': '09', 'OCT': '10', 'NOV': '11', 'DIC': '12'
+    }
+    
     # Try table extraction first
     for table in tables:
         if not table or len(table) < 2:
             continue
         
-        for row in table[1:]:  # Skip header
+        # Look for header row with column names
+        deposito_col = None
+        retiro_col = None
+        cargo_col = None
+        abono_col = None
+        saldo_col = None
+        header_idx = 0
+        
+        for idx, row in enumerate(table[:3]):
+            if not row:
+                continue
+            row_text = ' '.join([str(cell or '').upper() for cell in row])
+            
+            if any(kw in row_text for kw in ['DEPOSITO', 'RETIRO', 'CARGO', 'ABONO', 'SALDO']):
+                header_idx = idx
+                for col_idx, cell in enumerate(row):
+                    cell_upper = str(cell or '').upper()
+                    if 'DEPOSITO' in cell_upper or 'ABONO' in cell_upper:
+                        deposito_col = col_idx
+                    elif 'RETIRO' in cell_upper or 'CARGO' in cell_upper:
+                        retiro_col = col_idx
+                    elif 'SALDO' in cell_upper:
+                        saldo_col = col_idx
+                break
+        
+        # Process data rows
+        for row in table[header_idx + 1:]:
             if not row or not any(row):
                 continue
             
             try:
                 row_str = ' '.join([str(cell or '') for cell in row])
+                row_cleaned = [str(cell or '').strip() for cell in row]
+                
+                # Skip header-like rows
+                if any(kw in row_str.upper() for kw in ['SALDO INICIAL', 'SALDO ANTERIOR', 'FECHA', 'DEPOSITO']):
+                    continue
                 
                 # Find date
                 fecha = None
-                for pattern in date_patterns:
-                    match = re.search(pattern, row_str)
-                    if match:
-                        groups = match.groups()
-                        if len(groups[0]) == 4:  # YYYY-MM-DD
-                            fecha = f"{groups[0]}-{groups[1].zfill(2)}-{groups[2].zfill(2)}"
-                        else:  # DD-MM-YYYY
-                            year = groups[2] if len(groups[2]) == 4 else f"20{groups[2]}"
-                            fecha = f"{year}-{groups[1].zfill(2)}-{groups[0].zfill(2)}"
+                for cell in row_cleaned:
+                    # Spanish month format
+                    date_match = re.search(r'(\d{1,2})\s*(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)', cell.upper())
+                    if date_match:
+                        day = date_match.group(1).zfill(2)
+                        month = months_es.get(date_match.group(2), '01')
+                        fecha = f"{current_year}-{month}-{day}"
+                        break
+                    
+                    # Numeric date format
+                    for pattern in date_patterns:
+                        match = re.search(pattern, cell)
+                        if match:
+                            groups = match.groups()
+                            if len(groups[0]) == 4:  # YYYY-MM-DD
+                                fecha = f"{groups[0]}-{groups[1].zfill(2)}-{groups[2].zfill(2)}"
+                            else:  # DD-MM-YYYY
+                                year = groups[2] if len(groups[2]) == 4 else f"20{groups[2]}"
+                                fecha = f"{year}-{groups[1].zfill(2)}-{groups[0].zfill(2)}"
+                            break
+                    if fecha:
                         break
                 
                 if not fecha:
                     continue
                 
-                # Extract all numeric values (potential amounts)
-                amounts = re.findall(r'\$?\s*([\d,]+\.?\d*)', row_str)
-                amounts = [float(a.replace(',', '')) for a in amounts if a and float(a.replace(',', '')) > 0]
+                # Extract amounts based on column positions if available
+                deposito = 0
+                retiro = 0
+                saldo = 0
                 
-                # Find description (longest text that's not a number)
+                if deposito_col is not None and deposito_col < len(row_cleaned):
+                    deposito = parse_amount(row_cleaned[deposito_col])
+                
+                if retiro_col is not None and retiro_col < len(row_cleaned):
+                    retiro = parse_amount(row_cleaned[retiro_col])
+                
+                if saldo_col is not None and saldo_col < len(row_cleaned):
+                    saldo = parse_amount(row_cleaned[saldo_col])
+                
+                # Find description
                 descripcion = ""
-                for cell in row:
+                for idx, cell in enumerate(row_cleaned):
+                    if idx in [deposito_col, retiro_col, saldo_col]:
+                        continue
                     cell_str = str(cell or '').strip()
                     if cell_str and len(cell_str) > len(descripcion) and not re.match(r'^[\d\$\.,\s/-]+$', cell_str):
                         descripcion = cell_str
                 
-                if amounts:
-                    # Determine deposit vs withdrawal using shared function
-                    deposito = 0
-                    retiro = 0
-                    saldo = amounts[-1] if len(amounts) > 1 else 0
-                    monto = amounts[0] if len(amounts) >= 1 else 0
+                # If no column positions found, use position-based detection
+                if deposito_col is None and retiro_col is None:
+                    amounts = []
+                    for cell in row_cleaned:
+                        val = parse_amount(cell)
+                        if val > 0:
+                            amounts.append(val)
                     
-                    # Use the shared keyword detection
-                    is_dep = is_deposit_transaction(descripcion)
-                    
-                    if is_dep is True:
-                        deposito = monto
-                    else:
-                        # Default to withdrawal if unknown or explicitly withdrawal
-                        retiro = monto
-                    
-                    if deposito > 0 or retiro > 0:
-                        transactions.append({
-                            'fecha': fecha,
-                            'descripcion': descripcion or 'Movimiento',
-                            'deposito': deposito,
-                            'retiro': retiro,
-                            'saldo': saldo,
-                            'referencia': ''
-                        })
+                    if amounts:
+                        saldo = amounts[-1] if len(amounts) > 1 else 0
+                        monto = amounts[0] if amounts else 0
+                        
+                        # Use keyword detection
+                        normalized_desc = normalize_text_for_keywords(descripcion)
+                        is_dep = is_deposit_transaction(normalized_desc)
+                        
+                        if is_dep is True:
+                            deposito = monto
+                        else:
+                            retiro = monto
+                
+                if deposito > 0 or retiro > 0:
+                    transactions.append({
+                        'fecha': fecha,
+                        'descripcion': descripcion or 'Movimiento',
+                        'deposito': deposito,
+                        'retiro': retiro,
+                        'saldo': saldo,
+                        'referencia': ''
+                    })
                     
             except Exception:
                 continue
