@@ -3163,61 +3163,6 @@ def parse_mexican_bank_pdf(text: str, tables: List, pdf, saldo_inicial: float = 
 
 
 def parse_banorte_pdf(text: str, tables: List, saldo_inicial: float = None) -> List[Dict]:
-        if not fecha and last_valid_date and len(amounts) >= 2:
-            fecha = last_valid_date
-        
-        if not fecha:
-            continue
-        
-        # Get description
-        first_amount_match = re.search(r'\$?\s*[\d,]+\.\d{2}', line)
-        if first_amount_match:
-            desc_part = line[:first_amount_match.start()]
-            desc_part = re.sub(r'\d{1,2}\s*(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)', '', desc_part, flags=re.IGNORECASE)
-            descripcion = desc_part.strip()
-        else:
-            descripcion = ""
-        
-        # Parse amounts: last 3 are DEPOSITO, RETIRO, SALDO
-        deposito = 0
-        retiro = 0
-        saldo = amounts[-1] if amounts else 0
-        
-        if len(amounts) >= 3:
-            dep_val = amounts[-3]
-            ret_val = amounts[-2]
-            
-            # One of them should be the actual movement, the other should be 0 or very small
-            if dep_val > 0 and ret_val == 0:
-                deposito = dep_val
-            elif ret_val > 0 and dep_val == 0:
-                retiro = ret_val
-            elif dep_val > 0 and ret_val > 0:
-                # Both have values - unusual, but take them as is
-                deposito = dep_val
-                retiro = ret_val
-        elif len(amounts) == 2:
-            monto = amounts[0]
-            saldo = amounts[1]
-            if any(kw in descripcion.upper() for kw in ['DEPOSITO', 'ABONO', 'INGRESO', 'RECIBID']):
-                deposito = monto
-            else:
-                retiro = monto
-        
-        if deposito > 0 or retiro > 0:
-            transactions.append({
-                'fecha': fecha,
-                'descripcion': descripcion[:200] or 'Movimiento bancario',
-                'deposito': deposito,
-                'retiro': retiro,
-                'saldo': saldo,
-                'referencia': ''
-            })
-    
-    return transactions
-
-
-def parse_banorte_pdf(text: str, tables: List, saldo_inicial: float = None) -> List[Dict]:
     """
     Parse Banorte bank statement format.
     Column order: FECHA | NO. REF. | DESCRIPCION | DEPOSITOS | RETIROS | SALDO
