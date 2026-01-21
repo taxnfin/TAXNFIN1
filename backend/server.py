@@ -3539,17 +3539,16 @@ def parse_santander_pdf(text: str, tables: List, saldo_inicial: float = None) ->
                 
                 if len(amounts) >= 2:
                     monto = float(amounts[-2].replace(',', ''))
-                    # Determine type by keywords
-                    desc_upper = descripcion.upper()
-                    if any(kw in desc_upper for kw in ['DEPOSITO', 'ABONO', 'TRANSFERENCIA', 'SPEI']):
+                    # Use shared keyword detection
+                    is_dep = is_deposit_transaction(descripcion)
+                    if is_dep is True:
                         deposito = monto
                     else:
                         retiro = monto
                 elif len(amounts) == 1:
-                    # Single amount - try to determine from description
                     monto = float(amounts[0].replace(',', ''))
-                    desc_upper = descripcion.upper()
-                    if any(kw in desc_upper for kw in ['DEPOSITO', 'ABONO']):
+                    is_dep = is_deposit_transaction(descripcion)
+                    if is_dep is True:
                         deposito = monto
                     else:
                         retiro = monto
