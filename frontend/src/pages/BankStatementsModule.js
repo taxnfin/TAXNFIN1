@@ -882,6 +882,107 @@ const BankStatementsModule = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Import Dialog - Select Account */}
+      <Dialog open={importDialogOpen} onOpenChange={(open) => {
+        if (!open && !importing) {
+          setImportDialogOpen(false);
+          setImportFile(null);
+          setImportAccountId('');
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload size={20} />
+              Importar Estado de Cuenta
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona la cuenta bancaria donde se registrarán los movimientos
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {importFile && (
+              <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg">
+                <FileSpreadsheet size={20} className="text-blue-600" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">{importFile.name}</p>
+                  <p className="text-xs text-gray-500">{(importFile.size / 1024).toFixed(1)} KB</p>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Cuenta Bancaria Destino *</Label>
+              <Select value={importAccountId} onValueChange={setImportAccountId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar cuenta..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {bankAccounts.map(acc => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      <div className="flex items-center gap-2">
+                        <Building2 size={14} className="text-gray-500" />
+                        <span className="font-medium">{acc.banco}</span>
+                        <span className="text-gray-500">-</span>
+                        <span>{acc.nombre}</span>
+                        <span className={`ml-2 text-xs px-2 py-0.5 rounded ${
+                          acc.moneda === 'USD' ? 'bg-blue-100 text-blue-700' :
+                          acc.moneda === 'EUR' ? 'bg-purple-100 text-purple-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {acc.moneda}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">
+                Los movimientos se importarán a esta cuenta. Asegúrate de seleccionar la cuenta correcta según la moneda del estado de cuenta.
+              </p>
+            </div>
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <p className="text-sm text-yellow-800">
+                <strong>Importante:</strong> Verifica que la moneda del archivo coincida con la cuenta seleccionada.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setImportDialogOpen(false);
+                setImportFile(null);
+                setImportAccountId('');
+              }}
+              disabled={importing}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              onClick={processImport} 
+              disabled={!importAccountId || importing}
+              className="bg-[#0F172A]"
+            >
+              {importing ? (
+                <>
+                  <RefreshCw size={16} className="mr-2 animate-spin" />
+                  Importando...
+                </>
+              ) : (
+                <>
+                  <Upload size={16} className="mr-2" />
+                  Importar Movimientos
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
