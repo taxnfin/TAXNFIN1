@@ -453,6 +453,14 @@ const BankStatementsModule = () => {
     .filter(t => t.tipo_movimiento === 'debito')
     .reduce((sum, t) => sum + t.monto, 0);
   const pendientesConciliar = filteredTransactions.filter(t => !t.conciliado).length;
+  
+  // Get selected account's initial balance and currency
+  const selectedAccount = filterAccount !== 'all' 
+    ? bankAccounts.find(a => a.id === filterAccount)
+    : null;
+  const saldoInicial = selectedAccount?.saldo_inicial || 0;
+  const monedaCuenta = selectedAccount?.moneda || 'MXN';
+  const saldoFinal = saldoInicial + totalDepositos - totalRetiros;
 
   if (loading) return <div className="p-8">Cargando...</div>;
 
@@ -462,9 +470,9 @@ const BankStatementsModule = () => {
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{fontFamily: 'Manrope'}}>
-            Estados de Cuenta
+            Conciliaciones Bancarias
           </h1>
-          <p className="text-[#64748B]">Gestión de movimientos bancarios y conciliación</p>
+          <p className="text-[#64748B]">Gestión de movimientos bancarios y conciliación con CFDIs</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setConnectDialogOpen(true)} className="gap-2" data-testid="connect-bank-btn">
