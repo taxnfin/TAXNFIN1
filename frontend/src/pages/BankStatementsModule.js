@@ -35,6 +35,8 @@ const BankStatementsModule = () => {
   const [importFile, setImportFile] = useState(null);
   const [importAccountId, setImportAccountId] = useState('');
   const [importing, setImporting] = useState(false);
+  const [duplicatesFound, setDuplicatesFound] = useState([]);
+  const [skipDuplicates, setSkipDuplicates] = useState(true);
 
   const [formData, setFormData] = useState({
     bank_account_id: '',
