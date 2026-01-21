@@ -792,9 +792,14 @@ const BankStatementsModule = () => {
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold text-green-700">
-              {monedaCuenta !== 'MXN' && <span className="text-xs text-green-500">{monedaCuenta} </span>}
               ${totalDepositos.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              {monedaCuenta !== 'MXN' && <span className="text-xs ml-1">{monedaCuenta}</span>}
             </div>
+            {monedaCuenta !== 'MXN' && (
+              <p className="text-xs text-green-600 mt-1">
+                ≈ ${convertToMXN(totalDepositos, monedaCuenta).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -807,9 +812,14 @@ const BankStatementsModule = () => {
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold text-red-700">
-              {monedaCuenta !== 'MXN' && <span className="text-xs text-red-500">{monedaCuenta} </span>}
               ${totalRetiros.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              {monedaCuenta !== 'MXN' && <span className="text-xs ml-1">{monedaCuenta}</span>}
             </div>
+            {monedaCuenta !== 'MXN' && (
+              <p className="text-xs text-red-600 mt-1">
+                ≈ ${convertToMXN(totalRetiros, monedaCuenta).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -822,9 +832,14 @@ const BankStatementsModule = () => {
           </CardHeader>
           <CardContent>
             <div className={`text-xl font-bold ${saldoFinal >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
-              {monedaCuenta !== 'MXN' && <span className="text-xs">{monedaCuenta} </span>}
               ${saldoFinal.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              {monedaCuenta !== 'MXN' && <span className="text-xs ml-1">{monedaCuenta}</span>}
             </div>
+            {monedaCuenta !== 'MXN' && (
+              <p className={`text-xs mt-1 ${saldoFinal >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                ≈ ${convertToMXN(saldoFinal, monedaCuenta).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+              </p>
+            )}
           </CardContent>
         </Card>
 
