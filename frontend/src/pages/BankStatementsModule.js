@@ -39,6 +39,10 @@ const BankStatementsModule = () => {
   const [skipDuplicates, setSkipDuplicates] = useState(true);
   const [selectedCfdis, setSelectedCfdis] = useState([]);
   const [cfdiSearchTerm, setCfdiSearchTerm] = useState('');
+  const [importPdfDialogOpen, setImportPdfDialogOpen] = useState(false);
+  const [pdfFile, setPdfFile] = useState(null);
+  const [pdfAccountId, setPdfAccountId] = useState('');
+  const [importingPdf, setImportingPdf] = useState(false);
 
   const [formData, setFormData] = useState({
     bank_account_id: '',
