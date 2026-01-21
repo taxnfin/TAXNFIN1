@@ -2192,14 +2192,206 @@ async def create_payment(payment_data: PaymentCreate, request: Request, current_
     company_id = await get_active_company_id(request, current_user)
     payment = Payment(company_id=company_id, **payment_data.model_dump())
     doc = payment.model_dump()
+    
+    # If payment is "Real", automatically mark as completed
+    if doc.get('es_real') == True:
+        doc['estatus'] = 'completado'
+        doc['fecha_pago'] = datetime.now(timezone.utc).isoformat()
+    
     for field in ['fecha_vencimiento', 'created_at']:
         if doc.get(field):
             doc[field] = doc[field].isoformat()
-    if doc.get('fecha_pago'):
+    if doc.get('fecha_pago') and not isinstance(doc['fecha_pago'], str):
         doc['fecha_pago'] = doc['fecha_pago'].isoformat()
+    
     await db.payments.insert_one(doc)
+    
+    # If payment is real and linked to a CFDI, update the CFDI's collected/paid amount
+    if doc.get('es_real') == True and doc.get('cfdi_id'):
+        cfdi = await db.cfdis.find_one({'id': doc['cfdi_id']}, {'_id': 0})
+        if cfdi:
+            if doc['tipo'] == 'cobro':
+                current_cobrado = cfdi.get('monto_cobrado', 0) or 0
+                new_cobrado = current_cobrado + doc['monto']
+                await db.cfdis.update_one(
+                    {'id': doc['cfdi_id']},
+                    {'$set': {'monto_cobrado': new_cobrado}}
+                )
+                logger.info(f"Auto-completed payment: Updated CFDI {doc['cfdi_id']} monto_cobrado: {current_cobrado} -> {new_cobrado}")
+            else:
+                current_pagado = cfdi.get('monto_pagado', 0) or 0
+                new_pagado = current_pagado + doc['monto']
+                await db.cfdis.update_one(
+                    {'id': doc['cfdi_id']},
+                    {'$set': {'monto_pagado': new_pagado}}
+                )
+                logger.info(f"Auto-completed payment: Updated CFDI {doc['cfdi_id']} monto_pagado: {current_pagado} -> {new_pagado}")
+    
     await audit_log(company_id, 'Payment', payment.id, 'CREATE', current_user['id'])
     return payment
+
+
+@api_router.get("/payments/{payment_id}/match-candidates")
+async def get_payment_match_candidates(
+    payment_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Find bank transactions that could match this payment.
+    Searches by:
+    - UUID of the linked CFDI in the transaction description
+    - Similar amount (+/- 1%)
+    - Date within 30 days
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    payment = await db.payments.find_one({'id': payment_id, 'company_id': company_id}, {'_id': 0})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    
+    candidates = []
+    
+    # Get the linked CFDI if exists
+    cfdi = None
+    cfdi_uuid = None
+    if payment.get('cfdi_id'):
+        cfdi = await db.cfdis.find_one({'id': payment['cfdi_id']}, {'_id': 0})
+        if cfdi:
+            cfdi_uuid = cfdi.get('uuid', '')
+    
+    # Search bank transactions
+    # Criteria: not yet reconciled, same company, similar amount or matching UUID
+    monto = payment.get('monto', 0)
+    moneda = payment.get('moneda', 'MXN')
+    tipo_esperado = 'credito' if payment['tipo'] == 'cobro' else 'debito'
+    
+    # Build query
+    query = {
+        'company_id': company_id,
+        'conciliado': False
+    }
+    
+    # Get all unreconciled transactions
+    transactions = await db.bank_transactions.find(query, {'_id': 0}).to_list(500)
+    
+    for txn in transactions:
+        score = 0
+        match_reasons = []
+        
+        # Check if UUID is in description
+        if cfdi_uuid and cfdi_uuid.upper() in (txn.get('descripcion', '') + txn.get('referencia', '')).upper():
+            score += 100
+            match_reasons.append(f"UUID encontrado en descripción")
+        
+        # Check amount (within 1% tolerance or exact)
+        txn_monto = txn.get('monto', 0)
+        if txn_monto > 0:
+            diff_pct = abs(txn_monto - monto) / monto * 100 if monto > 0 else 100
+            if diff_pct < 0.01:  # Exact match
+                score += 80
+                match_reasons.append(f"Monto exacto")
+            elif diff_pct < 1:  # Within 1%
+                score += 60
+                match_reasons.append(f"Monto similar ({diff_pct:.2f}% diferencia)")
+            elif diff_pct < 5:  # Within 5%
+                score += 30
+                match_reasons.append(f"Monto cercano ({diff_pct:.2f}% diferencia)")
+        
+        # Check transaction type matches
+        if txn.get('tipo_movimiento') == tipo_esperado:
+            score += 20
+            match_reasons.append(f"Tipo coincide ({tipo_esperado})")
+        
+        # Check currency matches
+        if txn.get('moneda', 'MXN') == moneda:
+            score += 10
+            match_reasons.append(f"Moneda coincide ({moneda})")
+        
+        # Only include if score is meaningful
+        if score >= 30:
+            # Get bank account info
+            bank_account = await db.bank_accounts.find_one({'id': txn.get('bank_account_id')}, {'_id': 0, 'banco': 1, 'nombre': 1})
+            
+            candidates.append({
+                'transaction_id': txn['id'],
+                'fecha': txn.get('fecha_movimiento'),
+                'descripcion': txn.get('descripcion', '')[:100],
+                'referencia': txn.get('referencia', ''),
+                'monto': txn_monto,
+                'tipo': txn.get('tipo_movimiento'),
+                'moneda': txn.get('moneda', 'MXN'),
+                'banco': bank_account.get('banco', '') if bank_account else '',
+                'cuenta': bank_account.get('nombre', '') if bank_account else '',
+                'score': score,
+                'match_reasons': match_reasons
+            })
+    
+    # Sort by score descending
+    candidates.sort(key=lambda x: x['score'], reverse=True)
+    
+    return {
+        'payment_id': payment_id,
+        'payment_monto': monto,
+        'payment_moneda': moneda,
+        'payment_tipo': payment['tipo'],
+        'cfdi_uuid': cfdi_uuid,
+        'candidates': candidates[:10],  # Top 10 matches
+        'total_found': len(candidates)
+    }
+
+
+@api_router.post("/payments/{payment_id}/auto-reconcile")
+async def auto_reconcile_payment(
+    payment_id: str,
+    request: Request,
+    transaction_id: str = Query(..., description="ID del movimiento bancario a conciliar"),
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Reconcile a payment with a bank transaction after user authorization.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    payment = await db.payments.find_one({'id': payment_id, 'company_id': company_id}, {'_id': 0})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    
+    transaction = await db.bank_transactions.find_one({'id': transaction_id, 'company_id': company_id}, {'_id': 0})
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Movimiento bancario no encontrado")
+    
+    if transaction.get('conciliado'):
+        raise HTTPException(status_code=400, detail="El movimiento ya está conciliado")
+    
+    # Mark transaction as reconciled and link to payment
+    await db.bank_transactions.update_one(
+        {'id': transaction_id},
+        {'$set': {
+            'conciliado': True,
+            'payment_id': payment_id,
+            'cfdi_ids': [payment.get('cfdi_id')] if payment.get('cfdi_id') else [],
+            'fecha_conciliacion': datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    # Update payment with transaction reference
+    await db.payments.update_one(
+        {'id': payment_id},
+        {'$set': {
+            'bank_transaction_id': transaction_id,
+            'conciliado': True
+        }}
+    )
+    
+    await audit_log(company_id, 'Payment', payment_id, 'AUTO_RECONCILE', current_user['id'])
+    
+    return {
+        'status': 'success',
+        'message': 'Pago conciliado exitosamente',
+        'payment_id': payment_id,
+        'transaction_id': transaction_id
+    }
 
 @api_router.get("/payments")
 async def list_payments(
