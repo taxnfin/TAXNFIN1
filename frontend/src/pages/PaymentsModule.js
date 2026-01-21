@@ -1044,6 +1044,24 @@ const PaymentsModule = () => {
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                          onClick={() => handleView(payment)}
+                          title="Ver detalles"
+                        >
+                          <Eye size={16} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-gray-600 hover:text-gray-800 hover:bg-gray-50"
+                          onClick={() => handleEdit(payment)}
+                          title="Editar pago"
+                        >
+                          <Edit size={16} />
+                        </Button>
                         {payment.estatus === 'pendiente' && (
                           <Button
                             variant="ghost"
@@ -1104,6 +1122,242 @@ const PaymentsModule = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* View Payment Dialog */}
+      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Detalles del {selectedPayment?.tipo === 'cobro' ? 'Cobro' : 'Pago'}</DialogTitle>
+          </DialogHeader>
+          {selectedPayment && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Tipo</p>
+                  <p className={`font-medium ${selectedPayment.tipo === 'cobro' ? 'text-green-600' : 'text-red-600'}`}>
+                    {selectedPayment.tipo === 'cobro' ? 'Cobro (Ingreso)' : 'Pago (Egreso)'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Estatus</p>
+                  <p className={`font-medium ${PAYMENT_STATUS[selectedPayment.estatus]?.color?.includes('green') ? 'text-green-600' : ''}`}>
+                    {PAYMENT_STATUS[selectedPayment.estatus]?.label || selectedPayment.estatus}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Monto</p>
+                <p className={`text-2xl font-bold font-mono ${selectedPayment.tipo === 'cobro' ? 'text-green-600' : 'text-red-600'}`}>
+                  ${selectedPayment.monto?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {selectedPayment.moneda}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Concepto</p>
+                <p className="font-medium">{selectedPayment.concepto || '-'}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Beneficiario</p>
+                  <p className="font-medium">{selectedPayment.beneficiario || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Método de Pago</p>
+                  <p className="font-medium capitalize">{selectedPayment.metodo_pago}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Fecha Vencimiento</p>
+                  <p className="font-medium">{format(new Date(selectedPayment.fecha_vencimiento), 'dd/MM/yyyy HH:mm')}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Fecha de Pago</p>
+                  <p className="font-medium">{selectedPayment.fecha_pago ? format(new Date(selectedPayment.fecha_pago), 'dd/MM/yyyy') : 'Pendiente'}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Referencia</p>
+                <p className="font-mono text-sm">{selectedPayment.referencia || '-'}</p>
+              </div>
+              <div className="flex gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Real/Proyección</p>
+                  <p className={`font-medium ${selectedPayment.es_real ? 'text-green-600' : 'text-blue-600'}`}>
+                    {selectedPayment.es_real ? 'Real' : 'Proyección'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Domiciliación</p>
+                  <p className="font-medium">{selectedPayment.domiciliacion_activa ? 'Activa' : 'No'}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewDialogOpen(false)}>Cerrar</Button>
+            <Button onClick={() => { setViewDialogOpen(false); handleEdit(selectedPayment); }}>
+              <Edit size={16} className="mr-2" />
+              Editar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Payment Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={(open) => {
+        setEditDialogOpen(open);
+        if (!open) { setSelectedPayment(null); resetForm(); }
+      }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar {selectedPayment?.tipo === 'cobro' ? 'Cobro' : 'Pago'}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleUpdatePayment} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Monto</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={formData.monto}
+                  onChange={(e) => setFormData({...formData, monto: e.target.value})}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Moneda</Label>
+                <Select value={formData.moneda} onValueChange={(v) => setFormData({...formData, moneda: v})}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="MXN">MXN</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Concepto</Label>
+              <Input
+                value={formData.concepto}
+                onChange={(e) => setFormData({...formData, concepto: e.target.value})}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Beneficiario</Label>
+              <Input
+                value={formData.beneficiario}
+                onChange={(e) => setFormData({...formData, beneficiario: e.target.value})}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Fecha Vencimiento</Label>
+                <Input
+                  type="datetime-local"
+                  value={formData.fecha_vencimiento}
+                  onChange={(e) => setFormData({...formData, fecha_vencimiento: e.target.value})}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Método de Pago</Label>
+                <Select value={formData.metodo_pago} onValueChange={(v) => setFormData({...formData, metodo_pago: v})}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="transferencia">Transferencia</SelectItem>
+                    <SelectItem value="efectivo">Efectivo</SelectItem>
+                    <SelectItem value="cheque">Cheque</SelectItem>
+                    <SelectItem value="tarjeta">Tarjeta</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Referencia</Label>
+              <Input
+                value={formData.referencia}
+                onChange={(e) => setFormData({...formData, referencia: e.target.value})}
+              />
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="editEsReal"
+                  checked={formData.es_real}
+                  onCheckedChange={(checked) => setFormData({...formData, es_real: checked})}
+                />
+                <Label htmlFor="editEsReal">Es Real (no proyección)</Label>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>Cancelar</Button>
+              <Button type="submit">Guardar Cambios</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Auto-Match Dialog */}
+      <Dialog open={autoMatchDialogOpen} onOpenChange={setAutoMatchDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Conciliación Automática</DialogTitle>
+            <DialogDescription>
+              Movimientos bancarios que coinciden con pagos/cobros por monto
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 max-h-[400px] overflow-y-auto">
+            {matchResults.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <CheckCircle2 size={48} className="mx-auto mb-4 opacity-50" />
+                <p>No se encontraron coincidencias automáticas</p>
+                <p className="text-sm mt-2">Prueba conciliando manualmente en el módulo de Conciliaciones</p>
+              </div>
+            ) : (
+              matchResults.map((match, idx) => (
+                <div key={idx} className="p-4 border rounded-lg">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-medium">{match.payment.concepto}</p>
+                      <p className="text-sm text-gray-500">
+                        {match.payment.tipo === 'cobro' ? 'Cobro' : 'Pago'} - {match.payment.beneficiario}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        Vencimiento: {format(new Date(match.payment.fecha_vencimiento), 'dd/MM/yyyy')}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-mono font-bold ${match.payment.tipo === 'cobro' ? 'text-green-600' : 'text-red-600'}`}>
+                        ${match.payment.monto?.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-2 pt-2 border-t flex items-center justify-between">
+                    <div className="text-sm">
+                      <span className="text-gray-500">Mov. Bancario: </span>
+                      <span className="font-medium">{match.bankTxn.descripcion?.substring(0, 30)}...</span>
+                      <span className="ml-2 font-mono">${match.bankTxn.monto?.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+                    </div>
+                    <Button size="sm" onClick={() => confirmAutoMatch(match)} className="bg-green-600 hover:bg-green-700">
+                      <Check size={14} className="mr-1" />
+                      Conciliar
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAutoMatchDialogOpen(false)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
