@@ -179,14 +179,31 @@ const BankStatementsModule = () => {
     toast.success('Exportado a Excel');
   };
 
-  const handleImportExcel = async (e) => {
+  // Handle file selection - opens dialog to select account
+  const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
+    
     if (bankAccounts.length === 0) {
       toast.error('Primero crea una cuenta bancaria');
+      e.target.value = '';
       return;
     }
+    
+    setImportFile(file);
+    setImportAccountId(bankAccounts[0]?.id || '');
+    setImportDialogOpen(true);
+    e.target.value = '';
+  };
+
+  // Process the import after account is selected
+  const processImport = async () => {
+    if (!importFile || !importAccountId) {
+      toast.error('Selecciona una cuenta bancaria');
+      return;
+    }
+
+    setImporting(true);
 
     try {
       const reader = new FileReader();
@@ -199,6 +216,7 @@ const BankStatementsModule = () => {
 
         if (jsonData.length === 0) {
           toast.error('El archivo está vacío');
+          setImporting(false);
           return;
         }
 
@@ -214,11 +232,14 @@ const BankStatementsModule = () => {
               if (fechaRaw instanceof Date) {
                 fechaMovimiento = fechaRaw;
               } else if (typeof fechaRaw === 'string') {
-                // Try parsing different date formats
                 const parsed = new Date(fechaRaw);
                 if (!isNaN(parsed.getTime())) {
                   fechaMovimiento = parsed;
                 }
+              } else if (typeof fechaRaw === 'number') {
+                // Excel serial date number
+                const excelEpoch = new Date(1899, 11, 30);
+                fechaMovimiento = new Date(excelEpoch.getTime() + fechaRaw * 86400000);
               }
             }
 
@@ -228,7 +249,6 @@ const BankStatementsModule = () => {
             
             if (row['monto'] !== undefined || row['Monto'] !== undefined || row['MONTO'] !== undefined) {
               monto = parseFloat(row['monto'] || row['Monto'] || row['MONTO'] || 0);
-              // If negative, it's a debit
               if (monto < 0) {
                 tipoMovimiento = 'debito';
                 monto = Math.abs(monto);
@@ -275,17 +295,17 @@ const BankStatementsModule = () => {
             const saldo = parseFloat(row['saldo'] || row['Saldo'] || row['SALDO'] || 0);
 
             // Skip rows with 0 amount
-            if (monto === 0) continue;
+            if (monto === 0 || isNaN(monto)) continue;
 
             const txnData = {
-              bank_account_id: filterAccount !== 'all' ? filterAccount : bankAccounts[0]?.id,
+              bank_account_id: importAccountId,
               fecha_movimiento: fechaMovimiento.toISOString(),
               fecha_valor: fechaMovimiento.toISOString(),
               descripcion: String(descripcion).substring(0, 500),
               referencia: String(referencia).substring(0, 100),
               monto: monto,
               tipo_movimiento: tipoMovimiento,
-              saldo: saldo,
+              saldo: saldo || 0,
               fuente: 'excel_import'
             };
 
@@ -298,6 +318,27 @@ const BankStatementsModule = () => {
         }
 
         if (imported > 0) {
+          toast.success(`${imported} movimientos importados correctamente`);
+        }
+        if (errors > 0) {
+          toast.warning(`${errors} filas con errores`);
+        }
+        if (imported === 0 && errors === 0) {
+          toast.info('No se encontraron movimientos válidos para importar');
+        }
+        
+        setImportDialogOpen(false);
+        setImportFile(null);
+        setImportAccountId('');
+        setImporting(false);
+        loadData();
+      };
+      reader.readAsArrayBuffer(importFile);
+    } catch (error) {
+      toast.error('Error importando archivo');
+      setImporting(false);
+    }
+  };
           toast.success(`${imported} movimientos importados correctamente`);
         }
         if (errors > 0) {
