@@ -381,7 +381,7 @@ const BankStatementsModule = () => {
             Descargar Plantilla
           </Button>
           <label className="cursor-pointer">
-            <input type="file" accept=".xlsx,.xls,.csv" onChange={handleImportExcel} className="hidden" />
+            <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileSelect} className="hidden" />
             <Button variant="outline" className="gap-2" asChild>
               <span>
                 <Upload size={16} />
