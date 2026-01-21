@@ -36,12 +36,18 @@ const PaymentsModule = () => {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState(null);
   const [filterTipo, setFilterTipo] = useState('all');
   const [filterEstatus, setFilterEstatus] = useState('all');
   const [filterEsReal, setFilterEsReal] = useState('all');
   const [filterFechaDesde, setFilterFechaDesde] = useState('');
   const [filterFechaHasta, setFilterFechaHasta] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, payment: null });
+  const [bankTransactions, setBankTransactions] = useState([]);
+  const [autoMatchDialogOpen, setAutoMatchDialogOpen] = useState(false);
+  const [matchResults, setMatchResults] = useState([]);
   
   // States for clients/vendors and invoices
   const [customers, setCustomers] = useState([]);
@@ -70,7 +76,17 @@ const PaymentsModule = () => {
   useEffect(() => {
     loadData();
     loadPartiesData();
+    loadBankTransactions();
   }, [filterTipo, filterEstatus, filterEsReal, filterFechaDesde, filterFechaHasta]);
+
+  const loadBankTransactions = async () => {
+    try {
+      const res = await api.get('/bank-transactions?limit=500');
+      setBankTransactions(res.data.filter(t => !t.conciliado));
+    } catch (error) {
+      console.error('Error loading bank transactions:', error);
+    }
+  };
 
   const loadData = async () => {
     try {
