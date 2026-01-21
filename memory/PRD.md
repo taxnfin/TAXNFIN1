@@ -237,16 +237,24 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ### Completed in This Session ✅
 
-**Importación de PDFs para Estados de Cuenta**
+**Importación de PDFs para Estados de Cuenta - MEJORADO**
 1. ✅ Nuevo botón **"Importar PDF"** en módulo Conciliaciones Bancarias
-2. ✅ Soporte para lectura automática de estados de cuenta de bancos mexicanos:
-   - Banorte (formato principal soportado)
-   - BBVA, Santander, HSBC, Scotiabank, Banamex (formato genérico)
-3. ✅ Detección automática del banco desde el contenido del PDF
-4. ✅ Extracción de: fecha, descripción, depósitos, retiros, saldo
-5. ✅ Detección de duplicados para evitar importar movimientos repetidos
-6. ✅ Endpoint: `POST /api/bank-transactions/import-pdf`
-7. ✅ Nueva librería: `pdfplumber` para parsing de PDFs
+2. ✅ **Vista Previa antes de importar**: Muestra resumen con:
+   - Banco detectado automáticamente
+   - Total de movimientos encontrados
+   - Suma de depósitos y retiros
+   - Flujo neto
+   - Tabla con primeros 15 movimientos para revisión
+3. ✅ Soporte mejorado para bancos mexicanos:
+   - **Banorte** (parser específico)
+   - **BBVA** (parser específico)
+   - **Santander** (parser específico) - NUEVO
+   - **HSBC** (parser específico) - NUEVO
+   - **Citibanamex** (parser específico) - NUEVO
+   - Otros bancos (parser genérico)
+4. ✅ Nuevo endpoint: `POST /api/bank-transactions/preview-pdf` - Vista previa sin importar
+5. ✅ Detección de duplicados antes de confirmar
+6. ✅ Librería: `pdfplumber` para parsing de PDFs
 
 **Saldo Inicial en Conciliaciones**
 1. ✅ El saldo inicial se toma automáticamente del módulo bancario al seleccionar una cuenta
