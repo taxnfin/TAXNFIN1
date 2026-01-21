@@ -27,10 +27,14 @@ const BankStatementsModule = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [reconcileDialogOpen, setReconcileDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [filterAccount, setFilterAccount] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [importFile, setImportFile] = useState(null);
+  const [importAccountId, setImportAccountId] = useState('');
+  const [importing, setImporting] = useState(false);
 
   const [formData, setFormData] = useState({
     bank_account_id: '',
