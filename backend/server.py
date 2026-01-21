@@ -3046,7 +3046,6 @@ def parse_mexican_bank_pdf(text: str, tables: List, pdf, saldo_inicial: float = 
     
     def extract_amounts_from_line(line: str) -> List[float]:
         """Extract all monetary amounts from a line"""
-        # Pattern for Mexican currency: $1,234.56 or 1,234.56 or 1234.56
         pattern = r'\$?\s*([\d,]+\.\d{2})'
         matches = re.findall(pattern, line)
         amounts = []
@@ -3060,7 +3059,7 @@ def parse_mexican_bank_pdf(text: str, tables: List, pdf, saldo_inicial: float = 
     
     def extract_date_from_line(line: str) -> str:
         """Extract date from line, return YYYY-MM-DD format"""
-        # Pattern: DD MMM (e.g., "1 DIC", "15 ENE")
+        # Pattern: DD MMM (e.g., "1 DIC", "15 ENE", "1DIC")
         match = re.search(r'(\d{1,2})\s*(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)', line.upper())
         if match:
             day = match.group(1).zfill(2)
@@ -3088,6 +3087,7 @@ def parse_mexican_bank_pdf(text: str, tables: List, pdf, saldo_inicial: float = 
         # Find header row to get column X positions
         deposito_x = None
         retiro_x = None
+        cargo_x = None  # Some PDFs use CARGO instead of RETIRO
         saldo_x = None
         
         for word in words:
@@ -3098,16 +3098,25 @@ def parse_mexican_bank_pdf(text: str, tables: List, pdf, saldo_inicial: float = 
                 deposito_x = x_center
             elif 'RETIRO' in word_text:
                 retiro_x = x_center
+            elif 'CARGO' in word_text and 'CARGO' not in ['ENCARGO', 'RECARGO']:
+                cargo_x = x_center
             elif word_text == 'SALDO':
                 saldo_x = x_center
         
-        # Group words by row (similar y position)
+        # Use cargo_x if retiro_x not found
+        if retiro_x is None and cargo_x is not None:
+            retiro_x = cargo_x
+        
+        # Group words by row (similar y position) - use smaller band for accuracy
         rows_dict = {}
         for word in words:
-            y_key = round(word['top'] / 8) * 8  # Group by ~8px bands
+            y_key = round(word['top'] / 6) * 6  # Smaller band (6px) for more precision
             if y_key not in rows_dict:
                 rows_dict[y_key] = []
             rows_dict[y_key].append(word)
+        
+        # Track last valid date for rows without dates
+        last_valid_date = None
         
         # Process each row
         for y_key in sorted(rows_dict.keys()):
@@ -3115,8 +3124,220 @@ def parse_mexican_bank_pdf(text: str, tables: List, pdf, saldo_inicial: float = 
             row_text = ' '.join([w['text'] for w in row_words])
             row_upper = row_text.upper()
             
-            # Skip header and saldo inicial rows
-            if any(skip in row_upper for skip in ['FECHA', 'DEPOSITO', 'RETIRO', 'SALDO INICIAL', 'SALDO ANTERIOR', 'NO. REF', 'DESCRIPCION']):
+            # Skip header and summary rows
+            if any(skip in row_upper for skip in ['FECHA', 'DEPOSITO', 'RETIRO', 'CARGO', 'SALDO INICIAL', 'SALDO ANTERIOR', 'NO. REF', 'DESCRIPCION', 'TOTAL', 'RESUMEN']):
+                continue
+            
+            # Extract date
+            fecha = extract_date_from_line(row_text)
+            if fecha:
+                last_valid_date = fecha
+            
+            # If no date in this row but we have amounts, use last valid date
+            if not fecha and last_valid_date:
+                # Check if this row has amounts
+                amounts_in_row = extract_amounts_from_line(row_text)
+                if len(amounts_in_row) >= 2:
+                    fecha = last_valid_date
+            
+            if not fecha:
+                continue
+            
+            # Now find amounts in this row by their X position
+            deposito = 0
+            retiro = 0
+            saldo = 0
+            descripcion_parts = []
+            
+            # Collect amounts with their x positions
+            amounts_with_pos = []
+            for word in row_words:
+                word_text = word['text']
+                x_center = (word['x0'] + word['x1']) / 2
+                
+                # Check if this is an amount
+                clean_text = word_text.replace(' ', '').replace('$', '')
+                amount_match = re.match(r'^([\d,]+\.\d{2})$', clean_text)
+                if amount_match:
+                    try:
+                        val = float(amount_match.group(1).replace(',', ''))
+                        amounts_with_pos.append((x_center, val, word['x0'], word['x1']))
+                    except:
+                        pass
+                elif not re.match(r'^[\d\$\.,/-]+$', word_text) and len(word_text) > 1:
+                    # This is probably part of description
+                    if not re.search(r'^\d{1,2}\s*(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)$', word_text.upper()):
+                        descripcion_parts.append(word_text)
+            
+            # Classify amounts based on position
+            if deposito_x is not None and retiro_x is not None and len(amounts_with_pos) >= 1:
+                # Sort by x position
+                amounts_with_pos.sort(key=lambda x: x[0])
+                
+                for x_pos, amount, x0, x1 in amounts_with_pos:
+                    # Calculate distances to each column
+                    dist_to_dep = abs(x_pos - deposito_x) if deposito_x else float('inf')
+                    dist_to_ret = abs(x_pos - retiro_x) if retiro_x else float('inf')
+                    dist_to_sal = abs(x_pos - saldo_x) if saldo_x else float('inf')
+                    
+                    # Increased tolerance to 80px
+                    tolerance = 80
+                    
+                    min_dist = min(dist_to_dep, dist_to_ret, dist_to_sal)
+                    
+                    if min_dist == dist_to_dep and dist_to_dep < tolerance:
+                        deposito = amount
+                    elif min_dist == dist_to_ret and dist_to_ret < tolerance:
+                        retiro = amount
+                    elif min_dist == dist_to_sal and dist_to_sal < tolerance:
+                        saldo = amount
+                    elif len(amounts_with_pos) >= 3:
+                        # If position matching fails, use last 3 amounts rule
+                        pass
+                
+                # Fallback: if no amounts were classified by position, use positional logic
+                if deposito == 0 and retiro == 0 and len(amounts_with_pos) >= 2:
+                    amounts_sorted = sorted(amounts_with_pos, key=lambda x: x[0])
+                    if len(amounts_sorted) >= 3:
+                        deposito = amounts_sorted[-3][1]
+                        retiro = amounts_sorted[-2][1]
+                        saldo = amounts_sorted[-1][1]
+                    elif len(amounts_sorted) == 2:
+                        # Two amounts: movement and saldo
+                        saldo = amounts_sorted[-1][1]
+                        monto = amounts_sorted[0][1]
+                        desc_text = ' '.join(descripcion_parts).upper()
+                        if any(kw in desc_text for kw in ['DEPOSITO', 'ABONO', 'INGRESO', 'RECIBID']):
+                            deposito = monto
+                        else:
+                            retiro = monto
+            
+            elif len(amounts_with_pos) >= 2:
+                # No column headers found - use positional logic
+                amounts_sorted = sorted(amounts_with_pos, key=lambda x: x[0])
+                
+                if len(amounts_sorted) >= 3:
+                    deposito = amounts_sorted[-3][1]
+                    retiro = amounts_sorted[-2][1]
+                    saldo = amounts_sorted[-1][1]
+                elif len(amounts_sorted) == 2:
+                    saldo = amounts_sorted[-1][1]
+                    monto = amounts_sorted[0][1]
+                    desc_text = ' '.join(descripcion_parts).upper()
+                    if any(kw in desc_text for kw in ['DEPOSITO', 'ABONO', 'INGRESO', 'RECIBID']):
+                        deposito = monto
+                    else:
+                        retiro = monto
+            
+            # Build description
+            descripcion = ' '.join(descripcion_parts)[:200]
+            
+            # Add transaction if we have a movement
+            if deposito > 0 or retiro > 0:
+                transactions.append({
+                    'fecha': fecha,
+                    'descripcion': descripcion.strip() or 'Movimiento bancario',
+                    'deposito': deposito,
+                    'retiro': retiro,
+                    'saldo': saldo,
+                    'referencia': ''
+                })
+    
+    # If word extraction didn't work well, try line-by-line text parsing
+    if len(transactions) < 10:
+        text_transactions = parse_text_lines(text, current_year, months_es)
+        if len(text_transactions) > len(transactions):
+            transactions = text_transactions
+    
+    return transactions
+
+
+def parse_text_lines(text: str, current_year: int, months_es: dict) -> List[Dict]:
+    """Parse bank statement from plain text lines"""
+    import re
+    
+    transactions = []
+    lines = text.split('\n')
+    last_valid_date = None
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        line_upper = line.upper()
+        
+        # Skip headers and summaries
+        if any(skip in line_upper for skip in ['FECHA', 'DEPOSITO', 'RETIRO', 'CARGO', 'SALDO INICIAL', 'SALDO ANTERIOR', 'NO. REF', 'TOTAL', 'RESUMEN']):
+            continue
+        
+        # Extract date
+        fecha = None
+        date_match = re.search(r'(\d{1,2})\s*(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)', line_upper)
+        if date_match:
+            day = date_match.group(1).zfill(2)
+            month = months_es.get(date_match.group(2), '01')
+            fecha = f"{current_year}-{month}-{day}"
+            last_valid_date = fecha
+        
+        # Extract all amounts
+        amounts = re.findall(r'\$?\s*([\d,]+\.\d{2})', line)
+        amounts = [float(a.replace(',', '')) for a in amounts]
+        
+        if len(amounts) < 2:
+            continue
+        
+        # Use last valid date if no date in this line
+        if not fecha and last_valid_date and len(amounts) >= 2:
+            fecha = last_valid_date
+        
+        if not fecha:
+            continue
+        
+        # Get description
+        first_amount_match = re.search(r'\$?\s*[\d,]+\.\d{2}', line)
+        if first_amount_match:
+            desc_part = line[:first_amount_match.start()]
+            desc_part = re.sub(r'\d{1,2}\s*(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)', '', desc_part, flags=re.IGNORECASE)
+            descripcion = desc_part.strip()
+        else:
+            descripcion = ""
+        
+        # Parse amounts: last 3 are DEPOSITO, RETIRO, SALDO
+        deposito = 0
+        retiro = 0
+        saldo = amounts[-1] if amounts else 0
+        
+        if len(amounts) >= 3:
+            dep_val = amounts[-3]
+            ret_val = amounts[-2]
+            
+            # One of them should be the actual movement, the other should be 0 or very small
+            if dep_val > 0 and ret_val == 0:
+                deposito = dep_val
+            elif ret_val > 0 and dep_val == 0:
+                retiro = ret_val
+            elif dep_val > 0 and ret_val > 0:
+                # Both have values - unusual, but take them as is
+                deposito = dep_val
+                retiro = ret_val
+        elif len(amounts) == 2:
+            monto = amounts[0]
+            saldo = amounts[1]
+            if any(kw in descripcion.upper() for kw in ['DEPOSITO', 'ABONO', 'INGRESO', 'RECIBID']):
+                deposito = monto
+            else:
+                retiro = monto
+        
+        if deposito > 0 or retiro > 0:
+            transactions.append({
+                'fecha': fecha,
+                'descripcion': descripcion[:200] or 'Movimiento bancario',
+                'deposito': deposito,
+                'retiro': retiro,
+                'saldo': saldo,
+                'referencia': ''
+            })
                 continue
             
             # Extract date
