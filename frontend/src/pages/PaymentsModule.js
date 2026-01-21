@@ -1382,6 +1382,61 @@ const PaymentsModule = () => {
                 <p>No se encontraron coincidencias automáticas</p>
                 <p className="text-sm mt-2">Prueba conciliando manualmente en el módulo de Conciliaciones</p>
               </div>
+            ) : matchCandidates.length > 0 ? (
+              <div className="space-y-3">
+                <p className="text-sm text-gray-600 mb-4">
+                  Se encontraron {matchCandidates.length} movimiento(s) bancario(s) que podrían corresponder a este pago. 
+                  Selecciona uno para conciliar:
+                </p>
+                {matchCandidates.map((candidate, idx) => (
+                  <div 
+                    key={idx} 
+                    className={`p-4 border rounded-lg cursor-pointer transition-all ${
+                      selectedCandidate?.transaction_id === candidate.transaction_id 
+                        ? 'border-green-500 bg-green-50' 
+                        : 'hover:border-gray-400'
+                    }`}
+                    onClick={() => setSelectedCandidate(candidate)}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-sm">{candidate.descripcion}</p>
+                          <span className={`text-xs px-2 py-0.5 rounded ${
+                            candidate.score >= 80 ? 'bg-green-100 text-green-700' :
+                            candidate.score >= 50 ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {candidate.score >= 80 ? 'Alta coincidencia' : 
+                             candidate.score >= 50 ? 'Media coincidencia' : 'Posible'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {candidate.banco} - {candidate.cuenta}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {candidate.fecha ? format(new Date(candidate.fecha), 'dd/MM/yyyy') : 'Sin fecha'}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {candidate.match_reasons?.map((reason, ridx) => (
+                            <span key={ridx} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
+                              {reason}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-mono font-bold ${
+                          candidate.tipo === 'credito' ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {candidate.tipo === 'credito' ? '+' : '-'}${candidate.monto?.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                        </p>
+                        <p className="text-xs text-gray-500">{candidate.moneda}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
               matchResults.map((match, idx) => (
                 <div key={idx} className="p-4 border rounded-lg">
@@ -1416,8 +1471,26 @@ const PaymentsModule = () => {
               ))
             )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAutoMatchDialogOpen(false)}>Cerrar</Button>
+          <DialogFooter className="flex justify-between">
+            <Button variant="outline" onClick={skipReconciliation}>
+              Omitir por ahora
+            </Button>
+            {selectedCandidate && (
+              <Button 
+                onClick={handleAutoReconcile} 
+                disabled={reconciling}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {reconciling ? (
+                  <>Conciliando...</>
+                ) : (
+                  <>
+                    <Check size={16} className="mr-2" />
+                    Autorizar Conciliación
+                  </>
+                )}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
