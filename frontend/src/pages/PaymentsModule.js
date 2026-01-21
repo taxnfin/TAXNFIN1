@@ -330,6 +330,103 @@ const PaymentsModule = () => {
     }
   };
 
+  // Edit payment
+  const handleEdit = (payment) => {
+    setSelectedPayment(payment);
+    setFormData({
+      tipo: payment.tipo,
+      concepto: payment.concepto || '',
+      monto: payment.monto?.toString() || '',
+      moneda: payment.moneda || 'MXN',
+      metodo_pago: payment.metodo_pago || 'transferencia',
+      fecha_vencimiento: payment.fecha_vencimiento ? format(new Date(payment.fecha_vencimiento), "yyyy-MM-dd'T'HH:mm") : '',
+      beneficiario: payment.beneficiario || '',
+      referencia: payment.referencia || '',
+      domiciliacion_activa: payment.domiciliacion_activa || false,
+      es_real: payment.es_real !== false,
+      cfdi_ids: payment.cfdi_id ? [payment.cfdi_id] : [],
+      customer_id: payment.customer_id || null,
+      vendor_id: payment.vendor_id || null
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleUpdatePayment = async (e) => {
+    e.preventDefault();
+    if (!selectedPayment) return;
+    
+    try {
+      await api.put(`/payments/${selectedPayment.id}`, {
+        ...formData,
+        monto: parseFloat(formData.monto)
+      });
+      toast.success('Pago actualizado');
+      setEditDialogOpen(false);
+      setSelectedPayment(null);
+      resetForm();
+      loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error actualizando pago');
+    }
+  };
+
+  // View payment details
+  const handleView = (payment) => {
+    setSelectedPayment(payment);
+    setViewDialogOpen(true);
+  };
+
+  // Auto-match payments with bank transactions
+  const handleAutoMatch = async () => {
+    const matches = [];
+    
+    for (const payment of payments.filter(p => !p.conciliado && p.estatus === 'completado')) {
+      // Find bank transaction with matching amount (within 0.01)
+      const matchingTxn = bankTransactions.find(txn => {
+        const montoMatch = Math.abs(txn.monto - payment.monto) < 0.01;
+        const tipoMatch = (payment.tipo === 'cobro' && txn.tipo_movimiento === 'credito') ||
+                         (payment.tipo === 'pago' && txn.tipo_movimiento === 'debito');
+        return montoMatch && tipoMatch && !txn.conciliado;
+      });
+      
+      if (matchingTxn) {
+        matches.push({
+          payment,
+          bankTxn: matchingTxn,
+          montoMatch: true
+        });
+      }
+    }
+    
+    setMatchResults(matches);
+    setAutoMatchDialogOpen(true);
+  };
+
+  const confirmAutoMatch = async (match) => {
+    try {
+      // Create reconciliation
+      await api.post('/reconciliations', {
+        bank_transaction_id: match.bankTxn.id,
+        cfdi_id: match.payment.cfdi_id,
+        metodo_conciliacion: 'automatica',
+        porcentaje_match: 100
+      });
+      
+      // Update payment as conciliado
+      await api.put(`/payments/${match.payment.id}`, {
+        ...match.payment,
+        conciliado: true
+      });
+      
+      toast.success('Conciliación automática exitosa');
+      setMatchResults(prev => prev.filter(m => m.payment.id !== match.payment.id));
+      loadData();
+      loadBankTransactions();
+    } catch (error) {
+      toast.error('Error en conciliación');
+    }
+  };
+
   if (loading) return <div className="p-8">Cargando...</div>;
 
   const currentParties = formData.tipo === 'cobro' ? customers : vendors;
@@ -356,6 +453,15 @@ const PaymentsModule = () => {
           <p className="text-[#64748B]">Gestión de cobros y pagos (reales y proyectados)</p>
         </div>
         <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            className="gap-2"
+            onClick={handleAutoMatch}
+            data-testid="auto-match-btn"
+          >
+            <CheckCircle2 size={16} />
+            Auto-Conciliar
+          </Button>
           <Button 
             variant="outline" 
             className="gap-2"
