@@ -3338,86 +3338,11 @@ def parse_text_lines(text: str, current_year: int, months_es: dict) -> List[Dict
                 'saldo': saldo,
                 'referencia': ''
             })
-                continue
-            
-            # Extract date
-            fecha = extract_date_from_line(row_text)
-            if not fecha:
-                continue
-            
-            # Now find amounts in this row by their X position
-            deposito = 0
-            retiro = 0
-            saldo = 0
-            descripcion_parts = []
-            
-            # Collect amounts with their x positions
-            amounts_with_pos = []
-            for word in row_words:
-                word_text = word['text']
-                x_center = (word['x0'] + word['x1']) / 2
-                
-                # Check if this is an amount
-                amount_match = re.match(r'^\$?([\d,]+\.\d{2})$', word_text.replace(' ', ''))
-                if amount_match:
-                    try:
-                        val = float(amount_match.group(1).replace(',', ''))
-                        amounts_with_pos.append((x_center, val))
-                    except:
-                        pass
-                elif not re.match(r'^[\d\$\.,/-]+$', word_text) and len(word_text) > 1:
-                    # This is probably part of description
-                    if not re.search(r'^\d{1,2}\s*(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)$', word_text.upper()):
-                        descripcion_parts.append(word_text)
-            
-            # Classify amounts based on position
-            if deposito_x and retiro_x and len(amounts_with_pos) >= 1:
-                for x_pos, amount in amounts_with_pos:
-                    # Check which column this amount belongs to
-                    dist_to_dep = abs(x_pos - deposito_x) if deposito_x else float('inf')
-                    dist_to_ret = abs(x_pos - retiro_x) if retiro_x else float('inf')
-                    dist_to_sal = abs(x_pos - saldo_x) if saldo_x else float('inf')
-                    
-                    min_dist = min(dist_to_dep, dist_to_ret, dist_to_sal)
-                    
-                    if min_dist == dist_to_dep and dist_to_dep < 50:
-                        deposito = amount
-                    elif min_dist == dist_to_ret and dist_to_ret < 50:
-                        retiro = amount
-                    elif min_dist == dist_to_sal and dist_to_sal < 50:
-                        saldo = amount
-            
-            elif len(amounts_with_pos) >= 2:
-                # Fallback: last amount is saldo, determine deposit/retiro by description
-                amounts_with_pos.sort(key=lambda x: x[0])  # Sort by x position
-                
-                if len(amounts_with_pos) >= 3:
-                    # Last 3: deposito, retiro, saldo
-                    deposito = amounts_with_pos[-3][1] if amounts_with_pos[-3][1] > 0 else 0
-                    retiro = amounts_with_pos[-2][1] if amounts_with_pos[-2][1] > 0 else 0
-                    saldo = amounts_with_pos[-1][1]
-                elif len(amounts_with_pos) == 2:
-                    # Could be (deposito, saldo) or (retiro, saldo)
-                    saldo = amounts_with_pos[-1][1]
-                    monto = amounts_with_pos[0][1]
-                    # Use description to determine type
-                    desc_text = ' '.join(descripcion_parts).upper()
-                    if any(kw in desc_text for kw in ['DEPOSITO', 'ABONO', 'INGRESO', 'RECIBID']):
-                        deposito = monto
-                    else:
-                        retiro = monto
-            
-            # Build description
-            descripcion = ' '.join(descripcion_parts)[:200]
-            
-            # Add transaction if we have a movement
-            if deposito > 0 or retiro > 0:
-                transactions.append({
-                    'fecha': fecha,
-                    'descripcion': descripcion.strip() or 'Movimiento bancario',
-                    'deposito': deposito,
-                    'retiro': retiro,
-                    'saldo': saldo,
+    
+    return transactions
+
+
+def parse_banorte_pdf(text: str, tables: List, saldo_inicial: float = None) -> List[Dict]:
                     'referencia': ''
                 })
     
