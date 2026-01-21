@@ -3940,7 +3940,9 @@ async def preview_bank_statement_pdf(
             
             if banco == "auto":
                 text_lower = full_text.lower()
-                if "banorte" in text_lower:
+                if "banbajio" in text_lower or "bajio" in text_lower or "banco del bajio" in text_lower:
+                    detected_bank = "Banco del Bajío"
+                elif "banorte" in text_lower:
                     detected_bank = "Banorte"
                 elif "bbva" in text_lower or "bancomer" in text_lower:
                     detected_bank = "BBVA"
