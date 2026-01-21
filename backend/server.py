@@ -2357,6 +2357,10 @@ async def update_payment(payment_id: str, payment_data: PaymentCreate, request: 
     if not existing:
         raise HTTPException(status_code=404, detail="Pago no encontrado")
     
+    old_monto = existing.get('monto', 0)
+    old_cfdi_id = existing.get('cfdi_id')
+    old_estatus = existing.get('estatus')
+    
     update_data = payment_data.model_dump()
     for field in ['fecha_vencimiento', 'fecha_pago']:
         if update_data.get(field):
@@ -2366,6 +2370,32 @@ async def update_payment(payment_id: str, payment_data: PaymentCreate, request: 
         {'id': payment_id, 'company_id': company_id},
         {'$set': update_data}
     )
+    
+    # If payment was completed and linked to a CFDI, update the CFDI's collected/paid amount
+    if old_estatus == 'completado' and old_cfdi_id:
+        cfdi = await db.cfdis.find_one({'id': old_cfdi_id}, {'_id': 0})
+        if cfdi:
+            # Calculate the difference between old and new amount
+            new_monto = update_data.get('monto', old_monto)
+            diff = new_monto - old_monto
+            
+            if existing['tipo'] == 'cobro':
+                current_cobrado = cfdi.get('monto_cobrado', 0) or 0
+                new_cobrado = max(0, current_cobrado + diff)
+                await db.cfdis.update_one(
+                    {'id': old_cfdi_id},
+                    {'$set': {'monto_cobrado': new_cobrado}}
+                )
+                logger.info(f"Updated CFDI {old_cfdi_id} monto_cobrado after payment edit: {current_cobrado} -> {new_cobrado}")
+            else:
+                current_pagado = cfdi.get('monto_pagado', 0) or 0
+                new_pagado = max(0, current_pagado + diff)
+                await db.cfdis.update_one(
+                    {'id': old_cfdi_id},
+                    {'$set': {'monto_pagado': new_pagado}}
+                )
+                logger.info(f"Updated CFDI {old_cfdi_id} monto_pagado after payment edit: {current_pagado} -> {new_pagado}")
+    
     await audit_log(company_id, 'Payment', payment_id, 'UPDATE', current_user['id'])
     return {'status': 'success', 'message': 'Pago actualizado'}
 
