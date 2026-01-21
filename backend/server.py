@@ -2448,6 +2448,27 @@ async def delete_payment(payment_id: str, request: Request, current_user: Dict =
     if not existing:
         raise HTTPException(status_code=404, detail="Pago no encontrado")
     
+    # If payment was completed and linked to a CFDI, reverse the collected/paid amount
+    if existing.get('estatus') == 'completado' and existing.get('cfdi_id'):
+        cfdi = await db.cfdis.find_one({'id': existing['cfdi_id']}, {'_id': 0})
+        if cfdi:
+            if existing['tipo'] == 'cobro':
+                current_cobrado = cfdi.get('monto_cobrado', 0) or 0
+                new_cobrado = max(0, current_cobrado - existing['monto'])
+                await db.cfdis.update_one(
+                    {'id': existing['cfdi_id']},
+                    {'$set': {'monto_cobrado': new_cobrado}}
+                )
+                logger.info(f"Reversed CFDI {existing['cfdi_id']} monto_cobrado after payment delete: {current_cobrado} -> {new_cobrado}")
+            else:
+                current_pagado = cfdi.get('monto_pagado', 0) or 0
+                new_pagado = max(0, current_pagado - existing['monto'])
+                await db.cfdis.update_one(
+                    {'id': existing['cfdi_id']},
+                    {'$set': {'monto_pagado': new_pagado}}
+                )
+                logger.info(f"Reversed CFDI {existing['cfdi_id']} monto_pagado after payment delete: {current_pagado} -> {new_pagado}")
+    
     await db.payments.delete_one({'id': payment_id})
     await audit_log(company_id, 'Payment', payment_id, 'DELETE', current_user['id'])
     return {'status': 'success', 'message': 'Pago eliminado'}
