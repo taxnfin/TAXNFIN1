@@ -57,9 +57,38 @@ const BankStatementsModule = () => {
     saldo: ''
   });
 
+  // Exchange rates for conversion
+  const [fxRates, setFxRates] = useState({ USD: 17.5, EUR: 19.0 });
+
   useEffect(() => {
     loadData();
+    loadFxRates();
   }, []);
+
+  const loadFxRates = async () => {
+    try {
+      const res = await api.get('/fx-rates');
+      const rates = {};
+      res.data.forEach(rate => {
+        if (rate.moneda_destino === 'MXN') {
+          rates[rate.moneda_origen] = rate.tasa;
+        }
+      });
+      if (rates.USD || rates.EUR) {
+        setFxRates(prev => ({ ...prev, ...rates }));
+      }
+    } catch (error) {
+      console.log('Using default FX rates');
+    }
+  };
+
+  const convertToMXN = (monto, moneda) => {
+    if (!monto) return 0;
+    if (moneda === 'MXN') return monto;
+    if (moneda === 'USD') return monto * (fxRates.USD || 17.5);
+    if (moneda === 'EUR') return monto * (fxRates.EUR || 19.0);
+    return monto;
+  };
 
   const loadData = async () => {
     try {
