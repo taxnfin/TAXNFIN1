@@ -257,7 +257,7 @@ const BankStatementsModule = () => {
             
             console.log('Parsed date:', fechaMovimiento);
 
-            // Parse amount and determine transaction type
+            // Parse amount - the sign of monto determines the type
             let monto = 0;
             let tipoMovimiento = 'credito'; // Default: deposit
             
@@ -266,48 +266,30 @@ const BankStatementsModule = () => {
               monto = parseFloat(row['monto'] || row['Monto'] || row['MONTO'] || 0);
             }
             
-            // Determine tipo based on sign of monto
-            // Negative monto = retiro/cargo (money out)
-            // Positive monto = deposito/abono (money in)
-            if (monto < 0) {
-              tipoMovimiento = 'debito'; // Retiro
-              monto = Math.abs(monto);
-            } else {
-              tipoMovimiento = 'credito'; // Depósito
-            }
-            
-            // If tipo_movimiento column exists and monto was positive, use it
-            const tipoRaw = row['tipo_movimiento'] || row['Tipo'] || row['TIPO'] || '';
-            if (tipoRaw && monto > 0) {
-              const tipoLower = tipoRaw.toString().toLowerCase();
-              // In your file: debito = deposit (positive), credito = withdrawal (negative)
-              // We use standard convention: credito = deposit, debito = withdrawal
-              if (tipoLower === 'debito') {
-                tipoMovimiento = 'credito'; // Your "debito" means money coming in
-              } else if (tipoLower === 'credito') {
-                tipoMovimiento = 'debito'; // Your "credito" means money going out
-              }
-            }
-            
             // Handle Cargo/Abono columns (alternative format)
             if (monto === 0) {
-              if (row['Cargo'] !== undefined || row['CARGO'] !== undefined || row['cargo'] !== undefined) {
-                const cargo = parseFloat(row['Cargo'] || row['CARGO'] || row['cargo'] || 0);
-                const abono = parseFloat(row['Abono'] || row['ABONO'] || row['abono'] || 0);
-                if (cargo > 0) {
-                  monto = cargo;
-                  tipoMovimiento = 'debito';
-                } else if (abono > 0) {
-                  monto = abono;
-                  tipoMovimiento = 'credito';
-                }
-              } else if (row['Deposito'] || row['Depósito'] || row['DEPOSITO']) {
-                monto = parseFloat(row['Deposito'] || row['Depósito'] || row['DEPOSITO'] || 0);
-                tipoMovimiento = 'credito';
-              } else if (row['Retiro'] || row['RETIRO']) {
-                monto = parseFloat(row['Retiro'] || row['RETIRO'] || 0);
-                tipoMovimiento = 'debito';
+              if (row['Cargo'] !== undefined || row['CARGO'] !== undefined) {
+                monto = -parseFloat(row['Cargo'] || row['CARGO'] || 0); // Cargo is negative
               }
+              if (row['Abono'] !== undefined || row['ABONO'] !== undefined) {
+                monto = parseFloat(row['Abono'] || row['ABONO'] || 0); // Abono is positive
+              }
+              if (row['Deposito'] || row['Depósito'] || row['DEPOSITO']) {
+                monto = parseFloat(row['Deposito'] || row['Depósito'] || row['DEPOSITO'] || 0);
+              }
+              if (row['Retiro'] || row['RETIRO']) {
+                monto = -parseFloat(row['Retiro'] || row['RETIRO'] || 0);
+              }
+            }
+            
+            // Determine tipo based on sign of monto
+            // Negative monto = money going out (retiro/cargo) = debito
+            // Positive monto = money coming in (deposito/abono) = credito
+            if (monto < 0) {
+              tipoMovimiento = 'debito'; // Retiro/Cargo
+              monto = Math.abs(monto);
+            } else {
+              tipoMovimiento = 'credito'; // Depósito/Abono
             }
             
             console.log('Monto:', monto, 'Tipo:', tipoMovimiento);
