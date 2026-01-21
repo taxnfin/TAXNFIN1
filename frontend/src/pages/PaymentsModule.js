@@ -48,6 +48,10 @@ const PaymentsModule = () => {
   const [bankTransactions, setBankTransactions] = useState([]);
   const [autoMatchDialogOpen, setAutoMatchDialogOpen] = useState(false);
   const [matchResults, setMatchResults] = useState([]);
+  const [matchCandidates, setMatchCandidates] = useState([]);
+  const [selectedCandidate, setSelectedCandidate] = useState(null);
+  const [reconciling, setReconciling] = useState(false);
+  const [newPaymentId, setNewPaymentId] = useState(null);
   
   // States for clients/vendors and invoices
   const [customers, setCustomers] = useState([]);
