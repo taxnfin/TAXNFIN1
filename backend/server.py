@@ -2251,6 +2251,27 @@ async def get_payments_summary(
     if not fecha_corte:
         fecha_corte = (datetime.now(timezone.utc) + timedelta(days=15)).isoformat()
     
+    # Get current exchange rate for USD -> MXN
+    fx_rate_usd = await db.fx_rates.find_one(
+        {'moneda_origen': 'USD', 'moneda_destino': 'MXN'},
+        sort=[('timestamp', -1)]
+    )
+    usd_to_mxn = fx_rate_usd['tasa'] if fx_rate_usd else 17.5
+    
+    fx_rate_eur = await db.fx_rates.find_one(
+        {'moneda_origen': 'EUR', 'moneda_destino': 'MXN'},
+        sort=[('timestamp', -1)]
+    )
+    eur_to_mxn = fx_rate_eur['tasa'] if fx_rate_eur else 19.0
+    
+    def convert_to_mxn(monto, moneda):
+        """Convert amount to MXN"""
+        if moneda == 'USD':
+            return monto * usd_to_mxn
+        elif moneda == 'EUR':
+            return monto * eur_to_mxn
+        return monto  # Already MXN
+    
     # Get all pending payments
     pending_payments = await db.payments.find({
         'company_id': company_id,
@@ -2266,25 +2287,43 @@ async def get_payments_summary(
         'fecha_pago': {'$gte': start_of_month.isoformat()}
     }, {'_id': 0}).to_list(1000)
     
-    # Calculate totals
-    total_por_pagar = sum(p['monto'] for p in pending_payments if p['tipo'] == 'pago')
-    total_por_cobrar = sum(p['monto'] for p in pending_payments if p['tipo'] == 'cobro')
-    total_pagado_mes = sum(p['monto'] for p in completed_payments if p['tipo'] == 'pago')
-    total_cobrado_mes = sum(p['monto'] for p in completed_payments if p['tipo'] == 'cobro')
+    # Calculate totals - convert all to MXN
+    total_por_pagar = sum(
+        convert_to_mxn(p['monto'], p.get('moneda', 'MXN')) 
+        for p in pending_payments if p['tipo'] == 'pago'
+    )
+    total_por_cobrar = sum(
+        convert_to_mxn(p['monto'], p.get('moneda', 'MXN')) 
+        for p in pending_payments if p['tipo'] == 'cobro'
+    )
+    total_pagado_mes = sum(
+        convert_to_mxn(p['monto'], p.get('moneda', 'MXN')) 
+        for p in completed_payments if p['tipo'] == 'pago'
+    )
+    total_cobrado_mes = sum(
+        convert_to_mxn(p['monto'], p.get('moneda', 'MXN')) 
+        for p in completed_payments if p['tipo'] == 'cobro'
+    )
     
     # Payments with domiciliacion
     domiciliados = [p for p in pending_payments if p.get('domiciliacion_activa')]
+    monto_domiciliado = sum(
+        convert_to_mxn(p['monto'], p.get('moneda', 'MXN')) 
+        for p in domiciliados
+    )
     
     return {
         'fecha_corte': fecha_corte,
-        'total_por_pagar': total_por_pagar,
-        'total_por_cobrar': total_por_cobrar,
+        'total_por_pagar': round(total_por_pagar, 2),
+        'total_por_cobrar': round(total_por_cobrar, 2),
         'pagos_pendientes': len([p for p in pending_payments if p['tipo'] == 'pago']),
         'cobros_pendientes': len([p for p in pending_payments if p['tipo'] == 'cobro']),
-        'total_pagado_mes': total_pagado_mes,
-        'total_cobrado_mes': total_cobrado_mes,
+        'total_pagado_mes': round(total_pagado_mes, 2),
+        'total_cobrado_mes': round(total_cobrado_mes, 2),
         'domiciliaciones_activas': len(domiciliados),
-        'monto_domiciliado': sum(p['monto'] for p in domiciliados)
+        'monto_domiciliado': round(monto_domiciliado, 2),
+        'tc_usd': usd_to_mxn,
+        'tc_eur': eur_to_mxn
     }
 
 @api_router.put("/payments/{payment_id}")
