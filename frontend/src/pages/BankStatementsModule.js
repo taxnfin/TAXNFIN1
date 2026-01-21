@@ -224,6 +224,7 @@ const BankStatementsModule = () => {
 
         let imported = 0;
         let errors = 0;
+        let duplicates = 0;
 
         console.log('Starting import with account:', importAccountId);
         console.log('Total rows to process:', jsonData.length);
