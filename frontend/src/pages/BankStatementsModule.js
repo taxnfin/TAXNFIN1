@@ -223,8 +223,13 @@ const BankStatementsModule = () => {
         let imported = 0;
         let errors = 0;
 
+        console.log('Starting import with account:', importAccountId);
+        console.log('Total rows to process:', jsonData.length);
+
         for (const row of jsonData) {
           try {
+            console.log('Processing row:', row);
+            
             // Parse date - handle multiple formats
             let fechaMovimiento = new Date();
             const fechaRaw = row['fecha_movimiento'] || row['Fecha'] || row['FECHA'] || row['fecha'];
@@ -232,9 +237,16 @@ const BankStatementsModule = () => {
               if (fechaRaw instanceof Date) {
                 fechaMovimiento = fechaRaw;
               } else if (typeof fechaRaw === 'string') {
+                // Try parsing different formats
                 const parsed = new Date(fechaRaw);
                 if (!isNaN(parsed.getTime())) {
                   fechaMovimiento = parsed;
+                } else {
+                  // Try DD/MM/YYYY format
+                  const parts = fechaRaw.split('/');
+                  if (parts.length === 3) {
+                    fechaMovimiento = new Date(parts[2], parts[1] - 1, parts[0]);
+                  }
                 }
               } else if (typeof fechaRaw === 'number') {
                 // Excel serial date number
@@ -242,13 +254,27 @@ const BankStatementsModule = () => {
                 fechaMovimiento = new Date(excelEpoch.getTime() + fechaRaw * 86400000);
               }
             }
+            
+            console.log('Parsed date:', fechaMovimiento);
 
             // Parse amount - handle Cargo/Abono columns (common in Mexican banks)
             let monto = 0;
             let tipoMovimiento = 'credito';
             
+            // First check tipo_movimiento column if exists
+            const tipoRaw = row['tipo_movimiento'] || row['Tipo'] || row['TIPO'] || '';
+            if (tipoRaw) {
+              const tipoLower = tipoRaw.toString().toLowerCase();
+              if (tipoLower.includes('deb') || tipoLower.includes('cargo') || tipoLower.includes('retiro')) {
+                tipoMovimiento = 'debito';
+              } else if (tipoLower.includes('cred') || tipoLower.includes('abono') || tipoLower.includes('dep')) {
+                tipoMovimiento = 'credito';
+              }
+            }
+            
             if (row['monto'] !== undefined || row['Monto'] !== undefined || row['MONTO'] !== undefined) {
               monto = parseFloat(row['monto'] || row['Monto'] || row['MONTO'] || 0);
+              // If negative, override tipo to debito
               if (monto < 0) {
                 tipoMovimiento = 'debito';
                 monto = Math.abs(monto);
