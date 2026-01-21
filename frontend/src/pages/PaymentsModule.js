@@ -258,35 +258,94 @@ const PaymentsModule = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      let createdPaymentId = null;
+      
       // Create payment for each selected CFDI or single payment
       if (selectedCfdis.length > 0 && !useCustomAmount) {
         // Create individual payments for each CFDI
         for (const cfdi of selectedCfdis) {
-          await api.post('/payments', {
+          const res = await api.post('/payments', {
             ...formData,
             cfdi_id: cfdi.id,
             monto: cfdi.saldo_pendiente,
             concepto: `Pago factura ${cfdi.uuid?.substring(0, 8)}...`,
             referencia: cfdi.uuid
           });
+          createdPaymentId = res.data.id;
         }
         toast.success(`${selectedCfdis.length} pago(s) registrado(s)`);
       } else {
         // Single payment with custom or total amount
-        await api.post('/payments', {
+        const res = await api.post('/payments', {
           ...formData,
           cfdi_id: selectedCfdis.length === 1 ? selectedCfdis[0].id : null,
           monto: parseFloat(formData.monto)
         });
+        createdPaymentId = res.data.id;
         toast.success('Pago registrado');
       }
       
       setDialogOpen(false);
       loadData();
-      resetForm();
+      
+      // If payment is "Real", search for matching bank transactions
+      if (formData.es_real && createdPaymentId) {
+        searchMatchCandidates(createdPaymentId);
+      } else {
+        resetForm();
+      }
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error registrando pago');
     }
+  };
+
+  // Search for bank transactions that could match this payment
+  const searchMatchCandidates = async (paymentId) => {
+    try {
+      const res = await api.get(`/payments/${paymentId}/match-candidates`);
+      if (res.data.candidates && res.data.candidates.length > 0) {
+        setMatchCandidates(res.data.candidates);
+        setNewPaymentId(paymentId);
+        setAutoMatchDialogOpen(true);
+      } else {
+        toast.info('No se encontraron movimientos bancarios para conciliar');
+        resetForm();
+      }
+    } catch (error) {
+      console.error('Error searching match candidates:', error);
+      resetForm();
+    }
+  };
+
+  // Handle auto-reconciliation with user authorization
+  const handleAutoReconcile = async () => {
+    if (!selectedCandidate || !newPaymentId) return;
+    
+    setReconciling(true);
+    try {
+      await api.post(`/payments/${newPaymentId}/auto-reconcile?transaction_id=${selectedCandidate.transaction_id}`);
+      toast.success('Pago conciliado con movimiento bancario');
+      setAutoMatchDialogOpen(false);
+      setSelectedCandidate(null);
+      setMatchCandidates([]);
+      setNewPaymentId(null);
+      loadData();
+      loadBankTransactions();
+      resetForm();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error conciliando pago');
+    } finally {
+      setReconciling(false);
+    }
+  };
+
+  const skipReconciliation = () => {
+    setAutoMatchDialogOpen(false);
+    setSelectedCandidate(null);
+    setMatchCandidates([]);
+    setNewPaymentId(null);
+    resetForm();
+    toast.info('Conciliación omitida. Puedes conciliar manualmente después.');
   };
 
   const resetForm = () => {
