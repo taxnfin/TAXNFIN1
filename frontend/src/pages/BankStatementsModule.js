@@ -13,7 +13,7 @@ import {
   Plus, CheckCircle, Building2, Trash2, DollarSign, 
   Upload, Download, Link2, RefreshCw, FileSpreadsheet,
   ArrowUpCircle, ArrowDownCircle, Search, Filter, X,
-  AlertCircle, Clock, Check
+  AlertCircle, Clock, Check, FileText
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
