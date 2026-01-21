@@ -2018,6 +2018,73 @@ async def list_bank_transactions(
                 t[field] = datetime.fromisoformat(t[field])
     return transactions
 
+@api_router.delete("/bank-transactions/{transaction_id}")
+async def delete_bank_transaction(transaction_id: str, current_user: Dict = Depends(get_current_user)):
+    """Delete a bank transaction"""
+    # Check if transaction exists
+    txn = await db.bank_transactions.find_one({
+        'id': transaction_id, 
+        'company_id': current_user['company_id']
+    })
+    if not txn:
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+    
+    # Check if it's reconciled
+    if txn.get('conciliado'):
+        raise HTTPException(status_code=400, detail="No se puede eliminar un movimiento conciliado")
+    
+    # Delete the transaction
+    result = await db.bank_transactions.delete_one({
+        'id': transaction_id,
+        'company_id': current_user['company_id']
+    })
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+    
+    await audit_log(current_user['company_id'], 'BankTransaction', transaction_id, 'DELETE', current_user['id'])
+    return {"status": "success", "message": "Movimiento eliminado"}
+
+@api_router.post("/bank-transactions/check-duplicates")
+async def check_duplicate_transactions(
+    transactions: List[dict],
+    current_user: Dict = Depends(get_current_user)
+):
+    """Check for duplicate transactions before import"""
+    company_id = current_user['company_id']
+    duplicates = []
+    
+    for txn in transactions:
+        # Check if a transaction with same date, description and amount exists
+        query = {
+            'company_id': company_id,
+            'monto': txn.get('monto'),
+            'descripcion': txn.get('descripcion')
+        }
+        
+        # Parse date if string
+        fecha = txn.get('fecha_movimiento')
+        if fecha:
+            if isinstance(fecha, str):
+                try:
+                    fecha_dt = datetime.fromisoformat(fecha.replace('Z', '+00:00'))
+                    # Check within same day
+                    start_of_day = fecha_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                    end_of_day = fecha_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+                    query['fecha_movimiento'] = {'$gte': start_of_day.isoformat(), '$lte': end_of_day.isoformat()}
+                except:
+                    pass
+        
+        existing = await db.bank_transactions.find_one(query, {'_id': 0})
+        if existing:
+            duplicates.append({
+                'descripcion': txn.get('descripcion'),
+                'monto': txn.get('monto'),
+                'fecha': str(fecha)[:10] if fecha else ''
+            })
+    
+    return {'duplicates': duplicates, 'count': len(duplicates)}
+
 @api_router.post("/reconciliations", response_model=BankReconciliation)
 async def create_reconciliation(reconciliation_data: BankReconciliationCreate, current_user: Dict = Depends(get_current_user)):
     bank_txn = await db.bank_transactions.find_one({'id': reconciliation_data.bank_transaction_id, 'company_id': current_user['company_id']}, {'_id': 0})
