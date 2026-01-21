@@ -547,7 +547,7 @@ const BankStatementsModule = () => {
           </h1>
           <p className="text-[#64748B]">Gestión de movimientos bancarios y conciliación con CFDIs</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={() => setConnectDialogOpen(true)} className="gap-2" data-testid="connect-bank-btn">
             <Link2 size={16} />
             Conectar Banco
@@ -562,6 +562,15 @@ const BankStatementsModule = () => {
               <span>
                 <Upload size={16} />
                 Importar Excel
+              </span>
+            </Button>
+          </label>
+          <label className="cursor-pointer">
+            <input type="file" accept=".pdf" onChange={handlePdfSelect} className="hidden" />
+            <Button variant="outline" className="gap-2 border-red-200 text-red-700 hover:bg-red-50" asChild data-testid="import-pdf-btn">
+              <span>
+                <FileText size={16} />
+                Importar PDF
               </span>
             </Button>
           </label>
