@@ -622,17 +622,34 @@ const BankStatementsModule = () => {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Summary Cards - Row 1: Flujo */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <Card className="border-gray-200 bg-gray-50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-2">
+              <Building2 size={16} />
+              Saldo Inicial
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold text-gray-700">
+              {monedaCuenta !== 'MXN' && <span className="text-xs text-gray-500">{monedaCuenta} </span>}
+              ${saldoInicial.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+            </div>
+            {filterAccount === 'all' && <p className="text-xs text-gray-500">Selecciona una cuenta</p>}
+          </CardContent>
+        </Card>
+
         <Card className="border-green-200 bg-green-50">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-green-700 flex items-center gap-2">
               <ArrowUpCircle size={16} />
-              Total Depósitos
+              + Depósitos
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-700">
+            <div className="text-xl font-bold text-green-700">
+              {monedaCuenta !== 'MXN' && <span className="text-xs text-green-500">{monedaCuenta} </span>}
               ${totalDepositos.toLocaleString('es-MX', {minimumFractionDigits: 2})}
             </div>
           </CardContent>
@@ -642,11 +659,12 @@ const BankStatementsModule = () => {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-red-700 flex items-center gap-2">
               <ArrowDownCircle size={16} />
-              Total Retiros
+              - Retiros
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-700">
+            <div className="text-xl font-bold text-red-700">
+              {monedaCuenta !== 'MXN' && <span className="text-xs text-red-500">{monedaCuenta} </span>}
               ${totalRetiros.toLocaleString('es-MX', {minimumFractionDigits: 2})}
             </div>
           </CardContent>
@@ -656,12 +674,13 @@ const BankStatementsModule = () => {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-blue-700 flex items-center gap-2">
               <DollarSign size={16} />
-              Flujo Neto
+              = Saldo Final
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${totalDepositos - totalRetiros >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
-              ${(totalDepositos - totalRetiros).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+            <div className={`text-xl font-bold ${saldoFinal >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
+              {monedaCuenta !== 'MXN' && <span className="text-xs">{monedaCuenta} </span>}
+              ${saldoFinal.toLocaleString('es-MX', {minimumFractionDigits: 2})}
             </div>
           </CardContent>
         </Card>
@@ -670,12 +689,12 @@ const BankStatementsModule = () => {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-yellow-700 flex items-center gap-2">
               <Clock size={16} />
-              Pendientes Conciliar
+              Pendientes
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-700">{pendientesConciliar}</div>
-            <p className="text-xs text-yellow-600">movimientos sin conciliar</p>
+            <div className="text-xl font-bold text-yellow-700">{pendientesConciliar}</div>
+            <p className="text-xs text-yellow-600">sin conciliar</p>
           </CardContent>
         </Card>
       </div>
