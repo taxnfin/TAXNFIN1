@@ -326,6 +326,19 @@ const BankStatementsModule = () => {
               fuente: 'excel_import'
             };
 
+            // Check for duplicate
+            const isDuplicate = bankTransactions.some(existing => 
+              existing.descripcion === txnData.descripcion &&
+              Math.abs(existing.monto - monto) < 0.01 &&
+              existing.fecha_movimiento?.slice(0, 10) === fechaMovimiento.toISOString().slice(0, 10)
+            );
+
+            if (isDuplicate) {
+              duplicates++;
+              console.log('Duplicate found, skipping:', txnData.descripcion);
+              continue;
+            }
+
             console.log('Sending transaction:', txnData);
             const response = await api.post('/bank-transactions', txnData);
             console.log('Transaction created:', response.data);
@@ -339,16 +352,20 @@ const BankStatementsModule = () => {
         if (imported > 0) {
           toast.success(`${imported} movimientos importados correctamente`);
         }
-        if (errors > 0) {
-          toast.warning(`${errors} filas con errores`);
+        if (duplicates > 0) {
+          toast.warning(`${duplicates} movimientos duplicados omitidos`);
         }
-        if (imported === 0 && errors === 0) {
+        if (errors > 0) {
+          toast.error(`${errors} filas con errores`);
+        }
+        if (imported === 0 && errors === 0 && duplicates === 0) {
           toast.info('No se encontraron movimientos válidos para importar');
         }
         
         setImportDialogOpen(false);
         setImportFile(null);
         setImportAccountId('');
+        setDuplicatesFound([]);
         setImporting(false);
         loadData();
       };
