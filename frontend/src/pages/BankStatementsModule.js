@@ -911,69 +911,212 @@ const BankStatementsModule = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Reconcile Dialog */}
-      <Dialog open={reconcileDialogOpen} onOpenChange={setReconcileDialogOpen}>
-        <DialogContent className="max-w-2xl">
+      {/* Reconcile Dialog - Multi-select with balance tracking */}
+      <Dialog open={reconcileDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setSelectedCfdis([]);
+          setCfdiSearchTerm('');
+        }
+        setReconcileDialogOpen(open);
+      }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Conciliar Movimiento con CFDI</DialogTitle>
+            <DialogTitle>Conciliar Movimiento con CFDIs</DialogTitle>
             <DialogDescription>
-              Selecciona el CFDI que corresponde a este movimiento bancario
+              Selecciona los CFDIs que corresponden a este movimiento bancario
             </DialogDescription>
           </DialogHeader>
           
           {selectedTransaction && (
-            <div className="space-y-4">
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <p className="text-sm font-medium text-gray-500">Movimiento a conciliar:</p>
-                <p className="font-medium">{selectedTransaction.descripcion}</p>
-                <div className="flex gap-4 mt-2">
-                  <span className={`font-mono font-bold ${selectedTransaction.tipo_movimiento === 'credito' ? 'text-green-600' : 'text-red-600'}`}>
-                    ${selectedTransaction.monto.toLocaleString('es-MX', {minimumFractionDigits: 2})}
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    {format(new Date(selectedTransaction.fecha_movimiento), 'dd/MM/yyyy')}
-                  </span>
+            <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
+              {/* Movement info */}
+              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-sm font-medium text-blue-700">Movimiento Bancario:</p>
+                    <p className="font-medium text-gray-800">{selectedTransaction.descripcion}</p>
+                    <p className="text-sm text-gray-500">
+                      {format(new Date(selectedTransaction.fecha_movimiento), 'dd/MM/yyyy')}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-blue-700">Monto:</p>
+                    <p className={`text-2xl font-bold font-mono ${selectedTransaction.tipo_movimiento === 'credito' ? 'text-green-600' : 'text-red-600'}`}>
+                      ${selectedTransaction.monto.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <p className="text-sm font-medium">CFDIs disponibles:</p>
-                <div className="max-h-64 overflow-y-auto space-y-2">
-                  {cfdis.filter(c => !c.conciliado).length === 0 ? (
-                    <p className="text-center text-gray-500 py-4">No hay CFDIs pendientes de conciliar</p>
-                  ) : (
-                    cfdis.filter(c => c.estado_conciliacion !== 'conciliado').map(cfdi => (
-                      <div
-                        key={cfdi.id}
-                        className="p-3 border rounded-lg hover:bg-blue-50 cursor-pointer transition-colors"
-                        onClick={() => handleReconcile(cfdi.id)}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-medium">{cfdi.emisor_nombre || cfdi.receptor_nombre}</p>
-                            <p className="text-xs text-gray-500">{cfdi.tipo_cfdi?.toUpperCase()} - {cfdi.uuid?.slice(0, 8)}...</p>
-                            <p className="text-xs text-gray-400">{cfdi.fecha_emision?.slice(0, 10)}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-mono font-semibold">${cfdi.total?.toLocaleString('es-MX', {minimumFractionDigits: 2})}</p>
-                            <p className="text-xs text-gray-500">{cfdi.moneda}</p>
+              {/* Balance tracker */}
+              {selectedCfdis.length > 0 && (
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3 bg-gray-100 rounded-lg text-center">
+                    <p className="text-xs text-gray-500">Monto Movimiento</p>
+                    <p className="font-mono font-bold">${getReconciliationTotals().movimientoMonto.toLocaleString('es-MX', {minimumFractionDigits: 2})}</p>
+                  </div>
+                  <div className="p-3 bg-green-100 rounded-lg text-center">
+                    <p className="text-xs text-green-700">CFDIs Seleccionados ({selectedCfdis.length})</p>
+                    <p className="font-mono font-bold text-green-700">${getReconciliationTotals().cfdiTotal.toLocaleString('es-MX', {minimumFractionDigits: 2})}</p>
+                  </div>
+                  <div className={`p-3 rounded-lg text-center ${Math.abs(getReconciliationTotals().diferencia) < 0.01 ? 'bg-green-100' : 'bg-yellow-100'}`}>
+                    <p className="text-xs text-gray-600">Diferencia</p>
+                    <p className={`font-mono font-bold ${Math.abs(getReconciliationTotals().diferencia) < 0.01 ? 'text-green-700' : 'text-yellow-700'}`}>
+                      ${getReconciliationTotals().diferencia.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Selected CFDIs */}
+              {selectedCfdis.length > 0 && (
+                <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                  <p className="text-sm font-medium text-green-700 mb-2">CFDIs seleccionados:</p>
+                  <div className="space-y-1">
+                    {selectedCfdis.map(cfdi => (
+                      <div key={cfdi.id} className="flex justify-between items-center text-sm bg-white p-2 rounded">
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => toggleCfdiSelection(cfdi)}
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            <X size={14} />
+                          </button>
+                          <span className="font-medium">{cfdi.receptor_nombre || cfdi.emisor_nombre}</span>
+                        </div>
+                        <span className="font-mono">${cfdi.total?.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Search CFDIs */}
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <Input
+                  placeholder="Buscar por cliente, RFC o UUID..."
+                  value={cfdiSearchTerm}
+                  onChange={(e) => setCfdiSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+
+              {/* CFDIs list */}
+              <div className="flex-1 overflow-y-auto space-y-2 min-h-[200px] max-h-[300px]">
+                <p className="text-sm font-medium sticky top-0 bg-white py-1">CFDIs disponibles:</p>
+                {cfdis
+                  .filter(c => c.estado_conciliacion !== 'conciliado')
+                  .filter(c => {
+                    if (!cfdiSearchTerm) return true;
+                    const search = cfdiSearchTerm.toLowerCase();
+                    return (
+                      c.receptor_nombre?.toLowerCase().includes(search) ||
+                      c.emisor_nombre?.toLowerCase().includes(search) ||
+                      c.receptor_rfc?.toLowerCase().includes(search) ||
+                      c.emisor_rfc?.toLowerCase().includes(search) ||
+                      c.uuid?.toLowerCase().includes(search)
+                    );
+                  })
+                  .length === 0 ? (
+                  <p className="text-center text-gray-500 py-4">No hay CFDIs que coincidan</p>
+                ) : (
+                  cfdis
+                    .filter(c => c.estado_conciliacion !== 'conciliado')
+                    .filter(c => {
+                      if (!cfdiSearchTerm) return true;
+                      const search = cfdiSearchTerm.toLowerCase();
+                      return (
+                        c.receptor_nombre?.toLowerCase().includes(search) ||
+                        c.emisor_nombre?.toLowerCase().includes(search) ||
+                        c.receptor_rfc?.toLowerCase().includes(search) ||
+                        c.emisor_rfc?.toLowerCase().includes(search) ||
+                        c.uuid?.toLowerCase().includes(search)
+                      );
+                    })
+                    .map(cfdi => {
+                      const isSelected = selectedCfdis.some(c => c.id === cfdi.id);
+                      return (
+                        <div
+                          key={cfdi.id}
+                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                            isSelected 
+                              ? 'bg-green-100 border-green-400' 
+                              : 'hover:bg-blue-50 border-gray-200'
+                          }`}
+                          onClick={() => toggleCfdiSelection(cfdi)}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <input 
+                                  type="checkbox" 
+                                  checked={isSelected}
+                                  onChange={() => {}}
+                                  className="w-4 h-4 text-green-600"
+                                />
+                                <div>
+                                  <p className="font-medium text-gray-800">
+                                    {cfdi.tipo_cfdi === 'ingreso' ? (
+                                      <span className="text-green-700">Cliente: </span>
+                                    ) : (
+                                      <span className="text-red-700">Proveedor: </span>
+                                    )}
+                                    {cfdi.tipo_cfdi === 'ingreso' ? cfdi.receptor_nombre : cfdi.emisor_nombre}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    RFC: {cfdi.tipo_cfdi === 'ingreso' ? cfdi.receptor_rfc : cfdi.emisor_rfc}
+                                  </p>
+                                  <p className="text-xs text-gray-400">
+                                    {cfdi.tipo_cfdi?.toUpperCase()} | {cfdi.fecha_emision?.slice(0, 10)} | {cfdi.uuid?.slice(0, 8)}...
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className={`font-mono font-bold ${cfdi.tipo_cfdi === 'ingreso' ? 'text-green-600' : 'text-red-600'}`}>
+                                ${cfdi.total?.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                              </p>
+                              <p className="text-xs text-gray-500">{cfdi.moneda}</p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))
-                  )}
-                </div>
+                      );
+                    })
+                )}
               </div>
             </div>
           )}
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setReconcileDialogOpen(false);
-              setSelectedTransaction(null);
-            }}>
-              Cancelar
-            </Button>
+          <DialogFooter className="flex justify-between items-center border-t pt-4">
+            <div className="text-sm text-gray-500">
+              {selectedCfdis.length > 0 && (
+                <span>
+                  {Math.abs(getReconciliationTotals().diferencia) < 0.01 ? (
+                    <span className="text-green-600 font-medium">✓ Los montos cuadran perfectamente</span>
+                  ) : (
+                    <span className="text-yellow-600">Diferencia de ${Math.abs(getReconciliationTotals().diferencia).toFixed(2)}</span>
+                  )}
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => {
+                setReconcileDialogOpen(false);
+                setSelectedTransaction(null);
+                setSelectedCfdis([]);
+                setCfdiSearchTerm('');
+              }}>
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleConfirmReconciliation}
+                disabled={selectedCfdis.length === 0}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                Confirmar Conciliación ({selectedCfdis.length})
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
