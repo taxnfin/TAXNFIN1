@@ -3013,6 +3013,12 @@ def parse_bank_statement_pdf(pdf_content: bytes, bank_name: str = "auto") -> Lis
                 transactions = parse_banorte_pdf(full_text, all_tables, saldo_inicial)
             elif detected_bank == "bbva":
                 transactions = parse_bbva_pdf(full_text, all_tables, saldo_inicial)
+            elif detected_bank == "santander":
+                transactions = parse_santander_pdf(full_text, all_tables, saldo_inicial)
+            elif detected_bank == "hsbc":
+                transactions = parse_hsbc_pdf(full_text, all_tables, saldo_inicial)
+            elif detected_bank == "banamex":
+                transactions = parse_banamex_pdf(full_text, all_tables, saldo_inicial)
             else:
                 transactions = parse_generic_pdf(full_text, all_tables, saldo_inicial)
             
