@@ -117,6 +117,61 @@ const BankStatementsModule = () => {
     }
   };
 
+  // Toggle CFDI selection for multi-reconciliation
+  const toggleCfdiSelection = (cfdi) => {
+    setSelectedCfdis(prev => {
+      const exists = prev.find(c => c.id === cfdi.id);
+      if (exists) {
+        return prev.filter(c => c.id !== cfdi.id);
+      } else {
+        return [...prev, cfdi];
+      }
+    });
+  };
+
+  // Calculate totals for reconciliation
+  const getReconciliationTotals = () => {
+    const movimientoMonto = selectedTransaction?.monto || 0;
+    const cfdiTotal = selectedCfdis.reduce((sum, cfdi) => sum + (cfdi.total || 0), 0);
+    const diferencia = movimientoMonto - cfdiTotal;
+    return { movimientoMonto, cfdiTotal, diferencia };
+  };
+
+  // Confirm multi-reconciliation
+  const handleConfirmReconciliation = async () => {
+    if (!selectedTransaction || selectedCfdis.length === 0) {
+      toast.error('Selecciona al menos un CFDI');
+      return;
+    }
+    
+    try {
+      // Reconcile each selected CFDI
+      for (const cfdi of selectedCfdis) {
+        await api.post('/reconciliations', {
+          bank_transaction_id: selectedTransaction.id,
+          cfdi_id: cfdi.id,
+          metodo_conciliacion: 'manual',
+          porcentaje_match: 100
+        });
+      }
+      
+      const { diferencia } = getReconciliationTotals();
+      if (Math.abs(diferencia) < 0.01) {
+        toast.success(`Movimiento conciliado con ${selectedCfdis.length} CFDI(s) - Cuadrado perfectamente`);
+      } else {
+        toast.success(`Movimiento conciliado con ${selectedCfdis.length} CFDI(s) - Diferencia: $${diferencia.toFixed(2)}`);
+      }
+      
+      setReconcileDialogOpen(false);
+      setSelectedTransaction(null);
+      setSelectedCfdis([]);
+      setCfdiSearchTerm('');
+      loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error al conciliar');
+    }
+  };
+
   const handleReconcile = async (cfdiId) => {
     if (!selectedTransaction) return;
     try {
@@ -129,6 +184,7 @@ const BankStatementsModule = () => {
       toast.success('Movimiento conciliado con CFDI');
       setReconcileDialogOpen(false);
       setSelectedTransaction(null);
+      setSelectedCfdis([]);
       loadData();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error al conciliar');
