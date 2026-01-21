@@ -37,6 +37,8 @@ const BankStatementsModule = () => {
   const [importing, setImporting] = useState(false);
   const [duplicatesFound, setDuplicatesFound] = useState([]);
   const [skipDuplicates, setSkipDuplicates] = useState(true);
+  const [selectedCfdis, setSelectedCfdis] = useState([]);
+  const [cfdiSearchTerm, setCfdiSearchTerm] = useState('');
 
   const [formData, setFormData] = useState({
     bank_account_id: '',
