@@ -339,19 +339,6 @@ const BankStatementsModule = () => {
       setImporting(false);
     }
   };
-          toast.success(`${imported} movimientos importados correctamente`);
-        }
-        if (errors > 0) {
-          toast.warning(`${errors} filas con errores`);
-        }
-        loadData();
-      };
-      reader.readAsArrayBuffer(file);
-    } catch (error) {
-      toast.error('Error importando archivo');
-    }
-    e.target.value = '';
-  };
 
   // Filter transactions
   const filteredTransactions = bankTransactions.filter(txn => {
