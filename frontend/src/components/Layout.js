@@ -35,7 +35,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
     { name: 'Proyecciones', href: '/projections', icon: TrendingUp, highlight: true },
     { name: 'Aging CxC/CxP', href: '/transactions', icon: ArrowRightLeft },
     { name: 'CFDI / SAT', href: '/cfdi', icon: FileText },
-    { name: 'Estados de Cuenta', href: '/bank-statements', icon: Receipt },
+    { name: 'Conciliaciones', href: '/bank-statements', icon: Receipt },
     { name: 'Cuentas Bancarias', href: '/bank', icon: Building2 },
     { name: 'Cobranza y Pagos', href: '/payments', icon: CreditCard },
     { name: 'DIOT', href: '/diot', icon: FileSpreadsheet },
