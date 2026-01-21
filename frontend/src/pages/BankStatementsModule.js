@@ -43,6 +43,8 @@ const BankStatementsModule = () => {
   const [pdfFile, setPdfFile] = useState(null);
   const [pdfAccountId, setPdfAccountId] = useState('');
   const [importingPdf, setImportingPdf] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
 
   const [formData, setFormData] = useState({
     bank_account_id: '',
