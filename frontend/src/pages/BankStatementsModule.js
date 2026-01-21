@@ -1330,6 +1330,112 @@ const BankStatementsModule = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Import PDF Dialog */}
+      <Dialog open={importPdfDialogOpen} onOpenChange={(open) => {
+        if (!open && !importingPdf) {
+          setImportPdfDialogOpen(false);
+          setPdfFile(null);
+          setPdfAccountId('');
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText size={20} className="text-red-600" />
+              Importar Estado de Cuenta PDF
+            </DialogTitle>
+            <DialogDescription>
+              Lee automáticamente los movimientos de tu estado de cuenta bancario en PDF
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {pdfFile && (
+              <div className="flex items-center gap-2 p-3 bg-red-50 rounded-lg border border-red-200">
+                <FileText size={20} className="text-red-600" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">{pdfFile.name}</p>
+                  <p className="text-xs text-gray-500">{(pdfFile.size / 1024).toFixed(1)} KB</p>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Cuenta Bancaria Destino *</Label>
+              <Select value={pdfAccountId} onValueChange={setPdfAccountId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar cuenta..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {bankAccounts.map(acc => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      <div className="flex items-center gap-2">
+                        <Building2 size={14} className="text-gray-500" />
+                        <span className="font-medium">{acc.banco}</span>
+                        <span className="text-gray-500">-</span>
+                        <span>{acc.nombre}</span>
+                        <span className={`ml-2 text-xs px-2 py-0.5 rounded ${
+                          acc.moneda === 'USD' ? 'bg-blue-100 text-blue-700' :
+                          acc.moneda === 'EUR' ? 'bg-purple-100 text-purple-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {acc.moneda}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-800 font-medium mb-1">Bancos soportados:</p>
+              <p className="text-xs text-blue-700">
+                Banorte, BBVA, Santander, HSBC, Scotiabank, Banamex y otros bancos mexicanos.
+              </p>
+            </div>
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <p className="text-sm text-yellow-800">
+                <strong>Nota:</strong> El sistema detectará automáticamente el formato del banco. 
+                Los movimientos duplicados serán omitidos.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setImportPdfDialogOpen(false);
+                setPdfFile(null);
+                setPdfAccountId('');
+              }}
+              disabled={importingPdf}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              onClick={processPdfImport} 
+              disabled={!pdfAccountId || importingPdf}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {importingPdf ? (
+                <>
+                  <RefreshCw size={16} className="mr-2 animate-spin" />
+                  Procesando PDF...
+                </>
+              ) : (
+                <>
+                  <FileText size={16} className="mr-2" />
+                  Importar desde PDF
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
