@@ -264,8 +264,37 @@ const BankStatementsModule = () => {
     
     setPdfFile(file);
     setPdfAccountId(bankAccounts[0]?.id || '');
+    setPdfPreview(null);
     setImportPdfDialogOpen(true);
     e.target.value = '';
+    
+    // Auto-load preview
+    loadPdfPreview(file);
+  };
+
+  // Load PDF preview
+  const loadPdfPreview = async (file) => {
+    setLoadingPreview(true);
+    setPdfPreview(null);
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('banco', 'auto');
+
+      const response = await api.post('/bank-transactions/preview-pdf', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      setPdfPreview(response.data);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error leyendo PDF');
+      setPdfPreview({ status: 'error', message: 'No se pudo leer el PDF' });
+    } finally {
+      setLoadingPreview(false);
+    }
   };
 
   // Process PDF import
@@ -281,7 +310,7 @@ const BankStatementsModule = () => {
       const formData = new FormData();
       formData.append('file', pdfFile);
       formData.append('bank_account_id', pdfAccountId);
-      formData.append('banco', 'auto'); // Auto-detect bank
+      formData.append('banco', 'auto');
 
       const response = await api.post('/bank-transactions/import-pdf', formData, {
         headers: {
@@ -306,6 +335,7 @@ const BankStatementsModule = () => {
       setImportPdfDialogOpen(false);
       setPdfFile(null);
       setPdfAccountId('');
+      setPdfPreview(null);
       loadData();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error importando PDF');
