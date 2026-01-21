@@ -990,11 +990,22 @@ const BankStatementsModule = () => {
                         <TableCell className={`text-right font-mono font-semibold ${
                           txn.tipo_movimiento === 'credito' ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          {txn.tipo_movimiento === 'credito' ? '+' : '-'}
-                          ${Math.abs(txn.monto).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                          <div>
+                            {txn.tipo_movimiento === 'credito' ? '+' : '-'}
+                            ${Math.abs(txn.monto).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                            <span className="text-xs ml-1">{txn.moneda || account?.moneda || 'MXN'}</span>
+                          </div>
+                          {(txn.moneda || account?.moneda) !== 'MXN' && (txn.moneda || account?.moneda) && (
+                            <div className="text-xs text-gray-400 font-normal">
+                              ≈ ${convertToMXN(txn.monto, txn.moneda || account?.moneda).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-mono">
                           ${(txn.saldo || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                          {(txn.moneda || account?.moneda) !== 'MXN' && (
+                            <span className="text-xs ml-1 text-gray-400">{txn.moneda || account?.moneda}</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-center">
                           {txn.conciliado ? (
