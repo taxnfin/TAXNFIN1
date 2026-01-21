@@ -3459,39 +3459,30 @@ def parse_generic_pdf(text: str, tables: List, saldo_inicial: float = None) -> L
                         descripcion = cell_str
                 
                 if amounts:
-                    # Determine deposit vs withdrawal
+                    # Determine deposit vs withdrawal using shared function
                     deposito = 0
                     retiro = 0
                     saldo = amounts[-1] if len(amounts) > 1 else 0
                     monto = amounts[0] if len(amounts) >= 1 else 0
                     
-                    # Check for keywords
-                    desc_upper = descripcion.upper()
-                    is_deposit = any(kw in desc_upper for kw in [
-                        'DEPOSITO', 'ABONO', 'TRANSFERENCIA RECIBIDA', 
-                        'SPEI REC', 'PAGO RECIBIDO', 'INGRESO'
-                    ])
-                    is_withdrawal = any(kw in desc_upper for kw in [
-                        'RETIRO', 'CARGO', 'PAGO', 'TRANSFERENCIA ENVIADA',
-                        'SPEI ENV', 'COMISION', 'IVA'
-                    ])
+                    # Use the shared keyword detection
+                    is_dep = is_deposit_transaction(descripcion)
                     
-                    if is_deposit:
+                    if is_dep is True:
                         deposito = monto
-                    elif is_withdrawal:
-                        retiro = monto
                     else:
-                        # Default to withdrawal if unknown
+                        # Default to withdrawal if unknown or explicitly withdrawal
                         retiro = monto
                     
-                    transactions.append({
-                        'fecha': fecha,
-                        'descripcion': descripcion or 'Movimiento',
-                        'deposito': deposito,
-                        'retiro': retiro,
-                        'saldo': saldo,
-                        'referencia': ''
-                    })
+                    if deposito > 0 or retiro > 0:
+                        transactions.append({
+                            'fecha': fecha,
+                            'descripcion': descripcion or 'Movimiento',
+                            'deposito': deposito,
+                            'retiro': retiro,
+                            'saldo': saldo,
+                            'referencia': ''
+                        })
                     
             except Exception:
                 continue
