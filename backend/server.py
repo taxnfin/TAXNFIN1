@@ -3162,42 +3162,7 @@ def parse_mexican_bank_pdf(text: str, tables: List, pdf, saldo_inicial: float = 
     return transactions
 
 
-def parse_text_lines(text: str, current_year: int, months_es: dict) -> List[Dict]:
-    """Parse bank statement from plain text lines"""
-    import re
-    
-    transactions = []
-    lines = text.split('\n')
-    last_valid_date = None
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        
-        line_upper = line.upper()
-        
-        # Skip headers and summaries
-        if any(skip in line_upper for skip in ['FECHA', 'DEPOSITO', 'RETIRO', 'CARGO', 'SALDO INICIAL', 'SALDO ANTERIOR', 'NO. REF', 'TOTAL', 'RESUMEN']):
-            continue
-        
-        # Extract date
-        fecha = None
-        date_match = re.search(r'(\d{1,2})\s*(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)', line_upper)
-        if date_match:
-            day = date_match.group(1).zfill(2)
-            month = months_es.get(date_match.group(2), '01')
-            fecha = f"{current_year}-{month}-{day}"
-            last_valid_date = fecha
-        
-        # Extract all amounts
-        amounts = re.findall(r'\$?\s*([\d,]+\.\d{2})', line)
-        amounts = [float(a.replace(',', '')) for a in amounts]
-        
-        if len(amounts) < 2:
-            continue
-        
-        # Use last valid date if no date in this line
+def parse_banorte_pdf(text: str, tables: List, saldo_inicial: float = None) -> List[Dict]:
         if not fecha and last_valid_date and len(amounts) >= 2:
             fecha = last_valid_date
         
