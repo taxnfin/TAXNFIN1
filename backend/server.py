@@ -3622,8 +3622,9 @@ def parse_hsbc_pdf(text: str, tables: List, saldo_inicial: float = None) -> List
                     saldo = amounts[-1] if len(amounts) > 1 else 0
                     monto = amounts[0] if amounts else 0
                     
-                    desc_upper = descripcion.upper()
-                    if any(kw in desc_upper for kw in ['DEPOSIT', 'CREDIT', 'TRANSFER IN', 'ABONO']):
+                    # Use shared keyword detection
+                    is_dep = is_deposit_transaction(descripcion)
+                    if is_dep is True:
                         deposito = monto
                     else:
                         retiro = monto
@@ -3683,10 +3684,10 @@ def parse_banamex_pdf(text: str, tables: List, saldo_inicial: float = None) -> L
                 saldo = float(amounts[-1].replace(',', '')) if amounts else 0
                 
                 if len(amounts) >= 2:
-                    # Usually: CARGO ABONO SALDO or just MONTO SALDO
                     monto = float(amounts[0].replace(',', ''))
-                    desc_upper = descripcion.upper()
-                    if any(kw in desc_upper for kw in ['DEPOSITO', 'ABONO', 'PAGO RECIBIDO']):
+                    # Use shared keyword detection
+                    is_dep = is_deposit_transaction(descripcion)
+                    if is_dep is True:
                         deposito = monto
                     else:
                         retiro = monto
