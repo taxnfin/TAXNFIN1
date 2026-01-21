@@ -1365,24 +1365,26 @@ const BankStatementsModule = () => {
 
       {/* Import PDF Dialog */}
       <Dialog open={importPdfDialogOpen} onOpenChange={(open) => {
-        if (!open && !importingPdf) {
+        if (!open && !importingPdf && !loadingPreview) {
           setImportPdfDialogOpen(false);
           setPdfFile(null);
           setPdfAccountId('');
+          setPdfPreview(null);
         }
       }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText size={20} className="text-red-600" />
               Importar Estado de Cuenta PDF
             </DialogTitle>
             <DialogDescription>
-              Lee automáticamente los movimientos de tu estado de cuenta bancario en PDF
+              Vista previa de los movimientos detectados en tu estado de cuenta
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
+            {/* File Info */}
             {pdfFile && (
               <div className="flex items-center gap-2 p-3 bg-red-50 rounded-lg border border-red-200">
                 <FileText size={20} className="text-red-600" />
@@ -1390,50 +1392,148 @@ const BankStatementsModule = () => {
                   <p className="font-medium text-sm truncate">{pdfFile.name}</p>
                   <p className="text-xs text-gray-500">{(pdfFile.size / 1024).toFixed(1)} KB</p>
                 </div>
+                {pdfPreview?.banco_detectado && (
+                  <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
+                    {pdfPreview.banco_detectado}
+                  </span>
+                )}
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Cuenta Bancaria Destino *</Label>
-              <Select value={pdfAccountId} onValueChange={setPdfAccountId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar cuenta..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {bankAccounts.map(acc => (
-                    <SelectItem key={acc.id} value={acc.id}>
-                      <div className="flex items-center gap-2">
-                        <Building2 size={14} className="text-gray-500" />
-                        <span className="font-medium">{acc.banco}</span>
-                        <span className="text-gray-500">-</span>
-                        <span>{acc.nombre}</span>
-                        <span className={`ml-2 text-xs px-2 py-0.5 rounded ${
-                          acc.moneda === 'USD' ? 'bg-blue-100 text-blue-700' :
-                          acc.moneda === 'EUR' ? 'bg-purple-100 text-purple-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {acc.moneda}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Loading state */}
+            {loadingPreview && (
+              <div className="flex flex-col items-center justify-center py-8">
+                <RefreshCw size={32} className="text-red-600 animate-spin mb-3" />
+                <p className="text-sm text-gray-600">Analizando PDF...</p>
+              </div>
+            )}
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <p className="text-sm text-blue-800 font-medium mb-1">Bancos soportados:</p>
-              <p className="text-xs text-blue-700">
-                Banorte, BBVA, Santander, HSBC, Scotiabank, Banamex y otros bancos mexicanos.
-              </p>
-            </div>
+            {/* Preview Results */}
+            {pdfPreview && !loadingPreview && (
+              <>
+                {/* Summary Cards */}
+                {pdfPreview.total_movimientos > 0 ? (
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="bg-blue-50 rounded-lg p-3 text-center">
+                      <p className="text-2xl font-bold text-blue-700">{pdfPreview.total_movimientos}</p>
+                      <p className="text-xs text-blue-600">Movimientos</p>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-3 text-center">
+                      <p className="text-lg font-bold text-green-700">
+                        ${pdfPreview.total_depositos?.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                      </p>
+                      <p className="text-xs text-green-600">Depósitos</p>
+                    </div>
+                    <div className="bg-red-50 rounded-lg p-3 text-center">
+                      <p className="text-lg font-bold text-red-700">
+                        ${pdfPreview.total_retiros?.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                      </p>
+                      <p className="text-xs text-red-600">Retiros</p>
+                    </div>
+                    <div className="bg-purple-50 rounded-lg p-3 text-center">
+                      <p className={`text-lg font-bold ${pdfPreview.flujo_neto >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                        ${Math.abs(pdfPreview.flujo_neto || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                      </p>
+                      <p className="text-xs text-purple-600">Flujo Neto</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
+                    <AlertCircle size={32} className="text-yellow-600 mx-auto mb-2" />
+                    <p className="text-sm text-yellow-800 font-medium">No se encontraron movimientos</p>
+                    <p className="text-xs text-yellow-700 mt-1">
+                      El formato del PDF no es compatible. Intenta con la plantilla Excel.
+                    </p>
+                  </div>
+                )}
 
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <p className="text-sm text-yellow-800">
-                <strong>Nota:</strong> El sistema detectará automáticamente el formato del banco. 
-                Los movimientos duplicados serán omitidos.
-              </p>
-            </div>
+                {/* Transaction Preview Table */}
+                {pdfPreview.transactions?.length > 0 && (
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="bg-gray-50 px-3 py-2 border-b">
+                      <p className="text-sm font-medium text-gray-700">Vista Previa de Movimientos</p>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Fecha</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Descripción</th>
+                            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Monto</th>
+                            <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Tipo</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {pdfPreview.transactions.slice(0, 15).map((txn, idx) => (
+                            <tr key={idx} className="hover:bg-gray-50">
+                              <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+                                {txn.fecha}
+                              </td>
+                              <td className="px-3 py-2 text-xs text-gray-900 truncate max-w-[200px]">
+                                {txn.descripcion}
+                              </td>
+                              <td className={`px-3 py-2 text-xs font-medium text-right ${
+                                txn.tipo === 'credito' ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                                {txn.tipo === 'credito' ? '+' : '-'}${txn.monto?.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <span className={`px-2 py-0.5 text-xs rounded ${
+                                  txn.tipo === 'credito' 
+                                    ? 'bg-green-100 text-green-700' 
+                                    : 'bg-red-100 text-red-700'
+                                }`}>
+                                  {txn.tipo_display}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {pdfPreview.transactions.length > 15 && (
+                        <div className="px-3 py-2 bg-gray-50 text-center text-xs text-gray-500">
+                          ... y {pdfPreview.transactions.length - 15} movimientos más
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Account Selection - Only show if preview has transactions */}
+            {pdfPreview?.total_movimientos > 0 && (
+              <div className="space-y-2 pt-2 border-t">
+                <Label className="text-sm font-medium">Cuenta Bancaria Destino *</Label>
+                <Select value={pdfAccountId} onValueChange={setPdfAccountId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar cuenta..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bankAccounts.map(acc => (
+                      <SelectItem key={acc.id} value={acc.id}>
+                        <div className="flex items-center gap-2">
+                          <Building2 size={14} className="text-gray-500" />
+                          <span className="font-medium">{acc.banco}</span>
+                          <span className="text-gray-500">-</span>
+                          <span>{acc.nombre}</span>
+                          <span className={`ml-2 text-xs px-2 py-0.5 rounded ${
+                            acc.moneda === 'USD' ? 'bg-blue-100 text-blue-700' :
+                            acc.moneda === 'EUR' ? 'bg-purple-100 text-purple-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {acc.moneda}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">
+                  Los movimientos duplicados serán omitidos automáticamente.
+                </p>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
@@ -1443,25 +1543,26 @@ const BankStatementsModule = () => {
                 setImportPdfDialogOpen(false);
                 setPdfFile(null);
                 setPdfAccountId('');
+                setPdfPreview(null);
               }}
-              disabled={importingPdf}
+              disabled={importingPdf || loadingPreview}
             >
               Cancelar
             </Button>
             <Button 
               onClick={processPdfImport} 
-              disabled={!pdfAccountId || importingPdf}
+              disabled={!pdfAccountId || importingPdf || loadingPreview || !pdfPreview?.total_movimientos}
               className="bg-red-600 hover:bg-red-700"
             >
               {importingPdf ? (
                 <>
                   <RefreshCw size={16} className="mr-2 animate-spin" />
-                  Procesando PDF...
+                  Importando...
                 </>
               ) : (
                 <>
-                  <FileText size={16} className="mr-2" />
-                  Importar desde PDF
+                  <Check size={16} className="mr-2" />
+                  Confirmar Importación ({pdfPreview?.total_movimientos || 0})
                 </>
               )}
             </Button>
