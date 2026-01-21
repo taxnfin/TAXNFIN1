@@ -3388,18 +3388,48 @@ WITHDRAWAL_KEYWORDS = [
 ]
 
 
+def normalize_text_for_keywords(text: str) -> str:
+    """
+    Normalize text by removing single-space separations between letters.
+    This handles PDFs that have 'D E P O S I T O' instead of 'DEPOSITO'.
+    """
+    import re
+    
+    if not text:
+        return ""
+    
+    # Pattern to match single letters separated by single spaces
+    # e.g., "D E P O S I T O" -> "DEPOSITO"
+    # But preserve multi-letter words: "PAGO DE SERVICIO" stays as is
+    
+    result = text.upper()
+    
+    # Replace patterns like "A B C" (single letters with spaces) with "ABC"
+    # This regex finds sequences of single letters separated by single spaces
+    pattern = r'\b([A-Z])\s+(?=[A-Z]\b)'
+    
+    # Keep replacing until no more changes
+    prev = ""
+    while prev != result:
+        prev = result
+        result = re.sub(pattern, r'\1', result)
+    
+    return result
+
+
 def is_deposit_transaction(desc: str) -> bool:
     """Determine if transaction is a deposit based on description keywords"""
-    desc_upper = desc.upper()
+    # Normalize text to handle spaced-out letters like "D E POSITO"
+    normalized = normalize_text_for_keywords(desc)
     
     # Check for deposit keywords
     for kw in DEPOSIT_KEYWORDS:
-        if kw in desc_upper:
+        if kw in normalized:
             return True
     
     # Check for withdrawal keywords
     for kw in WITHDRAWAL_KEYWORDS:
-        if kw in desc_upper:
+        if kw in normalized:
             return False
     
     return None  # Unknown - will default to withdrawal
