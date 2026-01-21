@@ -243,6 +243,75 @@ const BankStatementsModule = () => {
     toast.success('Exportado a Excel');
   };
 
+  // Handle PDF file selection
+  const handlePdfSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    if (bankAccounts.length === 0) {
+      toast.error('Primero crea una cuenta bancaria');
+      e.target.value = '';
+      return;
+    }
+    
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      toast.error('Solo se aceptan archivos PDF');
+      e.target.value = '';
+      return;
+    }
+    
+    setPdfFile(file);
+    setPdfAccountId(bankAccounts[0]?.id || '');
+    setImportPdfDialogOpen(true);
+    e.target.value = '';
+  };
+
+  // Process PDF import
+  const processPdfImport = async () => {
+    if (!pdfFile || !pdfAccountId) {
+      toast.error('Selecciona una cuenta bancaria');
+      return;
+    }
+
+    setImportingPdf(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', pdfFile);
+      formData.append('bank_account_id', pdfAccountId);
+      formData.append('banco', 'auto'); // Auto-detect bank
+
+      const response = await api.post('/bank-transactions/import-pdf', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      const result = response.data;
+
+      if (result.importados > 0) {
+        toast.success(`${result.importados} movimientos importados del PDF`);
+      }
+      
+      if (result.duplicados_omitidos > 0) {
+        toast.warning(`${result.duplicados_omitidos} duplicados omitidos`);
+      }
+      
+      if (result.importados === 0 && result.status === 'warning') {
+        toast.info(result.message);
+      }
+
+      setImportPdfDialogOpen(false);
+      setPdfFile(null);
+      setPdfAccountId('');
+      loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error importando PDF');
+    } finally {
+      setImportingPdf(false);
+    }
+  };
+
   // Handle file selection - opens dialog to select account
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
