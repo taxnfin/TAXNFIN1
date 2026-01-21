@@ -2949,6 +2949,410 @@ async def import_bank_statement(request: Request, file: UploadFile = File(...), 
         'detalle_errores': errors[:10]
     }
 
+
+def parse_bank_statement_pdf(pdf_content: bytes, bank_name: str = "auto") -> List[Dict]:
+    """
+    Parse bank statement PDF and extract transactions.
+    Supports: Banorte, BBVA, Santander, HSBC, and generic formats.
+    """
+    import pdfplumber
+    import re
+    from datetime import datetime
+    
+    transactions = []
+    
+    try:
+        with pdfplumber.open(io.BytesIO(pdf_content)) as pdf:
+            full_text = ""
+            all_tables = []
+            
+            for page in pdf.pages:
+                text = page.extract_text() or ""
+                full_text += text + "\n"
+                
+                # Extract tables from each page
+                tables = page.extract_tables()
+                if tables:
+                    all_tables.extend(tables)
+            
+            # Try to detect bank from content
+            detected_bank = bank_name
+            if bank_name == "auto":
+                text_lower = full_text.lower()
+                if "banorte" in text_lower:
+                    detected_bank = "banorte"
+                elif "bbva" in text_lower or "bancomer" in text_lower:
+                    detected_bank = "bbva"
+                elif "santander" in text_lower:
+                    detected_bank = "santander"
+                elif "hsbc" in text_lower:
+                    detected_bank = "hsbc"
+                elif "scotiabank" in text_lower:
+                    detected_bank = "scotiabank"
+                elif "banamex" in text_lower or "citibanamex" in text_lower:
+                    detected_bank = "banamex"
+                else:
+                    detected_bank = "generic"
+            
+            # Try extracting saldo inicial from text
+            saldo_inicial = None
+            saldo_patterns = [
+                r'SALDO\s+INICIAL[:\s]+\$?\s*([\d,]+\.?\d*)',
+                r'SALDO\s+ANTERIOR[:\s]+\$?\s*([\d,]+\.?\d*)',
+                r'SALDO\s+AL\s+\d+[:\s]+\$?\s*([\d,]+\.?\d*)',
+            ]
+            for pattern in saldo_patterns:
+                match = re.search(pattern, full_text, re.IGNORECASE)
+                if match:
+                    saldo_str = match.group(1).replace(',', '')
+                    saldo_inicial = float(saldo_str)
+                    break
+            
+            # Parse based on detected bank
+            if detected_bank == "banorte":
+                transactions = parse_banorte_pdf(full_text, all_tables, saldo_inicial)
+            elif detected_bank == "bbva":
+                transactions = parse_bbva_pdf(full_text, all_tables, saldo_inicial)
+            else:
+                transactions = parse_generic_pdf(full_text, all_tables, saldo_inicial)
+            
+    except Exception as e:
+        logging.error(f"Error parsing PDF: {str(e)}")
+        raise
+    
+    return transactions
+
+
+def parse_banorte_pdf(text: str, tables: List, saldo_inicial: float = None) -> List[Dict]:
+    """Parse Banorte bank statement format"""
+    import re
+    from datetime import datetime
+    
+    transactions = []
+    current_year = datetime.now().year
+    
+    # Banorte pattern: DATE | DESCRIPTION | DEPOSITOS | RETIROS | SALDO
+    # Date formats: "1 DIC", "15 ENE", etc.
+    
+    months_es = {
+        'ENE': '01', 'FEB': '02', 'MAR': '03', 'ABR': '04',
+        'MAY': '05', 'JUN': '06', 'JUL': '07', 'AGO': '08',
+        'SEP': '09', 'OCT': '10', 'NOV': '11', 'DIC': '12'
+    }
+    
+    # Try parsing from tables first
+    for table in tables:
+        if not table or len(table) < 2:
+            continue
+        
+        # Check if this looks like a transaction table
+        header_row = table[0] if table else []
+        header_text = ' '.join([str(cell or '').upper() for cell in header_row])
+        
+        if 'FECHA' in header_text or 'DEPOSITO' in header_text or 'RETIRO' in header_text or 'SALDO' in header_text:
+            for row in table[1:]:
+                if not row or not any(row):
+                    continue
+                
+                try:
+                    # Try to identify columns
+                    row_cleaned = [str(cell or '').strip() for cell in row]
+                    
+                    # Skip rows that don't have data
+                    if len(row_cleaned) < 3:
+                        continue
+                    
+                    # Find date-like value
+                    fecha = None
+                    descripcion = ""
+                    deposito = 0
+                    retiro = 0
+                    saldo = 0
+                    
+                    for idx, cell in enumerate(row_cleaned):
+                        # Check for date pattern
+                        date_match = re.search(r'(\d{1,2})\s*(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)', cell.upper())
+                        if date_match and not fecha:
+                            day = date_match.group(1).zfill(2)
+                            month = months_es.get(date_match.group(2), '01')
+                            fecha = f"{current_year}-{month}-{day}"
+                            continue
+                        
+                        # Check for money values (with $ or just numbers with commas)
+                        money_match = re.search(r'\$?\s*([\d,]+\.?\d*)', cell.replace(' ', ''))
+                        if money_match:
+                            value = float(money_match.group(1).replace(',', ''))
+                            if value > 0:
+                                # Determine if deposit or withdrawal based on position or context
+                                if 'DEPOSITO' in ' '.join(row_cleaned[:idx]).upper() or idx == len(row_cleaned) - 3:
+                                    deposito = value
+                                elif 'RETIRO' in ' '.join(row_cleaned[:idx]).upper() or idx == len(row_cleaned) - 2:
+                                    retiro = value
+                                elif idx == len(row_cleaned) - 1:
+                                    saldo = value
+                                continue
+                        
+                        # Text is probably description
+                        if cell and len(cell) > 3 and not re.match(r'^[\d\$\.,\s]+$', cell):
+                            descripcion = cell
+                    
+                    if fecha and (deposito > 0 or retiro > 0):
+                        transactions.append({
+                            'fecha': fecha,
+                            'descripcion': descripcion or 'Movimiento bancario',
+                            'deposito': deposito,
+                            'retiro': retiro,
+                            'saldo': saldo,
+                            'referencia': ''
+                        })
+                        
+                except Exception as e:
+                    continue
+    
+    # If no transactions from tables, try line-by-line parsing
+    if not transactions:
+        lines = text.split('\n')
+        for line in lines:
+            # Pattern for Banorte: DATE DESC $ AMOUNT $ SALDO
+            line_pattern = r'(\d{1,2})\s*(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)\s+(.+?)\s+\$?\s*([\d,]+\.?\d*)\s+\$?\s*([\d,]+\.?\d*)'
+            match = re.search(line_pattern, line.upper())
+            if match:
+                day = match.group(1).zfill(2)
+                month = months_es.get(match.group(2), '01')
+                fecha = f"{current_year}-{month}-{day}"
+                descripcion = match.group(3).strip()
+                amount1 = float(match.group(4).replace(',', '')) if match.group(4) else 0
+                amount2 = float(match.group(5).replace(',', '')) if match.group(5) else 0
+                
+                # Last amount is usually saldo
+                saldo = amount2 if amount2 > amount1 else amount1
+                monto = amount1 if amount2 > amount1 else amount2
+                
+                # Determine if deposit or withdrawal based on keywords or saldo change
+                is_deposit = any(kw in descripcion.upper() for kw in ['DEPOSITO', 'ABONO', 'TRANSFERENCIA RECIBIDA', 'SPEI RECIBIDO'])
+                
+                transactions.append({
+                    'fecha': fecha,
+                    'descripcion': descripcion,
+                    'deposito': monto if is_deposit else 0,
+                    'retiro': 0 if is_deposit else monto,
+                    'saldo': saldo,
+                    'referencia': ''
+                })
+    
+    return transactions
+
+
+def parse_bbva_pdf(text: str, tables: List, saldo_inicial: float = None) -> List[Dict]:
+    """Parse BBVA bank statement format"""
+    return parse_generic_pdf(text, tables, saldo_inicial)
+
+
+def parse_generic_pdf(text: str, tables: List, saldo_inicial: float = None) -> List[Dict]:
+    """Parse generic bank statement with common patterns"""
+    import re
+    from datetime import datetime
+    
+    transactions = []
+    current_year = datetime.now().year
+    
+    # Common date patterns
+    date_patterns = [
+        r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})',  # DD/MM/YYYY or DD-MM-YYYY
+        r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})',    # YYYY-MM-DD
+    ]
+    
+    # Try table extraction first
+    for table in tables:
+        if not table or len(table) < 2:
+            continue
+        
+        for row in table[1:]:  # Skip header
+            if not row or not any(row):
+                continue
+            
+            try:
+                row_str = ' '.join([str(cell or '') for cell in row])
+                
+                # Find date
+                fecha = None
+                for pattern in date_patterns:
+                    match = re.search(pattern, row_str)
+                    if match:
+                        groups = match.groups()
+                        if len(groups[0]) == 4:  # YYYY-MM-DD
+                            fecha = f"{groups[0]}-{groups[1].zfill(2)}-{groups[2].zfill(2)}"
+                        else:  # DD-MM-YYYY
+                            year = groups[2] if len(groups[2]) == 4 else f"20{groups[2]}"
+                            fecha = f"{year}-{groups[1].zfill(2)}-{groups[0].zfill(2)}"
+                        break
+                
+                if not fecha:
+                    continue
+                
+                # Extract all numeric values (potential amounts)
+                amounts = re.findall(r'\$?\s*([\d,]+\.?\d*)', row_str)
+                amounts = [float(a.replace(',', '')) for a in amounts if a and float(a.replace(',', '')) > 0]
+                
+                # Find description (longest text that's not a number)
+                descripcion = ""
+                for cell in row:
+                    cell_str = str(cell or '').strip()
+                    if cell_str and len(cell_str) > len(descripcion) and not re.match(r'^[\d\$\.,\s/-]+$', cell_str):
+                        descripcion = cell_str
+                
+                if amounts:
+                    # Determine deposit vs withdrawal
+                    deposito = 0
+                    retiro = 0
+                    saldo = amounts[-1] if len(amounts) > 1 else 0
+                    monto = amounts[0] if len(amounts) >= 1 else 0
+                    
+                    # Check for keywords
+                    desc_upper = descripcion.upper()
+                    is_deposit = any(kw in desc_upper for kw in [
+                        'DEPOSITO', 'ABONO', 'TRANSFERENCIA RECIBIDA', 
+                        'SPEI REC', 'PAGO RECIBIDO', 'INGRESO'
+                    ])
+                    is_withdrawal = any(kw in desc_upper for kw in [
+                        'RETIRO', 'CARGO', 'PAGO', 'TRANSFERENCIA ENVIADA',
+                        'SPEI ENV', 'COMISION', 'IVA'
+                    ])
+                    
+                    if is_deposit:
+                        deposito = monto
+                    elif is_withdrawal:
+                        retiro = monto
+                    else:
+                        # Default to withdrawal if unknown
+                        retiro = monto
+                    
+                    transactions.append({
+                        'fecha': fecha,
+                        'descripcion': descripcion or 'Movimiento',
+                        'deposito': deposito,
+                        'retiro': retiro,
+                        'saldo': saldo,
+                        'referencia': ''
+                    })
+                    
+            except Exception:
+                continue
+    
+    return transactions
+
+
+@api_router.post("/bank-transactions/import-pdf")
+async def import_bank_statement_pdf(
+    request: Request, 
+    file: UploadFile = File(...), 
+    bank_account_id: str = Form(...),
+    banco: str = Form(default="auto"),
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Import bank statement from PDF file.
+    Supports Banorte, BBVA, Santander, HSBC and other Mexican banks.
+    """
+    import io
+    
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Verify bank account
+    account = await db.bank_accounts.find_one({'id': bank_account_id, 'company_id': company_id}, {'_id': 0})
+    if not account:
+        raise HTTPException(status_code=404, detail="Cuenta bancaria no encontrada")
+    
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF")
+    
+    try:
+        content = await file.read()
+        
+        # Parse the PDF
+        transactions = parse_bank_statement_pdf(content, banco)
+        
+        if not transactions:
+            return {
+                'status': 'warning',
+                'message': 'No se encontraron movimientos en el PDF. Intenta con otro formato o usa la plantilla Excel.',
+                'importados': 0,
+                'errores': 0,
+                'transactions_preview': []
+            }
+        
+        # Import transactions
+        imported = 0
+        duplicates = 0
+        errors = []
+        
+        for txn in transactions:
+            try:
+                # Calculate amount and type
+                if txn['deposito'] > 0:
+                    monto = txn['deposito']
+                    tipo = 'credito'
+                else:
+                    monto = txn['retiro']
+                    tipo = 'debito'
+                
+                if monto == 0:
+                    continue
+                
+                # Check for duplicates
+                existing = await db.bank_transactions.find_one({
+                    'company_id': company_id,
+                    'bank_account_id': bank_account_id,
+                    'descripcion': txn['descripcion'],
+                    'monto': monto,
+                    'fecha_movimiento': {'$regex': f"^{txn['fecha']}"}
+                }, {'_id': 0, 'id': 1})
+                
+                if existing:
+                    duplicates += 1
+                    continue
+                
+                # Create transaction
+                new_txn = {
+                    'id': str(uuid.uuid4()),
+                    'company_id': company_id,
+                    'bank_account_id': bank_account_id,
+                    'fecha_movimiento': f"{txn['fecha']}T12:00:00",
+                    'fecha_valor': f"{txn['fecha']}T12:00:00",
+                    'descripcion': txn['descripcion'][:500],
+                    'referencia': txn.get('referencia', '')[:100],
+                    'monto': monto,
+                    'tipo_movimiento': tipo,
+                    'saldo': txn.get('saldo', 0),
+                    'moneda': account.get('moneda', 'MXN'),
+                    'fuente': 'pdf_import',
+                    'conciliado': False,
+                    'created_at': datetime.now(timezone.utc).isoformat()
+                }
+                
+                await db.bank_transactions.insert_one(new_txn)
+                imported += 1
+                
+            except Exception as e:
+                errors.append(f"Error en transacción: {str(e)}")
+        
+        await audit_log(company_id, 'BankTransaction', 'PDF_IMPORT', 'IMPORT', current_user['id'])
+        
+        return {
+            'status': 'success',
+            'message': f'Se importaron {imported} movimientos del PDF',
+            'importados': imported,
+            'duplicados_omitidos': duplicates,
+            'errores': len(errors),
+            'detalle_errores': errors[:10],
+            'total_encontrados': len(transactions)
+        }
+        
+    except Exception as e:
+        logging.error(f"Error importing PDF: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error procesando PDF: {str(e)}")
+
+
 @api_router.get("/fx-rates")
 async def list_fx_rates(request: Request, current_user: Dict = Depends(get_current_user)):
     """List all FX rates, normalizing field names from both old and new formats"""
