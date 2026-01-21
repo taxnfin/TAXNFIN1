@@ -2979,7 +2979,9 @@ def parse_bank_statement_pdf(pdf_content: bytes, bank_name: str = "auto") -> Lis
             detected_bank = bank_name
             if bank_name == "auto":
                 text_lower = full_text.lower()
-                if "banorte" in text_lower:
+                if "banbajio" in text_lower or "bajio" in text_lower or "banco del bajio" in text_lower:
+                    detected_bank = "banbajio"
+                elif "banorte" in text_lower:
                     detected_bank = "banorte"
                 elif "bbva" in text_lower or "bancomer" in text_lower:
                     detected_bank = "bbva"
@@ -3008,16 +3010,12 @@ def parse_bank_statement_pdf(pdf_content: bytes, bank_name: str = "auto") -> Lis
                     saldo_inicial = float(saldo_str)
                     break
             
-            # Parse based on detected bank
-            if detected_bank == "banorte":
-                transactions = parse_banorte_pdf(full_text, all_tables, saldo_inicial)
-            elif detected_bank == "bbva":
-                transactions = parse_bbva_pdf(full_text, all_tables, saldo_inicial)
-            elif detected_bank == "santander":
-                transactions = parse_santander_pdf(full_text, all_tables, saldo_inicial)
-            elif detected_bank == "hsbc":
-                transactions = parse_hsbc_pdf(full_text, all_tables, saldo_inicial)
-            elif detected_bank == "banamex":
+            # Parse based on detected bank - use universal parser for all
+            # The universal parser identifies columns by header names
+            if detected_bank in ["banbajio", "banorte", "bbva", "santander", "hsbc", "banamex", "scotiabank"]:
+                transactions = parse_mexican_bank_pdf(full_text, all_tables, pdf, saldo_inicial)
+            else:
+                transactions = parse_mexican_bank_pdf(full_text, all_tables, pdf, saldo_inicial)
                 transactions = parse_banamex_pdf(full_text, all_tables, saldo_inicial)
             else:
                 transactions = parse_generic_pdf(full_text, all_tables, saldo_inicial)
