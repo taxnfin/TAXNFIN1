@@ -3016,8 +3016,6 @@ def parse_bank_statement_pdf(pdf_content: bytes, bank_name: str = "auto") -> Lis
                 transactions = parse_mexican_bank_pdf(full_text, all_tables, pdf, saldo_inicial)
             else:
                 transactions = parse_mexican_bank_pdf(full_text, all_tables, pdf, saldo_inicial)
-            else:
-                transactions = parse_mexican_bank_pdf(full_text, all_tables, pdf, saldo_inicial)
             
     except Exception as e:
         logging.error(f"Error parsing PDF: {str(e)}")
