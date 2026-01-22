@@ -2045,6 +2045,48 @@ async def delete_bank_transaction(transaction_id: str, current_user: Dict = Depe
     await audit_log(current_user['company_id'], 'BankTransaction', transaction_id, 'DELETE', current_user['id'])
     return {"status": "success", "message": "Movimiento eliminado"}
 
+@api_router.post("/bank-transactions/transfer-account")
+async def transfer_transactions_to_account(
+    data: dict,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Transfer all transactions from one account to another and update their currency"""
+    company_id = current_user['company_id']
+    
+    from_account_id = data.get('from_account_id')
+    to_account_id = data.get('to_account_id')
+    
+    if not from_account_id or not to_account_id:
+        raise HTTPException(status_code=400, detail="Se requieren from_account_id y to_account_id")
+    
+    # Verify both accounts exist and belong to company
+    from_account = await db.bank_accounts.find_one({'id': from_account_id, 'company_id': company_id}, {'_id': 0})
+    to_account = await db.bank_accounts.find_one({'id': to_account_id, 'company_id': company_id}, {'_id': 0})
+    
+    if not from_account:
+        raise HTTPException(status_code=404, detail="Cuenta origen no encontrada")
+    if not to_account:
+        raise HTTPException(status_code=404, detail="Cuenta destino no encontrada")
+    
+    # Get target currency from destination account
+    new_currency = to_account.get('moneda', 'MXN')
+    
+    # Update all transactions
+    result = await db.bank_transactions.update_many(
+        {'bank_account_id': from_account_id, 'company_id': company_id},
+        {'$set': {'bank_account_id': to_account_id, 'moneda': new_currency}}
+    )
+    
+    await audit_log(company_id, 'BankTransaction', 'bulk_transfer', 'UPDATE', current_user['id'], 
+                    {'from': from_account_id, 'to': to_account_id, 'count': result.modified_count})
+    
+    return {
+        "status": "success",
+        "message": f"Se transfirieron {result.modified_count} movimientos",
+        "modified_count": result.modified_count,
+        "new_currency": new_currency
+    }
+
 @api_router.post("/bank-transactions/check-duplicates")
 async def check_duplicate_transactions(
     transactions: List[dict],
