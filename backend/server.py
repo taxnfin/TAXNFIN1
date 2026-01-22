@@ -3027,33 +3027,40 @@ async def update_cfdi_notes(cfdi_id: str, request: Request, current_user: Dict =
 # ===== DIOT (Declaración Informativa de Operaciones con Terceros) =====
 @api_router.get("/diot/preview")
 async def get_diot_preview(request: Request, current_user: Dict = Depends(get_current_user), fecha_desde: str = None, fecha_hasta: str = None):
-    """Get DIOT data preview - only paid EGRESO CFDIs"""
+    """Get DIOT data preview - all EGRESO CFDIs in date range (based on fecha_emision)"""
     company_id = await get_active_company_id(request, current_user)
     
-    # Get paid payments (only egresos) in date range
-    payment_query = {'company_id': company_id}
-    if fecha_desde or fecha_hasta:
-        payment_query['fecha_pago'] = {}
-        if fecha_desde:
-            payment_query['fecha_pago']['$gte'] = datetime.fromisoformat(fecha_desde.replace('Z', '+00:00')) if 'T' in fecha_desde else datetime.strptime(fecha_desde, '%Y-%m-%d')
-        if fecha_hasta:
-            fecha_hasta_dt = datetime.fromisoformat(fecha_hasta.replace('Z', '+00:00')) if 'T' in fecha_hasta else datetime.strptime(fecha_hasta, '%Y-%m-%d')
-            fecha_hasta_dt = fecha_hasta_dt.replace(hour=23, minute=59, second=59)
-            payment_query['fecha_pago']['$lte'] = fecha_hasta_dt
-    
-    payments = await db.payments.find(payment_query, {'_id': 0}).to_list(10000)
-    paid_cfdi_ids = [p.get('cfdi_id') for p in payments if p.get('cfdi_id')]
-    
-    # Get EGRESO CFDIs that have been paid
+    # Build date filter for CFDIs
     cfdi_query = {
         'company_id': company_id,
-        'tipo_cfdi': 'egreso',
-        'id': {'$in': paid_cfdi_ids}
+        'tipo_cfdi': 'egreso'
     }
     
+    if fecha_desde or fecha_hasta:
+        cfdi_query['fecha_emision'] = {}
+        if fecha_desde:
+            try:
+                fecha_desde_dt = datetime.fromisoformat(fecha_desde.replace('Z', '+00:00')) if 'T' in fecha_desde else datetime.strptime(fecha_desde, '%Y-%m-%d')
+                cfdi_query['fecha_emision']['$gte'] = fecha_desde_dt.isoformat()
+            except:
+                pass
+        if fecha_hasta:
+            try:
+                fecha_hasta_dt = datetime.fromisoformat(fecha_hasta.replace('Z', '+00:00')) if 'T' in fecha_hasta else datetime.strptime(fecha_hasta, '%Y-%m-%d')
+                fecha_hasta_dt = fecha_hasta_dt.replace(hour=23, minute=59, second=59)
+                cfdi_query['fecha_emision']['$lte'] = fecha_hasta_dt.isoformat()
+            except:
+                pass
+    
+    # Get all EGRESO CFDIs in date range
     cfdis = await db.cfdis.find(cfdi_query, {'_id': 0}).to_list(10000)
     
-    # Create lookup for payments by CFDI ID
+    # Get categories
+    categories = {c['id']: c for c in await db.categories.find({'company_id': company_id}, {'_id': 0}).to_list(1000)}
+    subcategories = {s['id']: s for s in await db.subcategories.find({'company_id': company_id}, {'_id': 0}).to_list(1000)}
+    
+    # Get payments to check which CFDIs are paid
+    payments = await db.payments.find({'company_id': company_id, 'tipo': 'pago'}, {'_id': 0}).to_list(10000)
     payments_by_cfdi = {}
     for p in payments:
         cfdi_id = p.get('cfdi_id')
@@ -3062,26 +3069,26 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
                 payments_by_cfdi[cfdi_id] = []
             payments_by_cfdi[cfdi_id].append(p)
     
-    # Get categories
-    categories = {c['id']: c for c in await db.categories.find({'company_id': company_id}, {'_id': 0}).to_list(1000)}
-    subcategories = {s['id']: s for s in await db.subcategories.find({'company_id': company_id}, {'_id': 0}).to_list(1000)}
-    
     records = []
-    total_iva = 0
+    total_iva_acreditable = 0
+    total_iva_retenido = 0
     total_monto = 0
     
     for cfdi in cfdis:
+        # Get payment info if exists
         cfdi_payments = payments_by_cfdi.get(cfdi['id'], [])
-        if not cfdi_payments:
-            continue
-            
-        # Use the most recent payment date
-        latest_payment = max(cfdi_payments, key=lambda p: p.get('fecha_pago', datetime.min))
-        fecha_pago = latest_payment.get('fecha_pago')
-        if isinstance(fecha_pago, datetime):
-            fecha_pago_str = fecha_pago.strftime('%Y-%m-%d')
-        else:
-            fecha_pago_str = str(fecha_pago)[:10] if fecha_pago else ''
+        fecha_pago_str = ''
+        pagado = False
+        
+        if cfdi_payments:
+            pagado = True
+            latest_payment = max(cfdi_payments, key=lambda p: p.get('fecha_pago', datetime.min) if p.get('fecha_pago') else datetime.min)
+            fecha_pago = latest_payment.get('fecha_pago')
+            if fecha_pago:
+                if isinstance(fecha_pago, datetime):
+                    fecha_pago_str = fecha_pago.strftime('%Y-%m-%d')
+                else:
+                    fecha_pago_str = str(fecha_pago)[:10]
         
         # Determine tipo_tercero based on RFC
         rfc = cfdi.get('emisor_rfc', '')
@@ -3102,11 +3109,27 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
         impuestos = cfdi.get('impuestos', 0) or 0
         total = cfdi.get('total', 0) or 0
         
-        # Calculate IVA components
-        iva_16 = impuestos if impuestos > 0 else round(subtotal * 0.16, 2)
+        # Get IVA components from CFDI (parsed from XML)
+        # IVA acreditable (trasladado)
+        iva_acreditable = cfdi.get('iva_trasladado', 0) or impuestos
+        if iva_acreditable == 0 and impuestos > 0:
+            iva_acreditable = impuestos
+        
+        # IVA retenido (from CFDI)
+        iva_retenido = cfdi.get('retencion_iva', 0) or 0
+        
+        # ISR retenido (if present)
+        isr_retenido = cfdi.get('retencion_isr', 0) or 0
         
         categoria = categories.get(cfdi.get('category_id'), {}).get('nombre', '')
         subcategoria = subcategories.get(cfdi.get('subcategory_id'), {}).get('nombre', '')
+        
+        # Get fecha emision
+        fecha_emision = cfdi.get('fecha_emision', '')
+        if isinstance(fecha_emision, datetime):
+            fecha_emision_str = fecha_emision.strftime('%Y-%m-%d')
+        else:
+            fecha_emision_str = str(fecha_emision)[:10] if fecha_emision else ''
         
         records.append({
             'tipo_tercero': tipo_tercero,
@@ -3118,25 +3141,32 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
             'pais': 'MX',
             'nacionalidad': 'Nacional',
             'valor_actos_pagados': total,
+            'subtotal': subtotal,
             'valor_actos_0': 0,
             'valor_actos_exentos': 0,
             'valor_actos_16': subtotal,
-            'iva_retenido': 0,
-            'iva_acreditable': iva_16,
+            'iva_retenido': round(iva_retenido, 2),
+            'isr_retenido': round(isr_retenido, 2),
+            'iva_acreditable': round(iva_acreditable, 2),
+            'fecha_emision': fecha_emision_str,
             'fecha_pago': fecha_pago_str,
+            'pagado': pagado,
             'uuid': cfdi.get('uuid', ''),
             'categoria': categoria,
-            'subcategoria': subcategoria
+            'subcategoria': subcategoria,
+            'cfdi_id': cfdi.get('id', '')
         })
         
-        total_iva += iva_16
+        total_iva_acreditable += iva_acreditable
+        total_iva_retenido += iva_retenido
         total_monto += total
     
     return {
         'records': records,
         'summary': {
             'totalOperaciones': len(records),
-            'totalIVA': round(total_iva, 2),
+            'totalIVA': round(total_iva_acreditable, 2),
+            'totalIVARetenido': round(total_iva_retenido, 2),
             'totalMonto': round(total_monto, 2)
         }
     }
