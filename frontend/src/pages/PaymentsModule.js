@@ -577,6 +577,86 @@ const PaymentsModule = () => {
     }
   };
 
+  // Toggle selection of bank movement for import
+  const toggleBankMovementSelection = (txnId) => {
+    setSelectedBankMovements(prev => 
+      prev.includes(txnId) 
+        ? prev.filter(id => id !== txnId)
+        : [...prev, txnId]
+    );
+  };
+
+  // Select all visible bank movements
+  const selectAllBankMovements = () => {
+    const pendingTxns = bankTransactions.filter(t => !t.conciliado);
+    if (selectedBankMovements.length === pendingTxns.length) {
+      setSelectedBankMovements([]);
+    } else {
+      setSelectedBankMovements(pendingTxns.map(t => t.id));
+    }
+  };
+
+  // Import selected bank movements as payments
+  const handleImportBankMovements = async () => {
+    if (selectedBankMovements.length === 0) {
+      toast.error('Selecciona al menos un movimiento');
+      return;
+    }
+
+    setImportingMovements(true);
+    let created = 0;
+    let errors = 0;
+
+    for (const txnId of selectedBankMovements) {
+      const txn = bankTransactions.find(t => t.id === txnId);
+      if (!txn) continue;
+
+      // Determine if it's a cobro (deposit) or pago (withdrawal)
+      const tipo = txn.tipo_movimiento === 'credito' ? 'cobro' : 'pago';
+      const account = bankAccounts.find(a => a.id === txn.bank_account_id);
+
+      try {
+        await api.post('/payments', {
+          tipo: tipo,
+          concepto: txn.descripcion || `Movimiento bancario ${txn.referencia || ''}`,
+          monto: txn.monto,
+          moneda: txn.moneda || account?.moneda || 'MXN',
+          metodo_pago: 'transferencia',
+          fecha_vencimiento: txn.fecha_movimiento,
+          beneficiario: txn.merchant_name || txn.descripcion?.substring(0, 50) || '',
+          referencia: txn.referencia || '',
+          es_real: true,
+          bank_account_id: txn.bank_account_id,
+          bank_transaction_id: txn.id  // Link to the bank transaction
+        });
+        
+        // Mark bank transaction as reconciled (linked to payment)
+        await api.post('/reconciliations/mark-without-uuid', {
+          bank_transaction_id: txn.id,
+          tipo_conciliacion: 'sin_uuid',
+          notas: 'Creado desde Cobranza y Pagos'
+        });
+        
+        created++;
+      } catch (error) {
+        console.error('Error creating payment from bank txn:', error);
+        errors++;
+      }
+    }
+
+    setImportingMovements(false);
+    setImportBankDialogOpen(false);
+    setSelectedBankMovements([]);
+
+    if (created > 0) {
+      toast.success(`${created} ${created === 1 ? 'pago/cobro creado' : 'pagos/cobros creados'}`);
+      loadData();
+    }
+    if (errors > 0) {
+      toast.error(`${errors} movimientos con error`);
+    }
+  };
+
   return (
     <div className="p-8 space-y-6" data-testid="payments-page">
       <div className="flex justify-between items-center">
