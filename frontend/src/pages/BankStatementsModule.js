@@ -310,6 +310,25 @@ const BankStatementsModule = () => {
     }
   };
 
+  // Delete all reconciliations
+  const handleDeleteAllReconciliations = async () => {
+    if (!window.confirm('⚠️ ¿Estás SEGURO de que quieres ELIMINAR TODAS las conciliaciones?\n\nTodos los movimientos volverán a estado "Pendiente".\nEsta acción NO se puede deshacer.')) {
+      return;
+    }
+    if (!window.confirm('🚨 ÚLTIMA CONFIRMACIÓN: Se borrarán TODAS las conciliaciones.\n\n¿Continuar?')) {
+      return;
+    }
+    
+    try {
+      const res = await api.delete('/reconciliations/bulk/all');
+      toast.success(res.data.message);
+      loadData();
+      loadReconSummary();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error eliminando conciliaciones');
+    }
+  };
+
   const downloadTemplate = async () => {
     try {
       const response = await api.get('/bank-transactions/template', {
