@@ -554,6 +554,24 @@ const PaymentsModule = () => {
     }
   };
 
+  // Delete all payments
+  const handleDeleteAllPayments = async () => {
+    if (!window.confirm('⚠️ ¿Estás SEGURO de que quieres ELIMINAR TODOS los pagos y cobranzas?\n\nEsta acción NO se puede deshacer.')) {
+      return;
+    }
+    if (!window.confirm('🚨 ÚLTIMA CONFIRMACIÓN: Se borrarán TODOS los pagos y cobranzas de esta empresa.\n\n¿Continuar?')) {
+      return;
+    }
+    
+    try {
+      const res = await api.delete('/payments/bulk/all');
+      toast.success(res.data.message);
+      loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error eliminando pagos');
+    }
+  };
+
   return (
     <div className="p-8 space-y-6" data-testid="payments-page">
       <div className="flex justify-between items-center">
@@ -562,6 +580,15 @@ const PaymentsModule = () => {
           <p className="text-[#64748B]">Gestión de cobros y pagos (reales y proyectados)</p>
         </div>
         <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            className="gap-2 text-red-600 border-red-300 hover:bg-red-50"
+            onClick={handleDeleteAllPayments}
+            data-testid="delete-all-payments-btn"
+          >
+            <Trash2 size={16} />
+            Borrar Todo
+          </Button>
           <Button 
             variant="outline" 
             className="gap-2"
