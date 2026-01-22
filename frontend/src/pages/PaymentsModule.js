@@ -922,9 +922,14 @@ const PaymentsModule = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold mono text-[#DC2626]">
-              ${(summary?.total_por_pagar || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              ${(summary?.total_por_pagar || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
             </div>
-            <div className="text-xs text-[#64748B]">{summary?.pagos_pendientes || 0} pagos pendientes</div>
+            {summary?.total_por_pagar_usd > 0 && (
+              <div className="text-sm font-medium mono text-[#DC2626] mt-1">
+                + ${summary.total_por_pagar_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
+              </div>
+            )}
+            <div className="text-xs text-[#64748B] mt-1">{summary?.pagos_pendientes || 0} pagos pendientes</div>
           </CardContent>
         </Card>
 
@@ -940,9 +945,14 @@ const PaymentsModule = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold mono text-[#059669]">
-              ${(summary?.total_por_cobrar || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              ${(summary?.total_por_cobrar_mxn || summary?.total_por_cobrar || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
             </div>
-            <div className="text-xs text-[#64748B]">{summary?.cobros_pendientes || 0} cobros pendientes</div>
+            {summary?.total_por_cobrar_usd > 0 && (
+              <div className="text-sm font-medium mono text-[#059669] mt-1">
+                + ${summary.total_por_cobrar_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
+              </div>
+            )}
+            <div className="text-xs text-[#64748B] mt-1">{summary?.cobros_pendientes || 0} cobros pendientes</div>
           </CardContent>
         </Card>
 
@@ -970,8 +980,13 @@ const PaymentsModule = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold mono text-[#0F172A]">
-              ${(summary?.total_pagado_mes || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              ${(summary?.pagado_mes_mxn || summary?.total_pagado_mes || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
             </div>
+            {summary?.pagado_mes_usd > 0 && (
+              <div className="text-sm font-medium mono text-gray-600 mt-1">
+                + ${summary.pagado_mes_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -984,8 +999,13 @@ const PaymentsModule = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold mono text-[#0F172A]">
-              ${(summary?.total_cobrado_mes || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              ${(summary?.cobrado_mes_mxn || summary?.total_cobrado_mes || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
             </div>
+            {summary?.cobrado_mes_usd > 0 && (
+              <div className="text-sm font-medium mono text-gray-600 mt-1">
+                + ${summary.cobrado_mes_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
