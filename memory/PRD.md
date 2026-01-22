@@ -237,6 +237,43 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ### Completed in This Session ✅
 
+**Integración Bancaria con Belvo - Open Banking**
+
+1. ✅ **Backend de Belvo implementado**
+   - Modelos: `BankConnection`, `BankMovementRaw` para conexiones y movimientos raw
+   - Endpoints:
+     - `GET /api/belvo/status` - Verificar estado de configuración
+     - `GET /api/belvo/institutions` - Listar bancos mexicanos disponibles
+     - `POST /api/belvo/connect` - Crear conexión bancaria
+     - `GET /api/belvo/connections` - Listar conexiones activas
+     - `POST /api/belvo/sync/{id}` - Sincronizar movimientos
+     - `GET /api/belvo/movements-raw` - Listar movimientos raw de Belvo
+     - `POST /api/belvo/movements-raw/{id}/process` - Procesar movimiento individual
+     - `POST /api/belvo/movements-raw/process-all` - Procesar todos los movimientos pendientes
+
+2. ✅ **Frontend de conexión bancaria**
+   - Componente `BelvoConnectForm` con flujo de 3 pasos:
+     - Status/Info sobre configuración
+     - Selección de banco e institución
+     - Ingreso de credenciales
+   - Lista de conexiones activas con opciones de sync y eliminar
+   - Mensaje informativo cuando Belvo no está configurado
+
+3. ✅ **Configuración requerida** (en `/app/backend/.env`):
+   ```
+   BELVO_SECRET_ID=""
+   BELVO_SECRET_PASSWORD=""
+   BELVO_ENV="sandbox"
+   ```
+
+**Endpoints de Borrado Masivo (corregido)**
+
+1. ✅ `DELETE /api/payments/bulk/all` - Borra todos los pagos/cobranzas
+2. ✅ `DELETE /api/reconciliations/bulk/all` - Borra todas las conciliaciones
+3. ✅ Botones "Borrar Todo" y "Borrar Conciliaciones" en la UI
+
+---
+
 **Mejora del Proceso de Conciliación - Movimientos Sin UUID**
 
 1. ✅ **Conciliación de movimientos sin UUID**
