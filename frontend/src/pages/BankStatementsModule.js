@@ -76,11 +76,24 @@ const BankStatementsModule = () => {
 
   // Exchange rates for conversion
   const [fxRates, setFxRates] = useState({ USD: 17.5, EUR: 19.0 });
+  
+  // Reconciliation summary
+  const [reconSummary, setReconSummary] = useState(null);
 
   useEffect(() => {
     loadData();
     loadFxRates();
+    loadReconSummary();
   }, []);
+
+  const loadReconSummary = async () => {
+    try {
+      const res = await api.get('/reconciliations/summary');
+      setReconSummary(res.data);
+    } catch (error) {
+      console.log('Error loading reconciliation summary');
+    }
+  };
 
   const loadFxRates = async () => {
     try {
