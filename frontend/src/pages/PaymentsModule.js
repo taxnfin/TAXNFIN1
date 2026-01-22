@@ -34,6 +34,7 @@ const PAYMENT_STATUS = {
 const PaymentsModule = () => {
   const [payments, setPayments] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [breakdown, setBreakdown] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -48,6 +49,7 @@ const PaymentsModule = () => {
   const [bankTransactions, setBankTransactions] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [fxRates, setFxRates] = useState({ USD: 17.5, EUR: 19.0 });
+  const [activeTab, setActiveTab] = useState('real'); // 'real', 'proyeccion', 'breakdown'
   
   // Import from bank movements dialog
   const [importBankDialogOpen, setImportBankDialogOpen] = useState(false);
