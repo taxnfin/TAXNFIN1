@@ -2478,6 +2478,128 @@ const BankStatementsModule = () => {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Sin UUID Dialog - Register expense/income without CFDI */}
+      <Dialog open={sinUUIDDialogOpen} onOpenChange={setSinUUIDDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle size={20} className="text-orange-500" />
+              Registrar Movimiento Sin UUID
+            </DialogTitle>
+            <DialogDescription>
+              Registra este movimiento como gasto o ingreso sin factura CFDI.
+              Se creará automáticamente un registro en Cobranza y Pagos.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {sinUUIDTransaction && (
+            <div className="space-y-4">
+              {/* Transaction Summary */}
+              <div className="p-3 bg-gray-50 rounded-lg border">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="font-medium text-sm">{sinUUIDTransaction.descripcion?.substring(0, 50)}</div>
+                    <div className="text-xs text-gray-500">
+                      {sinUUIDTransaction.fecha_movimiento ? format(new Date(sinUUIDTransaction.fecha_movimiento), 'dd MMM yyyy', { locale: es }) : ''}
+                    </div>
+                  </div>
+                  <div className={`text-lg font-bold ${sinUUIDTransaction.tipo_movimiento === 'credito' ? 'text-green-600' : 'text-red-600'}`}>
+                    {sinUUIDTransaction.tipo_movimiento === 'credito' ? '+' : '-'}
+                    ${sinUUIDTransaction.monto?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {sinUUIDTransaction.moneda || 'MXN'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Type Selection */}
+              <div className="space-y-2">
+                <Label>Tipo de Conciliación</Label>
+                <Select 
+                  value={sinUUIDFormData.tipo_conciliacion} 
+                  onValueChange={(v) => setSinUUIDFormData({...sinUUIDFormData, tipo_conciliacion: v})}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sin_uuid">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-orange-500"></span>
+                        Sin UUID - Gasto/Ingreso sin factura
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="no_relacionado">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-gray-400"></span>
+                        No Relacionado - Movimiento interno
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Category Selection */}
+              <div className="space-y-2">
+                <Label>Categoría</Label>
+                <Select 
+                  value={sinUUIDFormData.categoria} 
+                  onValueChange={(v) => setSinUUIDFormData({...sinUUIDFormData, categoria: v})}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar categoría..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EXPENSE_CATEGORIES.map(cat => (
+                      <SelectItem key={cat.value} value={cat.value}>
+                        {cat.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Concept */}
+              <div className="space-y-2">
+                <Label>Concepto</Label>
+                <Input
+                  value={sinUUIDFormData.concepto}
+                  onChange={(e) => setSinUUIDFormData({...sinUUIDFormData, concepto: e.target.value})}
+                  placeholder="Descripción del gasto/ingreso..."
+                />
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-2">
+                <Label>Notas (opcional)</Label>
+                <Input
+                  value={sinUUIDFormData.notas}
+                  onChange={(e) => setSinUUIDFormData({...sinUUIDFormData, notas: e.target.value})}
+                  placeholder="Notas adicionales..."
+                />
+              </div>
+
+              {/* Info banner */}
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+                <strong>📌 Nota:</strong> Este movimiento se registrará como {sinUUIDTransaction.tipo_movimiento === 'credito' ? 'cobro' : 'pago'} 
+                {' '}en el módulo "Cobranza y Pagos" para mantener el control de flujo de efectivo.
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setSinUUIDDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button 
+                  type="button" 
+                  className="bg-orange-600 hover:bg-orange-700"
+                  onClick={handleMarkWithoutUUID}
+                >
+                  Registrar y Conciliar
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
