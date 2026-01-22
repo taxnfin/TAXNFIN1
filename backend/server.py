@@ -4502,6 +4502,71 @@ async def delete_fx_rate(rate_id: str, request: Request, current_user: Dict = De
     await audit_log(company_id, 'FXRate', rate_id, 'DELETE', current_user['id'])
     return {'status': 'success', 'message': 'Tipo de cambio eliminado'}
 
+@api_router.get("/fx-rates/year/{year}")
+async def get_fx_rates_by_year(year: int, request: Request, current_user: Dict = Depends(get_current_user)):
+    """Get all FX rates for a specific year, grouped by currency and month"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Calculate date range for the year
+    start_date = datetime(year, 1, 1, tzinfo=timezone.utc).isoformat()
+    end_date = datetime(year, 12, 31, 23, 59, 59, tzinfo=timezone.utc).isoformat()
+    
+    # Get all rates for the year
+    rates = await db.fx_rates.find({
+        'company_id': company_id,
+        'fecha_vigencia': {'$gte': start_date, '$lte': end_date}
+    }, {'_id': 0}).sort('fecha_vigencia', 1).to_list(5000)
+    
+    # Organize by currency and month
+    by_currency = {}
+    monthly_avg = {}
+    
+    for r in rates:
+        moneda = r.get('moneda_cotizada') or r.get('moneda_origen') or 'USD'
+        tasa = r.get('tipo_cambio') or r.get('tasa') or 0
+        fecha = r.get('fecha_vigencia', '')
+        
+        if isinstance(fecha, str):
+            try:
+                fecha_dt = datetime.fromisoformat(fecha.replace('Z', '+00:00'))
+            except:
+                continue
+        else:
+            fecha_dt = fecha
+        
+        mes = fecha_dt.month
+        
+        if moneda not in by_currency:
+            by_currency[moneda] = []
+            monthly_avg[moneda] = {}
+        
+        by_currency[moneda].append({
+            'fecha': fecha,
+            'tasa': tasa,
+            'fuente': r.get('fuente', 'manual')
+        })
+        
+        # Track for monthly average
+        if mes not in monthly_avg[moneda]:
+            monthly_avg[moneda][mes] = {'sum': 0, 'count': 0}
+        monthly_avg[moneda][mes]['sum'] += tasa
+        monthly_avg[moneda][mes]['count'] += 1
+    
+    # Calculate monthly averages
+    averages = {}
+    for moneda, meses in monthly_avg.items():
+        averages[moneda] = {}
+        for mes, data in meses.items():
+            averages[moneda][mes] = round(data['sum'] / data['count'], 4) if data['count'] > 0 else 0
+    
+    return {
+        'year': year,
+        'currencies': list(by_currency.keys()),
+        'total_rates': sum(len(v) for v in by_currency.values()),
+        'by_currency': by_currency,
+        'monthly_averages': averages
+    }
+
 @api_router.get("/fx-rates/latest")
 async def get_latest_fx_rates(request: Request, current_user: Dict = Depends(get_current_user)):
     """Get latest exchange rates for common currencies"""
