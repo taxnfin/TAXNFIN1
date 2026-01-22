@@ -2684,24 +2684,78 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, c
     if not bank_txn:
         raise HTTPException(status_code=404, detail="Movimiento bancario no encontrado")
     
-    # P1 FIX: Validate that a payment record exists when linking to a CFDI
-    # This prevents creating orphan reconciliations without actual payment records
+    company_id = current_user['company_id']
+    
+    # UPDATED LOGIC: If reconciling with a CFDI, automatically create payment if not exists
+    # This means: if it's reconciled, it's considered paid/collected
     if reconciliation_data.cfdi_id:
-        # Check if there's a payment record for this CFDI
+        cfdi = await db.cfdis.find_one({'id': reconciliation_data.cfdi_id, 'company_id': company_id}, {'_id': 0})
+        if not cfdi:
+            raise HTTPException(status_code=404, detail="CFDI no encontrado")
+        
+        # Check if payment exists, if not create one automatically
         payment_exists = await db.payments.find_one({
-            'company_id': current_user['company_id'],
+            'company_id': company_id,
             'cfdi_id': reconciliation_data.cfdi_id
         }, {'_id': 0, 'id': 1})
         
         if not payment_exists:
-            raise HTTPException(
-                status_code=400, 
-                detail="No se puede conciliar con este CFDI porque no existe un registro de pago/cobro asociado. "
-                       "Primero registra el pago/cobro en el módulo 'Cobranza y Pagos' y luego intenta conciliar."
-            )
+            # Auto-create payment from reconciliation
+            tipo_pago = 'cobro' if cfdi.get('tipo_cfdi') == 'ingreso' else 'pago'
+            moneda = bank_txn.get('moneda') or cfdi.get('moneda', 'MXN')
+            
+            payment_doc = {
+                'id': str(uuid.uuid4()),
+                'company_id': company_id,
+                'bank_account_id': bank_txn.get('bank_account_id'),
+                'cfdi_id': reconciliation_data.cfdi_id,
+                'tipo': tipo_pago,
+                'concepto': f"Conciliación automática - {cfdi.get('emisor_nombre') or cfdi.get('receptor_nombre', '')}",
+                'monto': bank_txn.get('monto', 0),
+                'moneda': moneda,
+                'metodo_pago': 'transferencia',
+                'fecha_vencimiento': bank_txn.get('fecha_movimiento'),
+                'fecha_pago': datetime.now(timezone.utc).isoformat(),
+                'estatus': 'completado',
+                'referencia': bank_txn.get('referencia', ''),
+                'beneficiario': cfdi.get('emisor_nombre') or cfdi.get('receptor_nombre', ''),
+                'es_real': True,
+                'bank_transaction_id': bank_txn.get('id'),
+                'created_at': datetime.now(timezone.utc).isoformat(),
+                'auto_created_from_reconciliation': True
+            }
+            
+            # Get historical FX rate for non-MXN currencies
+            if moneda != 'MXN':
+                rate = await db.fx_rates.find_one(
+                    {'company_id': company_id, '$or': [
+                        {'moneda_cotizada': moneda},
+                        {'moneda_origen': moneda}
+                    ]},
+                    {'_id': 0},
+                    sort=[('fecha_vigencia', -1)]
+                )
+                if rate:
+                    payment_doc['tipo_cambio_historico'] = rate.get('tipo_cambio') or rate.get('tasa') or 1
+            
+            await db.payments.insert_one(payment_doc)
+            
+            # Update CFDI amounts
+            if tipo_pago == 'cobro':
+                current_cobrado = cfdi.get('monto_cobrado', 0) or 0
+                await db.cfdis.update_one(
+                    {'id': reconciliation_data.cfdi_id},
+                    {'$set': {'monto_cobrado': current_cobrado + payment_doc['monto']}}
+                )
+            else:
+                current_pagado = cfdi.get('monto_pagado', 0) or 0
+                await db.cfdis.update_one(
+                    {'id': reconciliation_data.cfdi_id},
+                    {'$set': {'monto_pagado': current_pagado + payment_doc['monto']}}
+                )
     
     reconciliation = BankReconciliation(
-        company_id=current_user['company_id'],
+        company_id=company_id,
         user_id=current_user['id'],
         **reconciliation_data.model_dump()
     )
