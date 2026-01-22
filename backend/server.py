@@ -2684,6 +2684,22 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, c
     if not bank_txn:
         raise HTTPException(status_code=404, detail="Movimiento bancario no encontrado")
     
+    # P1 FIX: Validate that a payment record exists when linking to a CFDI
+    # This prevents creating orphan reconciliations without actual payment records
+    if reconciliation_data.cfdi_id:
+        # Check if there's a payment record for this CFDI
+        payment_exists = await db.payments.find_one({
+            'company_id': current_user['company_id'],
+            'cfdi_id': reconciliation_data.cfdi_id
+        }, {'_id': 0, 'id': 1})
+        
+        if not payment_exists:
+            raise HTTPException(
+                status_code=400, 
+                detail="No se puede conciliar con este CFDI porque no existe un registro de pago/cobro asociado. "
+                       "Primero registra el pago/cobro en el módulo 'Cobranza y Pagos' y luego intenta conciliar."
+            )
+    
     reconciliation = BankReconciliation(
         company_id=current_user['company_id'],
         user_id=current_user['id'],
