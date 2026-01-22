@@ -1718,6 +1718,167 @@ const PaymentsModule = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Import from Bank Movements Dialog */}
+      <Dialog open={importBankDialogOpen} onOpenChange={(open) => {
+        setImportBankDialogOpen(open);
+        if (!open) setSelectedBankMovements([]);
+      }}>
+        <DialogContent className="max-w-4xl max-h-[85vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 size={20} />
+              Crear Cobros/Pagos desde Movimientos Bancarios
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona movimientos del estado de cuenta para convertirlos en cobros o pagos
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {/* Summary */}
+            <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div>
+                <span className="text-blue-800 font-medium">
+                  {selectedBankMovements.length} movimiento(s) seleccionado(s)
+                </span>
+                {selectedBankMovements.length > 0 && (
+                  <span className="text-blue-600 ml-2">
+                    (Depósitos = Cobros, Retiros = Pagos)
+                  </span>
+                )}
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={selectAllBankMovements}
+              >
+                {selectedBankMovements.length === bankTransactions.filter(t => !t.conciliado).length 
+                  ? 'Deseleccionar todo' 
+                  : 'Seleccionar todos pendientes'
+                }
+              </Button>
+            </div>
+
+            {/* Movements Table */}
+            <div className="max-h-[400px] overflow-y-auto border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={selectedBankMovements.length === bankTransactions.filter(t => !t.conciliado).length && bankTransactions.filter(t => !t.conciliado).length > 0}
+                        onCheckedChange={selectAllBankMovements}
+                      />
+                    </TableHead>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Descripción</TableHead>
+                    <TableHead>Cuenta</TableHead>
+                    <TableHead className="text-right">Monto</TableHead>
+                    <TableHead>Estado</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bankTransactions.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                        <Building2 size={32} className="mx-auto mb-2 opacity-50" />
+                        No hay movimientos bancarios disponibles.
+                        <br />
+                        <span className="text-sm">Importa un estado de cuenta en el módulo de Conciliaciones</span>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    bankTransactions.map(txn => {
+                      const account = bankAccounts.find(a => a.id === txn.bank_account_id);
+                      const isSelected = selectedBankMovements.includes(txn.id);
+                      const isConciliado = txn.conciliado;
+                      
+                      return (
+                        <TableRow 
+                          key={txn.id} 
+                          className={`${isSelected ? 'bg-blue-50' : ''} ${isConciliado ? 'opacity-50' : 'cursor-pointer hover:bg-gray-50'}`}
+                          onClick={() => !isConciliado && toggleBankMovementSelection(txn.id)}
+                        >
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={isSelected}
+                              disabled={isConciliado}
+                              onCheckedChange={() => toggleBankMovementSelection(txn.id)}
+                            />
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {txn.fecha_movimiento ? format(new Date(txn.fecha_movimiento), 'dd/MM/yyyy') : '-'}
+                          </TableCell>
+                          <TableCell>
+                            {txn.tipo_movimiento === 'credito' ? (
+                              <span className="inline-flex items-center gap-1 text-green-600 text-xs px-2 py-1 bg-green-50 rounded">
+                                <TrendingUp size={12} /> Cobro
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-red-600 text-xs px-2 py-1 bg-red-50 rounded">
+                                <TrendingDown size={12} /> Pago
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate" title={txn.descripcion}>
+                            {txn.descripcion || '-'}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <span className="bg-gray-100 px-2 py-1 rounded">
+                              {account?.banco || 'N/A'}
+                            </span>
+                          </TableCell>
+                          <TableCell className={`text-right font-mono font-semibold ${txn.tipo_movimiento === 'credito' ? 'text-green-600' : 'text-red-600'}`}>
+                            {txn.tipo_movimiento === 'credito' ? '+' : '-'}
+                            ${txn.monto?.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                            {txn.moneda && txn.moneda !== 'MXN' && (
+                              <span className="text-xs ml-1 text-gray-400">{txn.moneda}</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {isConciliado ? (
+                              <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">Conciliado</span>
+                            ) : (
+                              <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 rounded">Pendiente</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <DialogFooter className="flex justify-between items-center">
+            <div className="text-sm text-gray-500">
+              {bankTransactions.filter(t => !t.conciliado).length} movimientos pendientes de {bankTransactions.length} totales
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setImportBankDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleImportBankMovements}
+                disabled={selectedBankMovements.length === 0 || importingMovements}
+                className="bg-[#0F172A]"
+              >
+                {importingMovements ? (
+                  'Creando...'
+                ) : (
+                  <>
+                    <Plus size={16} className="mr-2" />
+                    Crear {selectedBankMovements.length} Pago(s)/Cobro(s)
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
