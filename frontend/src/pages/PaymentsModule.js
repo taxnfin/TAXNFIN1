@@ -1143,52 +1143,6 @@ const PaymentsModule = () => {
           </CardContent>
         </Card>
       </div>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-[#4F46E5] flex items-center gap-2">
-              <EyeOff size={16} />
-              Pagos Proyectados
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Estimado/pendiente
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold mono text-[#4F46E5]">
-              ${(breakdown?.proyeccion_pagos?.total_equiv_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
-            </div>
-            <div className="text-xs text-[#64748B] mt-1">{breakdown?.proyeccion_pagos?.total_count || 0} proyecciones</div>
-            {breakdown?.varianza && breakdown.varianza.pagos_pct !== 0 && (
-              <div className={`text-xs font-medium mt-1 ${breakdown.varianza.pagos_real_vs_proyectado >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                Varianza: {breakdown.varianza.pagos_pct > 0 ? '+' : ''}{breakdown.varianza.pagos_pct}%
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Proyecciones Cobros */}
-        <Card className="border-[#8B5CF6] bg-purple-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-[#7C3AED] flex items-center gap-2">
-              <EyeOff size={16} />
-              Cobros Proyectados
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Estimado/pendiente
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold mono text-[#7C3AED]">
-              ${(breakdown?.proyeccion_cobros?.total_equiv_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
-            </div>
-            <div className="text-xs text-[#64748B] mt-1">{breakdown?.proyeccion_cobros?.total_count || 0} proyecciones</div>
-            {breakdown?.varianza && breakdown.varianza.cobros_pct !== 0 && (
-              <div className={`text-xs font-medium mt-1 ${breakdown.varianza.cobros_real_vs_proyectado >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                Varianza: {breakdown.varianza.cobros_pct > 0 ? '+' : ''}{breakdown.varianza.cobros_pct}%
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Varianza Summary Banner */}
       {breakdown?.varianza && (
