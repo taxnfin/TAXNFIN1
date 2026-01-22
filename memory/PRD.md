@@ -184,12 +184,42 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 ```
 /app/
 ├── backend/
-│   ├── server.py               # Main FastAPI app (monolithic)
+│   ├── server.py               # Main FastAPI app (7000+ lines)
+│   │
+│   ├── core/                   # NEW - Core utilities (Jan 22, 2026)
+│   │   ├── __init__.py
+│   │   ├── config.py          # Settings from environment
+│   │   ├── database.py        # MongoDB connection
+│   │   └── auth.py            # JWT authentication
+│   │
+│   ├── models/                 # NEW - Pydantic models (Jan 22, 2026)
+│   │   ├── __init__.py
+│   │   ├── enums.py           # UserRole, CFDIType, PaymentStatus
+│   │   ├── auth.py, company.py, bank.py, cfdi.py
+│   │   ├── payment.py, category.py, vendor.py, customer.py
+│   │   ├── transaction.py, fx.py, projection.py, audit.py
+│   │   └── base.py
+│   │
+│   ├── services/               # NEW - Business logic (Jan 22, 2026)
+│   │   ├── audit.py           # Audit logging
+│   │   ├── fx.py              # FX rate utilities
+│   │   ├── cashflow.py        # Cash flow initialization
+│   │   └── cfdi_parser.py     # CFDI XML parsing
+│   │
+│   ├── routes/                 # NEW - API endpoints (Jan 22, 2026)
+│   │   ├── auth.py, companies.py, bank_accounts.py
+│   │   ├── vendors.py, customers.py, categories.py
+│   │   ├── payments.py, reconciliations.py
+│   │   └── __init__.py
+│   │
 │   ├── advanced_services.py    # Predictive analysis, alerts
-│   ├── integration_services.py # SAT scraping (mocked), Bank APIs (mocked)
+│   ├── integration_services.py # SAT scraping (mocked)
 │   ├── scenario_service.py     # What-if analysis
 │   ├── export_service.py       # Accounting format exports
 │   ├── genetic_optimizer.py    # Genetic algorithm optimization
+│   ├── forex_service.py        # Banxico/OpenExchange
+│   ├── fx_scheduler.py         # Scheduled FX sync
+│   ├── ai_categorization_service.py
 │   └── requirements.txt
 ├── frontend/
 │   └── src/
@@ -200,18 +230,29 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 │       │   ├── Dashboard.js
 │       │   ├── Transactions.js
 │       │   ├── CFDIModule.js       # With categorization & filters
-│       │   ├── BankModule.js
-│       │   ├── PaymentsModule.js
+│       │   ├── BankStatementsModule.js # Reconciliations, Belvo
+│       │   ├── PaymentsModule.js   # CFDI auto-matching
 │       │   ├── FXRatesModule.js
-│       │   ├── CategoriesModule.js # NEW
+│       │   ├── CategoriesModule.js
+│       │   ├── DIOTModule.js
 │       │   ├── AdvancedFeatures.js
 │       │   └── ...
 │       └── components/
-│           └── Layout.js       # Navigation with Categories link
+│           └── Layout.js       # Navigation
 └── tests/
     ├── test_backend_api.py
-    └── test_categories_diot.py # NEW - 18 tests
+    └── test_cfdi_matching.py
 ```
+
+### Module Migration Status (January 22, 2026)
+
+| Module | Files | Status | Notes |
+|--------|-------|--------|-------|
+| core/ | 4 | ✅ Created | config, database, auth |
+| models/ | 15 | ✅ Created | All Pydantic models |
+| services/ | 5 | ✅ Created | audit, fx, cashflow, cfdi_parser |
+| routes/ | 9 | ✅ Created | Not yet integrated with app |
+| server.py | 1 | 🔄 Active | Main entry point, 7000+ lines |
 
 ---
 
@@ -220,8 +261,9 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
   - Original tests: 15/15
   - Categories/DIOT tests: 18/18
   - Dashboard Advanced tests: 18/18
+  - CFDI Matching tests: 11/12 (1 skipped - no test data)
 - **Frontend Tests**: All UI flows verified working
-- **Last Test Date**: January 18, 2026
+- **Last Test Date**: January 22, 2026
 
 ---
 
