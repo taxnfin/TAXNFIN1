@@ -589,12 +589,52 @@ const BankStatementsModule = () => {
   const pendientesConciliar = filteredTransactions.filter(t => !t.conciliado).length;
   
   // Get selected account's initial balance and currency
+  // When "all" is selected, calculate consolidated balance in MXN
   const selectedAccount = filterAccount !== 'all' 
     ? bankAccounts.find(a => a.id === filterAccount)
     : null;
-  const saldoInicial = selectedAccount?.saldo_inicial || 0;
-  const monedaCuenta = selectedAccount?.moneda || 'MXN';
-  const saldoFinal = saldoInicial + totalDepositos - totalRetiros;
+  
+  // Calculate consolidated initial balance when viewing all accounts
+  const calcConsolidatedSaldoInicial = () => {
+    if (filterAccount !== 'all') {
+      return selectedAccount?.saldo_inicial || 0;
+    }
+    // Sum all accounts converted to MXN
+    return bankAccounts.reduce((total, acc) => {
+      const saldo = acc.saldo_inicial || 0;
+      const moneda = acc.moneda || 'MXN';
+      return total + convertToMXN(saldo, moneda);
+    }, 0);
+  };
+  
+  const saldoInicial = calcConsolidatedSaldoInicial();
+  const monedaCuenta = filterAccount === 'all' ? 'MXN' : (selectedAccount?.moneda || 'MXN');
+  
+  // For consolidated view, convert all transactions to MXN
+  const calcConsolidatedTotals = () => {
+    if (filterAccount !== 'all') {
+      return { depositos: totalDepositos, retiros: totalRetiros };
+    }
+    // Convert each transaction based on its account's currency
+    let depositosMXN = 0;
+    let retirosMXN = 0;
+    filteredTransactions.forEach(t => {
+      const acc = bankAccounts.find(a => a.id === t.bank_account_id);
+      const moneda = t.moneda || acc?.moneda || 'MXN';
+      const montoMXN = convertToMXN(t.monto, moneda);
+      if (t.tipo_movimiento === 'credito') {
+        depositosMXN += montoMXN;
+      } else {
+        retirosMXN += montoMXN;
+      }
+    });
+    return { depositos: depositosMXN, retiros: retirosMXN };
+  };
+  
+  const consolidatedTotals = calcConsolidatedTotals();
+  const displayDepositos = filterAccount === 'all' ? consolidatedTotals.depositos : totalDepositos;
+  const displayRetiros = filterAccount === 'all' ? consolidatedTotals.retiros : totalRetiros;
+  const saldoFinal = saldoInicial + displayDepositos - displayRetiros;
 
   if (loading) return <div className="p-8">Cargando...</div>;
 
