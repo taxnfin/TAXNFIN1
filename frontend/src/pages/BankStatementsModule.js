@@ -886,15 +886,19 @@ const BankStatementsModule = () => {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-blue-700 flex items-center gap-2">
               <DollarSign size={16} />
-              = Saldo Final
+              = Saldo Final {filterAccount === 'all' && '(Consolidado)'}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className={`text-xl font-bold ${saldoFinal >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
               ${saldoFinal.toLocaleString('es-MX', {minimumFractionDigits: 2})}
-              {monedaCuenta !== 'MXN' && <span className="text-xs ml-1">{monedaCuenta}</span>}
+              {filterAccount === 'all' ? (
+                <span className="text-xs ml-1">MXN</span>
+              ) : (
+                monedaCuenta !== 'MXN' && <span className="text-xs ml-1">{monedaCuenta}</span>
+              )}
             </div>
-            {monedaCuenta !== 'MXN' && (
+            {filterAccount !== 'all' && monedaCuenta !== 'MXN' && (
               <p className={`text-xs mt-1 ${saldoFinal >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
                 ≈ ${convertToMXN(saldoFinal, monedaCuenta).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
               </p>
