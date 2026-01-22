@@ -1772,8 +1772,8 @@ const BankStatementsModule = () => {
                                   variant="outline"
                                   size="sm"
                                   className="text-xs h-7 text-orange-600 border-orange-300 hover:bg-orange-50"
-                                  onClick={() => handleMarkWithoutUUID(txn, 'sin_uuid')}
-                                  title="Conciliar sin UUID"
+                                  onClick={() => openSinUUIDDialog(txn, 'sin_uuid')}
+                                  title="Registrar como gasto/ingreso sin factura (comisiones, etc.)"
                                 >
                                   Sin UUID
                                 </Button>
@@ -1781,8 +1781,8 @@ const BankStatementsModule = () => {
                                   variant="outline"
                                   size="sm"
                                   className="text-xs h-7 text-gray-600 border-gray-300 hover:bg-gray-50"
-                                  onClick={() => handleMarkWithoutUUID(txn, 'no_relacionado')}
-                                  title="Marcar como no relacionado"
+                                  onClick={() => handleQuickMarkWithoutUUID(txn, 'no_relacionado')}
+                                  title="Marcar como no relacionado (transferencias internas)"
                                 >
                                   No Rel.
                                 </Button>
