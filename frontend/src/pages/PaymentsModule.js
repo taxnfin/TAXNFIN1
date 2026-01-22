@@ -1712,11 +1712,29 @@ const PaymentsModule = () => {
               Crear Cobros/Pagos desde Movimientos Bancarios
             </DialogTitle>
             <DialogDescription>
-              Selecciona movimientos del estado de cuenta para convertirlos en cobros o pagos
+              Selecciona movimientos del estado de cuenta para convertirlos en cobros o pagos.
+              <span className="block mt-1 text-blue-600 font-medium">
+                ✨ El sistema buscará automáticamente CFDIs coincidentes por monto y fecha (±60 días)
+              </span>
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4">
+            {/* Info banner about auto-matching */}
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <CheckCircle2 size={18} className="text-green-600 mt-0.5" />
+                <div className="text-sm text-green-800">
+                  <span className="font-medium">Matching automático de CFDIs:</span>
+                  <ul className="mt-1 list-disc list-inside text-green-700">
+                    <li>Busca CFDIs con monto similar (±10%)</li>
+                    <li>Dentro de ±60 días de la fecha del movimiento</li>
+                    <li>Solo vincula si la confianza es alta (≥60%)</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
             {/* Summary */}
             <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <div>
