@@ -1236,13 +1236,16 @@ const BankStatementsModule = () => {
             Borrar Conciliaciones
           </Button>
           
-          {/* Transfer Dialog */}
+          {/* Transfer Dialog - Enhanced with Currency Conversion */}
           <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>Transferir Movimientos Entre Cuentas</DialogTitle>
+                <DialogTitle className="flex items-center gap-2">
+                  <ArrowRightLeft size={20} />
+                  Transferir Movimientos Entre Cuentas
+                </DialogTitle>
                 <DialogDescription>
-                  Mueve todos los movimientos de una cuenta a otra. Se actualizará automáticamente la moneda de los movimientos.
+                  Mueve movimientos de una cuenta a otra. Soporta conversión de moneda automática o manual.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
@@ -1255,12 +1258,16 @@ const BankStatementsModule = () => {
                     <SelectContent>
                       {bankAccounts.map(acc => (
                         <SelectItem key={acc.id} value={acc.id}>
-                          {acc.banco} - {acc.nombre} ({acc.moneda})
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${acc.moneda === 'USD' ? 'bg-green-500' : acc.moneda === 'EUR' ? 'bg-blue-500' : 'bg-yellow-500'}`}></span>
+                            {acc.banco} - {acc.nombre} ({acc.moneda})
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+                
                 <div className="space-y-2">
                   <Label>Cuenta Destino</Label>
                   <Select value={transferToAccount} onValueChange={setTransferToAccount}>
@@ -1270,24 +1277,89 @@ const BankStatementsModule = () => {
                     <SelectContent>
                       {bankAccounts.filter(a => a.id !== transferFromAccount).map(acc => (
                         <SelectItem key={acc.id} value={acc.id}>
-                          {acc.banco} - {acc.nombre} ({acc.moneda})
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${acc.moneda === 'USD' ? 'bg-green-500' : acc.moneda === 'EUR' ? 'bg-blue-500' : 'bg-yellow-500'}`}></span>
+                            {acc.banco} - {acc.nombre} ({acc.moneda})
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Currency Conversion Options - Show when currencies differ */}
+                {needsCurrencyConversion && (
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+                    <div className="flex items-center gap-2 text-blue-800 font-medium">
+                      <DollarSign size={18} />
+                      Conversión de Moneda: {transferFromCurrency} → {transferToCurrency}
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Checkbox 
+                        id="convert-currency" 
+                        checked={transferConvertCurrency}
+                        onCheckedChange={setTransferConvertCurrency}
+                      />
+                      <Label htmlFor="convert-currency" className="text-sm text-blue-700">
+                        Convertir montos automáticamente
+                      </Label>
+                    </div>
+                    
+                    {transferConvertCurrency && (
+                      <div className="space-y-2">
+                        <Label className="text-sm text-blue-700">
+                          Tipo de Cambio (opcional - dejar vacío para usar el actual)
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-blue-600">1 {transferFromCurrency} =</span>
+                          <Input 
+                            type="number"
+                            step="0.0001"
+                            placeholder={`Ej: ${transferFromCurrency === 'USD' ? '17.50' : '0.0571'}`}
+                            value={transferCustomFxRate}
+                            onChange={(e) => setTransferCustomFxRate(e.target.value)}
+                            className="w-32"
+                          />
+                          <span className="text-sm text-blue-600">{transferToCurrency}</span>
+                        </div>
+                        <p className="text-xs text-blue-600">
+                          Si no especificas un tipo de cambio, se usará el más reciente registrado en el sistema.
+                        </p>
+                      </div>
+                    )}
+                    
+                    {!transferConvertCurrency && (
+                      <p className="text-xs text-blue-600">
+                        ⚠️ Los montos se mantendrán igual, solo cambiará la etiqueta de moneda.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Summary */}
                 {transferFromAccount && transferToAccount && (
-                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <p className="text-sm text-yellow-800">
+                  <div className={`p-3 ${needsCurrencyConversion ? 'bg-orange-50 border-orange-200' : 'bg-yellow-50 border-yellow-200'} border rounded-lg`}>
+                    <p className="text-sm text-gray-800">
                       <AlertCircle className="inline-block mr-2" size={16} />
-                      Se transferirán todos los movimientos de <strong>{bankAccounts.find(a => a.id === transferFromAccount)?.nombre}</strong> a <strong>{bankAccounts.find(a => a.id === transferToAccount)?.nombre}</strong>.
-                      La moneda se actualizará a <strong>{bankAccounts.find(a => a.id === transferToAccount)?.moneda}</strong>.
+                      Se transferirán <strong>todos los movimientos</strong> de <strong>{bankAccounts.find(a => a.id === transferFromAccount)?.nombre}</strong> ({transferFromCurrency}) a <strong>{bankAccounts.find(a => a.id === transferToAccount)?.nombre}</strong> ({transferToCurrency}).
                     </p>
+                    {needsCurrencyConversion && transferConvertCurrency && (
+                      <p className="text-sm text-orange-700 mt-2">
+                        💱 Los montos serán convertidos de {transferFromCurrency} a {transferToCurrency}.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Cancelar</Button>
+                <Button variant="outline" onClick={() => {
+                  setTransferDialogOpen(false);
+                  setTransferFromAccount('');
+                  setTransferToAccount('');
+                  setTransferConvertCurrency(true);
+                  setTransferCustomFxRate('');
+                }}>Cancelar</Button>
                 <Button 
                   onClick={handleTransferTransactions} 
                   disabled={transferring || !transferFromAccount || !transferToAccount}
