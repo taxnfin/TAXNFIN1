@@ -7,9 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Plus, Trash2, RefreshCw, DollarSign, TrendingUp } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, DollarSign, TrendingUp, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 const CURRENCIES = [
   { code: 'MXN', name: 'Peso Mexicano', symbol: '$' },
@@ -22,11 +24,17 @@ const CURRENCIES = [
   { code: 'CNY', name: 'Yuan Chino', symbol: '¥' },
 ];
 
+const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
 const FXRatesModule = () => {
   const [rates, setRates] = useState([]);
   const [latestRates, setLatestRates] = useState({});
+  const [yearData, setYearData] = useState(null);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
+  const [loadingYear, setLoadingYear] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('latest');
   const [formData, setFormData] = useState({
     moneda_base: 'MXN',
     moneda_cotizada: 'USD',
@@ -37,6 +45,12 @@ const FXRatesModule = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'year') {
+      loadYearData();
+    }
+  }, [activeTab, selectedYear]);
 
   const loadData = async () => {
     try {
@@ -50,6 +64,18 @@ const FXRatesModule = () => {
       toast.error('Error cargando tipos de cambio');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadYearData = async () => {
+    setLoadingYear(true);
+    try {
+      const res = await api.get(`/fx-rates/year/${selectedYear}`);
+      setYearData(res.data);
+    } catch (error) {
+      toast.error('Error cargando tipos de cambio del año');
+    } finally {
+      setLoadingYear(false);
     }
   };
 
