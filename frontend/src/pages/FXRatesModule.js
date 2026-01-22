@@ -320,6 +320,158 @@ const FXRatesModule = () => {
           </Table>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="year">
+          {/* Year selector */}
+          <div className="flex items-center gap-4 mb-4">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setSelectedYear(selectedYear - 1)}
+            >
+              <ChevronLeft size={16} />
+            </Button>
+            <span className="text-xl font-bold">{selectedYear}</span>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setSelectedYear(selectedYear + 1)}
+              disabled={selectedYear >= new Date().getFullYear()}
+            >
+              <ChevronRight size={16} />
+            </Button>
+          </div>
+
+          {loadingYear ? (
+            <Card className="border-[#E2E8F0]">
+              <CardContent className="py-8 text-center text-gray-500">
+                Cargando tipos de cambio del año...
+              </CardContent>
+            </Card>
+          ) : yearData ? (
+            <div className="space-y-4">
+              {/* Year Summary */}
+              <Card className="border-[#E2E8F0]">
+                <CardHeader>
+                  <CardTitle>Resumen del Año {selectedYear}</CardTitle>
+                  <CardDescription>
+                    {yearData.total_rates} registros | {yearData.currencies?.length || 0} monedas
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+
+              {/* Monthly Averages Table */}
+              {yearData.currencies?.length > 0 && (
+                <Card className="border-[#E2E8F0]">
+                  <CardHeader>
+                    <CardTitle>Promedios Mensuales</CardTitle>
+                    <CardDescription>Tipo de cambio promedio por mes (respecto a MXN)</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <Table className="data-table">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Moneda</TableHead>
+                            {MONTH_NAMES.map((m, i) => (
+                              <TableHead key={i} className="text-center">{m}</TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {yearData.currencies?.filter(c => c !== 'MXN').map(currency => (
+                            <TableRow key={currency}>
+                              <TableCell className="font-semibold">
+                                <span className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-800">
+                                  {currency}
+                                </span>
+                              </TableCell>
+                              {MONTH_NAMES.map((_, i) => {
+                                const avg = yearData.monthly_averages?.[currency]?.[i + 1];
+                                return (
+                                  <TableCell key={i} className="text-center mono">
+                                    {avg ? avg.toFixed(2) : '-'}
+                                  </TableCell>
+                                );
+                              })}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Detailed rates by currency */}
+              {yearData.currencies?.filter(c => c !== 'MXN').map(currency => (
+                <Card key={currency} className="border-[#E2E8F0]">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <span className="px-2 py-1 text-sm rounded bg-green-100 text-green-800">
+                        {currency}
+                      </span>
+                      Historial {selectedYear}
+                    </CardTitle>
+                    <CardDescription>
+                      {yearData.by_currency?.[currency]?.length || 0} registros
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="max-h-64 overflow-y-auto">
+                      <Table className="data-table">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Fecha</TableHead>
+                            <TableHead>Tasa</TableHead>
+                            <TableHead>Fuente</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {yearData.by_currency?.[currency]?.slice(-50).reverse().map((rate, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell>
+                                {rate.fecha ? format(new Date(rate.fecha), 'dd MMM yyyy', { locale: es }) : '-'}
+                              </TableCell>
+                              <TableCell className="mono font-semibold">
+                                {rate.tasa?.toFixed(4)}
+                              </TableCell>
+                              <TableCell>
+                                <span className={`px-2 py-1 text-xs rounded ${
+                                  rate.fuente === 'banxico' ? 'bg-blue-100 text-blue-800' :
+                                  rate.fuente === 'openexchange' ? 'bg-orange-100 text-orange-800' :
+                                  'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {rate.fuente || 'manual'}
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+
+              {yearData.currencies?.length === 0 && (
+                <Card className="border-[#E2E8F0]">
+                  <CardContent className="py-8 text-center text-gray-500">
+                    No hay tipos de cambio registrados para {selectedYear}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          ) : (
+            <Card className="border-[#E2E8F0]">
+              <CardContent className="py-8 text-center text-gray-500">
+                No hay datos disponibles
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* Info Card */}
       <Card className="border-[#F59E0B] bg-[#FFFBEB]">
