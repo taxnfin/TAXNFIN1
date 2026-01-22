@@ -479,6 +479,54 @@ class AuditLog(BaseModel):
     datos_nuevos: Optional[Dict[str, Any]] = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+# ===== BELVO BANK CONNECTION MODELS =====
+class BankConnectionStatus(str, Enum):
+    ACTIVE = "active"
+    PENDING = "pending"
+    INVALID = "invalid"
+    DISCONNECTED = "disconnected"
+
+class BankConnection(BaseModel):
+    """Represents a connection to a bank via Belvo"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    company_id: str
+    bank_account_id: str  # Reference to our bank_accounts table
+    belvo_link_id: str  # Belvo's link ID
+    institution_name: str  # Bank name (e.g., "BBVA Mexico")
+    institution_id: str  # Belvo institution ID
+    status: BankConnectionStatus = BankConnectionStatus.PENDING
+    last_sync: Optional[datetime] = None
+    sync_status: str = "never"  # never, syncing, success, error
+    sync_error: Optional[str] = None
+    credentials_encrypted: Optional[str] = None  # Encrypted bank credentials
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    activo: bool = True
+
+class BankMovementRaw(BaseModel):
+    """Raw bank movement from Belvo - before processing"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    company_id: str
+    bank_connection_id: str
+    bank_account_id: str
+    belvo_transaction_id: str  # Belvo's unique ID
+    fecha_movimiento: datetime
+    fecha_valor: Optional[datetime] = None
+    descripcion: str
+    referencia: Optional[str] = None
+    monto: float
+    tipo_movimiento: str  # credito or debito
+    saldo: Optional[float] = None
+    categoria_belvo: Optional[str] = None  # Belvo's category
+    subcategoria_belvo: Optional[str] = None
+    merchant_name: Optional[str] = None
+    merchant_logo: Optional[str] = None
+    moneda: str = "MXN"
+    raw_data: Optional[Dict[str, Any]] = None  # Original Belvo response
+    procesado: bool = False  # If already converted to bank_transaction
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
