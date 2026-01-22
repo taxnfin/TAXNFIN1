@@ -4247,6 +4247,16 @@ async def get_payments_breakdown(
     total_por_pagar_mxn = 0
     total_por_pagar_usd = 0
     
+    # Facturas Cobradas (CFDIs ingreso ya cobrados)
+    facturas_cobradas_list = []
+    total_facturas_cobradas_mxn = 0
+    total_facturas_cobradas_usd = 0
+    
+    # Facturas Pagadas (CFDIs egreso ya pagados)
+    facturas_pagadas_list = []
+    total_facturas_pagadas_mxn = 0
+    total_facturas_pagadas_usd = 0
+    
     for cfdi in all_cfdis:
         total = cfdi.get('total', 0) or 0
         moneda = cfdi.get('moneda', 'MXN')
@@ -4255,18 +4265,31 @@ async def get_payments_breakdown(
         if tipo_cfdi == 'ingreso':
             monto_cobrado = cfdi.get('monto_cobrado', 0) or 0
             pendiente = total - monto_cobrado
+            
+            cfdi_item = {
+                'cfdi_id': cfdi.get('id'),
+                'uuid': cfdi.get('uuid', '')[:8] + '...' if cfdi.get('uuid') else '',
+                'uuid_full': cfdi.get('uuid', ''),
+                'emisor': cfdi.get('emisor_nombre', ''),
+                'receptor': cfdi.get('receptor_nombre', ''),
+                'fecha': cfdi.get('fecha_emision'),
+                'total': total,
+                'cobrado': monto_cobrado,
+                'pendiente': pendiente,
+                'moneda': moneda
+            }
+            
+            # If has collected amount, add to facturas_cobradas
+            if monto_cobrado > 0.01:
+                facturas_cobradas_list.append({**cfdi_item, 'monto_ejecutado': monto_cobrado})
+                if moneda == 'USD':
+                    total_facturas_cobradas_usd += monto_cobrado
+                else:
+                    total_facturas_cobradas_mxn += monto_cobrado
+            
+            # If still has pending, add to por_cobrar
             if pendiente > 0.01:
-                por_cobrar_list.append({
-                    'cfdi_id': cfdi.get('id'),
-                    'uuid': cfdi.get('uuid', '')[:8] + '...' if cfdi.get('uuid') else '',
-                    'emisor': cfdi.get('emisor_nombre', ''),
-                    'receptor': cfdi.get('receptor_nombre', ''),
-                    'fecha': cfdi.get('fecha_emision'),
-                    'total': total,
-                    'cobrado': monto_cobrado,
-                    'pendiente': pendiente,
-                    'moneda': moneda
-                })
+                por_cobrar_list.append(cfdi_item)
                 if moneda == 'USD':
                     total_por_cobrar_usd += pendiente
                 else:
@@ -4275,18 +4298,31 @@ async def get_payments_breakdown(
         elif tipo_cfdi == 'egreso':
             monto_pagado = cfdi.get('monto_pagado', 0) or 0
             pendiente = total - monto_pagado
+            
+            cfdi_item = {
+                'cfdi_id': cfdi.get('id'),
+                'uuid': cfdi.get('uuid', '')[:8] + '...' if cfdi.get('uuid') else '',
+                'uuid_full': cfdi.get('uuid', ''),
+                'emisor': cfdi.get('emisor_nombre', ''),
+                'receptor': cfdi.get('receptor_nombre', ''),
+                'fecha': cfdi.get('fecha_emision'),
+                'total': total,
+                'pagado': monto_pagado,
+                'pendiente': pendiente,
+                'moneda': moneda
+            }
+            
+            # If has paid amount, add to facturas_pagadas
+            if monto_pagado > 0.01:
+                facturas_pagadas_list.append({**cfdi_item, 'monto_ejecutado': monto_pagado})
+                if moneda == 'USD':
+                    total_facturas_pagadas_usd += monto_pagado
+                else:
+                    total_facturas_pagadas_mxn += monto_pagado
+            
+            # If still has pending, add to por_pagar
             if pendiente > 0.01:
-                por_pagar_list.append({
-                    'cfdi_id': cfdi.get('id'),
-                    'uuid': cfdi.get('uuid', '')[:8] + '...' if cfdi.get('uuid') else '',
-                    'emisor': cfdi.get('emisor_nombre', ''),
-                    'receptor': cfdi.get('receptor_nombre', ''),
-                    'fecha': cfdi.get('fecha_emision'),
-                    'total': total,
-                    'pagado': monto_pagado,
-                    'pendiente': pendiente,
-                    'moneda': moneda
-                })
+                por_pagar_list.append(cfdi_item)
                 if moneda == 'USD':
                     total_por_pagar_usd += pendiente
                 else:
