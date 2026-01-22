@@ -4467,7 +4467,7 @@ async def get_payments_breakdown(
     varianza_pagos = total_real_pagos - total_proyeccion_pagos_mxn
     
     return {
-        # Section 1: Por Cobrar / Por Pagar (from CFDI/SAT)
+        # Section 1: Por Cobrar / Por Pagar (from CFDI/SAT - PENDING)
         'cfdi_por_cobrar': {
             'items': por_cobrar_list[:50],  # Limit for performance
             'total_count': len(por_cobrar_list),
@@ -4481,6 +4481,22 @@ async def get_payments_breakdown(
             'total_mxn': round(total_por_pagar_mxn, 2),
             'total_usd': round(total_por_pagar_usd, 2),
             'total_equiv_mxn': round(total_por_pagar_mxn + convert_to_mxn(total_por_pagar_usd, 'USD'), 2)
+        },
+        
+        # Section 1.5: Facturas Pagadas / Cobradas (from CFDI/SAT - EXECUTED)
+        'facturas_cobradas': {
+            'items': facturas_cobradas_list[:50],
+            'total_count': len(facturas_cobradas_list),
+            'total_mxn': round(total_facturas_cobradas_mxn, 2),
+            'total_usd': round(total_facturas_cobradas_usd, 2),
+            'total_equiv_mxn': round(total_facturas_cobradas_mxn + convert_to_mxn(total_facturas_cobradas_usd, 'USD'), 2)
+        },
+        'facturas_pagadas': {
+            'items': facturas_pagadas_list[:50],
+            'total_count': len(facturas_pagadas_list),
+            'total_mxn': round(total_facturas_pagadas_mxn, 2),
+            'total_usd': round(total_facturas_pagadas_usd, 2),
+            'total_equiv_mxn': round(total_facturas_pagadas_mxn + convert_to_mxn(total_facturas_pagadas_usd, 'USD'), 2)
         },
         
         # Section 2: Cobrado / Pagado (Real - from conciliado)
