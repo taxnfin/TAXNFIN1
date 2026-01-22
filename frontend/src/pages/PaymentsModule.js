@@ -676,6 +676,15 @@ const PaymentsModule = () => {
           </Button>
           <Button 
             variant="outline" 
+            className="gap-2 text-blue-600 border-blue-300 hover:bg-blue-50"
+            onClick={() => setImportBankDialogOpen(true)}
+            data-testid="import-bank-btn"
+          >
+            <Link2 size={16} />
+            Desde Banco
+          </Button>
+          <Button 
+            variant="outline" 
             className="gap-2"
             onClick={handleAutoMatch}
             data-testid="auto-match-btn"
