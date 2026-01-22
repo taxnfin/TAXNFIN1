@@ -280,7 +280,64 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ### Completed in This Session ✅
 
-**P0 - Matching Automático de CFDIs**
+**Corrección 1: Conciliación = Pagado/Cobrado**
+
+1. ✅ **Lógica actualizada en `POST /api/reconciliations`**
+   - Si se concilia con un CFDI, automáticamente crea el registro de pago si no existe
+   - Elimina la restricción que requería pago previo para conciliar
+   - La conciliación ahora implica que el movimiento está pagado/cobrado
+
+**Corrección 2: Movimientos Sin UUID en Conciliaciones**
+
+1. ✅ **Nuevo diálogo "Registrar Movimiento Sin UUID"**
+   - Permite clasificar movimientos sin CFDI (comisiones bancarias, gastos sin factura, etc.)
+   - Categorías disponibles:
+     - Comisión Bancaria
+     - Gasto sin Factura
+     - Transferencia Interna
+     - Pago de Nómina
+     - Impuestos / ISR / IVA
+     - Intereses
+     - Retiro en Efectivo
+     - Depósito No Identificado
+     - Otro
+   - Crea automáticamente un registro en Cobranza y Pagos
+
+2. ✅ **Endpoint mejorado `POST /api/reconciliations/mark-without-uuid`**
+   - Acepta `categoria` y `concepto` adicionales
+   - Crea automáticamente el pago/cobro correspondiente
+   - Mantiene la integridad del flujo de efectivo
+
+**Corrección 3: Breakdown en Cobranza y Pagos**
+
+1. ✅ **Nuevo endpoint `GET /api/payments/breakdown`**
+   - **Por Cobrar / Por Pagar (CFDI)**: De facturas pendientes del SAT
+   - **Cobrado / Pagado (Real)**: De movimientos conciliados con banco
+     - Con CFDI: Pagos vinculados a facturas
+     - Sin CFDI: Comisiones, gastos sin factura, etc.
+   - **Proyecciones**: Para análisis de varianza vs real
+   - **Varianza**: Comparación Real vs Proyectado (para flujo 13 semanas)
+
+2. ✅ **UI actualizada en PaymentsModule.js**
+   - 6 tarjetas de resumen:
+     - Por Pagar (CFDI) - rojo
+     - Por Cobrar (CFDI) - verde
+     - Pagado (Real) - rojo oscuro
+     - Cobrado (Real) - verde oscuro
+     - Pagos Proyectados - indigo
+     - Cobros Proyectados - púrpura
+   - Banner negro con Flujo Neto Real vs Proyectado
+   - Varianza % mostrada en cada tarjeta de proyección
+
+**Testing Realizado:**
+- ✅ Backend: Endpoint breakdown retorna datos correctos
+- ✅ Frontend: Summary cards muestran el breakdown completo
+- ✅ Diálogo Sin UUID funciona y registra en Cobranza y Pagos
+- ✅ Capturas de pantalla verificadas
+
+---
+
+**P0 - Matching Automático de CFDIs (Sesión anterior)**
 
 1. ✅ **Nuevo endpoint `GET /api/bank-transactions/{id}/match-cfdi`**
    - Busca CFDIs que coincidan con un movimiento bancario
