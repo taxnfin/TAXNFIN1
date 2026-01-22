@@ -129,9 +129,9 @@ const BelvoConnectForm = ({ bankAccounts, onSuccess, onClose }) => {
                 Para conectar bancos automáticamente, necesitas agregar tus credenciales de Belvo en el archivo .env:
               </p>
               <div className="mt-2 bg-gray-800 text-green-400 p-2 rounded text-xs font-mono">
-                BELVO_SECRET_ID="tu_secret_id"<br/>
-                BELVO_SECRET_PASSWORD="tu_secret_password"<br/>
-                BELVO_ENV="sandbox"
+                BELVO_SECRET_ID=&quot;tu_secret_id&quot;<br/>
+                BELVO_SECRET_PASSWORD=&quot;tu_secret_password&quot;<br/>
+                BELVO_ENV=&quot;sandbox&quot;
               </div>
               <a href="https://developers.belvo.com" target="_blank" rel="noreferrer" 
                 className="text-blue-600 text-sm hover:underline mt-2 inline-block">
