@@ -1047,7 +1047,12 @@ const BankStatementsModule = () => {
     }
   };
 
-  // Transfer transactions between accounts
+  // Transfer state with currency conversion support
+  const [transferConvertCurrency, setTransferConvertCurrency] = useState(true);
+  const [transferCustomFxRate, setTransferCustomFxRate] = useState('');
+  const [transferSelectedTxns, setTransferSelectedTxns] = useState([]);
+
+  // Transfer transactions between accounts with currency conversion
   const handleTransferTransactions = async () => {
     if (!transferFromAccount || !transferToAccount) {
       toast.error('Selecciona cuenta origen y destino');
@@ -1060,15 +1065,35 @@ const BankStatementsModule = () => {
 
     setTransferring(true);
     try {
-      const response = await api.post('/bank-transactions/transfer-account', {
+      const payload = {
         from_account_id: transferFromAccount,
-        to_account_id: transferToAccount
-      });
+        to_account_id: transferToAccount,
+        convert_currency: transferConvertCurrency
+      };
       
-      toast.success(response.data.message);
+      // Include custom FX rate if provided
+      if (transferCustomFxRate && parseFloat(transferCustomFxRate) > 0) {
+        payload.custom_fx_rate = parseFloat(transferCustomFxRate);
+      }
+      
+      // Include specific transaction IDs if selected
+      if (transferSelectedTxns.length > 0) {
+        payload.transaction_ids = transferSelectedTxns;
+      }
+      
+      const response = await api.post('/bank-transactions/transfer-account', payload);
+      
+      const msg = response.data.currency_converted 
+        ? `${response.data.message} (TC: ${response.data.fx_rate_used?.toFixed(4)})`
+        : response.data.message;
+      
+      toast.success(msg);
       setTransferDialogOpen(false);
       setTransferFromAccount('');
       setTransferToAccount('');
+      setTransferConvertCurrency(true);
+      setTransferCustomFxRate('');
+      setTransferSelectedTxns([]);
       loadData();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error transfiriendo movimientos');
@@ -1076,6 +1101,16 @@ const BankStatementsModule = () => {
       setTransferring(false);
     }
   };
+
+  // Get currency info for transfer dialog
+  const getAccountCurrency = (accountId) => {
+    const account = bankAccounts.find(a => a.id === accountId);
+    return account?.moneda || 'MXN';
+  };
+
+  const transferFromCurrency = transferFromAccount ? getAccountCurrency(transferFromAccount) : '';
+  const transferToCurrency = transferToAccount ? getAccountCurrency(transferToAccount) : '';
+  const needsCurrencyConversion = transferFromCurrency && transferToCurrency && transferFromCurrency !== transferToCurrency;
 
   // Filter transactions
   const filteredTransactions = bankTransactions.filter(txn => {
