@@ -1330,17 +1330,27 @@ const BankStatementsModule = () => {
                         </TableCell>
                         <TableCell className="text-center">
                           {txn.conciliado ? (
-                            <span className="inline-flex items-center gap-1 text-green-600 text-xs">
-                              <Check size={14} /> Conciliado
-                            </span>
+                            txn.tipo_conciliacion === 'sin_uuid' ? (
+                              <span className="inline-flex items-center gap-1 text-orange-600 text-xs px-2 py-1 bg-orange-50 rounded">
+                                <AlertCircle size={12} /> Sin UUID
+                              </span>
+                            ) : txn.tipo_conciliacion === 'no_relacionado' ? (
+                              <span className="inline-flex items-center gap-1 text-gray-600 text-xs px-2 py-1 bg-gray-100 rounded">
+                                <X size={12} /> No Rel.
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-green-600 text-xs px-2 py-1 bg-green-50 rounded">
+                                <Check size={12} /> Con UUID
+                              </span>
+                            )
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-yellow-600 text-xs">
+                            <span className="inline-flex items-center gap-1 text-yellow-600 text-xs px-2 py-1 bg-yellow-50 rounded">
                               <Clock size={14} /> Pendiente
                             </span>
                           )}
                         </TableCell>
                         <TableCell className="text-center">
-                          <div className="flex justify-center gap-1">
+                          <div className="flex justify-center gap-1 flex-wrap">
                             {!txn.conciliado && (
                               <Button
                                 variant="outline"
