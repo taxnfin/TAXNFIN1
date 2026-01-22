@@ -816,6 +816,15 @@ const BankStatementsModule = () => {
             <Download size={16} />
             Exportar
           </Button>
+          <Button 
+            variant="outline" 
+            onClick={handleDeleteAllReconciliations} 
+            className="gap-2 text-red-600 border-red-300 hover:bg-red-50" 
+            data-testid="delete-all-reconciliations-btn"
+          >
+            <Trash2 size={16} />
+            Borrar Conciliaciones
+          </Button>
           
           {/* Transfer Dialog */}
           <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
