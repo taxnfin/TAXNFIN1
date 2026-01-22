@@ -574,16 +574,75 @@ const BankStatementsModule = () => {
     }
   };
 
-  // Mark transaction as reconciled WITHOUT UUID
-  const handleMarkWithoutUUID = async (txn, tipo) => {
+  // Mark transaction as reconciled WITHOUT UUID - with category selection
+  const [sinUUIDDialogOpen, setSinUUIDDialogOpen] = useState(false);
+  const [sinUUIDTransaction, setSinUUIDTransaction] = useState(null);
+  const [sinUUIDFormData, setSinUUIDFormData] = useState({
+    tipo_conciliacion: 'sin_uuid',
+    categoria: '',
+    concepto: '',
+    notas: ''
+  });
+
+  const EXPENSE_CATEGORIES = [
+    { value: 'comision_bancaria', label: 'Comisión Bancaria' },
+    { value: 'gasto_sin_factura', label: 'Gasto sin Factura' },
+    { value: 'transferencia_interna', label: 'Transferencia Interna' },
+    { value: 'pago_nomina', label: 'Pago de Nómina' },
+    { value: 'impuestos', label: 'Impuestos / ISR / IVA' },
+    { value: 'intereses', label: 'Intereses' },
+    { value: 'retiro_efectivo', label: 'Retiro en Efectivo' },
+    { value: 'deposito_no_identificado', label: 'Depósito No Identificado' },
+    { value: 'otro', label: 'Otro' }
+  ];
+
+  const openSinUUIDDialog = (txn, tipo = 'sin_uuid') => {
+    setSinUUIDTransaction(txn);
+    setSinUUIDFormData({
+      tipo_conciliacion: tipo,
+      categoria: '',
+      concepto: txn.descripcion || '',
+      notas: ''
+    });
+    setSinUUIDDialogOpen(true);
+  };
+
+  const handleMarkWithoutUUID = async () => {
+    if (!sinUUIDTransaction) return;
+    
+    try {
+      const res = await api.post('/reconciliations/mark-without-uuid', {
+        bank_transaction_id: sinUUIDTransaction.id,
+        tipo_conciliacion: sinUUIDFormData.tipo_conciliacion,
+        categoria: sinUUIDFormData.categoria,
+        concepto: sinUUIDFormData.concepto,
+        notas: sinUUIDFormData.notas
+      });
+      
+      const tipoLabel = sinUUIDFormData.tipo_conciliacion === 'sin_uuid' ? 'Sin UUID' : 'No relacionado';
+      toast.success(`Movimiento marcado como "${tipoLabel}" y registrado en Cobranza y Pagos`);
+      
+      setSinUUIDDialogOpen(false);
+      setSinUUIDTransaction(null);
+      loadData();
+      loadReconSummary();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error al marcar movimiento');
+    }
+  };
+
+  // Quick mark without dialog (for backward compatibility)
+  const handleQuickMarkWithoutUUID = async (txn, tipo) => {
     try {
       await api.post('/reconciliations/mark-without-uuid', {
         bank_transaction_id: txn.id,
-        tipo_conciliacion: tipo, // 'sin_uuid' or 'no_relacionado'
+        tipo_conciliacion: tipo,
+        categoria: tipo === 'sin_uuid' ? 'gasto_sin_factura' : 'transferencia_interna',
+        concepto: txn.descripcion || '',
         notas: tipo === 'sin_uuid' ? 'Conciliado sin UUID - pago sin factura' : 'No relacionado - movimiento interno'
       });
       toast.success(tipo === 'sin_uuid' 
-        ? 'Movimiento marcado como "Sin UUID"' 
+        ? 'Movimiento marcado como "Sin UUID" y registrado como pago' 
         : 'Movimiento marcado como "No relacionado"'
       );
       loadData();
