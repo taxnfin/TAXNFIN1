@@ -338,7 +338,7 @@ const DIOTModule = () => {
             </div>
           </div>
           <p className="mt-4">
-            <strong>Nota:</strong> El archivo TXT exportado está en formato compatible con el portal del SAT (campos separados por "|").
+            <strong>Nota:</strong> El archivo TXT exportado está en formato compatible con el portal del SAT (campos separados por &quot;|&quot;).
           </p>
         </CardContent>
       </Card>
