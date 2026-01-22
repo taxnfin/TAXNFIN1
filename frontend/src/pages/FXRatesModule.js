@@ -239,15 +239,29 @@ const FXRatesModule = () => {
         ))}
       </div>
 
-      {/* Rates History Table */}
-      <Card className="border-[#E2E8F0]">
-        <CardHeader>
-          <CardTitle>Historial de Tipos de Cambio</CardTitle>
-          <CardDescription>{rates.length} registros de tipos de cambio (Banxico + OpenExchange + Manual)</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table className="data-table">
-            <TableHeader>
+      {/* Tabs for different views */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 mb-4">
+          <TabsTrigger value="latest" className="gap-2">
+            <TrendingUp size={16} />
+            Últimos Registros
+          </TabsTrigger>
+          <TabsTrigger value="year" className="gap-2">
+            <Calendar size={16} />
+            Vista Anual
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="latest">
+          {/* Rates History Table */}
+          <Card className="border-[#E2E8F0]">
+            <CardHeader>
+              <CardTitle>Historial de Tipos de Cambio</CardTitle>
+              <CardDescription>{rates.length} registros de tipos de cambio (Banxico + OpenExchange + Manual)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table className="data-table">
+                <TableHeader>
               <TableRow>
                 <TableHead>Fecha Vigencia</TableHead>
                 <TableHead>Moneda</TableHead>
