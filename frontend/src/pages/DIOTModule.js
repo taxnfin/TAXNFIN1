@@ -172,7 +172,7 @@ const DIOTModule = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Operaciones</CardTitle>
@@ -180,7 +180,7 @@ const DIOTModule = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summary.totalOperaciones}</div>
-            <p className="text-xs text-muted-foreground">Facturas de egreso pagadas</p>
+            <p className="text-xs text-muted-foreground">Facturas de egreso en período</p>
           </CardContent>
         </Card>
         <Card>
@@ -195,12 +195,22 @@ const DIOTModule = () => {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">IVA Total</CardTitle>
-            <Building2 className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">IVA Acreditable</CardTitle>
+            <Building2 className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(summary.totalIVA)}</div>
-            <p className="text-xs text-muted-foreground">IVA acreditable del período</p>
+            <div className="text-2xl font-bold text-green-600">{formatCurrency(summary.totalIVA)}</div>
+            <p className="text-xs text-muted-foreground">IVA trasladado del período</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">IVA Retenido</CardTitle>
+            <Building2 className="h-4 w-4 text-red-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-600">{formatCurrency(summary.totalIVARetenido || 0)}</div>
+            <p className="text-xs text-muted-foreground">Retenciones de IVA</p>
           </CardContent>
         </Card>
       </div>
