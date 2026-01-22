@@ -1445,59 +1445,26 @@ const BankStatementsModule = () => {
 
       {/* Connect Bank Dialog */}
       <Dialog open={connectDialogOpen} onOpenChange={setConnectDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Link2 size={20} />
-              Conectar Banco
+              Conectar Banco (Belvo)
             </DialogTitle>
             <DialogDescription>
-              Descarga automáticamente tus movimientos bancarios
+              Conecta tu cuenta bancaria para descargar movimientos automáticamente
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <AlertCircle size={20} className="text-blue-600 mt-0.5" />
-                <div>
-                  <p className="font-medium text-blue-800">Próximamente</p>
-                  <p className="text-sm text-blue-600 mt-1">
-                    La conexión directa con bancos estará disponible próximamente. 
-                    Por ahora puedes:
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50">
-                <Upload size={20} className="text-gray-500" />
-                <div>
-                  <p className="font-medium">Importar desde Excel</p>
-                  <p className="text-sm text-gray-500">Descarga el estado de cuenta de tu banca en línea y súbelo aquí</p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50">
-                <Plus size={20} className="text-gray-500" />
-                <div>
-                  <p className="font-medium">Captura manual</p>
-                  <p className="text-sm text-gray-500">Agrega movimientos uno por uno desde tu estado de cuenta</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t pt-4">
-              <p className="text-xs text-gray-500 text-center">
-                Bancos soportados próximamente: BBVA, Santander, Banorte, HSBC, Scotiabank, Banamex
-              </p>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConnectDialogOpen(false)}>Cerrar</Button>
-          </DialogFooter>
+          <BelvoConnectForm 
+            bankAccounts={bankAccounts} 
+            onSuccess={() => {
+              setConnectDialogOpen(false);
+              loadData();
+              toast.success('Banco conectado exitosamente');
+            }}
+            onClose={() => setConnectDialogOpen(false)}
+          />
         </DialogContent>
       </Dialog>
 
