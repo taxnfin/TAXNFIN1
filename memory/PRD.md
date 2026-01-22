@@ -237,7 +237,26 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ### Completed in This Session ✅
 
-**6 Nuevas Funcionalidades - Multi-Moneda y Reportes**
+**Mejora del Proceso de Conciliación - Movimientos Sin UUID**
+
+1. ✅ **Conciliación de movimientos sin UUID**
+   - Nuevo endpoint `POST /api/reconciliations/mark-without-uuid`
+   - Permite marcar movimientos como "Sin UUID" (pagos sin factura) o "No relacionado" (movimientos internos)
+   - Campo `tipo_conciliacion` agregado al modelo BankReconciliation (con_uuid, sin_uuid, no_relacionado)
+
+2. ✅ **Resumen de conciliación**
+   - Nuevo endpoint `GET /api/reconciliations/summary`
+   - Muestra totales desglosados: Con UUID, Sin UUID, No Relacionado, Pendientes
+   - Porcentaje de conciliación calculado automáticamente
+
+3. ✅ **UI de conciliación actualizada**
+   - 5 nuevas tarjetas de resumen (Con UUID, Sin UUID, No Relacionado, Diferencia Pendiente, % Conciliado)
+   - Columna "Estado" muestra tipo de conciliación con colores distintivos
+   - 3 botones de acción: "Con UUID", "Sin UUID", "No Rel." para cada movimiento pendiente
+
+---
+
+**6 Funcionalidades Anteriores (Completadas)**
 
 1. ✅ **Desglose por Moneda en Cobranza y Pagos**
    - Las tarjetas de resumen muestran totales separados por MXN y USD
