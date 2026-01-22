@@ -2089,6 +2089,51 @@ async def transfer_transactions_to_account(
         "new_currency": new_currency
     }
 
+@api_router.put("/bank-transactions/{transaction_id}")
+async def update_bank_transaction(transaction_id: str, data: dict, current_user: Dict = Depends(get_current_user)):
+    """Update a bank transaction"""
+    company_id = current_user['company_id']
+    
+    # Check if transaction exists
+    txn = await db.bank_transactions.find_one({
+        'id': transaction_id, 
+        'company_id': company_id
+    })
+    if not txn:
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+    
+    # Fields that can be updated
+    allowed_fields = ['bank_account_id', 'descripcion', 'referencia', 'monto', 'tipo_movimiento', 
+                      'fecha_movimiento', 'fecha_valor', 'moneda', 'notas']
+    
+    update_data = {}
+    for field in allowed_fields:
+        if field in data:
+            update_data[field] = data[field]
+    
+    # If bank_account_id changed, update moneda from the new account
+    if 'bank_account_id' in update_data and update_data['bank_account_id']:
+        new_account = await db.bank_accounts.find_one({'id': update_data['bank_account_id'], 'company_id': company_id}, {'_id': 0})
+        if new_account:
+            update_data['moneda'] = new_account.get('moneda', 'MXN')
+    
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No hay campos para actualizar")
+    
+    result = await db.bank_transactions.update_one(
+        {'id': transaction_id, 'company_id': company_id},
+        {'$set': update_data}
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=400, detail="No se pudo actualizar el movimiento")
+    
+    await audit_log(company_id, 'BankTransaction', transaction_id, 'UPDATE', current_user['id'], txn, update_data)
+    
+    # Return updated transaction
+    updated = await db.bank_transactions.find_one({'id': transaction_id}, {'_id': 0})
+    return updated
+
 @api_router.post("/bank-transactions/check-duplicates")
 async def check_duplicate_transactions(
     transactions: List[dict],
