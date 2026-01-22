@@ -1335,6 +1335,27 @@ const PaymentsModule = () => {
             <DialogTitle>Editar {selectedPayment?.tipo === 'cobro' ? 'Cobro' : 'Pago'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleUpdatePayment} className="space-y-4">
+            {/* Cuenta Bancaria */}
+            <div className="space-y-2">
+              <Label>Cuenta Bancaria</Label>
+              <Select 
+                value={formData.bank_account_id || ''} 
+                onValueChange={(v) => setFormData({...formData, bank_account_id: v || null})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar cuenta (opcional)..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Sin cuenta asignada</SelectItem>
+                  {bankAccounts.map(acc => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      {acc.banco} - {acc.nombre} ({acc.moneda})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Monto</Label>
@@ -1360,6 +1381,22 @@ const PaymentsModule = () => {
                 </Select>
               </div>
             </div>
+            
+            {/* Mostrar conversión cuando la moneda no es MXN */}
+            {formData.moneda !== 'MXN' && formData.monto && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-blue-700">Equivalente en MXN:</span>
+                  <span className="font-mono font-bold text-blue-800">
+                    ${convertToMXN(parseFloat(formData.monto) || 0, formData.moneda).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                  </span>
+                </div>
+                <div className="text-xs text-blue-600 mt-1">
+                  TC: 1 {formData.moneda} = {fxRates[formData.moneda] || 1} MXN
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label>Concepto</Label>
               <Input
