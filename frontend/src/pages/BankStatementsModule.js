@@ -60,6 +60,19 @@ const BankStatementsModule = () => {
     tipo_movimiento: 'credito',
     saldo: ''
   });
+  
+  // State for editing transaction
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState(null);
+  const [editFormData, setEditFormData] = useState({
+    bank_account_id: '',
+    descripcion: '',
+    referencia: '',
+    monto: '',
+    tipo_movimiento: 'credito',
+    fecha_movimiento: '',
+    notas: ''
+  });
 
   // Exchange rates for conversion
   const [fxRates, setFxRates] = useState({ USD: 17.5, EUR: 19.0 });
