@@ -254,42 +254,56 @@ const DIOTModule = () => {
         <CardHeader>
           <CardTitle>Detalle de Operaciones</CardTitle>
           <CardDescription>
-            Facturas de egreso con fecha de pago en el período seleccionado
+            Facturas de egreso (gastos) en el período seleccionado - basado en fecha de emisión
           </CardDescription>
         </CardHeader>
         <CardContent>
           {diotData.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Receipt size={48} className="mx-auto mb-4 opacity-50" />
-              <p>No hay facturas de egreso pagadas en el período seleccionado</p>
-              <p className="text-sm mt-2">Registra pagos en el módulo de Cobranza y Pagos para que aparezcan aquí</p>
+              <p>No hay facturas de egreso en el período seleccionado</p>
+              <p className="text-sm mt-2">Sube tus CFDIs de egreso (gastos) en el módulo de CFDIs</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Tipo Tercero</TableHead>
+                    <TableHead>Tipo</TableHead>
                     <TableHead>RFC</TableHead>
                     <TableHead>Nombre/Razón Social</TableHead>
-                    <TableHead className="text-right">Valor Pagado</TableHead>
-                    <TableHead className="text-right">IVA 16%</TableHead>
-                    <TableHead className="text-right">IVA Retenido</TableHead>
-                    <TableHead>Fecha Pago</TableHead>
+                    <TableHead className="text-right">Subtotal</TableHead>
+                    <TableHead className="text-right">IVA Acred.</TableHead>
+                    <TableHead className="text-right">IVA Ret.</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead>F. Emisión</TableHead>
+                    <TableHead>F. Pago</TableHead>
+                    <TableHead>Estado</TableHead>
                     <TableHead>Categoría</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {diotData.map((row, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell>{row.tipo_tercero_desc}</TableCell>
+                    <TableRow key={idx} className={row.pagado ? 'bg-green-50/50' : ''}>
+                      <TableCell>
+                        <span className="text-xs px-2 py-1 rounded bg-gray-100">{row.tipo_tercero}</span>
+                      </TableCell>
                       <TableCell className="font-mono text-sm">{row.rfc}</TableCell>
-                      <TableCell className="max-w-[200px] truncate">{row.nombre}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(row.valor_actos_pagados)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(row.valor_actos_16)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(row.iva_retenido)}</TableCell>
-                      <TableCell>{row.fecha_pago}</TableCell>
-                      <TableCell>{row.categoria}</TableCell>
+                      <TableCell className="max-w-[200px] truncate" title={row.nombre}>{row.nombre}</TableCell>
+                      <TableCell className="text-right font-mono">{formatCurrency(row.subtotal || row.valor_actos_16)}</TableCell>
+                      <TableCell className="text-right font-mono text-green-600">{formatCurrency(row.iva_acreditable)}</TableCell>
+                      <TableCell className="text-right font-mono text-red-600">{row.iva_retenido > 0 ? formatCurrency(row.iva_retenido) : '-'}</TableCell>
+                      <TableCell className="text-right font-mono font-semibold">{formatCurrency(row.valor_actos_pagados)}</TableCell>
+                      <TableCell className="text-sm">{row.fecha_emision || '-'}</TableCell>
+                      <TableCell className="text-sm">{row.fecha_pago || '-'}</TableCell>
+                      <TableCell>
+                        {row.pagado ? (
+                          <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-700">Pagado</span>
+                        ) : (
+                          <span className="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-700">Pendiente</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-600">{row.categoria || '-'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
