@@ -233,11 +233,56 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
-## Latest Updates (January 21, 2026)
+## Latest Updates (January 22, 2026)
 
 ### Completed in This Session ✅
 
-**Importación de PDFs para Estados de Cuenta - MEJORADO**
+**6 Nuevas Funcionalidades - Multi-Moneda y Reportes**
+
+1. ✅ **Desglose por Moneda en Cobranza y Pagos**
+   - Las tarjetas de resumen muestran totales separados por MXN y USD
+   - Endpoint `/api/payments/summary` devuelve: `total_por_cobrar_mxn`, `total_por_cobrar_usd`, `pagado_mes_mxn`, `pagado_mes_usd`, etc.
+   - UI muestra: "$X MXN" y "+ $Y USD" cuando hay ambas monedas
+
+2. ✅ **Selector de Cuenta Bancaria en Edición de Pagos**
+   - Nuevo campo "Cuenta Bancaria" en el diálogo de edición de pagos
+   - Vista previa de conversión de moneda: "Equivalente en MXN: $X" y "TC: 1 USD = X MXN"
+   - Campo `bank_account_id` agregado al modelo de Payment
+
+3. ✅ **Saldo Inicial Consolidado en Conciliaciones**
+   - Cuando se selecciona "Todas las cuentas", muestra saldo inicial consolidado en MXN
+   - Tarjetas muestran: "Saldo Inicial (Consolidado)" y "Saldo Final (Consolidado)"
+   - Convierte automáticamente cuentas USD/EUR a MXN para el total
+
+4. ✅ **Vista Anual de Tipos de Cambio**
+   - Nueva pestaña "Vista Anual" en módulo FX Rates
+   - Tabla de promedios mensuales por moneda (ENE-DIC)
+   - Nuevo endpoint: `GET /api/fx-rates/year/{year}`
+   - Navegación entre años con botones < >
+
+5. ✅ **Exportación Excel con Tipo de Cambio Histórico**
+   - La exportación de pagos incluye nuevas columnas: "TC Histórico", "Monto MXN"
+   - Campo `tipo_cambio_historico` agregado al modelo Payment
+   - Al crear un pago en USD, se captura automáticamente la tasa actual
+
+6. ✅ **Transferencia de Movimientos Entre Cuentas**
+   - Nuevo botón "Transferir" en módulo Conciliaciones
+   - Endpoint: `POST /api/bank-transactions/transfer-account`
+   - Actualiza automáticamente la moneda de los movimientos al transferir
+   - Bug corregido: 28 movimientos transferidos de BBVA (MXN) a Citibanamex (USD)
+
+**Archivos Modificados:**
+- `backend/server.py`: Nuevos endpoints y modelos actualizados
+- `frontend/src/pages/PaymentsModule.js`: Tarjetas de resumen, diálogo de edición
+- `frontend/src/pages/BankStatementsModule.js`: Saldo consolidado, transferencia
+- `frontend/src/pages/FXRatesModule.js`: Vista anual con pestañas
+- `frontend/src/utils/excelExport.js`: Exportación con TC histórico
+
+**Tests:** 17/17 backend tests passed (test_6_features.py)
+
+---
+
+## Previous Updates (January 21, 2026)
 1. ✅ Nuevo botón **"Importar PDF"** en módulo Conciliaciones Bancarias
 2. ✅ **Vista Previa antes de importar**: Muestra resumen con:
    - Banco detectado automáticamente
