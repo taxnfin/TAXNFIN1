@@ -244,6 +244,7 @@ const BankStatementsModule = () => {
         bank_transaction_id: selectedTransaction.id,
         cfdi_id: cfdiId,
         metodo_conciliacion: 'manual',
+        tipo_conciliacion: 'con_uuid',
         porcentaje_match: 100
       });
       toast.success('Movimiento conciliado con CFDI');
@@ -251,8 +252,28 @@ const BankStatementsModule = () => {
       setSelectedTransaction(null);
       setSelectedCfdis([]);
       loadData();
+      loadReconSummary();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error al conciliar');
+    }
+  };
+
+  // Mark transaction as reconciled WITHOUT UUID
+  const handleMarkWithoutUUID = async (txn, tipo) => {
+    try {
+      await api.post('/reconciliations/mark-without-uuid', {
+        bank_transaction_id: txn.id,
+        tipo_conciliacion: tipo, // 'sin_uuid' or 'no_relacionado'
+        notas: tipo === 'sin_uuid' ? 'Conciliado sin UUID - pago sin factura' : 'No relacionado - movimiento interno'
+      });
+      toast.success(tipo === 'sin_uuid' 
+        ? 'Movimiento marcado como "Sin UUID"' 
+        : 'Movimiento marcado como "No relacionado"'
+      );
+      loadData();
+      loadReconSummary();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error al marcar movimiento');
     }
   };
 
