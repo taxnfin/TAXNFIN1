@@ -1846,6 +1846,124 @@ const BankStatementsModule = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Transaction Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setEditDialogOpen(false);
+          setEditingTransaction(null);
+        }
+      }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil size={20} />
+              Editar Movimiento Bancario
+            </DialogTitle>
+            <DialogDescription>
+              Modifica los datos del movimiento seleccionado
+            </DialogDescription>
+          </DialogHeader>
+          
+          <form onSubmit={handleUpdateTransaction} className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Cuenta Bancaria</Label>
+              <Select 
+                value={editFormData.bank_account_id} 
+                onValueChange={(v) => setEditFormData({...editFormData, bank_account_id: v})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar cuenta..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {bankAccounts.map(acc => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      <div className="flex items-center gap-2">
+                        <Building2 size={14} />
+                        {acc.banco} - {acc.nombre} ({acc.moneda})
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Descripción</Label>
+              <Input
+                value={editFormData.descripcion}
+                onChange={(e) => setEditFormData({...editFormData, descripcion: e.target.value})}
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Monto</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={editFormData.monto}
+                  onChange={(e) => setEditFormData({...editFormData, monto: e.target.value})}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Tipo de Movimiento</Label>
+                <Select 
+                  value={editFormData.tipo_movimiento} 
+                  onValueChange={(v) => setEditFormData({...editFormData, tipo_movimiento: v})}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="credito">Depósito (Crédito)</SelectItem>
+                    <SelectItem value="debito">Retiro (Débito)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Fecha Movimiento</Label>
+                <Input
+                  type="datetime-local"
+                  value={editFormData.fecha_movimiento}
+                  onChange={(e) => setEditFormData({...editFormData, fecha_movimiento: e.target.value})}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Referencia</Label>
+                <Input
+                  value={editFormData.referencia}
+                  onChange={(e) => setEditFormData({...editFormData, referencia: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Notas</Label>
+              <Input
+                value={editFormData.notas}
+                onChange={(e) => setEditFormData({...editFormData, notas: e.target.value})}
+                placeholder="Notas adicionales..."
+              />
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" className="bg-[#0F172A]">
+                Guardar Cambios
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
