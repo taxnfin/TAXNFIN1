@@ -2556,11 +2556,20 @@ async def transfer_transactions_to_account(
     data: dict,
     current_user: Dict = Depends(get_current_user)
 ):
-    """Transfer all transactions from one account to another and update their currency"""
+    """
+    Transfer transactions from one account to another with optional currency conversion.
+    Supports:
+    - Transfer between accounts of same bank or different banks
+    - Currency conversion using FX rates when moving between MXN/USD accounts
+    - Optional custom FX rate override
+    """
     company_id = current_user['company_id']
     
     from_account_id = data.get('from_account_id')
     to_account_id = data.get('to_account_id')
+    convert_currency = data.get('convert_currency', True)  # Whether to convert amounts
+    custom_fx_rate = data.get('custom_fx_rate')  # Optional: user-provided exchange rate
+    transaction_ids = data.get('transaction_ids')  # Optional: specific transactions to transfer
     
     if not from_account_id or not to_account_id:
         raise HTTPException(status_code=400, detail="Se requieren from_account_id y to_account_id")
@@ -2574,23 +2583,111 @@ async def transfer_transactions_to_account(
     if not to_account:
         raise HTTPException(status_code=404, detail="Cuenta destino no encontrada")
     
-    # Get target currency from destination account
-    new_currency = to_account.get('moneda', 'MXN')
+    from_currency = from_account.get('moneda', 'MXN')
+    to_currency = to_account.get('moneda', 'MXN')
     
-    # Update all transactions
-    result = await db.bank_transactions.update_many(
-        {'bank_account_id': from_account_id, 'company_id': company_id},
-        {'$set': {'bank_account_id': to_account_id, 'moneda': new_currency}}
-    )
+    # Get FX rate if currencies are different
+    fx_rate = 1.0
+    if from_currency != to_currency and convert_currency:
+        if custom_fx_rate:
+            fx_rate = float(custom_fx_rate)
+        else:
+            # Get latest FX rate from database
+            if from_currency == 'USD' and to_currency == 'MXN':
+                rate_doc = await db.fx_rates.find_one(
+                    {'company_id': company_id, '$or': [{'moneda_cotizada': 'USD'}, {'moneda_origen': 'USD'}]},
+                    {'_id': 0},
+                    sort=[('fecha_vigencia', -1)]
+                )
+                fx_rate = rate_doc.get('tipo_cambio') or rate_doc.get('tasa') or 17.5 if rate_doc else 17.5
+            elif from_currency == 'MXN' and to_currency == 'USD':
+                rate_doc = await db.fx_rates.find_one(
+                    {'company_id': company_id, '$or': [{'moneda_cotizada': 'USD'}, {'moneda_origen': 'USD'}]},
+                    {'_id': 0},
+                    sort=[('fecha_vigencia', -1)]
+                )
+                base_rate = rate_doc.get('tipo_cambio') or rate_doc.get('tasa') or 17.5 if rate_doc else 17.5
+                fx_rate = 1 / base_rate  # Inverse for MXN to USD
+            else:
+                # For other currency pairs, try to find direct rate
+                rate_doc = await db.fx_rates.find_one(
+                    {'company_id': company_id, 'moneda_origen': from_currency, 'moneda_cotizada': to_currency},
+                    {'_id': 0},
+                    sort=[('fecha_vigencia', -1)]
+                )
+                fx_rate = rate_doc.get('tasa') or 1.0 if rate_doc else 1.0
+    
+    # Build query for transactions
+    txn_query = {'bank_account_id': from_account_id, 'company_id': company_id}
+    if transaction_ids and len(transaction_ids) > 0:
+        txn_query['id'] = {'$in': transaction_ids}
+    
+    # Get transactions to transfer
+    transactions = await db.bank_transactions.find(txn_query, {'_id': 0}).to_list(10000)
+    
+    if len(transactions) == 0:
+        return {
+            "status": "warning",
+            "message": "No se encontraron movimientos para transferir",
+            "modified_count": 0
+        }
+    
+    # Transfer each transaction with currency conversion if needed
+    transferred_count = 0
+    total_original = 0
+    total_converted = 0
+    
+    for txn in transactions:
+        original_monto = txn.get('monto', 0)
+        total_original += original_monto
+        
+        # Calculate converted amount
+        if from_currency != to_currency and convert_currency:
+            converted_monto = round(original_monto * fx_rate, 2)
+        else:
+            converted_monto = original_monto
+        
+        total_converted += converted_monto
+        
+        # Update transaction
+        update_data = {
+            'bank_account_id': to_account_id,
+            'moneda': to_currency
+        }
+        
+        if from_currency != to_currency and convert_currency:
+            update_data['monto'] = converted_monto
+            update_data['monto_original'] = original_monto
+            update_data['moneda_original'] = from_currency
+            update_data['tipo_cambio_conversion'] = fx_rate
+        
+        await db.bank_transactions.update_one(
+            {'id': txn['id'], 'company_id': company_id},
+            {'$set': update_data}
+        )
+        transferred_count += 1
     
     await audit_log(company_id, 'BankTransaction', 'bulk_transfer', 'UPDATE', current_user['id'], 
-                    {'from': from_account_id, 'to': to_account_id, 'count': result.modified_count})
+                    {
+                        'from': from_account_id, 
+                        'to': to_account_id, 
+                        'count': transferred_count,
+                        'from_currency': from_currency,
+                        'to_currency': to_currency,
+                        'fx_rate': fx_rate,
+                        'convert_currency': convert_currency
+                    })
     
     return {
         "status": "success",
-        "message": f"Se transfirieron {result.modified_count} movimientos",
-        "modified_count": result.modified_count,
-        "new_currency": new_currency
+        "message": f"Se transfirieron {transferred_count} movimientos de {from_account.get('nombre', '')} a {to_account.get('nombre', '')}",
+        "modified_count": transferred_count,
+        "from_currency": from_currency,
+        "to_currency": to_currency,
+        "fx_rate_used": fx_rate if from_currency != to_currency else None,
+        "total_original": round(total_original, 2),
+        "total_converted": round(total_converted, 2),
+        "currency_converted": from_currency != to_currency and convert_currency
     }
 
 @api_router.put("/bank-transactions/{transaction_id}")
