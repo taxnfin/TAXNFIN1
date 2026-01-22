@@ -13,7 +13,7 @@ import {
   Plus, CheckCircle, Building2, Trash2, DollarSign, 
   Upload, Download, Link2, RefreshCw, FileSpreadsheet,
   ArrowUpCircle, ArrowDownCircle, Search, Filter, X,
-  AlertCircle, Clock, Check, FileText
+  AlertCircle, Clock, Check, FileText, ArrowRightLeft
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -28,6 +28,7 @@ const BankStatementsModule = () => {
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [reconcileDialogOpen, setReconcileDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [filterAccount, setFilterAccount] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -45,6 +46,9 @@ const BankStatementsModule = () => {
   const [importingPdf, setImportingPdf] = useState(false);
   const [pdfPreview, setPdfPreview] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [transferFromAccount, setTransferFromAccount] = useState('');
+  const [transferToAccount, setTransferToAccount] = useState('');
+  const [transferring, setTransferring] = useState(false);
 
   const [formData, setFormData] = useState({
     bank_account_id: '',
