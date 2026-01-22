@@ -46,6 +46,8 @@ const PaymentsModule = () => {
   const [filterFechaHasta, setFilterFechaHasta] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, payment: null });
   const [bankTransactions, setBankTransactions] = useState([]);
+  const [bankAccounts, setBankAccounts] = useState([]);
+  const [fxRates, setFxRates] = useState({ USD: 17.5, EUR: 19.0 });
   const [autoMatchDialogOpen, setAutoMatchDialogOpen] = useState(false);
   const [matchResults, setMatchResults] = useState([]);
   const [matchCandidates, setMatchCandidates] = useState([]);
@@ -74,14 +76,51 @@ const PaymentsModule = () => {
     es_real: true, // true = Real, false = Proyección
     cfdi_ids: [],
     customer_id: null,
-    vendor_id: null
+    vendor_id: null,
+    bank_account_id: null
   });
 
   useEffect(() => {
     loadData();
     loadPartiesData();
     loadBankTransactions();
+    loadBankAccounts();
+    loadFxRates();
   }, [filterTipo, filterEstatus, filterEsReal, filterFechaDesde, filterFechaHasta]);
+
+  const loadFxRates = async () => {
+    try {
+      const res = await api.get('/fx-rates');
+      const rates = {};
+      res.data.forEach(rate => {
+        if (rate.moneda_destino === 'MXN') {
+          rates[rate.moneda_origen] = rate.tasa;
+        }
+      });
+      if (rates.USD || rates.EUR) {
+        setFxRates(prev => ({ ...prev, ...rates }));
+      }
+    } catch (error) {
+      console.log('Using default FX rates');
+    }
+  };
+
+  const loadBankAccounts = async () => {
+    try {
+      const res = await api.get('/bank-accounts');
+      setBankAccounts(res.data);
+    } catch (error) {
+      console.error('Error loading bank accounts:', error);
+    }
+  };
+
+  const convertToMXN = (monto, moneda) => {
+    if (!monto) return 0;
+    if (moneda === 'MXN') return monto;
+    if (moneda === 'USD') return monto * (fxRates.USD || 17.5);
+    if (moneda === 'EUR') return monto * (fxRates.EUR || 19.0);
+    return monto;
+  };
 
   const loadBankTransactions = async () => {
     try {
