@@ -407,6 +407,7 @@ class Payment(BaseModel):
     concepto: str
     monto: float
     moneda: str = "MXN"
+    tipo_cambio_historico: Optional[float] = None  # Exchange rate at time of payment
     metodo_pago: PaymentMethod
     fecha_vencimiento: datetime
     fecha_pago: Optional[datetime] = None
@@ -425,6 +426,7 @@ class PaymentCreate(BaseModel):
     concepto: str
     monto: float
     moneda: str = "MXN"
+    tipo_cambio_historico: Optional[float] = None  # Exchange rate at time of payment
     metodo_pago: PaymentMethod
     fecha_vencimiento: datetime
     fecha_pago: Optional[datetime] = None
