@@ -14,51 +14,61 @@
     *   Allow the company to configure its start of week day for projections.
 6.  **Reporting & Exports**: Implement robust Export to Excel functionality across all major modules (CFDIs, Aging, Payments, Projections).
 7.  **Backend Refactoring**: Structure the monolithic  file into a modular architecture (routes, models, services).
+8.  **Bank Reconciliation**: Implement a module to import bank statements (Excel and PDF), match transactions against CFDIs, and manage reconciliations.
 
 **User's preferred language**: The user communicates in **Spanish**. The next agent MUST respond in Spanish and ensure all UI text is in Spanish.
 
 **what currently exists?**
-A full-stack fintech application, **TaxnFin Cashflow**, using React, FastAPI, and MongoDB. The application now includes:
-*   A robust Export to Excel feature that was debugged and fixed across all modules.
-*   A new **DIOT Report** module with frontend UI and a backend preview endpoint.
-*   A new, full-featured **Conciliaciones** (Bank Reconciliations) module (renamed from Estados de Cuenta). This module allows manual entry of bank transactions, bulk import from a custom Excel template, duplicate detection, and an advanced reconciliation dialog that allows matching a bank transaction against multiple CFDIs while showing the remaining balance.
-*   Enhancements to the **Cobranza y Pagos** module, including UI elements for editing and viewing payments (though the logic is not fully implemented).
-*   The application continues to integrate with Banxico, OpenExchangeRates, and OpenAI.
+A full-stack fintech application (React, FastAPI, MongoDB) with modules for CFDI management, Payments (Cobranza y Pagos), Projections, DIOT Reports, and Bank Reconciliations (Conciliaciones).
 
-**Last working item**: The agent was implementing a list of five new requirements provided by the user.
+Recent major additions include:
+*   **PDF Bank Statement Import**: A new feature in the Conciliaciones module allows users to import bank statements from PDF files. It includes a preview dialog and a backend parser designed to handle various Mexican bank formats by analyzing column coordinates. This feature has undergone several debugging iterations.
+*   **Currency Conversion**: The Conciliaciones module now displays amounts in their original currency (e.g., USD) alongside a conversion to the base currency (MXN).
+*   **Automated Payments Flow**: Payments marked as Real are now automatically set to Completado, and the system suggests matching bank transactions for reconciliation, requiring user authorization.
+*   **Improved Payment Logic**: Editing or deleting a completed payment now correctly updates the associated CFDI's paid amount (), ensuring accurate balance tracking.
+*   **Corrected Financial Summaries**: The summary cards in Cobranza y Pagos now calculate totals based on the outstanding balance of CFDIs rather than just payment records.
 
-*   **Last item agent was working**: Implementing UI and backend logic for a 5-point feature request list from the user. The agent successfully renamed the Bank Statements module to Conciliaciones and added a summary view with an initial balance. It then added the UI elements (buttons and dialogs) for editing and viewing payments in the Cobranza y Pagos module.
+**Last working item**:
+*   **Last item agent was working**: Implementing a new 5-point feature list from the user to enhance financial reporting and editing capabilities. The agent started modifying the backend  endpoint and the  frontend to support currency breakdowns in summary cards and prepare for adding a bank account selector to the payment form.
 *   **Status**: IN PROGRESS
-*   **Agent Testing Done**: N (Only screenshots were taken to verify the UI changes for the new features. No functional tests were performed on the new edit and view buttons in the Payments module.)
-*   **Which testing method agent to use?**: Frontend testing agent. The agent should verify the following:
-    1.  **Conciliaciones Module**: The summary cards (Saldo Inicial, Depósitos, Retiros, Saldo Final) calculate and display correct values. The currency conversion display is working correctly for non-base currency accounts.
-    2.  **Cobranza y Pagos Module**: The Editar and Ver buttons function correctly. Editing a payment saves the changes, and viewing a payment shows its related movements. The auto-match functionality is working.
-    3.  **Proyecciones de Flujo de Efectivo Module**: Test the new feature to expand/collapse income/expense categories to see the detailed movements included.
+*   **Agent Testing Done**: N
+*   **Which testing method agent to use?**: both
+    *   **Backend Testing**: Use  to test the  endpoint. Verify that it returns totals broken down by currency (e.g., ).
+    *   **Frontend Testing**: Use the screenshot tool on the Cobranza y Pagos page to verify that the summary cards correctly display totals for different currencies with their MXN equivalents.
 *   **User Testing Done**: N
 
 **All Pending/In progress Issue list**:
-*   **Issue 1: (P0) Unfinished Implementation of 5 User Requests**: The agent began work on a list of five feature requests from the user (message #373) but has not completed them.
-
-    *   **Attempted fixes**: The agent created the UI for most requests but the underlying logic is incomplete.
-        *   Req 1 (Balance in Conciliaciones): **UI Done**.
-        *   Req 2 (Rename to Conciliaciones): **DONE**.
-        *   Req 3 (Edit/View Payments): **UI Done**, backend logic is missing/incomplete.
-        *   Req 4 (Currency Conversion): **UI placeholders added**, logic is incomplete.
-        *   Req 5 (Expandable Projections): **NOT STARTED**.
+*   **Issue 1: (P0) Unfinished Implementation of 5 User Requests**: The agent started but did not complete a 5-point feature list provided by the user (message #327).
+    *   **Attempted fixes**:
+        *   The backend endpoint  was modified to group totals by currency.
+        *   The frontend  was updated to fetch bank accounts and prepare state for UI changes.
     *   **Next debug checklist**:
-        1.  Go to : Implement the logic for  (PUT request to backend) and . Implement the  function to find matching bank transactions.
-        2.  Go to  (): Implement the logic to fetch and calculate the Saldo Inicial based on the filtered date range. Add logic to display amounts in both the original currency and the base currency, using the historical FX rates.
-        3.  Go to : Modify the component to fetch the detailed movements for each projection category and implement a UI element (e.g., an accordion or button) to expand/collapse this detailed view.
-    *   **Why fix this issue?** These are direct and critical feature requests from the user to improve the application's core functionality.
+        1.  **Cobranza y Pagos UI ()**:
+            *   Render the currency breakdown (e.g., MXN, USD) in the summary cards.
+            *   Add a bank account selector dropdown to the payment creation/editing dialog.
+            *   When editing, display the original currency amount and its converted value.
+        2.  **Consolidated Initial Balance ()**: Modify the logic for the Saldo Inicial card to show a consolidated total of all bank accounts, converted to the base currency (MXN), when Todas las cuentas is selected.
+        3.  **FX Rates Module ()**: Implement the logic to fetch and display all exchange rates for the current year.
+        4.  **Excel Export ( & )**: Modify the Cobranza y Pagos export functionality to use the historical exchange rate from the payment date for conversions.
+    *   **Why fix this issue?** These are critical user requirements for improving multi-currency financial reporting and data management accuracy.
     *   **Status**: IN PROGRESS
     *   **Is recurring issue?** N
     *   **Should Test frontend/backend/both after fix?**: both
     *   **Blocked on other issue**: None
 
+*   **Issue 2: (P1) PDF Bank Statement Parser Reliability**: The PDF parser in  has been a recurring source of bugs, requiring multiple fixes to correctly identify banks and differentiate between deposits and withdrawals. The current implementation relies on column coordinates and has not been fully validated by the user.
+    *   **Attempted fixes**: The agent rewrote the parser multiple times, finally settling on a universal function () that detects column headers and their x-coordinates to classify amounts.
+    *   **Next debug checklist**: Proactively ask the user to test the PDF import with statements from different banks (especially BanBajío and Banorte). If issues persist, debug the coordinate detection and line-grouping logic within  in .
+    *   **Why fix this issue?** This is a core feature of the Reconciliations module. If it's unreliable, users cannot import their data correctly.
+    *   **Status**: USER VERIFICATION PENDING
+    *   **Is recurring issue?** Y
+    *   **Should Test frontend/backend/both after fix?**: backend
+    *   **Blocked on other issue**: None
+
 **In progress Task List**:
-*   **Task 1: Complete the 5 User Requests from Message #373**
-    *   **Where to resume**: Resume in . The immediate next step is to implement the backend endpoints and frontend logic for editing and viewing payments, then proceed to the remaining requests for currency conversion and cash flow projections.
-    *   **What will be achieved with this?**: Fulfills the user's latest requirements, significantly enhancing the usability of the reconciliation, payment, and projection modules.
+*   **Task 1: Complete the 5 User Requests from Message #327**
+    *   **Where to resume**: Resume work in . The immediate next step is to implement the UI changes for the summary cards and the payment dialog, then proceed to the remaining three requests.
+    *   **What will be achieved with this?**: Fulfills the user's latest requirements, significantly enhancing the usability and accuracy of the financial modules.
     *   **Status**: IN PROGRESS
     *   **Should Test frontend/backend/both after fix?**: both
     *   **Blocked on something**: No.
@@ -71,24 +81,47 @@ A full-stack fintech application, **TaxnFin Cashflow**, using React, FastAPI, an
     *   **P2 - Restore Ortech Data**: The user regretted deleting data for the Ortech company. The agent should proactively offer to guide the user through re-uploading the XML files to restore this data.
 
 **Completed work in this session**
-- **Fixed Excel Export Feature**: Resolved a recurring bug where Excel exports were failing. The agent iterated through multiple fixes, finally implementing a reliable download mechanism using  that works across browsers.
-- **Implemented DIOT Report Module**: Created a new frontend page () and a corresponding backend preview endpoint () for the DIOT report, accessible from the main navigation menu.
-- **Implemented Conciliaciones (Bank Reconciliations) Module**:
-    - Created a new page  for managing bank transactions.
-    - Implemented full CRUD for manual bank transaction entries, including a  endpoint.
-    - Created a downloadable Excel template and a robust import function that now uses a dialog to let the user select the destination bank account, preventing currency mismatches.
-    - Implemented a sophisticated duplicate-detection mechanism during import.
-    - Designed and implemented an advanced reconciliation dialog that shows customer info, allows multi-selecting CFDIs, and displays the remaining balance in real-time.
-- **Addressed Multiple User Bug Reports**:
-    - Fixed an error where importing bank statements failed due to incorrect account ID assignment.
-    - Corrected the logic for parsing  vs.  transaction types from user-provided Excel files.
-    - Fixed a JavaScript error () that was causing the  page to crash.
+- **Implemented PDF Bank Statement Import**: Added frontend UI and backend endpoints (, ) with a sophisticated parser in  using usage: pdfplumber [-h] [--structure | --structure-text]
+                  [--format {csv,json,text}] [--types TYPES [TYPES ...]]
+                  [--include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]]
+                  [--exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]]
+                  [--laparams LAPARAMS] [--precision PRECISION]
+                  [--pages PAGES [PAGES ...]] [--indent INDENT]
+                  [infile]
+
+positional arguments:
+  infile
+
+options:
+  -h, --help            show this help message and exit
+  --structure           Write the structure tree as JSON. All other arguments
+                        except --pages, --laparams, and --indent will be
+                        ignored
+  --structure-text      Write the structure tree as JSON including text
+                        contents. All other arguments except --pages,
+                        --laparams, and --indent will be ignored
+  --format {csv,json,text}
+  --types TYPES [TYPES ...]
+  --include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]
+                        Include *only* these object attributes in output.
+  --exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]
+                        Exclude these object attributes from output.
+  --laparams LAPARAMS
+  --precision PRECISION
+  --pages PAGES [PAGES ...]
+  --indent INDENT       Indent level for JSON pretty-printing. to extract transactions from PDF bank statements.
+- **Fixed Initial Balance Display**: Corrected the logic in the Conciliaciones module to properly display the initial balance when a specific bank account is selected.
+- **Implemented Currency Conversion UI**: The Conciliaciones module now shows amounts in their original currency (e.g., USD) with a real-time conversion to the base currency (MXN).
+- **Enhanced Payment Logic for Accuracy**:
+    - Refactored the payment update/delete endpoints to correctly adjust the  on the associated CFDI, ensuring accurate balances.
+    - Corrected the  endpoint to calculate totals based on outstanding CFDI balances, not just payment records.
+- **Automated Reconciliation Flow**: Implemented a feature where payments marked as Real are automatically completed and the system suggests matching bank transactions for one-click reconciliation.
 
 **Earlier issues found/mentioned but not fixed**
-*   **Issue 1: Permanent Data Loss for Ortech:** User data for the Ortech company was deleted upon request, but the user later expressed regret. The 60 associated CFDIs were permanently lost.
-    *   **Debug checklist**: Proactively ask the user if they have the original XML files and offer to guide them through the bulk re-upload process to restore the data.
-    *   **Why to solve this issue and what will be achieved with this?**: To regain user trust and restore critical business data.
-    *   **Should Test frontend/backend/both after fix**: N/A (requires user interaction).
+*   **Issue 1: Ortech Company Data and Configuration**: The user's Ortech company data was previously deleted. The user needs guidance on re-uploading CFDIs. Furthermore, the agent discovered that **Ortech has no bank accounts configured**, which prevents bank statement imports and balance calculations for that company.
+    *   **Debug checklist**: Instruct the user to first create a bank account for the Ortech company in the Cuentas Bancarias module, including the correct initial balance. Then, offer to guide them through the process of re-uploading the XML files for their CFDIs.
+    *   **Why to solve this issue and what will be achieved with this?**: To restore critical business data and unblock core functionality for one of the user's companies.
+    *   **Should Test frontend/backend/both after fix**: N/A (requires user action).
     *   **Is recurring issue?** N
 
 **Known issue recurrence from previous fork**
@@ -98,70 +131,149 @@ A full-stack fintech application, **TaxnFin Cashflow**, using React, FastAPI, an
 
 
 **Key Technical Concepts**
-*   **Frontend**: React, Tailwind CSS, , , , , 
-*   **Backend**: FastAPI, Pydantic, JWT Authentication, APScheduler
+*   **Frontend**: React, Tailwind CSS, , 
+*   **Backend**: FastAPI, Pydantic, JWT Authentication
 *   **Database**: MongoDB
+*   **PDF Processing**: usage: pdfplumber [-h] [--structure | --structure-text]
+                  [--format {csv,json,text}] [--types TYPES [TYPES ...]]
+                  [--include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]]
+                  [--exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]]
+                  [--laparams LAPARAMS] [--precision PRECISION]
+                  [--pages PAGES [PAGES ...]] [--indent INDENT]
+                  [infile]
+
+positional arguments:
+  infile
+
+options:
+  -h, --help            show this help message and exit
+  --structure           Write the structure tree as JSON. All other arguments
+                        except --pages, --laparams, and --indent will be
+                        ignored
+  --structure-text      Write the structure tree as JSON including text
+                        contents. All other arguments except --pages,
+                        --laparams, and --indent will be ignored
+  --format {csv,json,text}
+  --types TYPES [TYPES ...]
+  --include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]
+                        Include *only* these object attributes in output.
+  --exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]
+                        Exclude these object attributes from output.
+  --laparams LAPARAMS
+  --precision PRECISION
+  --pages PAGES [PAGES ...]
+  --indent INDENT       Indent level for JSON pretty-printing. for text and table extraction from PDF documents.
 *   **3rd Party**:  (OpenAI), Banxico API, OpenExchangeRates API
 
 **key DB schema**
-*   **companies**: 
-*   **bank_accounts**: 
-*   **payments**: 
-*   **manual_projection_concepts**: 
-*   **fx_rates**: 
-*   **bank_transactions**: 
+*   No changes to the DB schema in this session.
 
 **changes in tech stack**
-- No new dependencies were added in this session.
+*   **Backend**: Added usage: pdfplumber [-h] [--structure | --structure-text]
+                  [--format {csv,json,text}] [--types TYPES [TYPES ...]]
+                  [--include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]]
+                  [--exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]]
+                  [--laparams LAPARAMS] [--precision PRECISION]
+                  [--pages PAGES [PAGES ...]] [--indent INDENT]
+                  [infile]
+
+positional arguments:
+  infile
+
+options:
+  -h, --help            show this help message and exit
+  --structure           Write the structure tree as JSON. All other arguments
+                        except --pages, --laparams, and --indent will be
+                        ignored
+  --structure-text      Write the structure tree as JSON including text
+                        contents. All other arguments except --pages,
+                        --laparams, and --indent will be ignored
+  --format {csv,json,text}
+  --types TYPES [TYPES ...]
+  --include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]
+                        Include *only* these object attributes in output.
+  --exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]
+                        Exclude these object attributes from output.
+  --laparams LAPARAMS
+  --precision PRECISION
+  --pages PAGES [PAGES ...]
+  --indent INDENT       Indent level for JSON pretty-printing. for PDF processing.
 
 **All files of reference**
-*   **Created**:
-    *   : UI for the new DIOT report.
-    *   : UI for the new Bank Reconciliations module.
-    *   : Test file created by the testing agent.
 *   **Updated/Rewritten**:
-    *   : Added new endpoints for DIOT preview and deleting bank transactions; heavily debugged import and reconciliation logic.
-    *   : Refactored to use  for more reliable downloads.
-    *   : Added UI and state for editing/viewing payments.
-    *   : Added routes for the new modules.
-    *   : Added links to the new modules in the navigation menu.
+    *   : Heavily modified to add PDF import endpoints (, ), a complex universal PDF parser, and updated logic for payments (, , ) and financial summaries ().
+    *   : Significantly updated with the Importar PDF feature, including a new dialog, file handling logic, and UI elements to display currency conversions.
+    *   : Updated to handle the automated reconciliation flow for Real payments, including a new suggestion dialog. Started modifications for multi-currency summary display.
+    *   : Updated to include usage: pdfplumber [-h] [--structure | --structure-text]
+                  [--format {csv,json,text}] [--types TYPES [TYPES ...]]
+                  [--include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]]
+                  [--exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]]
+                  [--laparams LAPARAMS] [--precision PRECISION]
+                  [--pages PAGES [PAGES ...]] [--indent INDENT]
+                  [infile]
+
+positional arguments:
+  infile
+
+options:
+  -h, --help            show this help message and exit
+  --structure           Write the structure tree as JSON. All other arguments
+                        except --pages, --laparams, and --indent will be
+                        ignored
+  --structure-text      Write the structure tree as JSON including text
+                        contents. All other arguments except --pages,
+                        --laparams, and --indent will be ignored
+  --format {csv,json,text}
+  --types TYPES [TYPES ...]
+  --include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]
+                        Include *only* these object attributes in output.
+  --exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]
+                        Exclude these object attributes from output.
+  --laparams LAPARAMS
+  --precision PRECISION
+  --pages PAGES [PAGES ...]
+  --indent INDENT       Indent level for JSON pretty-printing. and its dependencies.
+*   **Created**: None.
 
 **Areas that need refactoring**:
-*    remains a monolithic file. The user has requested this be refactored into a modular structure, which should be prioritized after the current feature requests.
+*    has grown even more complex with the addition of multiple, intricate PDF parsing functions. Refactoring this monolithic file into separate modules for routes, services (e.g., ), and models is now highly recommended.
 
 **key api endpoints**
-*   : Gets a data preview for the DIOT report.
-*   : Imports bank transactions from an Excel file.
-*   : Deletes a specific bank transaction.
-*   : Links a bank transaction to one or more CFDIs.
-*   : Downloads the Excel template for importing transactions.
+*   **New**:
+    *   : Imports transactions from an uploaded bank statement PDF.
+    *   : Parses a PDF and returns a preview of transactions without saving them.
+*   **Updated**:
+    *   : Now returns totals broken down by currency and bases calculations on CFDI balances.
+    *   : If  is true, automatically completes the payment and searches for bank transactions to suggest for reconciliation.
+    *   : Now correctly recalculates and updates the associated CFDI's .
+    *   : Now correctly reverts the  on the associated CFDI.
 
 **Critical Info for New Agent**
 *   **User Language is Spanish**: You MUST communicate with the user in Spanish.
-*   **Priority Task**: The top priority is to complete the 5-point feature list provided by the user in message #373. Start with the Cobranza y Pagos module enhancements.
-*   **Monolithic Backend**:  contains almost all backend logic. Be careful when adding new endpoints or modifying existing logic. A refactor is on the backlog.
-*   **Data-Driven Fixes**: The user often provides sample files () and screenshots when reporting bugs. Always analyze these artifacts carefully, as they contain crucial clues to solve the problem (e.g., the reversed / logic).
+*   **Priority Task**: The top priority is to complete the 5-point feature list provided by the user in message #327, starting with the enhancements to the Cobranza y Pagos module.
+*   **Unreliable PDF Parser**: The PDF parsing logic in  is new, complex, and has been the source of multiple bugs. Be prepared to debug it further if the user reports more issues. It relies on detecting the x-coordinates of columns.
+*   **User Configuration Needed**: The Ortech company is missing a bank account. The user must create one in the UI before they can import bank statements or see correct balances for that company.
 
 **documents and test reports created in this job**
-*   
-*   
 *    (updated)
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **Request (In Progress)**: User provided a 5-point list of new features: add initial balance to reconciliations, rename the module, allow editing/viewing in payments, show currency conversions, and add details to cash flow projections.
-2.  **Confirmation (Done)**: Agent successfully demonstrated the enhanced reconciliation dialog that shows customer info and remaining balance.
-3.  **Request (Done)**: User asked to improve the reconciliation dialog to show customer names and calculate the remaining balance when selecting multiple invoices.
-4.  **Confirmation (Done)**: Agent confirmed the duplicate detection feature for bank statement imports is working.
-5.  **Bug Report (Done)**: User reported an error when deleting bank movements and requested a feature to prevent importing duplicate transactions.
-6.  **Confirmation (Done)**: Agent successfully imported the user's specific Excel file after fixing the logic.
-7.  **Bug Report (Done)**: User reported the bank statement import was still failing and provided their  file, which had reversed / logic.
-8.  **Confirmation (Done)**: Agent confirmed a successful import using the standard template file.
-9.  **Bug Report (Done)**: User reported an error while importing bank movements (marca error al importar movimientos).
-10. **Bug Report (Done)**: User reported that the import process failed because it didn't prompt for which bank account to import to, which was critical for handling different currencies.
+1.  **Request (In Progress)**: Provided a 5-point list of new features: get all FX rates for the year, edit payments with bank account/conversion, show USD totals in Payments summary, use historical exchange rates in Excel exports, and create a consolidated initial balance in Reconciliations.
+2.  **Request (Done)**: Asked for amounts in the Conciliaciones module to show the original currency (e.g., USD) and its conversion to the base currency (MXN).
+3.  **Request (Done)**: Requested automation for Real payments to be marked as Completed and for the system to automatically suggest matching bank transactions for reconciliation.
+4.  **Bug Report (Done)**: Reported that partially paying a USD invoice did not leave the correct remaining balance.
+5.  **Bug Report (Done)**: The summary cards in Cobranza y Pagos were showing incorrect totals.
+6.  **Bug Report (Partially Fixed)**: PDF import was not capturing movements starting from the correct date and was including summary totals as transactions.
+7.  **Feedback (Partially Fixed)**: The improved PDF import was better but still missing some movements.
+8.  **Bug Report (Partially Fixed)**: The PDF parser was misclassifying deposits/withdrawals, and the initial balance was missing for the Ortech company.
+9.  **Bug Report (Partially Fixed)**: The PDF parser was still misclassifying deposits as withdrawals.
+10. **Feedback (Partially Fixed)**: The PDF parser misidentified the bank (BanBajío as Banorte) and was not parsing deposit/withdrawal columns correctly.
 
 **Project Health Check:**
-*   **Broken**: The features requested by the user in message #373 are incomplete. The UI exists but the backend logic is missing or partially implemented.
-*   **Mocked**: The Conectar Banco button in the  module opens a Coming Soon dialog, acting as a placeholder for future bank API integration.
+*   **Broken**:
+    *   The 5 new features requested by the user are incomplete.
+    *   The PDF bank statement parser is still unreliable and pending final user validation.
+*   **Mocked**: The Conectar Banco button in the  module remains a placeholder for future bank API integration.
 
 **3rd Party Integrations**
 *   **OpenAI GPT** (via Emergent LLM Key) — for AI-powered CFDI categorization.
@@ -169,14 +281,16 @@ A full-stack fintech application, **TaxnFin Cashflow**, using React, FastAPI, an
 *   **Open Exchange Rates** — for complementary exchange rates. Requires User API Key.
 
 **Testing status**
-*   **Testing agent used after significant changes**: YES (twice, to validate the Excel export fix and the initial DIOT/Bank module implementation).
+*   **Testing agent used after significant changes**: NO
 *   **Troubleshoot agent used after agent stuck in loop**: NO
 *   **Test files created**: []
-*   **Known regressions**: None.
+*   **Known regressions**: The PDF parsing functionality has been a recurring issue, requiring multiple debugging cycles.
 
 **Credentials to test flow:**
 *   **Email**: 
 *   **Password**: 
 
 **What agent forgot to execute**
-The agent did not fully complete the 5 feature requests from the user's last major message. While the UI was created for most items, the backend logic for editing payments, displaying currency conversions, and showing detailed projection data was not implemented. The agent should have finished the entire list before summarizing its work.</analysis>
+*   The agent did not perform a root cause analysis for the missing initial balance issue, which was due to the user's Ortech company lacking a configured bank account. A proactive data check would have identified this sooner.
+*   The agent consistently claimed the PDF parser was fixed without thorough testing, leading to a frustrating loop of user bug reports and agent fixes.
+*   The agent has not yet started on all items from the latest 5-point user request list.</analysis>
