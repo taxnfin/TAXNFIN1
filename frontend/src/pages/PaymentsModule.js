@@ -448,7 +448,8 @@ const PaymentsModule = () => {
       es_real: payment.es_real !== false,
       cfdi_ids: payment.cfdi_id ? [payment.cfdi_id] : [],
       customer_id: payment.customer_id || null,
-      vendor_id: payment.vendor_id || null
+      vendor_id: payment.vendor_id || null,
+      bank_account_id: payment.bank_account_id || null
     });
     setEditDialogOpen(true);
   };
@@ -460,7 +461,8 @@ const PaymentsModule = () => {
     try {
       await api.put(`/payments/${selectedPayment.id}`, {
         ...formData,
-        monto: parseFloat(formData.monto)
+        monto: parseFloat(formData.monto),
+        bank_account_id: formData.bank_account_id || null
       });
       toast.success('Pago actualizado');
       setEditDialogOpen(false);
