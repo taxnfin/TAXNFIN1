@@ -2237,6 +2237,24 @@ async def create_payment(payment_data: PaymentCreate, request: Request, current_
     payment = Payment(company_id=company_id, **payment_data.model_dump())
     doc = payment.model_dump()
     
+    # Automatically capture historical exchange rate for non-MXN currencies
+    if doc.get('moneda') and doc['moneda'] != 'MXN' and not doc.get('tipo_cambio_historico'):
+        # Get the latest rate for this currency
+        rate = await db.fx_rates.find_one(
+            {'company_id': company_id, '$or': [
+                {'moneda_cotizada': doc['moneda']},
+                {'moneda_origen': doc['moneda']}
+            ]},
+            {'_id': 0},
+            sort=[('fecha_vigencia', -1)]
+        )
+        if rate:
+            doc['tipo_cambio_historico'] = rate.get('tipo_cambio') or rate.get('tasa') or 1
+        else:
+            # Default rates if none found
+            default_rates = {'USD': 17.50, 'EUR': 19.00}
+            doc['tipo_cambio_historico'] = default_rates.get(doc['moneda'], 1)
+    
     # If payment is "Real", automatically mark as completed
     if doc.get('es_real') == True:
         doc['estatus'] = 'completado'
