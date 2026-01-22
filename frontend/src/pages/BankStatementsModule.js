@@ -19,6 +19,322 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
 
+// Belvo Connect Form Component
+const BelvoConnectForm = ({ bankAccounts, onSuccess, onClose }) => {
+  const [step, setStep] = useState('status'); // status, select, credentials
+  const [belvoStatus, setBelvoStatus] = useState(null);
+  const [institutions, setInstitutions] = useState([]);
+  const [connections, setConnections] = useState([]);
+  const [selectedInstitution, setSelectedInstitution] = useState(null);
+  const [selectedBankAccount, setSelectedBankAccount] = useState('');
+  const [credentials, setCredentials] = useState({ username: '', password: '' });
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    checkBelvoStatus();
+    loadConnections();
+  }, []);
+
+  const checkBelvoStatus = async () => {
+    try {
+      const res = await api.get('/belvo/status');
+      setBelvoStatus(res.data);
+      if (res.data.configured) {
+        loadInstitutions();
+      }
+    } catch (error) {
+      setBelvoStatus({ configured: false });
+    }
+  };
+
+  const loadInstitutions = async () => {
+    try {
+      const res = await api.get('/belvo/institutions');
+      setInstitutions(res.data.institutions || []);
+    } catch (error) {
+      console.log('Error loading institutions');
+    }
+  };
+
+  const loadConnections = async () => {
+    try {
+      const res = await api.get('/belvo/connections');
+      setConnections(res.data || []);
+    } catch (error) {
+      console.log('Error loading connections');
+    }
+  };
+
+  const handleConnect = async () => {
+    if (!selectedInstitution || !selectedBankAccount || !credentials.username || !credentials.password) {
+      toast.error('Completa todos los campos');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await api.post('/belvo/connect', {
+        institution_id: selectedInstitution.id,
+        bank_account_id: selectedBankAccount,
+        username: credentials.username,
+        password: credentials.password
+      });
+      toast.success('Banco conectado exitosamente');
+      loadConnections();
+      setStep('status');
+      setCredentials({ username: '', password: '' });
+      onSuccess?.();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error conectando banco');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSync = async (connectionId) => {
+    setSyncing(true);
+    try {
+      const res = await api.post(`/belvo/sync/${connectionId}`);
+      toast.success(res.data.message);
+      onSuccess?.();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error sincronizando');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleDeleteConnection = async (connectionId) => {
+    if (!window.confirm('¿Eliminar esta conexión bancaria?')) return;
+    try {
+      await api.delete(`/belvo/connections/${connectionId}`);
+      toast.success('Conexión eliminada');
+      loadConnections();
+    } catch (error) {
+      toast.error('Error eliminando conexión');
+    }
+  };
+
+  // Status check / Not configured
+  if (!belvoStatus?.configured) {
+    return (
+      <div className="space-y-4 py-4">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={20} className="text-yellow-600 mt-0.5" />
+            <div>
+              <p className="font-medium text-yellow-800">Belvo no está configurado</p>
+              <p className="text-sm text-yellow-600 mt-1">
+                Para conectar bancos automáticamente, necesitas agregar tus credenciales de Belvo en el archivo .env:
+              </p>
+              <div className="mt-2 bg-gray-800 text-green-400 p-2 rounded text-xs font-mono">
+                BELVO_SECRET_ID="tu_secret_id"<br/>
+                BELVO_SECRET_PASSWORD="tu_secret_password"<br/>
+                BELVO_ENV="sandbox"
+              </div>
+              <a href="https://developers.belvo.com" target="_blank" rel="noreferrer" 
+                className="text-blue-600 text-sm hover:underline mt-2 inline-block">
+                Obtener credenciales de Belvo →
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t pt-4">
+          <p className="text-sm font-medium mb-3">Mientras tanto, puedes:</p>
+          <div className="space-y-2">
+            <div className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer" onClick={onClose}>
+              <Upload size={20} className="text-gray-500" />
+              <div>
+                <p className="font-medium">Importar desde Excel/PDF</p>
+                <p className="text-sm text-gray-500">Usa los botones de importación</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cerrar</Button>
+        </DialogFooter>
+      </div>
+    );
+  }
+
+  // Main view - Show connections and option to add new
+  return (
+    <div className="space-y-4 py-4">
+      {/* Existing Connections */}
+      {connections.length > 0 && (
+        <div className="space-y-2">
+          <Label className="text-sm font-medium">Conexiones activas</Label>
+          {connections.map(conn => (
+            <div key={conn.id} className="flex items-center justify-between p-3 border rounded-lg bg-green-50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                  <Building2 size={20} className="text-green-600" />
+                </div>
+                <div>
+                  <p className="font-medium">{conn.institution_name}</p>
+                  <p className="text-xs text-gray-500">{conn.banco} - {conn.bank_account_name}</p>
+                  {conn.last_sync && (
+                    <p className="text-xs text-green-600">
+                      Última sync: {new Date(conn.last_sync).toLocaleString('es-MX')}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={() => handleSync(conn.id)}
+                  disabled={syncing}
+                >
+                  <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  className="text-red-500"
+                  onClick={() => handleDeleteConnection(conn.id)}
+                >
+                  <Trash2 size={14} />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add new connection */}
+      {step === 'status' && (
+        <div className="space-y-3">
+          <Button 
+            className="w-full gap-2" 
+            onClick={() => setStep('select')}
+          >
+            <Plus size={16} />
+            Conectar nueva cuenta bancaria
+          </Button>
+        </div>
+      )}
+
+      {/* Step: Select bank */}
+      {step === 'select' && (
+        <div className="space-y-3">
+          <Label>Selecciona tu banco</Label>
+          <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+            {institutions.slice(0, 12).map(inst => (
+              <div
+                key={inst.id}
+                className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                  selectedInstitution?.id === inst.id 
+                    ? 'border-blue-500 bg-blue-50' 
+                    : 'hover:bg-gray-50'
+                }`}
+                onClick={() => setSelectedInstitution(inst)}
+              >
+                <div className="flex items-center gap-2">
+                  {inst.logo ? (
+                    <img src={inst.logo} alt={inst.display_name} className="w-8 h-8 object-contain" />
+                  ) : (
+                    <div className="w-8 h-8 rounded bg-gray-200 flex items-center justify-center">
+                      <Building2 size={16} />
+                    </div>
+                  )}
+                  <span className="text-sm font-medium truncate">{inst.display_name}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {selectedInstitution && (
+            <>
+              <Label>Cuenta bancaria local</Label>
+              <Select value={selectedBankAccount} onValueChange={setSelectedBankAccount}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar cuenta..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {bankAccounts.map(acc => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      {acc.banco} - {acc.nombre} ({acc.moneda})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          )}
+
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setStep('status')}>Cancelar</Button>
+            <Button 
+              onClick={() => setStep('credentials')} 
+              disabled={!selectedInstitution || !selectedBankAccount}
+            >
+              Continuar
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Step: Credentials */}
+      {step === 'credentials' && (
+        <div className="space-y-3">
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800">
+              <strong>{selectedInstitution?.display_name}</strong> - Ingresa tus credenciales de banca en línea
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Usuario / Número de cliente</Label>
+            <Input
+              value={credentials.username}
+              onChange={(e) => setCredentials({...credentials, username: e.target.value})}
+              placeholder="Tu usuario de banca en línea"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Contraseña</Label>
+            <Input
+              type="password"
+              value={credentials.password}
+              onChange={(e) => setCredentials({...credentials, password: e.target.value})}
+              placeholder="Tu contraseña de banca en línea"
+            />
+          </div>
+
+          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p className="text-xs text-yellow-700">
+              🔒 Tus credenciales se envían de forma segura a través de Belvo y no se almacenan en nuestros servidores.
+            </p>
+          </div>
+
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setStep('select')}>Atrás</Button>
+            <Button 
+              onClick={handleConnect} 
+              disabled={loading || !credentials.username || !credentials.password}
+              className="flex-1"
+            >
+              {loading ? 'Conectando...' : 'Conectar Banco'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {step === 'status' && (
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cerrar</Button>
+        </DialogFooter>
+      )}
+    </div>
+  );
+};
+
 const BankStatementsModule = () => {
   const [bankTransactions, setBankTransactions] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
