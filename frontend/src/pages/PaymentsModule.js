@@ -146,12 +146,14 @@ const PaymentsModule = () => {
       if (filterFechaDesde) url += `&fecha_desde=${filterFechaDesde}`;
       if (filterFechaHasta) url += `&fecha_hasta=${filterFechaHasta}`;
       
-      const [paymentsRes, summaryRes] = await Promise.all([
+      const [paymentsRes, summaryRes, breakdownRes] = await Promise.all([
         api.get(url),
-        api.get('/payments/summary')
+        api.get('/payments/summary'),
+        api.get('/payments/breakdown')
       ]);
       setPayments(paymentsRes.data);
       setSummary(summaryRes.data);
+      setBreakdown(breakdownRes.data);
     } catch (error) {
       toast.error('Error cargando pagos');
     } finally {
