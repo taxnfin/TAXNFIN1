@@ -75,5 +75,5 @@
   "seed_data_creation": "Test payment created and deleted during testing",
   "retest_needed": false,
   "main_agent_can_self_test": true,
-  "context_for_next_testing_agent": "All 6 features implemented and working. Bank accounts: BBVA (MXN) id=0050a523-c83c-4473-8288-e877e70526ca, Citibanamex (USD) id=58038ce1-a4db-4375-b870-15c3cc5653b4. FX rates scheduler running with Banxico + OpenExchange integration."
+  "context_for_next_testing_agent": "All 6 features implemented and working. Bank accounts: BBVA (MXN) id=cashflowmanager-2, Citibanamex (USD) id=cashflowmanager-2. FX rates scheduler running with Banxico + OpenExchange integration."
 }

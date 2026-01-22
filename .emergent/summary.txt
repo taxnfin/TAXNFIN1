@@ -1,140 +1,130 @@
 <analysis>**original_problem_statement:** The user provided a GitHub repository for a tax and finance application named TaxnFin. The primary goal is to build out a comprehensive cash flow management tool with features for invoice (CFDI) management, payments, aging reports, and cash flow projections.
 
 **PRODUCT REQUIREMENTS:**
-1.  **Set Up & Initial Fixes**: Clone the repo, set up the environment, and fix initial bugs related to database configuration and AI-powered CFDI categorization.
+1.  **Set Up & Initial Fixes**: Clone the repo, set up the environment, and fix initial bugs.
 2.  **CRUD Operations**: Implement full CRUD for Customers and Vendors.
-3.  **CFDI Logic**: Enhance CFDI processing to correctly classify invoice types, parse all XML fields accurately, and provide a detailed view for each invoice.
+3.  **CFDI Logic**: Enhance CFDI processing and provide a detailed view for each invoice.
 4.  **UI/UX Overhauls**:
-    *   **Payments Module**: Transform the module to handle partial/multiple payments against invoices and track balances. Rename it to Cobranza y/o Pagos.
-    *   **Transactions Module**: Replace it with an Aging Report for Accounts Receivable (CxC) and Accounts Payable (CxP).
-    *   **Projections Module**: Translate to Spanish, allow adding manual line items, and enable viewing projections in different currencies.
+    *   **Payments Module**: Transform the module to handle partial/multiple payments and track balances.
+    *   **Transactions Module**: Replace it with an Aging Report.
+    *   **Projections Module**: Translate to Spanish and enhance functionality.
 5.  **Data Integrity & Historical Accuracy**:
-    *   Implement historical exchange rate lookups for financial records. Bank balances and invoices should use the exchange rate from the date they were recorded.
-    *   Store daily historical exchange rates from Banxico and OpenExchangeRates.
-    *   Allow the company to configure its start of week day for projections.
-6.  **Reporting & Exports**: Implement robust Export to Excel functionality across all major modules (CFDIs, Aging, Payments, Projections).
-7.  **Backend Refactoring**: Structure the monolithic  file into a modular architecture (routes, models, services).
-8.  **Bank Reconciliation**: Implement a module to import bank statements (Excel and PDF), match transactions against CFDIs, and manage reconciliations.
+    *   Implement historical exchange rate lookups.
+    *   Store daily historical exchange rates.
+6.  **Reporting & Exports**: Implement Export to Excel functionality.
+7.  **Backend Refactoring**: Structure the monolithic  file into a modular architecture.
+8.  **Bank Reconciliation & Integration**:
+    *   Implement a module to import bank statements (Excel, PDF).
+    *   Connect to bank accounts via an aggregator (like Belvo) to automate transaction downloads.
+    *   Match bank transactions against CFDIs and manage reconciliations, including movements with and without an associated CFDI UUID.
+9.  **Data Management**: Provide tools for users to manage their data, including editing and bulk deletion where necessary.
 
-**User's preferred language**: The user communicates in **Spanish**. The next agent MUST respond in Spanish and ensure all UI text is in Spanish.
+**User's preferred language**: The user communicates primarily in **Spanish**. The next agent MUST respond in Spanish and ensure all UI text is in Spanish.
 
 **what currently exists?**
 A full-stack fintech application (React, FastAPI, MongoDB) with modules for CFDI management, Payments (Cobranza y Pagos), Projections, DIOT Reports, and Bank Reconciliations (Conciliaciones).
 
-Recent major additions include:
-*   **PDF Bank Statement Import**: A new feature in the Conciliaciones module allows users to import bank statements from PDF files. It includes a preview dialog and a backend parser designed to handle various Mexican bank formats by analyzing column coordinates. This feature has undergone several debugging iterations.
-*   **Currency Conversion**: The Conciliaciones module now displays amounts in their original currency (e.g., USD) alongside a conversion to the base currency (MXN).
-*   **Automated Payments Flow**: Payments marked as Real are now automatically set to Completado, and the system suggests matching bank transactions for reconciliation, requiring user authorization.
-*   **Improved Payment Logic**: Editing or deleting a completed payment now correctly updates the associated CFDI's paid amount (), ensuring accurate balance tracking.
-*   **Corrected Financial Summaries**: The summary cards in Cobranza y Pagos now calculate totals based on the outstanding balance of CFDIs rather than just payment records.
+In the last session, the application underwent a massive feature expansion:
+*   **Comprehensive Financial Reporting**: The Payments, Reconciliations, and FX Rates modules now have enhanced, multi-currency reporting capabilities, including a yearly view for exchange rates.
+*   **Enhanced Data Editing**: Users can now edit individual bank transactions, and the payment editing form includes a bank account selector and currency conversion previews.
+*   **Advanced Reconciliation**: The system now supports reconciling bank movements that do not have a direct CFDI UUID, classifying them as Sin UUID or No Relacionado. New summary cards provide a clear overview of the reconciliation status.
+*   **Data Reset Tools**: To address data integrity issues, Delete All buttons were added to the Payments and Reconciliations modules, allowing the user to reset data and start fresh.
+*   **Bank Integration (Scaffolding)**: The backend and frontend have been prepared for integration with Belvo, a bank data aggregator. The UI guides the user to enter their API credentials.
+*   **Bank-to-Payment Workflow**: A new feature in the Cobranza y Pagos module allows the user to directly create payments and receipts from a list of unreconciled bank transactions.
 
 **Last working item**:
-*   **Last item agent was working**: Implementing a new 5-point feature list from the user to enhance financial reporting and editing capabilities. The agent started modifying the backend  endpoint and the  frontend to support currency breakdowns in summary cards and prepare for adding a bank account selector to the payment form.
-*   **Status**: IN PROGRESS
+*   **Last item agent was working**: The user requested an enhancement to the new create payments from bank feature: automatically match bank transactions to existing CFDIs by amount and date.
+*   **Status**: NOT STARTED
 *   **Agent Testing Done**: N
 *   **Which testing method agent to use?**: both
-    *   **Backend Testing**: Use  to test the  endpoint. Verify that it returns totals broken down by currency (e.g., ).
-    *   **Frontend Testing**: Use the screenshot tool on the Cobranza y Pagos page to verify that the summary cards correctly display totals for different currencies with their MXN equivalents.
+    *   **Backend**: Use  to test the payment creation endpoint. Verify that when a bank transaction's amount and date match a CFDI, the resulting payment record is correctly linked to that CFDI's uid=0(root) gid=0(root) groups=0(root).
+    *   **Frontend**: Use the screenshot tool or testing agent on the  dialog. Verify that the UI suggests the matched CFDI next to the bank transaction and allows the user to confirm the link before creation.
 *   **User Testing Done**: N
 
 **All Pending/In progress Issue list**:
-*   **Issue 1: (P0) Unfinished Implementation of 5 User Requests**: The agent started but did not complete a 5-point feature list provided by the user (message #327).
-    *   **Attempted fixes**:
-        *   The backend endpoint  was modified to group totals by currency.
-        *   The frontend  was updated to fetch bank accounts and prepare state for UI changes.
+*   **Issue 1: (P0) Implement Automatic CFDI Matching.**
     *   **Next debug checklist**:
-        1.  **Cobranza y Pagos UI ()**:
-            *   Render the currency breakdown (e.g., MXN, USD) in the summary cards.
-            *   Add a bank account selector dropdown to the payment creation/editing dialog.
-            *   When editing, display the original currency amount and its converted value.
-        2.  **Consolidated Initial Balance ()**: Modify the logic for the Saldo Inicial card to show a consolidated total of all bank accounts, converted to the base currency (MXN), when Todas las cuentas is selected.
-        3.  **FX Rates Module ()**: Implement the logic to fetch and display all exchange rates for the current year.
-        4.  **Excel Export ( & )**: Modify the Cobranza y Pagos export functionality to use the historical exchange rate from the payment date for conversions.
-    *   **Why fix this issue?** These are critical user requirements for improving multi-currency financial reporting and data management accuracy.
-    *   **Status**: IN PROGRESS
+        1.  **Backend ()**: Modify the endpoint that creates payments from bank transactions. It should search for CFDIs with a matching amount and a close date. If a high-confidence match is found, automatically associate the  with the new payment.
+        2.  **Frontend ()**: In the Crear Cobros/Pagos desde Movimientos Bancarios dialog, display the suggested CFDI match next to the corresponding bank transaction. Allow the user to confirm or change the suggested link.
+    *   **Why fix this issue?** This is the user's latest request and a critical step to automate the payment reconciliation workflow, saving significant manual effort.
+    *   **Status**: NOT STARTED
     *   **Is recurring issue?** N
     *   **Should Test frontend/backend/both after fix?**: both
     *   **Blocked on other issue**: None
 
-*   **Issue 2: (P1) PDF Bank Statement Parser Reliability**: The PDF parser in  has been a recurring source of bugs, requiring multiple fixes to correctly identify banks and differentiate between deposits and withdrawals. The current implementation relies on column coordinates and has not been fully validated by the user.
-    *   **Attempted fixes**: The agent rewrote the parser multiple times, finally settling on a universal function () that detects column headers and their x-coordinates to classify amounts.
-    *   **Next debug checklist**: Proactively ask the user to test the PDF import with statements from different banks (especially BanBajío and Banorte). If issues persist, debug the coordinate detection and line-grouping logic within  in .
-    *   **Why fix this issue?** This is a core feature of the Reconciliations module. If it's unreliable, users cannot import their data correctly.
-    *   **Status**: USER VERIFICATION PENDING
-    *   **Is recurring issue?** Y
+*   **Issue 2: (P1) Critical Bug: Reconciliation without Payment.**
+    *   **Details**: The user reported a critical flaw where a bank movement could be marked as conciliado (reconciled) even if no corresponding payment/receipt record exists in the  collection.
+    *   **Attempted fixes**: The agent added Delete All buttons as a workaround for the user to reset corrupted data. The root cause was not fixed.
+    *   **Next debug checklist**:
+        1.  **Backend ()**: In the reconciliation endpoints (), add a validation step. Before creating a  record linking a bank transaction to a , verify that a record exists in the  collection for that .
+        2.  If no payment record exists, return an error and prevent the reconciliation.
+    *   **Why fix this issue?** This is a critical data integrity bug. If not fixed, the core financial data of the application will be unreliable.
+    *   **Status**: IN PROGRESS
+    *   **Is recurring issue?** N
     *   **Should Test frontend/backend/both after fix?**: backend
     *   **Blocked on other issue**: None
 
-**In progress Task List**:
-*   **Task 1: Complete the 5 User Requests from Message #327**
-    *   **Where to resume**: Resume work in . The immediate next step is to implement the UI changes for the summary cards and the payment dialog, then proceed to the remaining three requests.
-    *   **What will be achieved with this?**: Fulfills the user's latest requirements, significantly enhancing the usability and accuracy of the financial modules.
-    *   **Status**: IN PROGRESS
+*   **Issue 3: (P1) Finalize Belvo Bank Integration.**
+    *   **Details**: The integration scaffolding is complete, but it is unusable until the user provides their Belvo API credentials.
+    *   **Next debug checklist**:
+        1.  Proactively ask the user if they have their Belvo  and .
+        2.  Once provided, guide the user to add them to the  file.
+        3.  Implement the transaction fetching logic in the  endpoint to pull data from the Belvo API and save it to the database.
+    *   **Why fix this issue?** This is a major feature requested by the user to fully automate bank data entry.
+    *   **Status**: BLOCKED (on user credentials)
+    *   **Is recurring issue?** N
     *   **Should Test frontend/backend/both after fix?**: both
+    *   **Blocked on other issue**: None
+
+**In progress Task List**:
+*   **Task 1: Fix Reconciliation Logic**
+    *   **Where to resume**: Resume work in  on the  endpoint.
+    *   **What will be achieved with this?**: Prevents the creation of invalid reconciliation records, ensuring data integrity.
+    *   **Status**: IN PROGRESS
+    *   **Should Test frontend/backend/both after fix?**: backend
     *   **Blocked on something**: No.
 
 **Upcoming and Future Tasks**
 *   **Upcoming Tasks**:
-    *   **P1 - Refactor **: The user has requested refactoring the monolithic  file into a modular structure (e.g., , , ). This is a significant task that will improve code maintainability.
+    *   **P1 - Refactor **: The main backend file has become extremely large and complex. It should be broken down into a modular structure (e.g., , , ).
 *   **Future Tasks**:
-    *   **P2 - Automatic Notifications**: The user mentioned interest in automatic notifications. This can be planned as a new feature for a future iteration.
-    *   **P2 - Restore Ortech Data**: The user regretted deleting data for the Ortech company. The agent should proactively offer to guide the user through re-uploading the XML files to restore this data.
+    *   **P2 - Automatic Notifications**: Implement a system for user notifications (e.g., for overdue invoices).
+    *   **P2 - Restore Ortech Data**: Guide the user on re-uploading CFDIs for their Ortech company.
+    *   **P2 - PDF Parser Reliability**: The PDF parser for bank statements is a known recurring issue. It should be re-validated by the user.
 
 **Completed work in this session**
-- **Implemented PDF Bank Statement Import**: Added frontend UI and backend endpoints (, ) with a sophisticated parser in  using usage: pdfplumber [-h] [--structure | --structure-text]
-                  [--format {csv,json,text}] [--types TYPES [TYPES ...]]
-                  [--include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]]
-                  [--exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]]
-                  [--laparams LAPARAMS] [--precision PRECISION]
-                  [--pages PAGES [PAGES ...]] [--indent INDENT]
-                  [infile]
-
-positional arguments:
-  infile
-
-options:
-  -h, --help            show this help message and exit
-  --structure           Write the structure tree as JSON. All other arguments
-                        except --pages, --laparams, and --indent will be
-                        ignored
-  --structure-text      Write the structure tree as JSON including text
-                        contents. All other arguments except --pages,
-                        --laparams, and --indent will be ignored
-  --format {csv,json,text}
-  --types TYPES [TYPES ...]
-  --include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]
-                        Include *only* these object attributes in output.
-  --exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]
-                        Exclude these object attributes from output.
-  --laparams LAPARAMS
-  --precision PRECISION
-  --pages PAGES [PAGES ...]
-  --indent INDENT       Indent level for JSON pretty-printing. to extract transactions from PDF bank statements.
-- **Fixed Initial Balance Display**: Corrected the logic in the Conciliaciones module to properly display the initial balance when a specific bank account is selected.
-- **Implemented Currency Conversion UI**: The Conciliaciones module now shows amounts in their original currency (e.g., USD) with a real-time conversion to the base currency (MXN).
-- **Enhanced Payment Logic for Accuracy**:
-    - Refactored the payment update/delete endpoints to correctly adjust the  on the associated CFDI, ensuring accurate balances.
-    - Corrected the  endpoint to calculate totals based on outstanding CFDI balances, not just payment records.
-- **Automated Reconciliation Flow**: Implemented a feature where payments marked as Real are automatically completed and the system suggests matching bank transactions for one-click reconciliation.
+- **Implemented 6-Point Feature List**:
+  - Currency breakdown in Payments summary.
+  - Bank account selector in payment edit form.
+  - Consolidated initial balance in Reconciliations.
+  - Yearly view in FX Rates module ().
+  - Historical FX rates in Excel exports.
+  - Fixed a bug by transferring 28 bank movements to the correct account ().
+- **Resolved 3 User-Reported Issues**:
+  - **DIOT Report Logic**: Corrected the DIOT report to properly query  CFDIs and display IVA Retenido.
+  - **Edit Bank Transactions**: Implemented full CRUD for bank transactions, including an edit dialog ().
+  - **Bank Account Display**: The bank account name is now clearly displayed in the transactions table.
+- **Enhanced Reconciliation Workflow**:
+  - Implemented logic to handle bank movements **without** a CFDI UUID ().
+  - Added new summary cards and action buttons to the Reconciliations UI.
+- **Added Data Reset Functionality**:
+  - Implemented endpoints and UI buttons to delete all payments () and all reconciliations ().
+- **Scaffolded Belvo Bank Integration**:
+  - Installed  SDK and added backend models, endpoints (), and a frontend setup dialog.
+- **Linked Bank Movements to Payments**:
+  - Created a feature in  to create payments/receipts directly from a list of unreconciled bank transactions.
 
 **Earlier issues found/mentioned but not fixed**
-*   **Issue 1: Ortech Company Data and Configuration**: The user's Ortech company data was previously deleted. The user needs guidance on re-uploading CFDIs. Furthermore, the agent discovered that **Ortech has no bank accounts configured**, which prevents bank statement imports and balance calculations for that company.
-    *   **Debug checklist**: Instruct the user to first create a bank account for the Ortech company in the Cuentas Bancarias module, including the correct initial balance. Then, offer to guide them through the process of re-uploading the XML files for their CFDIs.
-    *   **Why to solve this issue and what will be achieved with this?**: To restore critical business data and unblock core functionality for one of the user's companies.
-    *   **Should Test frontend/backend/both after fix**: N/A (requires user action).
-    *   **Is recurring issue?** N
-
-**Known issue recurrence from previous fork**
-- N/A
+*   **Issue 1: Ortech Company Data and Configuration**: The user still needs guidance on creating a bank account for their Ortech company and re-uploading CFDIs to restore their data.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-*   **Frontend**: React, Tailwind CSS, , 
 *   **Backend**: FastAPI, Pydantic, JWT Authentication
+*   **Frontend**: React, Tailwind CSS, , 
 *   **Database**: MongoDB
-*   **PDF Processing**: usage: pdfplumber [-h] [--structure | --structure-text]
+*   **3rd Party**:  (new), usage: pdfplumber [-h] [--structure | --structure-text]
                   [--format {csv,json,text}] [--types TYPES [TYPES ...]]
                   [--include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]]
                   [--exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]]
@@ -162,135 +152,86 @@ options:
   --laparams LAPARAMS
   --precision PRECISION
   --pages PAGES [PAGES ...]
-  --indent INDENT       Indent level for JSON pretty-printing. for text and table extraction from PDF documents.
-*   **3rd Party**:  (OpenAI), Banxico API, OpenExchangeRates API
+  --indent INDENT       Indent level for JSON pretty-printing., Banxico API, OpenExchangeRates API
 
 **key DB schema**
-*   No changes to the DB schema in this session.
-
-**changes in tech stack**
-*   **Backend**: Added usage: pdfplumber [-h] [--structure | --structure-text]
-                  [--format {csv,json,text}] [--types TYPES [TYPES ...]]
-                  [--include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]]
-                  [--exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]]
-                  [--laparams LAPARAMS] [--precision PRECISION]
-                  [--pages PAGES [PAGES ...]] [--indent INDENT]
-                  [infile]
-
-positional arguments:
-  infile
-
-options:
-  -h, --help            show this help message and exit
-  --structure           Write the structure tree as JSON. All other arguments
-                        except --pages, --laparams, and --indent will be
-                        ignored
-  --structure-text      Write the structure tree as JSON including text
-                        contents. All other arguments except --pages,
-                        --laparams, and --indent will be ignored
-  --format {csv,json,text}
-  --types TYPES [TYPES ...]
-  --include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]
-                        Include *only* these object attributes in output.
-  --exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]
-                        Exclude these object attributes from output.
-  --laparams LAPARAMS
-  --precision PRECISION
-  --pages PAGES [PAGES ...]
-  --indent INDENT       Indent level for JSON pretty-printing. for PDF processing.
+*   **New Collection (implicit)**:  to store Belvo link details.
+*   **Updated Models ()**:
+    *   : Added .
+    *   : Added  (, , ).
+*   **New Models ()**: , , .
 
 **All files of reference**
-*   **Updated/Rewritten**:
-    *   : Heavily modified to add PDF import endpoints (, ), a complex universal PDF parser, and updated logic for payments (, , ) and financial summaries ().
-    *   : Significantly updated with the Importar PDF feature, including a new dialog, file handling logic, and UI elements to display currency conversions.
-    *   : Updated to handle the automated reconciliation flow for Real payments, including a new suggestion dialog. Started modifications for multi-currency summary display.
-    *   : Updated to include usage: pdfplumber [-h] [--structure | --structure-text]
-                  [--format {csv,json,text}] [--types TYPES [TYPES ...]]
-                  [--include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]]
-                  [--exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]]
-                  [--laparams LAPARAMS] [--precision PRECISION]
-                  [--pages PAGES [PAGES ...]] [--indent INDENT]
-                  [infile]
-
-positional arguments:
-  infile
-
-options:
-  -h, --help            show this help message and exit
-  --structure           Write the structure tree as JSON. All other arguments
-                        except --pages, --laparams, and --indent will be
-                        ignored
-  --structure-text      Write the structure tree as JSON including text
-                        contents. All other arguments except --pages,
-                        --laparams, and --indent will be ignored
-  --format {csv,json,text}
-  --types TYPES [TYPES ...]
-  --include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]
-                        Include *only* these object attributes in output.
-  --exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]
-                        Exclude these object attributes from output.
-  --laparams LAPARAMS
-  --precision PRECISION
-  --pages PAGES [PAGES ...]
-  --indent INDENT       Indent level for JSON pretty-printing. and its dependencies.
-*   **Created**: None.
+*   : Massively updated with over 10 new endpoints and logic changes across payments, reconciliations, DIOT, and the new Belvo integration.
+*   : Rewritten to include the Create from Bank feature, data reset button, and other UI enhancements.
+*   : Rewritten to add transaction editing, enhanced reconciliation actions, data reset button, and the Belvo connection dialog.
+*   : UI updated with new summary cards and table columns.
+*   : UI updated with a new yearly view.
+*   : Logic updated to use historical exchange rates.
+*   : Added .
+*   : Placeholders added for , , .
 
 **Areas that need refactoring**:
-*    has grown even more complex with the addition of multiple, intricate PDF parsing functions. Refactoring this monolithic file into separate modules for routes, services (e.g., ), and models is now highly recommended.
+*    is critically monolithic. Its size and complexity are hindering development and increasing the risk of bugs. A full refactor into separate modules for routes, services, and models is the highest technical priority.
 
 **key api endpoints**
 *   **New**:
-    *   : Imports transactions from an uploaded bank statement PDF.
-    *   : Parses a PDF and returns a preview of transactions without saving them.
+    *   : Get all FX rates for the current year.
+    *   : Move transactions between accounts.
+    *   : Edit a bank transaction.
+    *   : Delete all payments for the current company.
+    *   : Delete all reconciliations.
+    *   : Reconcile a transaction without a CFDI UUID.
+    *   : Get a summary of reconciliation status.
+    *   , , , : Full set of endpoints for Belvo integration.
 *   **Updated**:
-    *   : Now returns totals broken down by currency and bases calculations on CFDI balances.
-    *   : If  is true, automatically completes the payment and searches for bank transactions to suggest for reconciliation.
-    *   : Now correctly recalculates and updates the associated CFDI's .
-    *   : Now correctly reverts the  on the associated CFDI.
+    *   : Logic updated to query  CFDIs.
+    *   : Logic updated to fetch historical exchange rate.
 
 **Critical Info for New Agent**
 *   **User Language is Spanish**: You MUST communicate with the user in Spanish.
-*   **Priority Task**: The top priority is to complete the 5-point feature list provided by the user in message #327, starting with the enhancements to the Cobranza y Pagos module.
-*   **Unreliable PDF Parser**: The PDF parsing logic in  is new, complex, and has been the source of multiple bugs. Be prepared to debug it further if the user reports more issues. It relies on detecting the x-coordinates of columns.
-*   **User Configuration Needed**: The Ortech company is missing a bank account. The user must create one in the UI before they can import bank statements or see correct balances for that company.
+*   **Priority Tasks**: Address the pending issues in this order: 1) Implement Automatic CFDI Matching, 2) Fix the Reconciliation without Payment bug, 3) Follow up on Belvo credentials.
+*   **Data Integrity**: Be extremely careful with logic related to payments and reconciliations. The user has already experienced data corruption. Validate all financial operations thoroughly.
+*   ** Refactor**: After completing the user's immediate requests, you must propose and begin refactoring . The application's stability depends on it.
 
 **documents and test reports created in this job**
 *    (updated)
+*   
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **Request (In Progress)**: Provided a 5-point list of new features: get all FX rates for the year, edit payments with bank account/conversion, show USD totals in Payments summary, use historical exchange rates in Excel exports, and create a consolidated initial balance in Reconciliations.
-2.  **Request (Done)**: Asked for amounts in the Conciliaciones module to show the original currency (e.g., USD) and its conversion to the base currency (MXN).
-3.  **Request (Done)**: Requested automation for Real payments to be marked as Completed and for the system to automatically suggest matching bank transactions for reconciliation.
-4.  **Bug Report (Done)**: Reported that partially paying a USD invoice did not leave the correct remaining balance.
-5.  **Bug Report (Done)**: The summary cards in Cobranza y Pagos were showing incorrect totals.
-6.  **Bug Report (Partially Fixed)**: PDF import was not capturing movements starting from the correct date and was including summary totals as transactions.
-7.  **Feedback (Partially Fixed)**: The improved PDF import was better but still missing some movements.
-8.  **Bug Report (Partially Fixed)**: The PDF parser was misclassifying deposits/withdrawals, and the initial balance was missing for the Ortech company.
-9.  **Bug Report (Partially Fixed)**: The PDF parser was still misclassifying deposits as withdrawals.
-10. **Feedback (Partially Fixed)**: The PDF parser misidentified the bank (BanBajío as Banorte) and was not parsing deposit/withdrawal columns correctly.
+1.  **Request (In Progress)**: Implement automatic matching with CFDIs when importing movements.
+2.  **Request (Done)**: Asked to link the Reconciliations and Payments modules to create payments from bank transactions.
+3.  **Request (Done)**: Requested Belvo integration for automatic bank transaction downloads.
+4.  **Bug Report (Workaround Done, Root Cause Pending)**: Reported that the system was reconciling movements without an actual payment record and requested data reset buttons.
+5.  **Request (Done)**: Requested an enhancement to the reconciliation process to handle movements without a UUID.
+6.  **Bug Report (Incomplete Test)**: The testing agent failed to fully test the edit bank transaction feature.
+7.  **Bug Report (Done)**: Reported that the DIOT report was empty and needed to handle IVA retentions. Also requested the ability to edit bank transactions.
+8.  **Feedback (Done)**: Confirmed the plan to implement a 6-point feature list and reported a bug with a USD account appearing as MXN.
+9.  **Confirmation (Done)**: Confirmed the agent's plan.
+10. **Request (Done)**: Provided the initial 5-point feature list.
 
 **Project Health Check:**
 *   **Broken**:
-    *   The 5 new features requested by the user are incomplete.
-    *   The PDF bank statement parser is still unreliable and pending final user validation.
-*   **Mocked**: The Conectar Banco button in the  module remains a placeholder for future bank API integration.
+    *   The reconciliation logic has a critical flaw that allows reconciling without a payment record, compromising data integrity.
+*   **Mocked**:
+    *   The Belvo integration is fully mocked in the UI and backend, pending user credentials to become functional.
 
 **3rd Party Integrations**
-*   **OpenAI GPT** (via Emergent LLM Key) — for AI-powered CFDI categorization.
-*   **Banxico (Banco de México)** — for official daily exchange rates (MXN pairs). Requires User API Key.
-*   **Open Exchange Rates** — for complementary exchange rates. Requires User API Key.
+*   **Belvo**: (New) For open banking integration. Requires User API Key.
+*   **OpenAI GPT**: (via Emergent LLM Key) — for AI-powered CFDI categorization.
+*   **Banxico (Banco de México)**: For official daily exchange rates (MXN pairs). Requires User API Key.
+*   **Open Exchange Rates**: For complementary exchange rates. Requires User API Key.
 
 **Testing status**
-*   **Testing agent used after significant changes**: NO
+*   **Testing agent used after significant changes**: YES (but one session was incomplete)
 *   **Troubleshoot agent used after agent stuck in loop**: NO
-*   **Test files created**: []
-*   **Known regressions**: The PDF parsing functionality has been a recurring issue, requiring multiple debugging cycles.
+*   **Test files created**: None
+*   **Known regressions**: None new, but the PDF parser reliability remains a known, long-standing issue.
 
 **Credentials to test flow:**
 *   **Email**: 
 *   **Password**: 
 
 **What agent forgot to execute**
-*   The agent did not perform a root cause analysis for the missing initial balance issue, which was due to the user's Ortech company lacking a configured bank account. A proactive data check would have identified this sooner.
-*   The agent consistently claimed the PDF parser was fixed without thorough testing, leading to a frustrating loop of user bug reports and agent fixes.
-*   The agent has not yet started on all items from the latest 5-point user request list.</analysis>
+*   The agent provided a workaround (data-reset buttons) for the reconciliation without payment bug but did not fix the underlying root cause in the backend logic. This critical bug was left unresolved.
+*   The testing agent was called with an incomplete plan in one instance, failing to test all implemented features.</analysis>
