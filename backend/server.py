@@ -3189,6 +3189,624 @@ async def auto_reconcile_payment(
         'transaction_id': transaction_id
     }
 
+
+@api_router.get("/bank-transactions/{txn_id}/match-cfdi")
+async def find_matching_cfdi_for_transaction(
+    txn_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    tolerance_days: int = Query(60, description="Tolerancia de días para buscar CFDIs (default: 60)")
+):
+    """
+    P0 - Matching Automático de CFDIs
+    Find CFDIs that match a bank transaction by amount and date (±tolerance_days).
+    Used when creating payments from bank movements to suggest automatic CFDI links.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get the bank transaction
+    txn = await db.bank_transactions.find_one({'id': txn_id, 'company_id': company_id}, {'_id': 0})
+    if not txn:
+        raise HTTPException(status_code=404, detail="Movimiento bancario no encontrado")
+    
+    monto = txn.get('monto', 0)
+    moneda = txn.get('moneda', 'MXN')
+    fecha_txn_str = txn.get('fecha_movimiento')
+    tipo_movimiento = txn.get('tipo_movimiento', 'credito')  # credito = cobro, debito = pago
+    
+    # Parse the transaction date
+    if isinstance(fecha_txn_str, str):
+        try:
+            fecha_txn = datetime.fromisoformat(fecha_txn_str.replace('Z', '+00:00'))
+        except:
+            fecha_txn = datetime.now(timezone.utc)
+    else:
+        fecha_txn = fecha_txn_str or datetime.now(timezone.utc)
+    
+    # Define date range (±tolerance_days)
+    fecha_inicio = (fecha_txn - timedelta(days=tolerance_days)).isoformat()
+    fecha_fin = (fecha_txn + timedelta(days=tolerance_days)).isoformat()
+    
+    # Determine CFDI type based on transaction type
+    # credito (deposit) = ingreso (we received payment for a sale)
+    # debito (withdrawal) = egreso (we paid for a purchase)
+    cfdi_tipo = 'ingreso' if tipo_movimiento == 'credito' else 'egreso'
+    
+    # Build query to find matching CFDIs
+    # Look for CFDIs with similar amount and within date range
+    query = {
+        'company_id': company_id,
+        'tipo_cfdi': cfdi_tipo,
+        'estatus': 'vigente',
+        'fecha_emision': {'$gte': fecha_inicio, '$lte': fecha_fin}
+    }
+    
+    # Get candidate CFDIs
+    cfdis = await db.cfdis.find(query, {'_id': 0}).to_list(200)
+    
+    matches = []
+    for cfdi in cfdis:
+        cfdi_total = cfdi.get('total', 0)
+        cfdi_moneda = cfdi.get('moneda', 'MXN')
+        
+        # Calculate pending amount
+        if cfdi_tipo == 'ingreso':
+            monto_cubierto = cfdi.get('monto_cobrado', 0) or 0
+        else:
+            monto_cubierto = cfdi.get('monto_pagado', 0) or 0
+        
+        saldo_pendiente = cfdi_total - monto_cubierto
+        
+        # Skip fully paid CFDIs
+        if saldo_pendiente < 0.01:
+            continue
+        
+        # Calculate match score
+        score = 0
+        match_reasons = []
+        
+        # Amount matching (compare with transaction amount)
+        # Allow for some tolerance (0.5% for banking fees, rounding)
+        if monto > 0:
+            # Check if amounts match closely
+            diff_pct = abs(monto - saldo_pendiente) / saldo_pendiente * 100 if saldo_pendiente > 0 else 100
+            
+            if diff_pct < 0.5:  # Exact or near-exact match
+                score += 50
+                match_reasons.append("Monto exacto")
+            elif diff_pct < 2:  # Within 2%
+                score += 35
+                match_reasons.append(f"Monto muy cercano ({diff_pct:.1f}% dif)")
+            elif diff_pct < 5:  # Within 5%
+                score += 20
+                match_reasons.append(f"Monto cercano ({diff_pct:.1f}% dif)")
+            elif diff_pct < 10:  # Within 10%
+                score += 10
+                match_reasons.append(f"Monto aproximado ({diff_pct:.1f}% dif)")
+            else:
+                continue  # Too different, skip this CFDI
+        
+        # Date proximity bonus
+        cfdi_fecha_str = cfdi.get('fecha_emision')
+        if cfdi_fecha_str:
+            try:
+                cfdi_fecha = datetime.fromisoformat(cfdi_fecha_str.replace('Z', '+00:00')) if isinstance(cfdi_fecha_str, str) else cfdi_fecha_str
+                days_diff = abs((fecha_txn - cfdi_fecha).days)
+                
+                if days_diff <= 7:
+                    score += 30
+                    match_reasons.append("Fecha muy cercana (≤7 días)")
+                elif days_diff <= 15:
+                    score += 20
+                    match_reasons.append(f"Fecha cercana ({days_diff} días)")
+                elif days_diff <= 30:
+                    score += 10
+                    match_reasons.append(f"Fecha dentro de 30 días")
+                else:
+                    score += 5
+                    match_reasons.append(f"Fecha dentro de {days_diff} días")
+            except:
+                pass
+        
+        # Currency match bonus
+        if cfdi_moneda == moneda:
+            score += 10
+            match_reasons.append(f"Moneda coincide ({moneda})")
+        
+        # Check if CFDI UUID appears in transaction description or reference
+        cfdi_uuid = cfdi.get('uuid', '')
+        txn_text = (txn.get('descripcion', '') + ' ' + txn.get('referencia', '')).upper()
+        if cfdi_uuid and cfdi_uuid.upper()[:8] in txn_text:
+            score += 40
+            match_reasons.append("UUID parcial en descripción")
+        
+        # Only include if score is meaningful
+        if score >= 20:
+            matches.append({
+                'cfdi_id': cfdi.get('id'),
+                'uuid': cfdi_uuid,
+                'uuid_short': cfdi_uuid[:8] if cfdi_uuid else '',
+                'tipo_cfdi': cfdi_tipo,
+                'fecha_emision': cfdi.get('fecha_emision'),
+                'emisor_nombre': cfdi.get('emisor_nombre', ''),
+                'receptor_nombre': cfdi.get('receptor_nombre', ''),
+                'total': cfdi_total,
+                'saldo_pendiente': saldo_pendiente,
+                'moneda': cfdi_moneda,
+                'score': score,
+                'match_reasons': match_reasons,
+                'confidence': 'alta' if score >= 60 else 'media' if score >= 40 else 'baja'
+            })
+    
+    # Sort by score descending
+    matches.sort(key=lambda x: x['score'], reverse=True)
+    
+    # Prepare response
+    best_match = matches[0] if matches else None
+    
+    return {
+        'transaction_id': txn_id,
+        'transaction_monto': monto,
+        'transaction_moneda': moneda,
+        'transaction_fecha': fecha_txn_str,
+        'transaction_tipo': tipo_movimiento,
+        'cfdi_tipo_esperado': cfdi_tipo,
+        'tolerance_days': tolerance_days,
+        'best_match': best_match,
+        'all_matches': matches[:10],  # Top 10
+        'total_matches': len(matches),
+        'auto_link_recommended': best_match is not None and best_match['score'] >= 60
+    }
+
+
+@api_router.post("/payments/from-bank-with-cfdi-match")
+async def create_payment_from_bank_with_cfdi_match(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    bank_transaction_id: str = Query(..., description="ID del movimiento bancario"),
+    cfdi_id: Optional[str] = Query(None, description="ID del CFDI a vincular (opcional, se detecta automáticamente si no se provee)"),
+    auto_detect: bool = Query(True, description="Detectar CFDI automáticamente por monto y fecha")
+):
+    """
+    P0 - Create a payment from a bank transaction with automatic CFDI matching.
+    If auto_detect=True and no cfdi_id provided, will try to find the best matching CFDI.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get the bank transaction
+    txn = await db.bank_transactions.find_one({'id': bank_transaction_id, 'company_id': company_id}, {'_id': 0})
+    if not txn:
+        raise HTTPException(status_code=404, detail="Movimiento bancario no encontrado")
+    
+    if txn.get('conciliado'):
+        raise HTTPException(status_code=400, detail="Este movimiento ya está conciliado")
+    
+    # Get bank account info
+    bank_account = await db.bank_accounts.find_one({'id': txn.get('bank_account_id')}, {'_id': 0})
+    moneda = txn.get('moneda') or (bank_account.get('moneda') if bank_account else 'MXN')
+    
+    # Determine payment type
+    tipo = 'cobro' if txn.get('tipo_movimiento') == 'credito' else 'pago'
+    
+    # Auto-detect CFDI if requested and not provided
+    matched_cfdi = None
+    match_info = None
+    
+    if cfdi_id:
+        # Use provided CFDI
+        matched_cfdi = await db.cfdis.find_one({'id': cfdi_id, 'company_id': company_id}, {'_id': 0})
+        if not matched_cfdi:
+            raise HTTPException(status_code=404, detail="CFDI no encontrado")
+    elif auto_detect:
+        # Try to find matching CFDI automatically
+        # Use internal call to match-cfdi endpoint logic
+        monto = txn.get('monto', 0)
+        fecha_txn_str = txn.get('fecha_movimiento')
+        tipo_movimiento = txn.get('tipo_movimiento', 'credito')
+        
+        if isinstance(fecha_txn_str, str):
+            try:
+                fecha_txn = datetime.fromisoformat(fecha_txn_str.replace('Z', '+00:00'))
+            except:
+                fecha_txn = datetime.now(timezone.utc)
+        else:
+            fecha_txn = fecha_txn_str or datetime.now(timezone.utc)
+        
+        # Define date range (±60 days as requested by user)
+        fecha_inicio = (fecha_txn - timedelta(days=60)).isoformat()
+        fecha_fin = (fecha_txn + timedelta(days=60)).isoformat()
+        
+        cfdi_tipo = 'ingreso' if tipo_movimiento == 'credito' else 'egreso'
+        
+        query = {
+            'company_id': company_id,
+            'tipo_cfdi': cfdi_tipo,
+            'estatus': 'vigente',
+            'fecha_emision': {'$gte': fecha_inicio, '$lte': fecha_fin}
+        }
+        
+        cfdis = await db.cfdis.find(query, {'_id': 0}).to_list(100)
+        
+        best_score = 0
+        best_cfdi = None
+        
+        for cfdi in cfdis:
+            cfdi_total = cfdi.get('total', 0)
+            monto_cubierto = cfdi.get('monto_cobrado' if cfdi_tipo == 'ingreso' else 'monto_pagado', 0) or 0
+            saldo_pendiente = cfdi_total - monto_cubierto
+            
+            if saldo_pendiente < 0.01:
+                continue
+            
+            score = 0
+            if monto > 0 and saldo_pendiente > 0:
+                diff_pct = abs(monto - saldo_pendiente) / saldo_pendiente * 100
+                if diff_pct < 0.5:
+                    score += 50
+                elif diff_pct < 2:
+                    score += 35
+                elif diff_pct < 5:
+                    score += 20
+                elif diff_pct < 10:
+                    score += 10
+                else:
+                    continue
+            
+            # Date proximity
+            cfdi_fecha_str = cfdi.get('fecha_emision')
+            if cfdi_fecha_str:
+                try:
+                    cfdi_fecha = datetime.fromisoformat(cfdi_fecha_str.replace('Z', '+00:00')) if isinstance(cfdi_fecha_str, str) else cfdi_fecha_str
+                    days_diff = abs((fecha_txn - cfdi_fecha).days)
+                    if days_diff <= 7:
+                        score += 30
+                    elif days_diff <= 15:
+                        score += 20
+                    elif days_diff <= 30:
+                        score += 10
+                    else:
+                        score += 5
+                except:
+                    pass
+            
+            # Currency match
+            if cfdi.get('moneda', 'MXN') == moneda:
+                score += 10
+            
+            if score > best_score:
+                best_score = score
+                best_cfdi = cfdi
+        
+        # Only auto-link if confidence is high (score >= 60)
+        if best_score >= 60 and best_cfdi:
+            matched_cfdi = best_cfdi
+            match_info = {
+                'auto_detected': True,
+                'score': best_score,
+                'confidence': 'alta' if best_score >= 60 else 'media'
+            }
+    
+    # Create the payment
+    payment_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    
+    payment_doc = {
+        'id': payment_id,
+        'company_id': company_id,
+        'bank_account_id': txn.get('bank_account_id'),
+        'cfdi_id': matched_cfdi.get('id') if matched_cfdi else None,
+        'tipo': tipo,
+        'concepto': txn.get('descripcion') or f"Movimiento bancario {txn.get('referencia', '')}",
+        'monto': txn.get('monto', 0),
+        'moneda': moneda,
+        'metodo_pago': 'transferencia',
+        'fecha_vencimiento': txn.get('fecha_movimiento'),
+        'fecha_pago': now.isoformat(),
+        'estatus': 'completado',
+        'referencia': txn.get('referencia', ''),
+        'beneficiario': txn.get('merchant_name') or txn.get('descripcion', '')[:50] if txn.get('descripcion') else '',
+        'es_real': True,
+        'bank_transaction_id': bank_transaction_id,
+        'created_at': now.isoformat()
+    }
+    
+    # Get historical exchange rate for non-MXN currencies
+    if moneda != 'MXN':
+        rate = await db.fx_rates.find_one(
+            {'company_id': company_id, '$or': [
+                {'moneda_cotizada': moneda},
+                {'moneda_origen': moneda}
+            ]},
+            {'_id': 0},
+            sort=[('fecha_vigencia', -1)]
+        )
+        if rate:
+            payment_doc['tipo_cambio_historico'] = rate.get('tipo_cambio') or rate.get('tasa') or 1
+        else:
+            default_rates = {'USD': 17.50, 'EUR': 19.00}
+            payment_doc['tipo_cambio_historico'] = default_rates.get(moneda, 1)
+    
+    await db.payments.insert_one(payment_doc)
+    
+    # Update CFDI if linked
+    if matched_cfdi:
+        if tipo == 'cobro':
+            current_cobrado = matched_cfdi.get('monto_cobrado', 0) or 0
+            new_cobrado = current_cobrado + payment_doc['monto']
+            await db.cfdis.update_one(
+                {'id': matched_cfdi['id']},
+                {'$set': {'monto_cobrado': new_cobrado}}
+            )
+        else:
+            current_pagado = matched_cfdi.get('monto_pagado', 0) or 0
+            new_pagado = current_pagado + payment_doc['monto']
+            await db.cfdis.update_one(
+                {'id': matched_cfdi['id']},
+                {'$set': {'monto_pagado': new_pagado}}
+            )
+    
+    # Mark bank transaction as reconciled
+    await db.bank_transactions.update_one(
+        {'id': bank_transaction_id},
+        {'$set': {
+            'conciliado': True,
+            'payment_id': payment_id,
+            'fecha_conciliacion': now.isoformat()
+        }}
+    )
+    
+    # Create reconciliation record
+    recon_doc = {
+        'id': str(uuid.uuid4()),
+        'company_id': company_id,
+        'bank_transaction_id': bank_transaction_id,
+        'cfdi_id': matched_cfdi.get('id') if matched_cfdi else None,
+        'metodo_conciliacion': 'automatica' if match_info else 'manual',
+        'tipo_conciliacion': 'con_uuid' if matched_cfdi else 'sin_uuid',
+        'porcentaje_match': match_info.get('score', 100) if match_info else 100,
+        'fecha_conciliacion': now.isoformat(),
+        'user_id': current_user['id'],
+        'notas': f"Creado desde módulo Cobranza y Pagos. {'Auto-detectado.' if match_info else ''}",
+        'created_at': now.isoformat()
+    }
+    await db.reconciliations.insert_one(recon_doc)
+    
+    await audit_log(company_id, 'Payment', payment_id, 'CREATE_FROM_BANK', current_user['id'])
+    
+    return {
+        'status': 'success',
+        'payment_id': payment_id,
+        'payment_tipo': tipo,
+        'payment_monto': payment_doc['monto'],
+        'cfdi_linked': matched_cfdi is not None,
+        'cfdi_id': matched_cfdi.get('id') if matched_cfdi else None,
+        'cfdi_uuid': matched_cfdi.get('uuid') if matched_cfdi else None,
+        'match_info': match_info,
+        'message': f"{'Cobro' if tipo == 'cobro' else 'Pago'} creado" + 
+                   (f" y vinculado a CFDI {matched_cfdi.get('uuid', '')[:8]}..." if matched_cfdi else " sin CFDI asociado")
+    }
+
+
+@api_router.post("/bank-transactions/batch-create-payments")
+async def batch_create_payments_from_bank(
+    request: Request,
+    data: dict,
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Create multiple payments from bank transactions with automatic CFDI matching.
+    Expects: { "transaction_ids": ["id1", "id2", ...], "auto_detect": true }
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    transaction_ids = data.get('transaction_ids', [])
+    auto_detect = data.get('auto_detect', True)
+    
+    if not transaction_ids:
+        raise HTTPException(status_code=400, detail="Se requiere al menos un ID de transacción")
+    
+    results = []
+    created = 0
+    linked_with_cfdi = 0
+    errors = 0
+    
+    for txn_id in transaction_ids:
+        try:
+            # Get the bank transaction
+            txn = await db.bank_transactions.find_one({'id': txn_id, 'company_id': company_id}, {'_id': 0})
+            if not txn:
+                results.append({'transaction_id': txn_id, 'status': 'error', 'message': 'No encontrado'})
+                errors += 1
+                continue
+            
+            if txn.get('conciliado'):
+                results.append({'transaction_id': txn_id, 'status': 'skipped', 'message': 'Ya conciliado'})
+                continue
+            
+            # Get bank account info
+            bank_account = await db.bank_accounts.find_one({'id': txn.get('bank_account_id')}, {'_id': 0})
+            moneda = txn.get('moneda') or (bank_account.get('moneda') if bank_account else 'MXN')
+            
+            # Determine payment type
+            tipo = 'cobro' if txn.get('tipo_movimiento') == 'credito' else 'pago'
+            
+            # Try to find matching CFDI if auto_detect is enabled
+            matched_cfdi = None
+            if auto_detect:
+                monto = txn.get('monto', 0)
+                fecha_txn_str = txn.get('fecha_movimiento')
+                tipo_movimiento = txn.get('tipo_movimiento', 'credito')
+                
+                if isinstance(fecha_txn_str, str):
+                    try:
+                        fecha_txn = datetime.fromisoformat(fecha_txn_str.replace('Z', '+00:00'))
+                    except:
+                        fecha_txn = datetime.now(timezone.utc)
+                else:
+                    fecha_txn = fecha_txn_str or datetime.now(timezone.utc)
+                
+                fecha_inicio = (fecha_txn - timedelta(days=60)).isoformat()
+                fecha_fin = (fecha_txn + timedelta(days=60)).isoformat()
+                
+                cfdi_tipo = 'ingreso' if tipo_movimiento == 'credito' else 'egreso'
+                
+                query = {
+                    'company_id': company_id,
+                    'tipo_cfdi': cfdi_tipo,
+                    'estatus': 'vigente',
+                    'fecha_emision': {'$gte': fecha_inicio, '$lte': fecha_fin}
+                }
+                
+                cfdis = await db.cfdis.find(query, {'_id': 0}).to_list(50)
+                
+                best_score = 0
+                best_cfdi = None
+                
+                for cfdi in cfdis:
+                    cfdi_total = cfdi.get('total', 0)
+                    monto_cubierto = cfdi.get('monto_cobrado' if cfdi_tipo == 'ingreso' else 'monto_pagado', 0) or 0
+                    saldo_pendiente = cfdi_total - monto_cubierto
+                    
+                    if saldo_pendiente < 0.01:
+                        continue
+                    
+                    score = 0
+                    if monto > 0 and saldo_pendiente > 0:
+                        diff_pct = abs(monto - saldo_pendiente) / saldo_pendiente * 100
+                        if diff_pct < 0.5:
+                            score += 50
+                        elif diff_pct < 2:
+                            score += 35
+                        elif diff_pct < 5:
+                            score += 20
+                        elif diff_pct < 10:
+                            score += 10
+                        else:
+                            continue
+                    
+                    cfdi_fecha_str = cfdi.get('fecha_emision')
+                    if cfdi_fecha_str:
+                        try:
+                            cfdi_fecha = datetime.fromisoformat(cfdi_fecha_str.replace('Z', '+00:00')) if isinstance(cfdi_fecha_str, str) else cfdi_fecha_str
+                            days_diff = abs((fecha_txn - cfdi_fecha).days)
+                            if days_diff <= 7:
+                                score += 30
+                            elif days_diff <= 15:
+                                score += 20
+                            elif days_diff <= 30:
+                                score += 10
+                            else:
+                                score += 5
+                        except:
+                            pass
+                    
+                    if cfdi.get('moneda', 'MXN') == moneda:
+                        score += 10
+                    
+                    if score > best_score:
+                        best_score = score
+                        best_cfdi = cfdi
+                
+                if best_score >= 60 and best_cfdi:
+                    matched_cfdi = best_cfdi
+            
+            # Create the payment
+            payment_id = str(uuid.uuid4())
+            now = datetime.now(timezone.utc)
+            
+            payment_doc = {
+                'id': payment_id,
+                'company_id': company_id,
+                'bank_account_id': txn.get('bank_account_id'),
+                'cfdi_id': matched_cfdi.get('id') if matched_cfdi else None,
+                'tipo': tipo,
+                'concepto': txn.get('descripcion') or f"Movimiento bancario {txn.get('referencia', '')}",
+                'monto': txn.get('monto', 0),
+                'moneda': moneda,
+                'metodo_pago': 'transferencia',
+                'fecha_vencimiento': txn.get('fecha_movimiento'),
+                'fecha_pago': now.isoformat(),
+                'estatus': 'completado',
+                'referencia': txn.get('referencia', ''),
+                'beneficiario': txn.get('merchant_name') or (txn.get('descripcion', '')[:50] if txn.get('descripcion') else ''),
+                'es_real': True,
+                'bank_transaction_id': txn_id,
+                'created_at': now.isoformat()
+            }
+            
+            await db.payments.insert_one(payment_doc)
+            
+            # Update CFDI if linked
+            if matched_cfdi:
+                if tipo == 'cobro':
+                    current_cobrado = matched_cfdi.get('monto_cobrado', 0) or 0
+                    new_cobrado = current_cobrado + payment_doc['monto']
+                    await db.cfdis.update_one(
+                        {'id': matched_cfdi['id']},
+                        {'$set': {'monto_cobrado': new_cobrado}}
+                    )
+                else:
+                    current_pagado = matched_cfdi.get('monto_pagado', 0) or 0
+                    new_pagado = current_pagado + payment_doc['monto']
+                    await db.cfdis.update_one(
+                        {'id': matched_cfdi['id']},
+                        {'$set': {'monto_pagado': new_pagado}}
+                    )
+                linked_with_cfdi += 1
+            
+            # Mark bank transaction as reconciled
+            await db.bank_transactions.update_one(
+                {'id': txn_id},
+                {'$set': {
+                    'conciliado': True,
+                    'payment_id': payment_id,
+                    'fecha_conciliacion': now.isoformat()
+                }}
+            )
+            
+            # Create reconciliation record
+            recon_doc = {
+                'id': str(uuid.uuid4()),
+                'company_id': company_id,
+                'bank_transaction_id': txn_id,
+                'cfdi_id': matched_cfdi.get('id') if matched_cfdi else None,
+                'metodo_conciliacion': 'automatica' if matched_cfdi else 'manual',
+                'tipo_conciliacion': 'con_uuid' if matched_cfdi else 'sin_uuid',
+                'porcentaje_match': 100,
+                'fecha_conciliacion': now.isoformat(),
+                'user_id': current_user['id'],
+                'notas': 'Creado en lote desde módulo Cobranza y Pagos',
+                'created_at': now.isoformat()
+            }
+            await db.reconciliations.insert_one(recon_doc)
+            
+            created += 1
+            results.append({
+                'transaction_id': txn_id,
+                'payment_id': payment_id,
+                'status': 'created',
+                'tipo': tipo,
+                'cfdi_linked': matched_cfdi is not None,
+                'cfdi_uuid': matched_cfdi.get('uuid')[:8] + '...' if matched_cfdi else None
+            })
+            
+        except Exception as e:
+            logger.error(f"Error creating payment from txn {txn_id}: {e}")
+            results.append({'transaction_id': txn_id, 'status': 'error', 'message': str(e)})
+            errors += 1
+    
+    return {
+        'status': 'success',
+        'created': created,
+        'linked_with_cfdi': linked_with_cfdi,
+        'errors': errors,
+        'results': results,
+        'message': f'Se crearon {created} pagos/cobros' + 
+                   (f', {linked_with_cfdi} vinculados con CFDI' if linked_with_cfdi > 0 else '') +
+                   (f', {errors} errores' if errors > 0 else '')
+    }
+
+
 @api_router.get("/payments")
 async def list_payments(
     request: Request,
