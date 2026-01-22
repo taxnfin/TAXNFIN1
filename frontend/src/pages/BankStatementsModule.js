@@ -1172,8 +1172,9 @@ const BankStatementsModule = () => {
                           {format(new Date(txn.fecha_movimiento), 'dd/MM/yyyy', { locale: es })}
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs bg-gray-100 px-2 py-1 rounded">{account?.banco}</span>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-medium bg-blue-100 text-blue-800 px-2 py-0.5 rounded w-fit">{account?.banco || 'N/A'}</span>
+                            <span className="text-xs text-gray-500 mt-0.5">{account?.nombre || '-'}</span>
                           </div>
                         </TableCell>
                         <TableCell className="max-w-[250px]">
