@@ -811,15 +811,21 @@ const BankStatementsModule = () => {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-2">
               <Building2 size={16} />
-              Saldo Inicial
+              Saldo Inicial {filterAccount === 'all' && '(Consolidado)'}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold text-gray-700">
               ${saldoInicial.toLocaleString('es-MX', {minimumFractionDigits: 2})}
-              {monedaCuenta !== 'MXN' && <span className="text-xs ml-1">{monedaCuenta}</span>}
+              {filterAccount === 'all' ? (
+                <span className="text-xs ml-1">MXN</span>
+              ) : (
+                monedaCuenta !== 'MXN' && <span className="text-xs ml-1">{monedaCuenta}</span>
+              )}
             </div>
-            {filterAccount === 'all' && <p className="text-xs text-gray-500">Selecciona una cuenta</p>}
+            {filterAccount === 'all' && bankAccounts.length > 0 && (
+              <p className="text-xs text-gray-500">{bankAccounts.length} cuenta(s)</p>
+            )}
             {filterAccount !== 'all' && monedaCuenta !== 'MXN' && (
               <p className="text-xs text-gray-500 mt-1">
                 ≈ ${convertToMXN(saldoInicial, monedaCuenta).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
@@ -837,12 +843,16 @@ const BankStatementsModule = () => {
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold text-green-700">
-              ${totalDepositos.toLocaleString('es-MX', {minimumFractionDigits: 2})}
-              {monedaCuenta !== 'MXN' && <span className="text-xs ml-1">{monedaCuenta}</span>}
+              ${displayDepositos.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              {filterAccount === 'all' ? (
+                <span className="text-xs ml-1">MXN</span>
+              ) : (
+                monedaCuenta !== 'MXN' && <span className="text-xs ml-1">{monedaCuenta}</span>
+              )}
             </div>
-            {monedaCuenta !== 'MXN' && (
+            {filterAccount !== 'all' && monedaCuenta !== 'MXN' && (
               <p className="text-xs text-green-600 mt-1">
-                ≈ ${convertToMXN(totalDepositos, monedaCuenta).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+                ≈ ${convertToMXN(displayDepositos, monedaCuenta).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
               </p>
             )}
           </CardContent>
@@ -857,12 +867,16 @@ const BankStatementsModule = () => {
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold text-red-700">
-              ${totalRetiros.toLocaleString('es-MX', {minimumFractionDigits: 2})}
-              {monedaCuenta !== 'MXN' && <span className="text-xs ml-1">{monedaCuenta}</span>}
+              ${displayRetiros.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              {filterAccount === 'all' ? (
+                <span className="text-xs ml-1">MXN</span>
+              ) : (
+                monedaCuenta !== 'MXN' && <span className="text-xs ml-1">{monedaCuenta}</span>
+              )}
             </div>
-            {monedaCuenta !== 'MXN' && (
+            {filterAccount !== 'all' && monedaCuenta !== 'MXN' && (
               <p className="text-xs text-red-600 mt-1">
-                ≈ ${convertToMXN(totalRetiros, monedaCuenta).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+                ≈ ${convertToMXN(displayRetiros, monedaCuenta).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
               </p>
             )}
           </CardContent>
