@@ -243,6 +243,39 @@ const BankStatementsModule = () => {
     }
   };
 
+  // Edit transaction functions
+  const handleEditTransaction = (txn) => {
+    setEditingTransaction(txn);
+    setEditFormData({
+      bank_account_id: txn.bank_account_id || '',
+      descripcion: txn.descripcion || '',
+      referencia: txn.referencia || '',
+      monto: txn.monto?.toString() || '',
+      tipo_movimiento: txn.tipo_movimiento || 'credito',
+      fecha_movimiento: txn.fecha_movimiento ? format(new Date(txn.fecha_movimiento), "yyyy-MM-dd'T'HH:mm") : '',
+      notas: txn.notas || ''
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleUpdateTransaction = async (e) => {
+    e.preventDefault();
+    if (!editingTransaction) return;
+    
+    try {
+      await api.put(`/bank-transactions/${editingTransaction.id}`, {
+        ...editFormData,
+        monto: parseFloat(editFormData.monto)
+      });
+      toast.success('Movimiento actualizado');
+      setEditDialogOpen(false);
+      setEditingTransaction(null);
+      loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error actualizando movimiento');
+    }
+  };
+
   const downloadTemplate = async () => {
     try {
       const response = await api.get('/bank-transactions/template', {
