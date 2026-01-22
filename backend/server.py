@@ -2218,6 +2218,175 @@ async def list_reconciliations(
                 r[field] = datetime.fromisoformat(r[field])
     return reconciliations
 
+@api_router.get("/reconciliations/summary")
+async def get_reconciliation_summary(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    fecha_desde: str = None,
+    fecha_hasta: str = None
+):
+    """Get reconciliation summary with totals by type (con_uuid, sin_uuid, no_relacionado)"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get all bank transactions
+    txn_query = {'company_id': company_id}
+    if fecha_desde or fecha_hasta:
+        txn_query['fecha_movimiento'] = {}
+        if fecha_desde:
+            txn_query['fecha_movimiento']['$gte'] = fecha_desde
+        if fecha_hasta:
+            txn_query['fecha_movimiento']['$lte'] = fecha_hasta + 'T23:59:59'
+    
+    all_transactions = await db.bank_transactions.find(txn_query, {'_id': 0}).to_list(10000)
+    
+    # Get all reconciliations
+    reconciliations = await db.reconciliations.find({'company_id': company_id}, {'_id': 0}).to_list(10000)
+    recon_by_txn = {}
+    for r in reconciliations:
+        txn_id = r.get('bank_transaction_id')
+        if txn_id not in recon_by_txn:
+            recon_by_txn[txn_id] = []
+        recon_by_txn[txn_id].append(r)
+    
+    # Calculate totals
+    total_movimientos = len(all_transactions)
+    total_monto = sum(t.get('monto', 0) for t in all_transactions)
+    
+    # Conciliados con UUID
+    conciliados_con_uuid = []
+    monto_con_uuid = 0
+    
+    # Conciliados sin UUID
+    conciliados_sin_uuid = []
+    monto_sin_uuid = 0
+    
+    # No relacionados
+    no_relacionados = []
+    monto_no_relacionado = 0
+    
+    # Pendientes (not reconciled at all)
+    pendientes = []
+    monto_pendiente = 0
+    
+    for txn in all_transactions:
+        txn_id = txn.get('id')
+        monto = txn.get('monto', 0)
+        
+        if txn.get('conciliado'):
+            # Check reconciliation type
+            recons = recon_by_txn.get(txn_id, [])
+            if recons:
+                tipo = recons[0].get('tipo_conciliacion', 'con_uuid')
+                has_cfdi = any(r.get('cfdi_id') for r in recons)
+                
+                if has_cfdi or tipo == 'con_uuid':
+                    conciliados_con_uuid.append(txn)
+                    monto_con_uuid += monto
+                elif tipo == 'sin_uuid':
+                    conciliados_sin_uuid.append(txn)
+                    monto_sin_uuid += monto
+                elif tipo == 'no_relacionado':
+                    no_relacionados.append(txn)
+                    monto_no_relacionado += monto
+                else:
+                    # Default to con_uuid if has cfdi_id
+                    conciliados_con_uuid.append(txn)
+                    monto_con_uuid += monto
+            else:
+                # Conciliado but no reconciliation record (legacy)
+                conciliados_con_uuid.append(txn)
+                monto_con_uuid += monto
+        else:
+            pendientes.append(txn)
+            monto_pendiente += monto
+    
+    # Get bank accounts for context
+    bank_accounts = await db.bank_accounts.find({'company_id': company_id}, {'_id': 0}).to_list(100)
+    
+    return {
+        'summary': {
+            'total_movimientos': total_movimientos,
+            'total_monto': round(total_monto, 2),
+            'conciliados_con_uuid': len(conciliados_con_uuid),
+            'monto_con_uuid': round(monto_con_uuid, 2),
+            'conciliados_sin_uuid': len(conciliados_sin_uuid),
+            'monto_sin_uuid': round(monto_sin_uuid, 2),
+            'no_relacionados': len(no_relacionados),
+            'monto_no_relacionado': round(monto_no_relacionado, 2),
+            'pendientes': len(pendientes),
+            'monto_pendiente': round(monto_pendiente, 2),
+            'porcentaje_conciliado': round((total_movimientos - len(pendientes)) / total_movimientos * 100, 1) if total_movimientos > 0 else 0
+        },
+        'by_account': [
+            {
+                'account_id': acc['id'],
+                'banco': acc.get('banco', ''),
+                'nombre': acc.get('nombre', ''),
+                'moneda': acc.get('moneda', 'MXN'),
+                'total_movimientos': len([t for t in all_transactions if t.get('bank_account_id') == acc['id']]),
+                'conciliados': len([t for t in all_transactions if t.get('bank_account_id') == acc['id'] and t.get('conciliado')]),
+                'pendientes': len([t for t in all_transactions if t.get('bank_account_id') == acc['id'] and not t.get('conciliado')])
+            }
+            for acc in bank_accounts
+        ]
+    }
+
+@api_router.post("/reconciliations/mark-without-uuid")
+async def mark_reconciliation_without_uuid(
+    data: dict,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Mark a bank transaction as reconciled WITHOUT a UUID (no CFDI relationship)"""
+    company_id = current_user['company_id']
+    
+    bank_transaction_id = data.get('bank_transaction_id')
+    tipo_conciliacion = data.get('tipo_conciliacion', 'sin_uuid')  # sin_uuid or no_relacionado
+    notas = data.get('notas', '')
+    
+    if not bank_transaction_id:
+        raise HTTPException(status_code=400, detail="Se requiere bank_transaction_id")
+    
+    if tipo_conciliacion not in ['sin_uuid', 'no_relacionado']:
+        raise HTTPException(status_code=400, detail="tipo_conciliacion debe ser 'sin_uuid' o 'no_relacionado'")
+    
+    # Verify transaction exists
+    txn = await db.bank_transactions.find_one({'id': bank_transaction_id, 'company_id': company_id}, {'_id': 0})
+    if not txn:
+        raise HTTPException(status_code=404, detail="Movimiento bancario no encontrado")
+    
+    # Create reconciliation record without CFDI
+    reconciliation = BankReconciliation(
+        company_id=company_id,
+        user_id=current_user['id'],
+        bank_transaction_id=bank_transaction_id,
+        cfdi_id=None,
+        transaction_id=None,
+        metodo_conciliacion='manual',
+        tipo_conciliacion=tipo_conciliacion,
+        porcentaje_match=100.0,
+        notas=notas
+    )
+    
+    doc = reconciliation.model_dump()
+    for field in ['fecha_conciliacion', 'created_at']:
+        doc[field] = doc[field].isoformat()
+    await db.reconciliations.insert_one(doc)
+    
+    # Mark transaction as reconciled
+    await db.bank_transactions.update_one(
+        {'id': bank_transaction_id},
+        {'$set': {'conciliado': True, 'tipo_conciliacion': tipo_conciliacion}}
+    )
+    
+    await audit_log(company_id, 'BankReconciliation', reconciliation.id, 'CREATE', current_user['id'], 
+                    {'tipo': tipo_conciliacion, 'sin_uuid': True})
+    
+    return {
+        'status': 'success',
+        'message': f'Movimiento marcado como conciliado ({tipo_conciliacion})',
+        'reconciliation_id': reconciliation.id
+    }
+
 # ===== CONCEPTOS MANUALES DE PROYECCIÓN =====
 @api_router.post("/manual-projections", response_model=ManualProjectionConcept)
 async def create_manual_projection(data: ManualProjectionConceptCreate, request: Request, current_user: Dict = Depends(get_current_user)):
