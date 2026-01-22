@@ -1347,13 +1347,13 @@ const PaymentsModule = () => {
               <Label>Cuenta Bancaria</Label>
               <Select 
                 value={formData.bank_account_id || ''} 
-                onValueChange={(v) => setFormData({...formData, bank_account_id: v || null})}
+                onValueChange={(v) => setFormData({...formData, bank_account_id: v === 'none' ? null : v})}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar cuenta (opcional)..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Sin cuenta asignada</SelectItem>
+                  <SelectItem value="none">Sin cuenta asignada</SelectItem>
                   {bankAccounts.map(acc => (
                     <SelectItem key={acc.id} value={acc.id}>
                       {acc.banco} - {acc.nombre} ({acc.moneda})
