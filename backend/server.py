@@ -2973,6 +2973,55 @@ async def delete_payment(payment_id: str, request: Request, current_user: Dict =
     await audit_log(company_id, 'Payment', payment_id, 'DELETE', current_user['id'])
     return {'status': 'success', 'message': 'Pago eliminado'}
 
+@api_router.delete("/payments/bulk/all")
+async def delete_all_payments(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Delete ALL payments/collections for the current company"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # First, get all payments to reverse CFDI amounts
+    payments = await db.payments.find({'company_id': company_id}, {'_id': 0}).to_list(10000)
+    
+    # Reset all CFDIs monto_cobrado and monto_pagado
+    await db.cfdis.update_many(
+        {'company_id': company_id},
+        {'$set': {'monto_cobrado': 0, 'monto_pagado': 0}}
+    )
+    
+    # Delete all payments
+    result = await db.payments.delete_many({'company_id': company_id})
+    
+    await audit_log(company_id, 'Payment', 'BULK_DELETE', 'DELETE', current_user['id'], 
+                    {'count': result.deleted_count, 'action': 'delete_all_payments'})
+    
+    return {
+        'status': 'success',
+        'message': f'Se eliminaron {result.deleted_count} pagos/cobranzas',
+        'deleted_count': result.deleted_count
+    }
+
+@api_router.delete("/reconciliations/bulk/all")
+async def delete_all_reconciliations(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Delete ALL reconciliations for the current company and reset bank transaction status"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Delete all reconciliation records
+    result = await db.reconciliations.delete_many({'company_id': company_id})
+    
+    # Reset all bank transactions to not conciliado
+    await db.bank_transactions.update_many(
+        {'company_id': company_id},
+        {'$set': {'conciliado': False, 'tipo_conciliacion': None}}
+    )
+    
+    await audit_log(company_id, 'BankReconciliation', 'BULK_DELETE', 'DELETE', current_user['id'], 
+                    {'count': result.deleted_count, 'action': 'delete_all_reconciliations'})
+    
+    return {
+        'status': 'success',
+        'message': f'Se eliminaron {result.deleted_count} conciliaciones y se reseteron todos los movimientos',
+        'deleted_count': result.deleted_count
+    }
+
 # ===== CATEGORÍAS =====
 @api_router.get("/categories")
 async def list_categories(request: Request, current_user: Dict = Depends(get_current_user), tipo: Optional[str] = None):
