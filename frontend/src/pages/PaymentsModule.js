@@ -1022,106 +1022,184 @@ const PaymentsModule = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+        {/* Por Pagar (CFDI) */}
         <Card className="border-[#EF4444] bg-red-50">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-[#DC2626] flex items-center gap-2">
               <TrendingDown size={16} />
-              Total a Pagar
+              Por Pagar (CFDI)
             </CardTitle>
             <CardDescription className="text-xs">
-              Antes del {summary?.fecha_corte ? format(new Date(summary.fecha_corte), 'dd MMM yyyy') : '-'}
+              De facturas pendientes SAT
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold mono text-[#DC2626]">
-              ${(summary?.total_por_pagar || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+              ${(breakdown?.cfdi_por_pagar?.total_equiv_mxn || summary?.total_por_pagar || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
             </div>
-            {summary?.total_por_pagar_usd > 0 && (
+            {(breakdown?.cfdi_por_pagar?.total_usd > 0 || summary?.total_por_pagar_usd > 0) && (
               <div className="text-sm font-medium mono text-[#DC2626] mt-1">
-                + ${summary.total_por_pagar_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
+                + ${(breakdown?.cfdi_por_pagar?.total_usd || summary?.total_por_pagar_usd || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
               </div>
             )}
-            <div className="text-xs text-[#64748B] mt-1">{summary?.pagos_pendientes || 0} pagos pendientes</div>
+            <div className="text-xs text-[#64748B] mt-1">{breakdown?.cfdi_por_pagar?.total_count || summary?.pagos_pendientes || 0} facturas</div>
           </CardContent>
         </Card>
 
+        {/* Por Cobrar (CFDI) */}
         <Card className="border-[#10B981] bg-green-50">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-[#059669] flex items-center gap-2">
               <TrendingUp size={16} />
-              Total a Cobrar
+              Por Cobrar (CFDI)
             </CardTitle>
             <CardDescription className="text-xs">
-              Antes del {summary?.fecha_corte ? format(new Date(summary.fecha_corte), 'dd MMM yyyy') : '-'}
+              De facturas pendientes SAT
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold mono text-[#059669]">
-              ${(summary?.total_por_cobrar_mxn || summary?.total_por_cobrar || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+              ${(breakdown?.cfdi_por_cobrar?.total_equiv_mxn || summary?.total_por_cobrar || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
             </div>
-            {summary?.total_por_cobrar_usd > 0 && (
+            {(breakdown?.cfdi_por_cobrar?.total_usd > 0 || summary?.total_por_cobrar_usd > 0) && (
               <div className="text-sm font-medium mono text-[#059669] mt-1">
-                + ${summary.total_por_cobrar_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
+                + ${(breakdown?.cfdi_por_cobrar?.total_usd || summary?.total_por_cobrar_usd || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
               </div>
             )}
-            <div className="text-xs text-[#64748B] mt-1">{summary?.cobros_pendientes || 0} cobros pendientes</div>
+            <div className="text-xs text-[#64748B] mt-1">{breakdown?.cfdi_por_cobrar?.total_count || summary?.cobros_pendientes || 0} facturas</div>
           </CardContent>
         </Card>
 
-        <Card className="border-[#0EA5E9] bg-blue-50">
+        {/* Pagado Real */}
+        <Card className="border-[#DC2626] bg-red-100/50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-[#0369A1] flex items-center gap-2">
-              <CreditCard size={16} />
-              Domiciliación
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold mono text-[#0369A1]">
-              ${(summary?.monto_domiciliado || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
-            </div>
-            <div className="text-xs text-[#64748B]">{summary?.domiciliaciones_activas || 0} activas</div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-[#E2E8F0]">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-[#64748B] flex items-center gap-2">
+            <CardTitle className="text-sm font-medium text-[#B91C1C] flex items-center gap-2">
               <CheckCircle2 size={16} />
-              Pagado Este Mes
+              Pagado (Real)
             </CardTitle>
+            <CardDescription className="text-xs">
+              Conciliado con banco
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold mono text-[#0F172A]">
-              ${(summary?.pagado_mes_mxn || summary?.total_pagado_mes || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+            <div className="text-2xl font-bold mono text-[#B91C1C]">
+              ${(breakdown?.pagado_real?.total_equiv_mxn || summary?.pagado_mes_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
             </div>
-            {summary?.pagado_mes_usd > 0 && (
-              <div className="text-sm font-medium mono text-gray-600 mt-1">
-                + ${summary.pagado_mes_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
+            {breakdown?.pagado_real?.total_usd > 0 && (
+              <div className="text-sm font-medium mono text-[#B91C1C] mt-1">
+                + ${breakdown.pagado_real.total_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
+              </div>
+            )}
+            <div className="text-xs text-[#64748B] mt-1 flex flex-col">
+              <span>Con CFDI: ${(breakdown?.pagado_real?.con_cfdi_mxn || 0).toLocaleString('es-MX')}</span>
+              <span>Sin CFDI: ${(breakdown?.pagado_real?.sin_cfdi_mxn || 0).toLocaleString('es-MX')}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Cobrado Real */}
+        <Card className="border-[#059669] bg-green-100/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-[#047857] flex items-center gap-2">
+              <CheckCircle2 size={16} />
+              Cobrado (Real)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Conciliado con banco
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold mono text-[#047857]">
+              ${(breakdown?.cobrado_real?.total_equiv_mxn || summary?.cobrado_mes_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+            </div>
+            {breakdown?.cobrado_real?.total_usd > 0 && (
+              <div className="text-sm font-medium mono text-[#047857] mt-1">
+                + ${breakdown.cobrado_real.total_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
+              </div>
+            )}
+            <div className="text-xs text-[#64748B] mt-1 flex flex-col">
+              <span>Con CFDI: ${(breakdown?.cobrado_real?.con_cfdi_mxn || 0).toLocaleString('es-MX')}</span>
+              <span>Sin CFDI: ${(breakdown?.cobrado_real?.sin_cfdi_mxn || 0).toLocaleString('es-MX')}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Proyecciones Pagos */}
+        <Card className="border-[#6366F1] bg-indigo-50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-[#4F46E5] flex items-center gap-2">
+              <EyeOff size={16} />
+              Pagos Proyectados
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Estimado/pendiente
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold mono text-[#4F46E5]">
+              ${(breakdown?.proyeccion_pagos?.total_equiv_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+            </div>
+            <div className="text-xs text-[#64748B] mt-1">{breakdown?.proyeccion_pagos?.total_count || 0} proyecciones</div>
+            {breakdown?.varianza && (
+              <div className={`text-xs font-medium mt-1 ${breakdown.varianza.pagos_real_vs_proyectado >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                Varianza: {breakdown.varianza.pagos_pct > 0 ? '+' : ''}{breakdown.varianza.pagos_pct}%
               </div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="border-[#E2E8F0]">
+        {/* Proyecciones Cobros */}
+        <Card className="border-[#8B5CF6] bg-purple-50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-[#64748B] flex items-center gap-2">
-              <CheckCircle2 size={16} />
-              Cobrado Este Mes
+            <CardTitle className="text-sm font-medium text-[#7C3AED] flex items-center gap-2">
+              <EyeOff size={16} />
+              Cobros Proyectados
             </CardTitle>
+            <CardDescription className="text-xs">
+              Estimado/pendiente
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold mono text-[#0F172A]">
-              ${(summary?.cobrado_mes_mxn || summary?.total_cobrado_mes || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+            <div className="text-2xl font-bold mono text-[#7C3AED]">
+              ${(breakdown?.proyeccion_cobros?.total_equiv_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
             </div>
-            {summary?.cobrado_mes_usd > 0 && (
-              <div className="text-sm font-medium mono text-gray-600 mt-1">
-                + ${summary.cobrado_mes_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
+            <div className="text-xs text-[#64748B] mt-1">{breakdown?.proyeccion_cobros?.total_count || 0} proyecciones</div>
+            {breakdown?.varianza && (
+              <div className={`text-xs font-medium mt-1 ${breakdown.varianza.cobros_real_vs_proyectado >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                Varianza: {breakdown.varianza.cobros_pct > 0 ? '+' : ''}{breakdown.varianza.cobros_pct}%
               </div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Varianza Summary Banner */}
+      {breakdown?.varianza && (
+        <Card className="border-[#1E293B] bg-slate-900 text-white">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-6">
+                <div className="text-sm">
+                  <span className="text-slate-400">Flujo Neto Real:</span>
+                  <span className={`ml-2 font-bold mono ${breakdown.varianza.flujo_neto_real >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    ${breakdown.varianza.flujo_neto_real?.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                  </span>
+                </div>
+                <div className="text-sm">
+                  <span className="text-slate-400">Flujo Neto Proyectado:</span>
+                  <span className={`ml-2 font-bold mono ${breakdown.varianza.flujo_neto_proyectado >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    ${breakdown.varianza.flujo_neto_proyectado?.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                  </span>
+                </div>
+              </div>
+              <div className="text-xs text-slate-400">
+                💡 La varianza se usa para el análisis de 13 semanas en Reportes
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card className="border-[#E2E8F0]">
