@@ -573,6 +573,36 @@ const BankStatementsModule = () => {
     }
   };
 
+  // Transfer transactions between accounts
+  const handleTransferTransactions = async () => {
+    if (!transferFromAccount || !transferToAccount) {
+      toast.error('Selecciona cuenta origen y destino');
+      return;
+    }
+    if (transferFromAccount === transferToAccount) {
+      toast.error('La cuenta origen y destino no pueden ser la misma');
+      return;
+    }
+
+    setTransferring(true);
+    try {
+      const response = await api.post('/bank-transactions/transfer-account', {
+        from_account_id: transferFromAccount,
+        to_account_id: transferToAccount
+      });
+      
+      toast.success(response.data.message);
+      setTransferDialogOpen(false);
+      setTransferFromAccount('');
+      setTransferToAccount('');
+      loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error transfiriendo movimientos');
+    } finally {
+      setTransferring(false);
+    }
+  };
+
   // Filter transactions
   const filteredTransactions = bankTransactions.filter(txn => {
     if (filterAccount !== 'all' && txn.bank_account_id !== filterAccount) return false;
