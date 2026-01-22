@@ -2472,9 +2472,11 @@ async def get_payments_summary(
         'estado_cancelacion': {'$ne': 'cancelado'}
     }, {'_id': 0}).to_list(5000)
     
-    # Calculate pending amounts from CFDIs
-    total_por_cobrar_cfdis = 0  # Income CFDIs pending collection
-    total_por_pagar_cfdis = 0   # Expense CFDIs pending payment
+    # Calculate pending amounts from CFDIs by currency
+    total_por_cobrar_mxn = 0
+    total_por_cobrar_usd = 0
+    total_por_pagar_mxn = 0
+    total_por_pagar_usd = 0
     cobros_pendientes_count = 0
     pagos_pendientes_count = 0
     
@@ -2484,21 +2486,25 @@ async def get_payments_summary(
         tipo = cfdi.get('tipo', '')
         
         if tipo == 'ingreso':
-            # Income CFDI - pending to collect
             monto_cobrado = cfdi.get('monto_cobrado', 0) or 0
             pendiente = total - monto_cobrado
             if pendiente > 0.01:
-                total_por_cobrar_cfdis += convert_to_mxn(pendiente, moneda)
+                if moneda == 'USD':
+                    total_por_cobrar_usd += pendiente
+                else:
+                    total_por_cobrar_mxn += pendiente
                 cobros_pendientes_count += 1
         elif tipo == 'egreso':
-            # Expense CFDI - pending to pay
             monto_pagado = cfdi.get('monto_pagado', 0) or 0
             pendiente = total - monto_pagado
             if pendiente > 0.01:
-                total_por_pagar_cfdis += convert_to_mxn(pendiente, moneda)
+                if moneda == 'USD':
+                    total_por_pagar_usd += pendiente
+                else:
+                    total_por_pagar_mxn += pendiente
                 pagos_pendientes_count += 1
     
-    # Get completed payments this month
+    # Get completed payments this month by currency
     start_of_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     completed_payments = await db.payments.find({
         'company_id': company_id,
@@ -2506,15 +2512,25 @@ async def get_payments_summary(
         'fecha_pago': {'$gte': start_of_month.isoformat()}
     }, {'_id': 0}).to_list(1000)
     
-    # Calculate paid/collected this month
-    total_pagado_mes = sum(
-        convert_to_mxn(p['monto'], p.get('moneda', 'MXN')) 
-        for p in completed_payments if p['tipo'] == 'pago'
-    )
-    total_cobrado_mes = sum(
-        convert_to_mxn(p['monto'], p.get('moneda', 'MXN')) 
-        for p in completed_payments if p['tipo'] == 'cobro'
-    )
+    # Calculate paid/collected this month by currency
+    pagado_mes_mxn = 0
+    pagado_mes_usd = 0
+    cobrado_mes_mxn = 0
+    cobrado_mes_usd = 0
+    
+    for p in completed_payments:
+        monto = p.get('monto', 0) or 0
+        moneda = p.get('moneda', 'MXN')
+        if p['tipo'] == 'pago':
+            if moneda == 'USD':
+                pagado_mes_usd += monto
+            else:
+                pagado_mes_mxn += monto
+        else:  # cobro
+            if moneda == 'USD':
+                cobrado_mes_usd += monto
+            else:
+                cobrado_mes_mxn += monto
     
     # Get pending payments with domiciliacion
     pending_payments = await db.payments.find({
@@ -2528,14 +2544,28 @@ async def get_payments_summary(
         for p in domiciliados
     )
     
+    # Calculate totals in MXN
+    total_por_cobrar_total = total_por_cobrar_mxn + convert_to_mxn(total_por_cobrar_usd, 'USD')
+    total_por_pagar_total = total_por_pagar_mxn + convert_to_mxn(total_por_pagar_usd, 'USD')
+    total_pagado_mes = pagado_mes_mxn + convert_to_mxn(pagado_mes_usd, 'USD')
+    total_cobrado_mes = cobrado_mes_mxn + convert_to_mxn(cobrado_mes_usd, 'USD')
+    
     return {
         'fecha_corte': fecha_corte,
-        'total_por_pagar': round(total_por_pagar_cfdis, 2),
-        'total_por_cobrar': round(total_por_cobrar_cfdis, 2),
+        'total_por_pagar': round(total_por_pagar_total, 2),
+        'total_por_pagar_mxn': round(total_por_pagar_mxn, 2),
+        'total_por_pagar_usd': round(total_por_pagar_usd, 2),
+        'total_por_cobrar': round(total_por_cobrar_total, 2),
+        'total_por_cobrar_mxn': round(total_por_cobrar_mxn, 2),
+        'total_por_cobrar_usd': round(total_por_cobrar_usd, 2),
         'pagos_pendientes': pagos_pendientes_count,
         'cobros_pendientes': cobros_pendientes_count,
         'total_pagado_mes': round(total_pagado_mes, 2),
+        'pagado_mes_mxn': round(pagado_mes_mxn, 2),
+        'pagado_mes_usd': round(pagado_mes_usd, 2),
         'total_cobrado_mes': round(total_cobrado_mes, 2),
+        'cobrado_mes_mxn': round(cobrado_mes_mxn, 2),
+        'cobrado_mes_usd': round(cobrado_mes_usd, 2),
         'domiciliaciones_activas': len(domiciliados),
         'monto_domiciliado': round(monto_domiciliado, 2),
         'tc_usd': usd_to_mxn,
