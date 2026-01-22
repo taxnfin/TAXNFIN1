@@ -230,12 +230,65 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 ### MOCKED - Not Connected to Real Services
 1. **Bank API Integrations** (BBVA, Santander, Banorte, Bajío, Amex) - Placeholders only
 2. **SAT Scraping** - Requires selenium, currently returning mock data
+3. **Belvo Bank Integration** - Scaffolding complete, pending user API credentials
 
 ---
 
-## Latest Updates (January 22, 2026)
+## Latest Updates (January 22, 2026 - Session 2)
 
 ### Completed in This Session ✅
+
+**P0 - Matching Automático de CFDIs**
+
+1. ✅ **Nuevo endpoint `GET /api/bank-transactions/{id}/match-cfdi`**
+   - Busca CFDIs que coincidan con un movimiento bancario
+   - Parámetros: `tolerance_days` (default: 60 días, configurable por el usuario)
+   - Criterios de matching:
+     - Monto similar (±10%)
+     - Fecha dentro del rango de tolerancia (±60 días)
+     - Tipo correcto (depósito → ingreso, retiro → egreso)
+     - Moneda coincidente (bonus)
+     - UUID parcial en descripción (bonus)
+   - Retorna: lista de CFDIs candidatos con score de confianza (alta/media/baja)
+   - Solo recomienda auto-link si score ≥ 60
+
+2. ✅ **Nuevo endpoint `POST /api/payments/from-bank-with-cfdi-match`**
+   - Crea un pago desde un movimiento bancario con detección automática de CFDI
+   - Parámetros: `bank_transaction_id`, `cfdi_id` (opcional), `auto_detect` (default: true)
+   - Si `auto_detect=true` y no se provee `cfdi_id`, busca y vincula automáticamente
+   - Crea el registro de pago, actualiza el CFDI y crea la conciliación
+
+3. ✅ **Nuevo endpoint `POST /api/bank-transactions/batch-create-payments`**
+   - Procesa múltiples movimientos bancarios en lote
+   - Body: `{ "transaction_ids": [...], "auto_detect": true }`
+   - Intenta vincular automáticamente cada movimiento con su CFDI correspondiente
+   - Retorna resumen: `{ created, linked_with_cfdi, errors, results }`
+
+4. ✅ **Frontend actualizado**
+   - Diálogo "Desde Banco" muestra información del matching automático
+   - Banner verde explicando las reglas de matching
+   - Usa el nuevo endpoint batch para procesar movimientos
+   - Muestra cuántos pagos fueron vinculados automáticamente con CFDI
+
+**P1 - Bug Crítico: Conciliación sin Pago (CORREGIDO)**
+
+1. ✅ **Validación en `POST /api/reconciliations`**
+   - Antes de crear una conciliación con un `cfdi_id`, valida que exista un registro de pago para ese CFDI
+   - Si no existe pago, retorna error 400 con mensaje descriptivo
+   - Mensaje: "No se puede conciliar con este CFDI porque no existe un registro de pago/cobro asociado. Primero registra el pago/cobro en el módulo 'Cobranza y Pagos' y luego intenta conciliar."
+   - Esto previene la creación de conciliaciones huérfanas que corrompían la integridad de datos
+
+**Testing Realizado:**
+- ✅ Backend: Endpoint match-cfdi funciona correctamente, retorna candidatos con scores
+- ✅ Backend: Validación de reconciliaciones sin pago rechaza correctamente la solicitud
+- ✅ Frontend: Diálogo "Desde Banco" muestra información del matching automático
+- ✅ Captura de pantalla verificada
+
+---
+
+## Previous Updates (January 22, 2026 - Session 1)
+
+### Completed Previously ✅
 
 **Integración Bancaria con Belvo - Open Banking**
 
