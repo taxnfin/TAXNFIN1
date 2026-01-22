@@ -1244,8 +1244,18 @@ const BankStatementsModule = () => {
                             <Button
                               variant="ghost"
                               size="sm"
+                              className="h-7 text-blue-500 hover:text-blue-700"
+                              onClick={() => handleEditTransaction(txn)}
+                              title="Editar movimiento"
+                            >
+                              <Pencil size={14} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               className="h-7 text-red-500 hover:text-red-700"
                               onClick={() => handleDelete(txn.id)}
+                              title="Eliminar movimiento"
                             >
                               <Trash2 size={14} />
                             </Button>
