@@ -709,10 +709,78 @@ const BankStatementsModule = () => {
               </span>
             </Button>
           </label>
+          <Button variant="outline" onClick={() => setTransferDialogOpen(true)} className="gap-2" data-testid="transfer-movements-btn">
+            <ArrowRightLeft size={16} />
+            Transferir
+          </Button>
           <Button variant="outline" onClick={exportToExcel} className="gap-2" data-testid="export-statements-btn">
             <Download size={16} />
             Exportar
           </Button>
+          
+          {/* Transfer Dialog */}
+          <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Transferir Movimientos Entre Cuentas</DialogTitle>
+                <DialogDescription>
+                  Mueve todos los movimientos de una cuenta a otra. Se actualizará automáticamente la moneda de los movimientos.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Cuenta Origen</Label>
+                  <Select value={transferFromAccount} onValueChange={setTransferFromAccount}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar cuenta origen..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {bankAccounts.map(acc => (
+                        <SelectItem key={acc.id} value={acc.id}>
+                          {acc.banco} - {acc.nombre} ({acc.moneda})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Cuenta Destino</Label>
+                  <Select value={transferToAccount} onValueChange={setTransferToAccount}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar cuenta destino..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {bankAccounts.filter(a => a.id !== transferFromAccount).map(acc => (
+                        <SelectItem key={acc.id} value={acc.id}>
+                          {acc.banco} - {acc.nombre} ({acc.moneda})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {transferFromAccount && transferToAccount && (
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-sm text-yellow-800">
+                      <AlertCircle className="inline-block mr-2" size={16} />
+                      Se transferirán todos los movimientos de <strong>{bankAccounts.find(a => a.id === transferFromAccount)?.nombre}</strong> a <strong>{bankAccounts.find(a => a.id === transferToAccount)?.nombre}</strong>.
+                      La moneda se actualizará a <strong>{bankAccounts.find(a => a.id === transferToAccount)?.moneda}</strong>.
+                    </p>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Cancelar</Button>
+                <Button 
+                  onClick={handleTransferTransactions} 
+                  disabled={transferring || !transferFromAccount || !transferToAccount}
+                  className="bg-[#0F172A]"
+                >
+                  {transferring ? 'Transfiriendo...' : 'Transferir Movimientos'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2 bg-[#0F172A]" data-testid="add-movement-btn">
