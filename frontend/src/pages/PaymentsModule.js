@@ -541,7 +541,12 @@ const PaymentsModule = () => {
       toast.error('No hay pagos para exportar');
       return;
     }
-    const success = exportPayments(payments);
+    // Enrich payments with bank account names and pass FX rates
+    const enrichedPayments = payments.map(p => ({
+      ...p,
+      bank_account_name: bankAccounts.find(b => b.id === p.bank_account_id)?.nombre || ''
+    }));
+    const success = exportPayments(enrichedPayments, fxRates);
     if (success) {
       toast.success(`${payments.length} pagos exportados a Excel`);
     } else {
