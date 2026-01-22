@@ -2908,12 +2908,18 @@ async def mark_reconciliation_without_uuid(
     data: dict,
     current_user: Dict = Depends(get_current_user)
 ):
-    """Mark a bank transaction as reconciled WITHOUT a UUID (no CFDI relationship)"""
+    """
+    Mark a bank transaction as reconciled WITHOUT a UUID (no CFDI relationship).
+    Used for: bank fees (comisiones bancarias), expenses without invoice (gastos sin factura), etc.
+    Automatically creates a payment record for tracking in Cobranza y Pagos.
+    """
     company_id = current_user['company_id']
     
     bank_transaction_id = data.get('bank_transaction_id')
     tipo_conciliacion = data.get('tipo_conciliacion', 'sin_uuid')  # sin_uuid or no_relacionado
     notas = data.get('notas', '')
+    categoria = data.get('categoria', '')  # Optional: comision_bancaria, gasto_sin_factura, etc.
+    concepto = data.get('concepto', '')  # Custom description
     
     if not bank_transaction_id:
         raise HTTPException(status_code=400, detail="Se requiere bank_transaction_id")
@@ -2925,6 +2931,58 @@ async def mark_reconciliation_without_uuid(
     txn = await db.bank_transactions.find_one({'id': bank_transaction_id, 'company_id': company_id}, {'_id': 0})
     if not txn:
         raise HTTPException(status_code=404, detail="Movimiento bancario no encontrado")
+    
+    # Create payment record automatically (for tracking in Cobranza y Pagos)
+    tipo_pago = 'cobro' if txn.get('tipo_movimiento') == 'credito' else 'pago'
+    moneda = txn.get('moneda', 'MXN')
+    
+    # Generate description
+    if concepto:
+        descripcion = concepto
+    elif categoria == 'comision_bancaria':
+        descripcion = f"Comisión bancaria - {txn.get('descripcion', '')[:50]}"
+    elif categoria == 'gasto_sin_factura':
+        descripcion = f"Gasto sin factura - {txn.get('descripcion', '')[:50]}"
+    else:
+        descripcion = txn.get('descripcion') or f"Movimiento bancario {txn.get('referencia', '')}"
+    
+    payment_doc = {
+        'id': str(uuid.uuid4()),
+        'company_id': company_id,
+        'bank_account_id': txn.get('bank_account_id'),
+        'cfdi_id': None,  # No CFDI
+        'tipo': tipo_pago,
+        'concepto': descripcion[:200],
+        'monto': txn.get('monto', 0),
+        'moneda': moneda,
+        'metodo_pago': 'transferencia',
+        'fecha_vencimiento': txn.get('fecha_movimiento'),
+        'fecha_pago': datetime.now(timezone.utc).isoformat(),
+        'estatus': 'completado',
+        'referencia': txn.get('referencia', ''),
+        'beneficiario': txn.get('merchant_name') or '',
+        'notas': notas,
+        'es_real': True,
+        'bank_transaction_id': bank_transaction_id,
+        'sin_uuid': True,
+        'categoria_gasto': categoria,
+        'created_at': datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Get historical FX rate
+    if moneda != 'MXN':
+        rate = await db.fx_rates.find_one(
+            {'company_id': company_id, '$or': [
+                {'moneda_cotizada': moneda},
+                {'moneda_origen': moneda}
+            ]},
+            {'_id': 0},
+            sort=[('fecha_vigencia', -1)]
+        )
+        if rate:
+            payment_doc['tipo_cambio_historico'] = rate.get('tipo_cambio') or rate.get('tasa') or 1
+    
+    await db.payments.insert_one(payment_doc)
     
     # Create reconciliation record without CFDI
     reconciliation = BankReconciliation(
@@ -2947,16 +3005,23 @@ async def mark_reconciliation_without_uuid(
     # Mark transaction as reconciled
     await db.bank_transactions.update_one(
         {'id': bank_transaction_id},
-        {'$set': {'conciliado': True, 'tipo_conciliacion': tipo_conciliacion}}
+        {'$set': {
+            'conciliado': True, 
+            'tipo_conciliacion': tipo_conciliacion,
+            'payment_id': payment_doc['id']
+        }}
     )
     
     await audit_log(company_id, 'BankReconciliation', reconciliation.id, 'CREATE', current_user['id'], 
-                    {'tipo': tipo_conciliacion, 'sin_uuid': True})
+                    {'tipo': tipo_conciliacion, 'sin_uuid': True, 'payment_created': True})
     
     return {
         'status': 'success',
         'message': f'Movimiento marcado como conciliado ({tipo_conciliacion})',
-        'reconciliation_id': reconciliation.id
+        'reconciliation_id': reconciliation.id,
+        'payment_id': payment_doc['id'],
+        'payment_tipo': tipo_pago,
+        'payment_monto': payment_doc['monto']
     }
 
 # ===== CONCEPTOS MANUALES DE PROYECCIÓN =====
