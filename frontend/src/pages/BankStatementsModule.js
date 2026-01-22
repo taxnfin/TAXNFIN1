@@ -1102,6 +1102,86 @@ const BankStatementsModule = () => {
         </Card>
       </div>
 
+      {/* Reconciliation Summary Cards */}
+      {reconSummary && (
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <Card className="border-purple-200 bg-purple-50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-purple-700 flex items-center gap-2">
+                <CheckCircle size={16} />
+                Con UUID
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-purple-700">{reconSummary.summary?.conciliados_con_uuid || 0}</div>
+              <p className="text-xs text-purple-600">
+                ${(reconSummary.summary?.monto_con_uuid || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-orange-200 bg-orange-50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-orange-700 flex items-center gap-2">
+                <AlertCircle size={16} />
+                Sin UUID
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-orange-700">{reconSummary.summary?.conciliados_sin_uuid || 0}</div>
+              <p className="text-xs text-orange-600">
+                ${(reconSummary.summary?.monto_sin_uuid || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-gray-200 bg-gray-50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                <X size={16} />
+                No Relacionado
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-gray-700">{reconSummary.summary?.no_relacionados || 0}</div>
+              <p className="text-xs text-gray-600">
+                ${(reconSummary.summary?.monto_no_relacionado || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-red-200 bg-red-50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-red-700 flex items-center gap-2">
+                <Clock size={16} />
+                Diferencia Pendiente
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-red-700">{reconSummary.summary?.pendientes || 0}</div>
+              <p className="text-xs text-red-600">
+                ${(reconSummary.summary?.monto_pendiente || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-green-300 bg-green-100">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-green-800 flex items-center gap-2">
+                <CheckCircle size={16} />
+                % Conciliado
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-green-800">{reconSummary.summary?.porcentaje_conciliado || 0}%</div>
+              <p className="text-xs text-green-700">
+                {(reconSummary.summary?.total_movimientos || 0) - (reconSummary.summary?.pendientes || 0)} de {reconSummary.summary?.total_movimientos || 0}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Filters */}
       <Card>
         <CardContent className="pt-4">
