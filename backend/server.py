@@ -4105,6 +4105,297 @@ async def get_payments_summary(
         'tc_eur': eur_to_mxn
     }
 
+
+@api_router.get("/payments/breakdown")
+async def get_payments_breakdown(
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Get complete breakdown of payments:
+    - Por Cobrar / Por Pagar (from CFDIs/SAT - pending)
+    - Cobrado / Pagado (from reconciled bank transactions)
+    - Proyecciones (for variance analysis in 13-week cashflow)
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get FX rates
+    fx_rate_usd = await db.fx_rates.find_one(
+        {'company_id': company_id, '$or': [{'moneda_cotizada': 'USD'}, {'moneda_origen': 'USD'}]},
+        {'_id': 0},
+        sort=[('fecha_vigencia', -1)]
+    )
+    usd_to_mxn = fx_rate_usd.get('tipo_cambio') or fx_rate_usd.get('tasa') if fx_rate_usd else 17.5
+    
+    def convert_to_mxn(monto, moneda):
+        if not monto:
+            return 0
+        if moneda == 'USD':
+            return monto * usd_to_mxn
+        return monto
+    
+    # ===== SECTION 1: FROM CFDI / SAT =====
+    all_cfdis = await db.cfdis.find({
+        'company_id': company_id,
+        'estatus': 'vigente'
+    }, {'_id': 0}).to_list(5000)
+    
+    # Por Cobrar (CFDIs ingreso pendientes)
+    por_cobrar_list = []
+    total_por_cobrar_mxn = 0
+    total_por_cobrar_usd = 0
+    
+    # Por Pagar (CFDIs egreso pendientes)
+    por_pagar_list = []
+    total_por_pagar_mxn = 0
+    total_por_pagar_usd = 0
+    
+    for cfdi in all_cfdis:
+        total = cfdi.get('total', 0) or 0
+        moneda = cfdi.get('moneda', 'MXN')
+        tipo_cfdi = cfdi.get('tipo_cfdi', cfdi.get('tipo', ''))
+        
+        if tipo_cfdi == 'ingreso':
+            monto_cobrado = cfdi.get('monto_cobrado', 0) or 0
+            pendiente = total - monto_cobrado
+            if pendiente > 0.01:
+                por_cobrar_list.append({
+                    'cfdi_id': cfdi.get('id'),
+                    'uuid': cfdi.get('uuid', '')[:8] + '...' if cfdi.get('uuid') else '',
+                    'emisor': cfdi.get('emisor_nombre', ''),
+                    'receptor': cfdi.get('receptor_nombre', ''),
+                    'fecha': cfdi.get('fecha_emision'),
+                    'total': total,
+                    'cobrado': monto_cobrado,
+                    'pendiente': pendiente,
+                    'moneda': moneda
+                })
+                if moneda == 'USD':
+                    total_por_cobrar_usd += pendiente
+                else:
+                    total_por_cobrar_mxn += pendiente
+                    
+        elif tipo_cfdi == 'egreso':
+            monto_pagado = cfdi.get('monto_pagado', 0) or 0
+            pendiente = total - monto_pagado
+            if pendiente > 0.01:
+                por_pagar_list.append({
+                    'cfdi_id': cfdi.get('id'),
+                    'uuid': cfdi.get('uuid', '')[:8] + '...' if cfdi.get('uuid') else '',
+                    'emisor': cfdi.get('emisor_nombre', ''),
+                    'receptor': cfdi.get('receptor_nombre', ''),
+                    'fecha': cfdi.get('fecha_emision'),
+                    'total': total,
+                    'pagado': monto_pagado,
+                    'pendiente': pendiente,
+                    'moneda': moneda
+                })
+                if moneda == 'USD':
+                    total_por_pagar_usd += pendiente
+                else:
+                    total_por_pagar_mxn += pendiente
+    
+    # ===== SECTION 2: ALREADY PAID/COLLECTED (Real - from reconciled) =====
+    completed_payments = await db.payments.find({
+        'company_id': company_id,
+        'estatus': 'completado',
+        'es_real': True
+    }, {'_id': 0}).to_list(5000)
+    
+    cobrado_list = []
+    total_cobrado_mxn = 0
+    total_cobrado_usd = 0
+    cobrado_con_cfdi_mxn = 0
+    cobrado_sin_cfdi_mxn = 0
+    
+    pagado_list = []
+    total_pagado_mxn = 0
+    total_pagado_usd = 0
+    pagado_con_cfdi_mxn = 0
+    pagado_sin_cfdi_mxn = 0
+    
+    for p in completed_payments:
+        monto = p.get('monto', 0) or 0
+        moneda = p.get('moneda', 'MXN')
+        tipo = p.get('tipo', 'pago')
+        has_cfdi = bool(p.get('cfdi_id'))
+        
+        item = {
+            'payment_id': p.get('id'),
+            'concepto': p.get('concepto', '')[:50],
+            'monto': monto,
+            'moneda': moneda,
+            'fecha_pago': p.get('fecha_pago'),
+            'beneficiario': p.get('beneficiario', ''),
+            'referencia': p.get('referencia', ''),
+            'cfdi_id': p.get('cfdi_id'),
+            'sin_uuid': p.get('sin_uuid', False),
+            'categoria': p.get('categoria_gasto', '')
+        }
+        
+        if tipo == 'cobro':
+            cobrado_list.append(item)
+            if moneda == 'USD':
+                total_cobrado_usd += monto
+            else:
+                total_cobrado_mxn += monto
+            
+            monto_mxn = convert_to_mxn(monto, moneda)
+            if has_cfdi:
+                cobrado_con_cfdi_mxn += monto_mxn
+            else:
+                cobrado_sin_cfdi_mxn += monto_mxn
+        else:
+            pagado_list.append(item)
+            if moneda == 'USD':
+                total_pagado_usd += monto
+            else:
+                total_pagado_mxn += monto
+            
+            monto_mxn = convert_to_mxn(monto, moneda)
+            if has_cfdi:
+                pagado_con_cfdi_mxn += monto_mxn
+            else:
+                pagado_sin_cfdi_mxn += monto_mxn
+    
+    # ===== SECTION 3: PROJECTIONS (for variance analysis) =====
+    projections = await db.manual_projections.find({
+        'company_id': company_id,
+        'activo': True
+    }, {'_id': 0}).to_list(500)
+    
+    proyeccion_cobros = []
+    proyeccion_pagos = []
+    total_proyeccion_cobros_mxn = 0
+    total_proyeccion_pagos_mxn = 0
+    
+    for proj in projections:
+        monto = proj.get('monto', 0) or 0
+        moneda = proj.get('moneda', 'MXN')
+        tipo = proj.get('tipo', 'egreso')
+        
+        item = {
+            'id': proj.get('id'),
+            'nombre': proj.get('nombre', ''),
+            'monto': monto,
+            'moneda': moneda,
+            'semana': proj.get('semana'),
+            'mes': proj.get('mes'),
+            'recurrente': proj.get('recurrente', False),
+            'categoria': proj.get('categoria', '')
+        }
+        
+        monto_mxn = convert_to_mxn(monto, moneda)
+        
+        if tipo == 'ingreso':
+            proyeccion_cobros.append(item)
+            total_proyeccion_cobros_mxn += monto_mxn
+        else:
+            proyeccion_pagos.append(item)
+            total_proyeccion_pagos_mxn += monto_mxn
+    
+    # Also get pending payments that are projections (not real)
+    pending_projected = await db.payments.find({
+        'company_id': company_id,
+        'estatus': 'pendiente',
+        'es_real': False
+    }, {'_id': 0}).to_list(500)
+    
+    for p in pending_projected:
+        monto = p.get('monto', 0) or 0
+        moneda = p.get('moneda', 'MXN')
+        tipo = p.get('tipo', 'pago')
+        
+        item = {
+            'id': p.get('id'),
+            'nombre': p.get('concepto', ''),
+            'monto': monto,
+            'moneda': moneda,
+            'fecha_vencimiento': p.get('fecha_vencimiento'),
+            'recurrente': p.get('domiciliacion_activa', False),
+            'categoria': 'payment_projection'
+        }
+        
+        monto_mxn = convert_to_mxn(monto, moneda)
+        
+        if tipo == 'cobro':
+            proyeccion_cobros.append(item)
+            total_proyeccion_cobros_mxn += monto_mxn
+        else:
+            proyeccion_pagos.append(item)
+            total_proyeccion_pagos_mxn += monto_mxn
+    
+    # ===== CALCULATE VARIANCE SUMMARY =====
+    # For 13-week cashflow variance analysis
+    total_real_cobros = total_cobrado_mxn + convert_to_mxn(total_cobrado_usd, 'USD')
+    total_real_pagos = total_pagado_mxn + convert_to_mxn(total_pagado_usd, 'USD')
+    
+    varianza_cobros = total_real_cobros - total_proyeccion_cobros_mxn
+    varianza_pagos = total_real_pagos - total_proyeccion_pagos_mxn
+    
+    return {
+        # Section 1: Por Cobrar / Por Pagar (from CFDI/SAT)
+        'cfdi_por_cobrar': {
+            'items': por_cobrar_list[:50],  # Limit for performance
+            'total_count': len(por_cobrar_list),
+            'total_mxn': round(total_por_cobrar_mxn, 2),
+            'total_usd': round(total_por_cobrar_usd, 2),
+            'total_equiv_mxn': round(total_por_cobrar_mxn + convert_to_mxn(total_por_cobrar_usd, 'USD'), 2)
+        },
+        'cfdi_por_pagar': {
+            'items': por_pagar_list[:50],
+            'total_count': len(por_pagar_list),
+            'total_mxn': round(total_por_pagar_mxn, 2),
+            'total_usd': round(total_por_pagar_usd, 2),
+            'total_equiv_mxn': round(total_por_pagar_mxn + convert_to_mxn(total_por_pagar_usd, 'USD'), 2)
+        },
+        
+        # Section 2: Cobrado / Pagado (Real - from conciliado)
+        'cobrado_real': {
+            'items': cobrado_list[:50],
+            'total_count': len(cobrado_list),
+            'total_mxn': round(total_cobrado_mxn, 2),
+            'total_usd': round(total_cobrado_usd, 2),
+            'total_equiv_mxn': round(total_cobrado_mxn + convert_to_mxn(total_cobrado_usd, 'USD'), 2),
+            'con_cfdi_mxn': round(cobrado_con_cfdi_mxn, 2),
+            'sin_cfdi_mxn': round(cobrado_sin_cfdi_mxn, 2)
+        },
+        'pagado_real': {
+            'items': pagado_list[:50],
+            'total_count': len(pagado_list),
+            'total_mxn': round(total_pagado_mxn, 2),
+            'total_usd': round(total_pagado_usd, 2),
+            'total_equiv_mxn': round(total_pagado_mxn + convert_to_mxn(total_pagado_usd, 'USD'), 2),
+            'con_cfdi_mxn': round(pagado_con_cfdi_mxn, 2),
+            'sin_cfdi_mxn': round(pagado_sin_cfdi_mxn, 2)
+        },
+        
+        # Section 3: Proyecciones
+        'proyeccion_cobros': {
+            'items': proyeccion_cobros[:50],
+            'total_count': len(proyeccion_cobros),
+            'total_equiv_mxn': round(total_proyeccion_cobros_mxn, 2)
+        },
+        'proyeccion_pagos': {
+            'items': proyeccion_pagos[:50],
+            'total_count': len(proyeccion_pagos),
+            'total_equiv_mxn': round(total_proyeccion_pagos_mxn, 2)
+        },
+        
+        # Section 4: Variance Summary (for 13-week cashflow)
+        'varianza': {
+            'cobros_real_vs_proyectado': round(varianza_cobros, 2),
+            'cobros_pct': round((varianza_cobros / total_proyeccion_cobros_mxn * 100), 1) if total_proyeccion_cobros_mxn > 0 else 0,
+            'pagos_real_vs_proyectado': round(varianza_pagos, 2),
+            'pagos_pct': round((varianza_pagos / total_proyeccion_pagos_mxn * 100), 1) if total_proyeccion_pagos_mxn > 0 else 0,
+            'flujo_neto_real': round(total_real_cobros - total_real_pagos, 2),
+            'flujo_neto_proyectado': round(total_proyeccion_cobros_mxn - total_proyeccion_pagos_mxn, 2)
+        },
+        
+        'tc_usd': usd_to_mxn
+    }
+
+
 @api_router.put("/payments/{payment_id}")
 async def update_payment(payment_id: str, payment_data: PaymentCreate, request: Request, current_user: Dict = Depends(get_current_user)):
     company_id = await get_active_company_id(request, current_user)
