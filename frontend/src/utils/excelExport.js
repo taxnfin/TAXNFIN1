@@ -139,21 +139,32 @@ export const exportCFDIs = (cfdis, categories) => {
   return exportToExcel(data, 'CFDIs', 'CFDIs');
 };
 
-export const exportPayments = (payments) => {
-  const data = payments.map(p => ({
-    'Fecha Vencimiento': p.fecha_vencimiento ? format(new Date(p.fecha_vencimiento), 'dd/MM/yyyy') : '',
-    'Fecha Pago': p.fecha_pago ? format(new Date(p.fecha_pago), 'dd/MM/yyyy') : '',
-    'Tipo': p.tipo === 'cobro' ? 'Cobro' : 'Pago',
-    'Concepto': p.concepto || '',
-    'Beneficiario': p.beneficiario || '',
-    'Monto': p.monto || 0,
-    'Moneda': p.moneda || 'MXN',
-    'Método': p.metodo_pago || '',
-    'Estatus': p.estatus || '',
-    'Real/Proyección': p.es_real ? 'Real' : 'Proyección',
-    'Referencia': p.referencia || '',
-    'Notas': p.notas || ''
-  }));
+export const exportPayments = (payments, fxRates = {}) => {
+  const data = payments.map(p => {
+    const moneda = p.moneda || 'MXN';
+    const monto = p.monto || 0;
+    // Get FX rate - prioritize the rate stored in the payment (historical) or use current rate
+    const tcHistorico = p.tipo_cambio_historico || fxRates[moneda] || 1;
+    const montoMXN = moneda === 'MXN' ? monto : monto * tcHistorico;
+    
+    return {
+      'Fecha Vencimiento': p.fecha_vencimiento ? format(new Date(p.fecha_vencimiento), 'dd/MM/yyyy') : '',
+      'Fecha Pago': p.fecha_pago ? format(new Date(p.fecha_pago), 'dd/MM/yyyy') : '',
+      'Tipo': p.tipo === 'cobro' ? 'Cobro' : 'Pago',
+      'Concepto': p.concepto || '',
+      'Beneficiario': p.beneficiario || '',
+      'Monto Original': monto,
+      'Moneda': moneda,
+      'TC Histórico': moneda !== 'MXN' ? tcHistorico : '',
+      'Monto MXN': Math.round(montoMXN * 100) / 100,
+      'Método': p.metodo_pago || '',
+      'Estatus': p.estatus || '',
+      'Real/Proyección': p.es_real ? 'Real' : 'Proyección',
+      'Referencia': p.referencia || '',
+      'Cuenta Bancaria': p.bank_account_name || '',
+      'Notas': p.notas || ''
+    };
+  });
 
   return exportToExcel(data, 'Pagos', 'Pagos');
 };
