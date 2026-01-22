@@ -1352,36 +1352,38 @@ const BankStatementsModule = () => {
                         <TableCell className="text-center">
                           <div className="flex justify-center gap-1 flex-wrap">
                             {!txn.conciliado && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-xs h-7"
-                                onClick={() => {
-                                  setSelectedTransaction(txn);
-                                  setReconcileDialogOpen(true);
-                                }}
-                              >
-                                <Link2 size={12} className="mr-1" />
-                                Con UUID
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-xs h-7 text-orange-600 border-orange-300 hover:bg-orange-50"
-                                onClick={() => handleMarkWithoutUUID(txn, 'sin_uuid')}
-                                title="Conciliar sin UUID"
-                              >
-                                Sin UUID
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-xs h-7 text-gray-600 border-gray-300 hover:bg-gray-50"
-                                onClick={() => handleMarkWithoutUUID(txn, 'no_relacionado')}
-                                title="Marcar como no relacionado"
-                              >
-                                No Rel.
-                              </Button>
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs h-7"
+                                  onClick={() => {
+                                    setSelectedTransaction(txn);
+                                    setReconcileDialogOpen(true);
+                                  }}
+                                >
+                                  <Link2 size={12} className="mr-1" />
+                                  Con UUID
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs h-7 text-orange-600 border-orange-300 hover:bg-orange-50"
+                                  onClick={() => handleMarkWithoutUUID(txn, 'sin_uuid')}
+                                  title="Conciliar sin UUID"
+                                >
+                                  Sin UUID
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs h-7 text-gray-600 border-gray-300 hover:bg-gray-50"
+                                  onClick={() => handleMarkWithoutUUID(txn, 'no_relacionado')}
+                                  title="Marcar como no relacionado"
+                                >
+                                  No Rel.
+                                </Button>
+                              </>
                             )}
                             <Button
                               variant="ghost"
