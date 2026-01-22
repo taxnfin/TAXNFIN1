@@ -1021,8 +1021,8 @@ const PaymentsModule = () => {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+      {/* Summary Cards - Row 1: Pendientes de CFDI */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {/* Por Pagar (CFDI) */}
         <Card className="border-[#EF4444] bg-red-50">
           <CardHeader className="pb-2">
@@ -1031,19 +1031,19 @@ const PaymentsModule = () => {
               Por Pagar (CFDI)
             </CardTitle>
             <CardDescription className="text-xs">
-              De facturas pendientes SAT
+              Facturas pendientes SAT
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold mono text-[#DC2626]">
-              ${(breakdown?.cfdi_por_pagar?.total_equiv_mxn || summary?.total_por_pagar || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              ${(breakdown?.cfdi_por_pagar?.total_equiv_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
             </div>
-            {(breakdown?.cfdi_por_pagar?.total_usd > 0 || summary?.total_por_pagar_usd > 0) && (
-              <div className="text-sm font-medium mono text-[#DC2626] mt-1">
-                + ${(breakdown?.cfdi_por_pagar?.total_usd || summary?.total_por_pagar_usd || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
+            {breakdown?.cfdi_por_pagar?.total_usd > 0 && (
+              <div className="text-sm font-medium mono text-[#DC2626]/80 mt-1">
+                + ${breakdown.cfdi_por_pagar.total_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
               </div>
             )}
-            <div className="text-xs text-[#64748B] mt-1">{breakdown?.cfdi_por_pagar?.total_count || summary?.pagos_pendientes || 0} facturas</div>
+            <div className="text-xs text-[#64748B] mt-1">{breakdown?.cfdi_por_pagar?.total_count || 0} facturas</div>
           </CardContent>
         </Card>
 
@@ -1055,39 +1055,90 @@ const PaymentsModule = () => {
               Por Cobrar (CFDI)
             </CardTitle>
             <CardDescription className="text-xs">
-              De facturas pendientes SAT
+              Facturas pendientes SAT
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold mono text-[#059669]">
-              ${(breakdown?.cfdi_por_cobrar?.total_equiv_mxn || summary?.total_por_cobrar || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              ${(breakdown?.cfdi_por_cobrar?.total_equiv_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
             </div>
-            {(breakdown?.cfdi_por_cobrar?.total_usd > 0 || summary?.total_por_cobrar_usd > 0) && (
-              <div className="text-sm font-medium mono text-[#059669] mt-1">
-                + ${(breakdown?.cfdi_por_cobrar?.total_usd || summary?.total_por_cobrar_usd || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
+            {breakdown?.cfdi_por_cobrar?.total_usd > 0 && (
+              <div className="text-sm font-medium mono text-[#059669]/80 mt-1">
+                + ${breakdown.cfdi_por_cobrar.total_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
               </div>
             )}
-            <div className="text-xs text-[#64748B] mt-1">{breakdown?.cfdi_por_cobrar?.total_count || summary?.cobros_pendientes || 0} facturas</div>
+            <div className="text-xs text-[#64748B] mt-1">{breakdown?.cfdi_por_cobrar?.total_count || 0} facturas</div>
           </CardContent>
         </Card>
 
-        {/* Pagado Real */}
-        <Card className="border-[#DC2626] bg-red-100/50">
+        {/* Facturas Pagadas (Ejecutado) */}
+        <Card className="border-[#B91C1C] bg-red-100/70">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-[#B91C1C] flex items-center gap-2">
+            <CardTitle className="text-sm font-medium text-[#991B1B] flex items-center gap-2">
               <CheckCircle2 size={16} />
-              Pagado (Real)
+              Fact. Pagadas (CFDI)
             </CardTitle>
             <CardDescription className="text-xs">
-              Conciliado con banco
+              Montos ejecutados
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold mono text-[#991B1B]">
+              ${(breakdown?.facturas_pagadas?.total_equiv_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+            </div>
+            {breakdown?.facturas_pagadas?.total_usd > 0 && (
+              <div className="text-sm font-medium mono text-[#991B1B]/80 mt-1">
+                + ${breakdown.facturas_pagadas.total_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
+              </div>
+            )}
+            <div className="text-xs text-[#64748B] mt-1">{breakdown?.facturas_pagadas?.total_count || 0} facturas</div>
+          </CardContent>
+        </Card>
+
+        {/* Facturas Cobradas (Ejecutado) */}
+        <Card className="border-[#047857] bg-green-100/70">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-[#065F46] flex items-center gap-2">
+              <CheckCircle2 size={16} />
+              Fact. Cobradas (CFDI)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Montos ejecutados
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold mono text-[#065F46]">
+              ${(breakdown?.facturas_cobradas?.total_equiv_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+            </div>
+            {breakdown?.facturas_cobradas?.total_usd > 0 && (
+              <div className="text-sm font-medium mono text-[#065F46]/80 mt-1">
+                + ${breakdown.facturas_cobradas.total_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
+              </div>
+            )}
+            <div className="text-xs text-[#64748B] mt-1">{breakdown?.facturas_cobradas?.total_count || 0} facturas</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Summary Cards - Row 2: Conciliado Real + Proyecciones */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Pagado Real (Conciliado) */}
+        <Card className="border-[#DC2626]/50 bg-red-50/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-[#B91C1C] flex items-center gap-2">
+              <CreditCard size={16} />
+              Pagado (Banco)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Total conciliado
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold mono text-[#B91C1C]">
-              ${(breakdown?.pagado_real?.total_equiv_mxn || summary?.pagado_mes_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              ${(breakdown?.pagado_real?.total_equiv_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
             </div>
             {breakdown?.pagado_real?.total_usd > 0 && (
-              <div className="text-sm font-medium mono text-[#B91C1C] mt-1">
+              <div className="text-sm font-medium mono text-[#B91C1C]/70 mt-1">
                 + ${breakdown.pagado_real.total_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
               </div>
             )}
@@ -1098,23 +1149,23 @@ const PaymentsModule = () => {
           </CardContent>
         </Card>
 
-        {/* Cobrado Real */}
-        <Card className="border-[#059669] bg-green-100/50">
+        {/* Cobrado Real (Conciliado) */}
+        <Card className="border-[#059669]/50 bg-green-50/50">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-[#047857] flex items-center gap-2">
-              <CheckCircle2 size={16} />
-              Cobrado (Real)
+              <CreditCard size={16} />
+              Cobrado (Banco)
             </CardTitle>
             <CardDescription className="text-xs">
-              Conciliado con banco
+              Total conciliado
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold mono text-[#047857]">
-              ${(breakdown?.cobrado_real?.total_equiv_mxn || summary?.cobrado_mes_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              ${(breakdown?.cobrado_real?.total_equiv_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
             </div>
             {breakdown?.cobrado_real?.total_usd > 0 && (
-              <div className="text-sm font-medium mono text-[#047857] mt-1">
+              <div className="text-sm font-medium mono text-[#047857]/70 mt-1">
                 + ${breakdown.cobrado_real.total_usd.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD
               </div>
             )}
@@ -1141,7 +1192,7 @@ const PaymentsModule = () => {
               ${(breakdown?.proyeccion_pagos?.total_equiv_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
             </div>
             <div className="text-xs text-[#64748B] mt-1">{breakdown?.proyeccion_pagos?.total_count || 0} proyecciones</div>
-            {breakdown?.varianza && (
+            {breakdown?.varianza && breakdown.varianza.pagos_pct !== 0 && (
               <div className={`text-xs font-medium mt-1 ${breakdown.varianza.pagos_real_vs_proyectado >= 0 ? 'text-red-600' : 'text-green-600'}`}>
                 Varianza: {breakdown.varianza.pagos_pct > 0 ? '+' : ''}{breakdown.varianza.pagos_pct}%
               </div>
@@ -1165,7 +1216,7 @@ const PaymentsModule = () => {
               ${(breakdown?.proyeccion_cobros?.total_equiv_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
             </div>
             <div className="text-xs text-[#64748B] mt-1">{breakdown?.proyeccion_cobros?.total_count || 0} proyecciones</div>
-            {breakdown?.varianza && (
+            {breakdown?.varianza && breakdown.varianza.cobros_pct !== 0 && (
               <div className={`text-xs font-medium mt-1 ${breakdown.varianza.cobros_real_vs_proyectado >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 Varianza: {breakdown.varianza.cobros_pct > 0 ? '+' : ''}{breakdown.varianza.cobros_pct}%
               </div>
