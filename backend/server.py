@@ -369,6 +369,7 @@ class BankReconciliation(BaseModel):
     transaction_id: Optional[str] = None
     cfdi_id: Optional[str] = None
     metodo_conciliacion: ReconciliationMethod
+    tipo_conciliacion: str = "con_uuid"  # con_uuid, sin_uuid, no_relacionado
     porcentaje_match: float = 100.0
     fecha_conciliacion: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     user_id: str
@@ -380,6 +381,7 @@ class BankReconciliationCreate(BaseModel):
     transaction_id: Optional[str] = None
     cfdi_id: Optional[str] = None
     metodo_conciliacion: ReconciliationMethod
+    tipo_conciliacion: str = "con_uuid"  # con_uuid, sin_uuid, no_relacionado
     porcentaje_match: float = 100.0
     notas: Optional[str] = None
 
