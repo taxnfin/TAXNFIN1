@@ -596,7 +596,7 @@ const PaymentsModule = () => {
     }
   };
 
-  // Import selected bank movements as payments
+  // Import selected bank movements as payments with automatic CFDI matching
   const handleImportBankMovements = async () => {
     if (selectedBankMovements.length === 0) {
       toast.error('Selecciona al menos un movimiento');
@@ -604,56 +604,37 @@ const PaymentsModule = () => {
     }
 
     setImportingMovements(true);
-    let created = 0;
-    let errors = 0;
-
-    for (const txnId of selectedBankMovements) {
-      const txn = bankTransactions.find(t => t.id === txnId);
-      if (!txn) continue;
-
-      // Determine if it's a cobro (deposit) or pago (withdrawal)
-      const tipo = txn.tipo_movimiento === 'credito' ? 'cobro' : 'pago';
-      const account = bankAccounts.find(a => a.id === txn.bank_account_id);
-
-      try {
-        await api.post('/payments', {
-          tipo: tipo,
-          concepto: txn.descripcion || `Movimiento bancario ${txn.referencia || ''}`,
-          monto: txn.monto,
-          moneda: txn.moneda || account?.moneda || 'MXN',
-          metodo_pago: 'transferencia',
-          fecha_vencimiento: txn.fecha_movimiento,
-          beneficiario: txn.merchant_name || txn.descripcion?.substring(0, 50) || '',
-          referencia: txn.referencia || '',
-          es_real: true,
-          bank_account_id: txn.bank_account_id,
-          bank_transaction_id: txn.id  // Link to the bank transaction
-        });
-        
-        // Mark bank transaction as reconciled (linked to payment)
-        await api.post('/reconciliations/mark-without-uuid', {
-          bank_transaction_id: txn.id,
-          tipo_conciliacion: 'sin_uuid',
-          notas: 'Creado desde Cobranza y Pagos'
-        });
-        
-        created++;
-      } catch (error) {
-        console.error('Error creating payment from bank txn:', error);
-        errors++;
+    
+    try {
+      // Use the new batch endpoint with automatic CFDI matching
+      const res = await api.post('/bank-transactions/batch-create-payments', {
+        transaction_ids: selectedBankMovements,
+        auto_detect: true  // Enable automatic CFDI matching (±60 days, similar amount)
+      });
+      
+      const { created, linked_with_cfdi, errors, message } = res.data;
+      
+      if (created > 0) {
+        if (linked_with_cfdi > 0) {
+          toast.success(`${created} ${created === 1 ? 'pago/cobro creado' : 'pagos/cobros creados'}, ${linked_with_cfdi} vinculados automáticamente con CFDI`);
+        } else {
+          toast.success(`${created} ${created === 1 ? 'pago/cobro creado' : 'pagos/cobros creados'}`);
+        }
+        loadData();
+        loadBankTransactions();
       }
-    }
-
-    setImportingMovements(false);
-    setImportBankDialogOpen(false);
-    setSelectedBankMovements([]);
-
-    if (created > 0) {
-      toast.success(`${created} ${created === 1 ? 'pago/cobro creado' : 'pagos/cobros creados'}`);
-      loadData();
-    }
-    if (errors > 0) {
-      toast.error(`${errors} movimientos con error`);
+      
+      if (errors > 0) {
+        toast.error(`${errors} movimientos con error`);
+      }
+      
+    } catch (error) {
+      console.error('Error creating payments from bank:', error);
+      toast.error(error.response?.data?.detail || 'Error al crear pagos desde movimientos');
+    } finally {
+      setImportingMovements(false);
+      setImportBankDialogOpen(false);
+      setSelectedBankMovements([]);
     }
   };
 
