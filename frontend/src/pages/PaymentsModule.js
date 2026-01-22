@@ -48,6 +48,11 @@ const PaymentsModule = () => {
   const [bankTransactions, setBankTransactions] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [fxRates, setFxRates] = useState({ USD: 17.5, EUR: 19.0 });
+  
+  // Import from bank movements dialog
+  const [importBankDialogOpen, setImportBankDialogOpen] = useState(false);
+  const [selectedBankMovements, setSelectedBankMovements] = useState([]);
+  const [importingMovements, setImportingMovements] = useState(false);
   const [autoMatchDialogOpen, setAutoMatchDialogOpen] = useState(false);
   const [matchResults, setMatchResults] = useState([]);
   const [matchCandidates, setMatchCandidates] = useState([]);
