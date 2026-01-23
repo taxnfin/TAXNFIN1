@@ -2027,17 +2027,22 @@ const BankStatementsModule = () => {
               {selectedCfdis.length > 0 && (
                 <div className="grid grid-cols-3 gap-3">
                   <div className="p-3 bg-gray-100 rounded-lg text-center">
-                    <p className="text-xs text-gray-500">Monto Movimiento</p>
-                    <p className="font-mono font-bold">${getReconciliationTotals().movimientoMonto.toLocaleString('es-MX', {minimumFractionDigits: 2})}</p>
+                    <p className="text-xs text-gray-500">Monto Movimiento (en MXN)</p>
+                    <p className="font-mono font-bold">${getReconciliationTotals().movimientoMontoMXN.toLocaleString('es-MX', {minimumFractionDigits: 2})}</p>
+                    {getReconciliationTotals().movimientoMoneda !== 'MXN' && (
+                      <p className="text-xs text-gray-400">
+                        ({getReconciliationTotals().movimientoMonto.toLocaleString('es-MX', {minimumFractionDigits: 2})} {getReconciliationTotals().movimientoMoneda})
+                      </p>
+                    )}
                   </div>
                   <div className="p-3 bg-green-100 rounded-lg text-center">
                     <p className="text-xs text-green-700">CFDIs Seleccionados ({selectedCfdis.length})</p>
-                    <p className="font-mono font-bold text-green-700">${getReconciliationTotals().cfdiTotal.toLocaleString('es-MX', {minimumFractionDigits: 2})}</p>
+                    <p className="font-mono font-bold text-green-700">${getReconciliationTotals().cfdiTotalMXN.toLocaleString('es-MX', {minimumFractionDigits: 2})}</p>
                   </div>
-                  <div className={`p-3 rounded-lg text-center ${Math.abs(getReconciliationTotals().diferencia) < 0.01 ? 'bg-green-100' : 'bg-yellow-100'}`}>
-                    <p className="text-xs text-gray-600">Diferencia</p>
-                    <p className={`font-mono font-bold ${Math.abs(getReconciliationTotals().diferencia) < 0.01 ? 'text-green-700' : 'text-yellow-700'}`}>
-                      ${getReconciliationTotals().diferencia.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                  <div className={`p-3 rounded-lg text-center ${Math.abs(getReconciliationTotals().diferenciaMXN) < 0.01 ? 'bg-green-100' : 'bg-yellow-100'}`}>
+                    <p className="text-xs text-gray-600">Diferencia (MXN)</p>
+                    <p className={`font-mono font-bold ${Math.abs(getReconciliationTotals().diferenciaMXN) < 0.01 ? 'text-green-700' : 'text-yellow-700'}`}>
+                      ${getReconciliationTotals().diferenciaMXN.toLocaleString('es-MX', {minimumFractionDigits: 2})}
                     </p>
                   </div>
                 </div>
