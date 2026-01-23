@@ -432,12 +432,35 @@ const BankStatementsModule = () => {
     }
   };
 
+  // Get historical exchange rate for a specific date
+  const getHistoricalFxRate = async (moneda, fecha) => {
+    if (moneda === 'MXN') {
+      return { tasa: 1.0, fecha: fecha };
+    }
+    try {
+      const fechaStr = fecha ? (fecha instanceof Date ? fecha.toISOString().split('T')[0] : fecha.split('T')[0]) : null;
+      const res = await api.get(`/fx-rates/by-date?moneda=${moneda}&fecha=${fechaStr}`);
+      return { tasa: res.data.tasa, fecha: res.data.fecha };
+    } catch (error) {
+      console.log('Error getting historical FX rate, using default');
+      const defaultRates = { USD: 17.5, EUR: 19.0 };
+      return { tasa: defaultRates[moneda] || 1.0, fecha: fecha };
+    }
+  };
+
   const convertToMXN = (monto, moneda) => {
     if (!monto) return 0;
     if (moneda === 'MXN') return monto;
     if (moneda === 'USD') return monto * (fxRates.USD || 17.5);
     if (moneda === 'EUR') return monto * (fxRates.EUR || 19.0);
     return monto;
+  };
+
+  // Convert using historical rate (for reconciliation)
+  const convertToMXNHistorical = (monto, moneda, rate) => {
+    if (!monto) return 0;
+    if (moneda === 'MXN') return monto;
+    return monto * (rate || fxRates[moneda] || 17.5);
   };
 
   const loadData = async () => {
