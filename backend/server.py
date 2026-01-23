@@ -2776,12 +2776,13 @@ async def check_duplicate_transactions(
     return {'duplicates': duplicates, 'count': len(duplicates)}
 
 @api_router.post("/reconciliations", response_model=BankReconciliation)
-async def create_reconciliation(reconciliation_data: BankReconciliationCreate, current_user: Dict = Depends(get_current_user)):
-    bank_txn = await db.bank_transactions.find_one({'id': reconciliation_data.bank_transaction_id, 'company_id': current_user['company_id']}, {'_id': 0})
+async def create_reconciliation(reconciliation_data: BankReconciliationCreate, request: Request, current_user: Dict = Depends(get_current_user)):
+    # Use active company ID (respects X-Company-ID header)
+    company_id = await get_active_company_id(request, current_user)
+    
+    bank_txn = await db.bank_transactions.find_one({'id': reconciliation_data.bank_transaction_id, 'company_id': company_id}, {'_id': 0})
     if not bank_txn:
         raise HTTPException(status_code=404, detail="Movimiento bancario no encontrado")
-    
-    company_id = current_user['company_id']
     
     # UPDATED LOGIC: If reconciling with a CFDI, automatically create payment if not exists
     # This means: if it's reconciled, it's considered paid/collected
