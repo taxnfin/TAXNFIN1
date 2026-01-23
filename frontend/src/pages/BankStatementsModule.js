@@ -2011,7 +2011,14 @@ const BankStatementsModule = () => {
                     <p className="text-sm text-blue-700">Monto:</p>
                     <p className={`text-2xl font-bold font-mono ${selectedTransaction.tipo_movimiento === 'credito' ? 'text-green-600' : 'text-red-600'}`}>
                       ${selectedTransaction.monto.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                      <span className="text-sm ml-1">{getReconciliationTotals().movimientoMoneda}</span>
                     </p>
+                    {getReconciliationTotals().movimientoMoneda !== 'MXN' && (
+                      <p className="text-sm text-gray-500">
+                        ≈ ${getReconciliationTotals().movimientoMontoMXN.toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+                        <span className="text-xs ml-1">(TC: {getReconciliationTotals().tcUsado.toFixed(4)})</span>
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
