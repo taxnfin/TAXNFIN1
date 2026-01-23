@@ -2881,12 +2881,14 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
 
 @api_router.get("/reconciliations", response_model=List[BankReconciliation])
 async def list_reconciliations(
+    request: Request,
     current_user: Dict = Depends(get_current_user),
     limit: int = Query(100, le=1000),
     skip: int = Query(0, ge=0)
 ):
+    company_id = await get_active_company_id(request, current_user)
     reconciliations = await db.reconciliations.find(
-        {'company_id': current_user['company_id']},
+        {'company_id': company_id},
         {'_id': 0}
     ).sort('fecha_conciliacion', -1).skip(skip).limit(limit).to_list(limit)
     
