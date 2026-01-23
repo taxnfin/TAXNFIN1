@@ -2729,7 +2729,7 @@ const BankStatementsModule = () => {
               {/* Info banner */}
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
                 <strong>📌 Nota:</strong> Este movimiento se registrará como {sinUUIDTransaction.tipo_movimiento === 'credito' ? 'cobro' : 'pago'} 
-                {' '}en el módulo "Cobranza y Pagos" para mantener el control de flujo de efectivo.
+                {' '}en el módulo &quot;Cobranza y Pagos&quot; para mantener el control de flujo de efectivo.
               </div>
 
               <DialogFooter>
