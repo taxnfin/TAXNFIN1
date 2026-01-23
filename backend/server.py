@@ -5019,11 +5019,11 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
         if iva_acreditable == 0 and impuestos > 0:
             iva_acreditable = impuestos
         
-        # IVA retenido (from CFDI)
-        iva_retenido = cfdi.get('retencion_iva', 0) or 0
+        # IVA retenido (from CFDI) - check both field names for compatibility
+        iva_retenido = cfdi.get('iva_retenido', 0) or cfdi.get('retencion_iva', 0) or 0
         
-        # ISR retenido (if present)
-        isr_retenido = cfdi.get('retencion_isr', 0) or 0
+        # ISR retenido (if present) - check both field names for compatibility
+        isr_retenido = cfdi.get('isr_retenido', 0) or cfdi.get('retencion_isr', 0) or 0
         
         categoria = categories.get(cfdi.get('category_id'), {}).get('nombre', '')
         subcategoria = subcategories.get(cfdi.get('subcategory_id'), {}).get('nombre', '')
