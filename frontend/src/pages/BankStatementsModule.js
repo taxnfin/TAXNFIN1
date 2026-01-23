@@ -394,6 +394,9 @@ const BankStatementsModule = () => {
   // Exchange rates for conversion
   const [fxRates, setFxRates] = useState({ USD: 17.5, EUR: 19.0 });
   
+  // Historical exchange rate for reconciliation (based on transaction date)
+  const [historicalFxRate, setHistoricalFxRate] = useState(null);
+  
   // Reconciliation summary
   const [reconSummary, setReconSummary] = useState(null);
 
