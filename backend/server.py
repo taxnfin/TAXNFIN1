@@ -2851,6 +2851,12 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
                     {'id': reconciliation_data.cfdi_id},
                     {'$set': {'monto_pagado': current_pagado + payment_doc['monto']}}
                 )
+        
+        # Always update CFDI estado_conciliacion when reconciling
+        await db.cfdis.update_one(
+            {'id': reconciliation_data.cfdi_id},
+            {'$set': {'estado_conciliacion': 'conciliado'}}
+        )
     
     reconciliation = BankReconciliation(
         company_id=company_id,
