@@ -2070,7 +2070,9 @@ const BankStatementsModule = () => {
                     {getReconciliationTotals().movimientoMoneda !== 'MXN' && (
                       <p className="text-sm text-gray-500">
                         ≈ ${getReconciliationTotals().movimientoMontoMXN.toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
-                        <span className="text-xs ml-1">(TC: {getReconciliationTotals().tcUsado.toFixed(4)})</span>
+                        <span className="text-xs ml-1 text-blue-600" title="Tipo de cambio del día de la operación">
+                          (TC: {getReconciliationTotals().tcUsado.toFixed(4)} 📅)
+                        </span>
                       </p>
                     )}
                   </div>
