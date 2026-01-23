@@ -2172,10 +2172,10 @@ const BankStatementsModule = () => {
             <div className="text-sm text-gray-500">
               {selectedCfdis.length > 0 && (
                 <span>
-                  {Math.abs(getReconciliationTotals().diferencia) < 0.01 ? (
+                  {Math.abs(getReconciliationTotals().diferenciaMXN) < 0.01 ? (
                     <span className="text-green-600 font-medium">✓ Los montos cuadran perfectamente</span>
                   ) : (
-                    <span className="text-yellow-600">Diferencia de ${Math.abs(getReconciliationTotals().diferencia).toFixed(2)}</span>
+                    <span className="text-yellow-600">Diferencia de ${Math.abs(getReconciliationTotals().diferenciaMXN).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN</span>
                   )}
                 </span>
               )}
