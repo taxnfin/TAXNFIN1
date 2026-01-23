@@ -2509,12 +2509,14 @@ async def create_bank_transaction(transaction_data: BankTransactionCreate, curre
 
 @api_router.get("/bank-transactions", response_model=List[BankTransaction])
 async def list_bank_transactions(
+    request: Request,
     current_user: Dict = Depends(get_current_user),
     limit: int = Query(100, le=1000),
     skip: int = Query(0, ge=0)
 ):
+    company_id = await get_active_company_id(request, current_user)
     transactions = await db.bank_transactions.find(
-        {'company_id': current_user['company_id']},
+        {'company_id': company_id},
         {'_id': 0}
     ).sort('fecha_movimiento', -1).skip(skip).limit(limit).to_list(limit)
     
