@@ -511,12 +511,40 @@ const BankStatementsModule = () => {
     });
   };
 
-  // Calculate totals for reconciliation
+  // Calculate totals for reconciliation - handles currency conversion
   const getReconciliationTotals = () => {
     const movimientoMonto = selectedTransaction?.monto || 0;
+    
+    // Get transaction currency from account or transaction itself
+    const transactionAccount = bankAccounts.find(a => a.id === selectedTransaction?.bank_account_id);
+    const movimientoMoneda = selectedTransaction?.moneda || transactionAccount?.moneda || 'MXN';
+    
+    // Convert movement amount to MXN if not already
+    const movimientoMontoMXN = convertToMXN(movimientoMonto, movimientoMoneda);
+    
+    // Sum CFDIs - each CFDI may have its own currency
+    let cfdiTotalMXN = 0;
+    selectedCfdis.forEach(cfdi => {
+      const cfdiMoneda = cfdi.moneda || 'MXN';
+      cfdiTotalMXN += convertToMXN(cfdi.total || 0, cfdiMoneda);
+    });
+    
+    // Calculate difference in MXN (converted values)
+    const diferenciaMXN = movimientoMontoMXN - cfdiTotalMXN;
+    
+    // Also return original values for display
     const cfdiTotal = selectedCfdis.reduce((sum, cfdi) => sum + (cfdi.total || 0), 0);
-    const diferencia = movimientoMonto - cfdiTotal;
-    return { movimientoMonto, cfdiTotal, diferencia };
+    
+    return { 
+      movimientoMonto,           // Original amount
+      movimientoMoneda,          // Original currency  
+      movimientoMontoMXN,        // Converted to MXN
+      cfdiTotal,                 // Original CFDI total (might be in different currency)
+      cfdiTotalMXN,              // CFDI total in MXN
+      diferencia: diferenciaMXN, // Difference in MXN
+      diferenciaMXN,             // Alias for clarity
+      tcUsado: fxRates.USD || 17.5  // Exchange rate used
+    };
   };
 
   // Confirm multi-reconciliation
