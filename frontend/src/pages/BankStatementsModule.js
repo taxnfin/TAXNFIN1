@@ -2037,6 +2037,7 @@ const BankStatementsModule = () => {
         if (!open) {
           setSelectedCfdis([]);
           setCfdiSearchTerm('');
+          setHistoricalFxRate(null);  // Clear historical rate when dialog closes
         }
         setReconcileDialogOpen(open);
       }}>
