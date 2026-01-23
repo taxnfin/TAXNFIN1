@@ -3010,6 +3010,7 @@ async def get_reconciliation_summary(
 @api_router.post("/reconciliations/mark-without-uuid")
 async def mark_reconciliation_without_uuid(
     data: dict,
+    request: Request,
     current_user: Dict = Depends(get_current_user)
 ):
     """
@@ -3017,7 +3018,8 @@ async def mark_reconciliation_without_uuid(
     Used for: bank fees (comisiones bancarias), expenses without invoice (gastos sin factura), etc.
     Automatically creates a payment record for tracking in Cobranza y Pagos.
     """
-    company_id = current_user['company_id']
+    # Use active company ID (respects X-Company-ID header)
+    company_id = await get_active_company_id(request, current_user)
     
     bank_transaction_id = data.get('bank_transaction_id')
     tipo_conciliacion = data.get('tipo_conciliacion', 'sin_uuid')  # sin_uuid or no_relacionado
