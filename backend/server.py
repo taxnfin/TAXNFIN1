@@ -6609,6 +6609,52 @@ async def get_latest_fx_rates(request: Request, current_user: Dict = Depends(get
     }
 
 
+@api_router.get("/fx-rates/by-date")
+async def get_fx_rate_by_specific_date(
+    request: Request, 
+    current_user: Dict = Depends(get_current_user),
+    moneda: str = "USD",
+    fecha: str = None
+):
+    """Get the exchange rate for a specific currency and date.
+    Used for historical reconciliation calculations.
+    
+    Args:
+        moneda: Currency code (USD, EUR, etc.)
+        fecha: Date in ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
+    
+    Returns:
+        Exchange rate for the specified date, or closest previous rate
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    if moneda == 'MXN':
+        return {"moneda": "MXN", "tasa": 1.0, "fecha": fecha or datetime.now(timezone.utc).isoformat()}
+    
+    # Parse fecha
+    fecha_dt = None
+    if fecha:
+        try:
+            if 'T' in fecha:
+                fecha_dt = datetime.fromisoformat(fecha.replace('Z', '+00:00'))
+            else:
+                fecha_dt = datetime.strptime(fecha, '%Y-%m-%d')
+        except:
+            fecha_dt = datetime.now(timezone.utc)
+    else:
+        fecha_dt = datetime.now(timezone.utc)
+    
+    # Get the historical rate using existing function
+    tasa = await get_fx_rate_by_date(company_id, moneda, fecha_dt)
+    
+    return {
+        "moneda": moneda,
+        "tasa": tasa,
+        "fecha": fecha_dt.isoformat() if fecha_dt else None,
+        "fecha_solicitada": fecha
+    }
+
+
 @api_router.post("/fx-rates/sync")
 async def sync_fx_rates_realtime(request: Request, current_user: Dict = Depends(get_current_user)):
     """
