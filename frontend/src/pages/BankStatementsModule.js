@@ -565,11 +565,11 @@ const BankStatementsModule = () => {
         });
       }
       
-      const { diferencia } = getReconciliationTotals();
-      if (Math.abs(diferencia) < 0.01) {
+      const { diferenciaMXN } = getReconciliationTotals();
+      if (Math.abs(diferenciaMXN) < 0.01) {
         toast.success(`Movimiento conciliado con ${selectedCfdis.length} CFDI(s) - Cuadrado perfectamente`);
       } else {
-        toast.success(`Movimiento conciliado con ${selectedCfdis.length} CFDI(s) - Diferencia: $${diferencia.toFixed(2)}`);
+        toast.success(`Movimiento conciliado con ${selectedCfdis.length} CFDI(s) - Diferencia: $${diferenciaMXN.toFixed(2)} MXN`);
       }
       
       setReconcileDialogOpen(false);
