@@ -537,7 +537,7 @@ const BankStatementsModule = () => {
     });
   };
 
-  // Calculate totals for reconciliation - handles currency conversion
+  // Calculate totals for reconciliation - handles currency conversion using HISTORICAL rate
   const getReconciliationTotals = () => {
     const movimientoMonto = selectedTransaction?.monto || 0;
     
@@ -545,14 +545,26 @@ const BankStatementsModule = () => {
     const transactionAccount = bankAccounts.find(a => a.id === selectedTransaction?.bank_account_id);
     const movimientoMoneda = selectedTransaction?.moneda || transactionAccount?.moneda || 'MXN';
     
-    // Convert movement amount to MXN if not already
-    const movimientoMontoMXN = convertToMXN(movimientoMonto, movimientoMoneda);
+    // Use historical rate if available, otherwise fallback to current rates
+    const tcHistorico = historicalFxRate?.tasa || fxRates[movimientoMoneda] || 17.5;
+    
+    // Convert movement amount to MXN using HISTORICAL rate (date of transaction)
+    const movimientoMontoMXN = convertToMXNHistorical(movimientoMonto, movimientoMoneda, tcHistorico);
     
     // Sum CFDIs - each CFDI may have its own currency
+    // Note: CFDIs should use their own currency's historical rate, but typically they match
     let cfdiTotalMXN = 0;
     selectedCfdis.forEach(cfdi => {
       const cfdiMoneda = cfdi.moneda || 'MXN';
-      cfdiTotalMXN += convertToMXN(cfdi.total || 0, cfdiMoneda);
+      // For CFDIs, we use the same historical rate if same currency, otherwise convert
+      if (cfdiMoneda === movimientoMoneda) {
+        cfdiTotalMXN += convertToMXNHistorical(cfdi.total || 0, cfdiMoneda, tcHistorico);
+      } else if (cfdiMoneda === 'MXN') {
+        cfdiTotalMXN += cfdi.total || 0;
+      } else {
+        // Different foreign currency - use current rates as approximation
+        cfdiTotalMXN += convertToMXN(cfdi.total || 0, cfdiMoneda);
+      }
     });
     
     // Calculate difference in MXN (converted values)
@@ -561,15 +573,20 @@ const BankStatementsModule = () => {
     // Also return original values for display
     const cfdiTotal = selectedCfdis.reduce((sum, cfdi) => sum + (cfdi.total || 0), 0);
     
+    // Get transaction date for display
+    const fechaMovimiento = selectedTransaction?.fecha_movimiento || null;
+    
     return { 
       movimientoMonto,           // Original amount
       movimientoMoneda,          // Original currency  
-      movimientoMontoMXN,        // Converted to MXN
+      movimientoMontoMXN,        // Converted to MXN using historical rate
       cfdiTotal,                 // Original CFDI total (might be in different currency)
       cfdiTotalMXN,              // CFDI total in MXN
       diferencia: diferenciaMXN, // Difference in MXN
       diferenciaMXN,             // Alias for clarity
-      tcUsado: fxRates.USD || 17.5  // Exchange rate used
+      tcUsado: tcHistorico,      // Historical exchange rate used
+      fechaTc: historicalFxRate?.fecha || fechaMovimiento,  // Date of the rate
+      esHistorico: !!historicalFxRate  // Flag to indicate if historical rate is being used
     };
   };
 
