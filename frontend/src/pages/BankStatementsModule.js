@@ -1939,9 +1939,19 @@ const BankStatementsModule = () => {
                                   variant="outline"
                                   size="sm"
                                   className="text-xs h-7"
-                                  onClick={() => {
+                                  onClick={async () => {
                                     setSelectedTransaction(txn);
                                     setReconcileDialogOpen(true);
+                                    // Load historical exchange rate for transaction date
+                                    const account = bankAccounts.find(a => a.id === txn.bank_account_id);
+                                    const moneda = txn.moneda || account?.moneda || 'MXN';
+                                    if (moneda !== 'MXN') {
+                                      const fechaMovimiento = txn.fecha_movimiento;
+                                      const rateData = await getHistoricalFxRate(moneda, fechaMovimiento);
+                                      setHistoricalFxRate(rateData);
+                                    } else {
+                                      setHistoricalFxRate({ tasa: 1.0, fecha: txn.fecha_movimiento });
+                                    }
                                   }}
                                 >
                                   <Link2 size={12} className="mr-1" />
