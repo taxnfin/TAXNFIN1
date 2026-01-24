@@ -660,31 +660,60 @@ const BankStatementsModule = () => {
       return;
     }
     
+    // Check if transaction is already reconciled
+    if (selectedTransaction.conciliado) {
+      toast.error('Este movimiento ya está conciliado. Cancela la conciliación existente primero.');
+      return;
+    }
+    
     try {
+      let successCount = 0;
+      let errorMessages = [];
+      
       // Reconcile each selected CFDI
       for (const cfdi of selectedCfdis) {
-        await api.post('/reconciliations', {
-          bank_transaction_id: selectedTransaction.id,
-          cfdi_id: cfdi.id,
-          metodo_conciliacion: 'manual',
-          porcentaje_match: 100
-        });
+        try {
+          await api.post('/reconciliations', {
+            bank_transaction_id: selectedTransaction.id,
+            cfdi_id: cfdi.id,
+            metodo_conciliacion: 'manual',
+            porcentaje_match: 100
+          });
+          successCount++;
+        } catch (cfdiError) {
+          const errorDetail = cfdiError.response?.data?.detail || 'Error desconocido';
+          errorMessages.push(`${cfdi.uuid?.substring(0, 8) || 'CFDI'}: ${errorDetail}`);
+          console.error('Error reconciling CFDI:', cfdi.id, cfdiError);
+        }
       }
       
-      const { diferenciaMXN } = getReconciliationTotals();
-      if (Math.abs(diferenciaMXN) < 0.01) {
-        toast.success(`Movimiento conciliado con ${selectedCfdis.length} CFDI(s) - Cuadrado perfectamente`);
+      if (successCount === selectedCfdis.length) {
+        const { diferenciaMXN } = getReconciliationTotals();
+        if (Math.abs(diferenciaMXN) < 0.01) {
+          toast.success(`Movimiento conciliado con ${selectedCfdis.length} CFDI(s) - Cuadrado perfectamente`);
+        } else {
+          toast.success(`Movimiento conciliado con ${selectedCfdis.length} CFDI(s) - Diferencia: $${diferenciaMXN.toFixed(2)} MXN`);
+        }
+        setReconcileDialogOpen(false);
+        setSelectedTransaction(null);
+        setSelectedCfdis([]);
+        setCfdiSearchTerm('');
+      } else if (successCount > 0) {
+        toast.warning(`Parcialmente conciliado: ${successCount}/${selectedCfdis.length} CFDIs. Errores: ${errorMessages.join(', ')}`);
       } else {
-        toast.success(`Movimiento conciliado con ${selectedCfdis.length} CFDI(s) - Diferencia: $${diferenciaMXN.toFixed(2)} MXN`);
+        toast.error(`Error al conciliar: ${errorMessages.join(', ')}`);
       }
       
-      setReconcileDialogOpen(false);
-      setSelectedTransaction(null);
-      setSelectedCfdis([]);
-      setCfdiSearchTerm('');
+      // Always reload data to refresh state
       loadData();
+      
+      // Reload CFDIs to update estado_conciliacion
+      const cfdisRes = await api.get('/cfdi?limit=500');
+      setCfdis(cfdisRes.data);
+      
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al conciliar');
+      console.error('Reconciliation error:', error);
+      toast.error(error.response?.data?.detail || 'Error al conciliar: ' + (error.message || 'Error desconocido'));
     }
   };
 
