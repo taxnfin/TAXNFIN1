@@ -282,14 +282,14 @@ const DIOTModule = () => {
                     <TableHead>Tipo</TableHead>
                     <TableHead>RFC</TableHead>
                     <TableHead>Nombre/Razón Social</TableHead>
-                    <TableHead className="text-right">Subtotal</TableHead>
-                    <TableHead className="text-right">IVA Acred.</TableHead>
-                    <TableHead className="text-right">IVA Ret.</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead>F. Emisión</TableHead>
+                    <TableHead className="text-center">Moneda</TableHead>
+                    <TableHead className="text-right">TC Pago</TableHead>
+                    <TableHead className="text-right">Subtotal Orig.</TableHead>
+                    <TableHead className="text-right">Subtotal MXN</TableHead>
+                    <TableHead className="text-right">IVA MXN</TableHead>
+                    <TableHead className="text-right">Total MXN</TableHead>
                     <TableHead>F. Pago</TableHead>
                     <TableHead>Estado</TableHead>
-                    <TableHead>Categoría</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -299,12 +299,38 @@ const DIOTModule = () => {
                         <span className="text-xs px-2 py-1 rounded bg-gray-100">{row.tipo_tercero}</span>
                       </TableCell>
                       <TableCell className="font-mono text-sm">{row.rfc}</TableCell>
-                      <TableCell className="max-w-[200px] truncate" title={row.nombre}>{row.nombre}</TableCell>
-                      <TableCell className="text-right font-mono">{formatCurrency(row.subtotal || row.valor_actos_16)}</TableCell>
-                      <TableCell className="text-right font-mono text-green-600">{formatCurrency(row.iva_acreditable)}</TableCell>
-                      <TableCell className="text-right font-mono text-red-600">{row.iva_retenido > 0 ? formatCurrency(row.iva_retenido) : '-'}</TableCell>
-                      <TableCell className="text-right font-mono font-semibold">{formatCurrency(row.valor_actos_pagados)}</TableCell>
-                      <TableCell className="text-sm">{row.fecha_emision || '-'}</TableCell>
+                      <TableCell className="max-w-[180px] truncate" title={row.nombre}>{row.nombre}</TableCell>
+                      <TableCell className="text-center">
+                        <span className={`text-xs px-2 py-1 rounded font-mono ${row.moneda === 'USD' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100'}`}>
+                          {row.moneda || 'MXN'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {row.moneda !== 'MXN' ? (
+                          <span className="text-blue-600">{row.tipo_cambio?.toFixed(4) || '-'}</span>
+                        ) : (
+                          <span className="text-gray-400">1.0000</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {row.moneda !== 'MXN' ? (
+                          <span className="text-gray-600">
+                            ${(row.subtotal || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                            <span className="text-xs ml-1 text-gray-400">{row.moneda}</span>
+                          </span>
+                        ) : (
+                          formatCurrency(row.subtotal || row.valor_actos_16)
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-medium">
+                        {formatCurrency(row.subtotal_mxn || row.valor_actos_16)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-green-600">
+                        {formatCurrency(row.iva_acreditable)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-semibold">
+                        {formatCurrency(row.valor_actos_pagados_mxn || row.valor_actos_pagados)}
+                      </TableCell>
                       <TableCell className="text-sm">{row.fecha_pago || '-'}</TableCell>
                       <TableCell>
                         {row.pagado ? (
@@ -313,7 +339,6 @@ const DIOTModule = () => {
                           <span className="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-700">Pendiente</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-sm text-gray-600">{row.categoria || '-'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
