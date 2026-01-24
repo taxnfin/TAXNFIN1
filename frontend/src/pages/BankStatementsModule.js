@@ -1304,10 +1304,6 @@ const BankStatementsModule = () => {
               </span>
             </Button>
           </label>
-          <Button variant="outline" onClick={() => setTransferDialogOpen(true)} className="gap-2" data-testid="transfer-movements-btn">
-            <ArrowRightLeft size={16} />
-            Transferir
-          </Button>
           <Button variant="outline" onClick={exportToExcel} className="gap-2" data-testid="export-statements-btn">
             <Download size={16} />
             Exportar
