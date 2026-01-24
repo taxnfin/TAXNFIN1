@@ -2792,12 +2792,33 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
     if not bank_txn:
         raise HTTPException(status_code=404, detail="Movimiento bancario no encontrado")
     
+    # Check if this exact reconciliation already exists
+    existing_recon = await db.reconciliations.find_one({
+        'company_id': company_id,
+        'bank_transaction_id': reconciliation_data.bank_transaction_id,
+        'cfdi_id': reconciliation_data.cfdi_id
+    }, {'_id': 0})
+    if existing_recon:
+        raise HTTPException(status_code=400, detail="Este CFDI ya está conciliado con este movimiento bancario")
+    
     # UPDATED LOGIC: If reconciling with a CFDI, automatically create payment if not exists
     # This means: if it's reconciled, it's considered paid/collected
     if reconciliation_data.cfdi_id:
         cfdi = await db.cfdis.find_one({'id': reconciliation_data.cfdi_id, 'company_id': company_id}, {'_id': 0})
         if not cfdi:
             raise HTTPException(status_code=404, detail="CFDI no encontrado")
+        
+        # Check if CFDI is already reconciled with ANOTHER transaction
+        existing_cfdi_recon = await db.reconciliations.find_one({
+            'company_id': company_id,
+            'cfdi_id': reconciliation_data.cfdi_id,
+            'bank_transaction_id': {'$ne': reconciliation_data.bank_transaction_id}
+        }, {'_id': 0, 'bank_transaction_id': 1})
+        if existing_cfdi_recon:
+            # Get the other transaction details for the error message
+            other_txn = await db.bank_transactions.find_one({'id': existing_cfdi_recon['bank_transaction_id']}, {'_id': 0, 'descripcion': 1})
+            other_desc = other_txn.get('descripcion', 'otro movimiento')[:30] if other_txn else 'otro movimiento'
+            raise HTTPException(status_code=400, detail=f"Este CFDI ya está conciliado con: {other_desc}...")
         
         # Check if payment exists, if not create one automatically
         payment_exists = await db.payments.find_one({
