@@ -5593,9 +5593,11 @@ def parse_banbajio_pdf(text: str, tables: List, pdf, saldo_inicial: float = None
         
         # Only add if we have a movement
         if deposito > 0 or retiro > 0:
+            # Clean description
+            descripcion_clean = clean_description(descripcion)
             transactions.append({
                 'fecha': fecha,
-                'descripcion': descripcion[:300] or 'Movimiento bancario',
+                'descripcion': descripcion_clean[:300] or 'Movimiento bancario',
                 'deposito': deposito,
                 'retiro': retiro,
                 'saldo': saldo,
