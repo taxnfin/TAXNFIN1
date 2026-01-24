@@ -402,6 +402,10 @@ const BankStatementsModule = () => {
   
   // Exchange rate for first day of month (for balance calculations)
   const [fxRateFirstOfMonth, setFxRateFirstOfMonth] = useState({ USD: 17.5, EUR: 19.0 });
+  
+  // Custom exchange rate override for reconciliation (editable by user)
+  const [customFxRate, setCustomFxRate] = useState(null);
+  const [isEditingFxRate, setIsEditingFxRate] = useState(false);
 
   useEffect(() => {
     loadData();
