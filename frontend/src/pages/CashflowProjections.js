@@ -44,7 +44,7 @@ const CashflowProjections = () => {
   
   // Currency selector for projections
   const [selectedCurrency, setSelectedCurrency] = useState('MXN');
-  const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.50, EUR: 19.00 });
+  const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.50, EUR: 19.00, GBP: 22.00, JPY: 0.13, CHF: 20.00, CAD: 13.00, CNY: 2.40 });
   
   // Custom concepts state
   const [customConcepts, setCustomConcepts] = useState([]);
