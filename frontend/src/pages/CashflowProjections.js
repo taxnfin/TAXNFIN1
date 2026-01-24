@@ -140,7 +140,8 @@ const CashflowProjections = () => {
       }
       await api.put(`/companies/${companyId}`, { inicio_semana: newWeekStart });
       setCompanyConfig(prev => ({ ...prev, inicio_semana: newWeekStart }));
-      processWeeklyData(cfdis, categories, newWeekStart);
+      // Reload data to reprocess with new week start
+      loadData();
       setConfigDialogOpen(false);
       toast.success(`Inicio de semana cambiado a ${DIAS_SEMANA.find(d => d.value === newWeekStart)?.label}`);
     } catch (error) {
@@ -148,7 +149,15 @@ const CashflowProjections = () => {
     }
   };
 
-  const processWeeklyData = (cfdisData, categoriesData, weekStartDay = 1) => {
+  // Helper function to convert amount to MXN
+  const convertToMXN = (amount, currency, rates) => {
+    if (!amount) return 0;
+    if (currency === 'MXN' || !currency) return amount;
+    const rate = rates[currency] || fxRates[currency] || 17.50;
+    return amount * rate;
+  };
+
+  const processWeeklyData = (cfdisData, categoriesData, weekStartDay = 1, rates = {}, payments = []) => {
     // Generate 13 weeks - include current week and look back one week for recent CFDIs
     const weeks = [];
     const today = new Date();
@@ -158,6 +167,8 @@ const CashflowProjections = () => {
     for (let i = 0; i < 14; i++) { // 14 weeks to include past week + 13 future
       const weekStart = addWeeks(startDate, i);
       const weekEnd = addWeeks(weekStart, 1);
+      const isPast = weekEnd <= today;
+      const isCurrent = weekStart <= today && today < weekEnd;
       
       weeks.push({
         weekNum: i,
@@ -165,12 +176,36 @@ const CashflowProjections = () => {
         weekEnd,
         label: i === 0 ? 'Anterior' : `Sem ${i}`,
         dateLabel: format(weekStart, 'dd MMM', { locale: es }),
+        isPast,
+        isCurrent,
         ingresos: { total: 0, byCategory: {}, byCfdi: [] },
-        egresos: { total: 0, byCategory: {}, byCfdi: [] }
+        egresos: { total: 0, byCategory: {}, byCfdi: [] },
+        // Track real payments separately
+        ingresosReales: 0,
+        egresosReales: 0
       });
     }
     
-    // Classify CFDIs by week based on fecha_emision
+    // Process REAL payments for past/current weeks
+    payments.forEach(payment => {
+      if (!payment.fecha_pago && !payment.fecha_vencimiento) return;
+      const paymentDate = new Date(payment.fecha_pago || payment.fecha_vencimiento);
+      const weekIdx = weeks.findIndex(w => paymentDate >= w.weekStart && paymentDate < w.weekEnd);
+      
+      if (weekIdx !== -1 && (weeks[weekIdx].isPast || weeks[weekIdx].isCurrent)) {
+        // Only count completed/real payments for past weeks
+        if (payment.estatus === 'completado' || payment.es_real === true) {
+          const montoMXN = convertToMXN(payment.monto, payment.moneda, rates);
+          if (payment.tipo === 'cobro') {
+            weeks[weekIdx].ingresosReales += montoMXN;
+          } else {
+            weeks[weekIdx].egresosReales += montoMXN;
+          }
+        }
+      }
+    });
+    
+    // Classify CFDIs by week based on fecha_emision - CONVERTING TO MXN
     cfdisData.forEach(cfdi => {
       const cfdiDate = new Date(cfdi.fecha_emision);
       const weekIdx = weeks.findIndex(w => cfdiDate >= w.weekStart && cfdiDate < w.weekEnd);
@@ -179,6 +214,9 @@ const CashflowProjections = () => {
         const week = weeks[weekIdx];
         const isIngreso = cfdi.tipo_cfdi === 'ingreso';
         const section = isIngreso ? week.ingresos : week.egresos;
+        
+        // Convert CFDI amount to MXN for consistent calculations
+        const cfdiMontoMXN = convertToMXN(cfdi.total, cfdi.moneda, rates);
         
         // Get category and subcategory name
         const category = categoriesData.find(c => c.id === cfdi.category_id);
@@ -191,27 +229,39 @@ const CashflowProjections = () => {
           subcategoryName = subcategory?.nombre || null;
         }
         
-        section.total += cfdi.total;
+        section.total += cfdiMontoMXN;
         if (!section.byCategory[categoryName]) {
           section.byCategory[categoryName] = { total: 0, cfdis: [], bySubcategory: {} };
         }
-        section.byCategory[categoryName].total += cfdi.total;
-        section.byCategory[categoryName].cfdis.push(cfdi);
+        section.byCategory[categoryName].total += cfdiMontoMXN;
+        section.byCategory[categoryName].cfdis.push({ ...cfdi, totalMXN: cfdiMontoMXN });
         
         // Track by subcategory
         const subKey = subcategoryName || 'Sin subcategoría';
         if (!section.byCategory[categoryName].bySubcategory[subKey]) {
           section.byCategory[categoryName].bySubcategory[subKey] = { total: 0, cfdis: [] };
         }
-        section.byCategory[categoryName].bySubcategory[subKey].total += cfdi.total;
-        section.byCategory[categoryName].bySubcategory[subKey].cfdis.push(cfdi);
+        section.byCategory[categoryName].bySubcategory[subKey].total += cfdiMontoMXN;
+        section.byCategory[categoryName].bySubcategory[subKey].cfdis.push({ ...cfdi, totalMXN: cfdiMontoMXN });
         
-        section.byCfdi.push(cfdi);
+        section.byCfdi.push({ ...cfdi, totalMXN: cfdiMontoMXN });
+      }
+    });
+    
+    // For past weeks, use REAL payments if they exist, otherwise use CFDI data
+    weeks.forEach(week => {
+      if (week.isPast || week.isCurrent) {
+        // If we have real payment data, use it; otherwise fall back to CFDI totals
+        if (week.ingresosReales > 0 || week.egresosReales > 0) {
+          // We have real data - mark the week
+          week.hasRealData = true;
+        }
       }
     });
     
     // Remove the first "Anterior" week if it has no data
-    if (weeks[0].ingresos.total === 0 && weeks[0].egresos.total === 0) {
+    if (weeks[0].ingresos.total === 0 && weeks[0].egresos.total === 0 && 
+        weeks[0].ingresosReales === 0 && weeks[0].egresosReales === 0) {
       weeks.shift();
     }
     
