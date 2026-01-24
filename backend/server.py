@@ -786,7 +786,9 @@ def parse_cfdi_xml(xml_content: str) -> Dict[str, Any]:
             'isr_retenido': isr_retenido,
             'iva_retenido': iva_retenido,
             'ieps': ieps,
-            'is_nomina': is_nomina or has_payroll_keywords
+            'is_nomina': is_nomina or has_payroll_keywords,
+            'nomina_data': nomina_data if nomina_data else None,
+            'es_nomina_tipo_comprobante': es_nomina_por_tipo
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error parseando XML CFDI: {str(e)}")
