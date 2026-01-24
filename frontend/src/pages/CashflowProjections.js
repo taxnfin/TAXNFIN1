@@ -421,6 +421,8 @@ const CashflowProjections = () => {
   };
 
   // Calculate running totals including custom concepts
+  // For past weeks: use REAL payment data if available
+  // For future weeks: use CFDI projections
   const calculateRunningTotals = () => {
     // Use the bank account balance as initial amount
     let saldoInicial = saldoInicialBancos;
@@ -435,18 +437,43 @@ const CashflowProjections = () => {
         .filter(c => c.tipo === 'egreso' && (c.semana === idx + 1 || c.recurrente))
         .reduce((sum, c) => sum + c.monto, 0);
       
-      const totalIngresos = week.ingresos.total + customIngresos;
-      const totalEgresos = week.egresos.total + customEgresos;
+      // For past/current weeks with real payment data, use real data
+      // Otherwise use CFDI-based projections
+      let totalIngresos, totalEgresos;
+      let isRealData = false;
+      
+      if ((week.isPast || week.isCurrent) && (week.ingresosReales > 0 || week.egresosReales > 0)) {
+        // Use REAL payment data for past weeks
+        totalIngresos = week.ingresosReales + customIngresos;
+        totalEgresos = week.egresosReales + customEgresos;
+        isRealData = true;
+      } else {
+        // Use CFDI projections for future weeks or weeks without real data
+        totalIngresos = week.ingresos.total + customIngresos;
+        totalEgresos = week.egresos.total + customEgresos;
+      }
+      
       const flujoNeto = totalIngresos - totalEgresos;
       const saldoFinal = saldoInicial + flujoNeto;
       
       totals.push({
         ...week,
-        ingresos: { ...week.ingresos, total: totalIngresos, custom: customIngresos },
-        egresos: { ...week.egresos, total: totalEgresos, custom: customEgresos },
+        ingresos: { 
+          ...week.ingresos, 
+          total: totalIngresos, 
+          custom: customIngresos,
+          isReal: isRealData 
+        },
+        egresos: { 
+          ...week.egresos, 
+          total: totalEgresos, 
+          custom: customEgresos,
+          isReal: isRealData 
+        },
         saldoInicial,
         flujoNeto,
-        saldoFinal
+        saldoFinal,
+        isRealData
       });
       
       saldoInicial = saldoFinal;
