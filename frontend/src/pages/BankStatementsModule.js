@@ -1226,9 +1226,15 @@ const BankStatementsModule = () => {
   const monedaCuenta = filterAccount === 'all' ? 'MXN' : (selectedAccount?.moneda || 'MXN');
   
   // For consolidated view, convert all transactions to MXN
+  // For individual account, show in account's currency AND equivalent in MXN
   const calcConsolidatedTotals = () => {
     if (filterAccount !== 'all') {
-      return { depositos: totalDepositos, retiros: totalRetiros };
+      return { 
+        depositos: totalDepositos, 
+        retiros: totalRetiros,
+        depositosMXN: convertToMXN(totalDepositos, monedaCuenta),
+        retirosMXN: convertToMXN(totalRetiros, monedaCuenta)
+      };
     }
     // Convert each transaction based on its account's currency
     let depositosMXN = 0;
@@ -1243,13 +1249,16 @@ const BankStatementsModule = () => {
         retirosMXN += montoMXN;
       }
     });
-    return { depositos: depositosMXN, retiros: retirosMXN };
+    return { depositos: depositosMXN, retiros: retirosMXN, depositosMXN, retirosMXN };
   };
   
   const consolidatedTotals = calcConsolidatedTotals();
   const displayDepositos = filterAccount === 'all' ? consolidatedTotals.depositos : totalDepositos;
   const displayRetiros = filterAccount === 'all' ? consolidatedTotals.retiros : totalRetiros;
+  const displayDepositosMXN = consolidatedTotals.depositosMXN || convertToMXN(displayDepositos, monedaCuenta);
+  const displayRetirosMXN = consolidatedTotals.retirosMXN || convertToMXN(displayRetiros, monedaCuenta);
   const saldoFinal = saldoInicial + displayDepositos - displayRetiros;
+  const saldoFinalMXN = convertToMXN(saldoInicial, monedaCuenta) + displayDepositosMXN - displayRetirosMXN;
 
   if (loading) return <div className="p-8">Cargando...</div>;
 
