@@ -1989,12 +1989,54 @@ const BankStatementsModule = () => {
                       <span className="text-sm ml-1">{getReconciliationTotals().movimientoMoneda}</span>
                     </p>
                     {getReconciliationTotals().movimientoMoneda !== 'MXN' && (
-                      <p className="text-sm text-gray-500">
-                        ≈ ${getReconciliationTotals().movimientoMontoMXN.toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
-                        <span className="text-xs ml-1 text-blue-600" title="Tipo de cambio del día de la operación">
-                          (TC: {getReconciliationTotals().tcUsado.toFixed(4)} 📅)
-                        </span>
-                      </p>
+                      <div className="text-sm text-gray-500">
+                        <p>≈ ${getReconciliationTotals().movimientoMontoMXN.toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN</p>
+                        <div className="flex items-center justify-end gap-1 mt-1">
+                          {isEditingFxRate ? (
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-gray-500">TC:</span>
+                              <Input
+                                type="number"
+                                step="0.0001"
+                                value={customFxRate ?? getReconciliationTotals().tcUsado}
+                                onChange={(e) => setCustomFxRate(parseFloat(e.target.value) || 0)}
+                                className="w-24 h-6 text-xs px-1 py-0"
+                                autoFocus
+                              />
+                              <button
+                                onClick={() => setIsEditingFxRate(false)}
+                                className="text-green-600 hover:text-green-800"
+                                title="Confirmar"
+                              >
+                                <Check size={14} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setCustomFxRate(null);
+                                  setIsEditingFxRate(false);
+                                }}
+                                className="text-red-500 hover:text-red-700"
+                                title="Cancelar y usar TC original"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <span className={`text-xs ${customFxRate !== null ? 'text-orange-600 font-medium' : 'text-blue-600'}`} title="Tipo de cambio">
+                                (TC: {getReconciliationTotals().tcUsado.toFixed(4)} {customFxRate !== null ? '✏️' : '📅'})
+                              </span>
+                              <button
+                                onClick={() => setIsEditingFxRate(true)}
+                                className="text-gray-400 hover:text-blue-600"
+                                title="Editar tipo de cambio"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
