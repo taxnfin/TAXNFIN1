@@ -78,14 +78,15 @@ const CashflowProjections = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes, fxRes] = await Promise.all([
+      const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes, fxRes, paymentsRes] = await Promise.all([
         api.get('/cfdi?limit=500'),
         api.get('/categories'),
         api.get('/customers'),
         api.get('/vendors'),
         api.get('/bank-accounts/summary'),
         api.get('/manual-projections'),
-        api.get('/fx-rates/latest')
+        api.get('/fx-rates/latest'),
+        api.get('/payments')
       ]);
       
       setCfdis(cfdiRes.data);
@@ -97,11 +98,15 @@ const CashflowProjections = () => {
       const totalBancosMXN = bankSummaryRes.data?.total_mxn || 0;
       setSaldoInicialBancos(totalBancosMXN);
       
-      // Load FX rates
-      setFxRates(fxRes.data?.rates || { MXN: 1, USD: 17.50, EUR: 19.00 });
+      // Load FX rates - ensure all currencies have values
+      const loadedRates = fxRes.data?.rates || {};
+      setFxRates(prev => ({ ...prev, ...loadedRates, MXN: 1 }));
       
       // Load custom concepts from backend
       setCustomConcepts(conceptsRes.data || []);
+      
+      // Store payments for use in processing
+      const payments = paymentsRes.data || [];
       
       // Get company config for week start day
       const companyId = localStorage.getItem('company_id');
@@ -110,12 +115,12 @@ const CashflowProjections = () => {
           const compRes = await api.get(`/companies/${companyId}`);
           const weekStart = compRes.data?.inicio_semana ?? 1;
           setCompanyConfig({ ...compRes.data, inicio_semana: weekStart });
-          processWeeklyData(cfdiRes.data, catRes.data, weekStart);
+          processWeeklyData(cfdiRes.data, catRes.data, weekStart, loadedRates, payments);
         } catch {
-          processWeeklyData(cfdiRes.data, catRes.data, 1);
+          processWeeklyData(cfdiRes.data, catRes.data, 1, loadedRates, payments);
         }
       } else {
-        processWeeklyData(cfdiRes.data, catRes.data, 1);
+        processWeeklyData(cfdiRes.data, catRes.data, 1, loadedRates, payments);
       }
       
       processMonthlyData(cfdiRes.data, catRes.data);
