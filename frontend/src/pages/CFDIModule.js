@@ -136,6 +136,10 @@ const CFDIModule = () => {
         if (response.data.ai_categorized) {
           aiCategorizedCount++;
         }
+        // Track nóminas auto-reconciled
+        if (response.data.is_nomina && response.data.nomina_auto_reconciled) {
+          nominaAutoReconciledCount++;
+        }
         // Check for new RFC detected
         if (response.data.new_rfc_detected) {
           newRfcsDetected.push({
@@ -158,6 +162,9 @@ const CFDIModule = () => {
       let message = `${successCount} CFDI(s) subido(s)`;
       if (aiCategorizedCount > 0) {
         message += ` - ${aiCategorizedCount} categorizado(s) con IA ✨`;
+      }
+      if (nominaAutoReconciledCount > 0) {
+        message += ` - ${nominaAutoReconciledCount} nómina(s) auto-conciliada(s) 💼`;
       }
       toast.success(message);
     }
