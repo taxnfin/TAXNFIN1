@@ -2136,13 +2136,24 @@ const BankStatementsModule = () => {
                   <div className="flex justify-between items-center mb-2">
                     <p className="text-sm font-medium text-green-700">CFDIs seleccionados:</p>
                     <p className="text-xs text-gray-500">
-                      Total: ${getReconciliationTotals().cfdiTotalOriginal.toLocaleString('es-MX', {minimumFractionDigits: 2})} {getReconciliationTotals().movimientoMoneda}
+                      Total en {getReconciliationTotals().movimientoMoneda}: ${getReconciliationTotals().cfdiTotalOriginal.toLocaleString('es-MX', {minimumFractionDigits: 2})}
                     </p>
                   </div>
                   <div className="space-y-1 max-h-[120px] overflow-y-auto">
                     {selectedCfdis.map((cfdi, idx) => {
-                      // Calculate running total up to this CFDI
-                      const runningTotal = selectedCfdis.slice(0, idx + 1).reduce((sum, c) => sum + (c.total || 0), 0);
+                      const cfdiMoneda = cfdi.moneda || 'MXN';
+                      const movMoneda = getReconciliationTotals().movimientoMoneda;
+                      const tc = getReconciliationTotals().tcUsado;
+                      // Convert CFDI to movement currency for display
+                      let cfdiEnMovMoneda = cfdi.total;
+                      if (cfdiMoneda !== movMoneda) {
+                        if (cfdiMoneda === 'MXN' && movMoneda !== 'MXN') {
+                          cfdiEnMovMoneda = cfdi.total / tc;
+                        } else if (cfdiMoneda !== 'MXN' && movMoneda === 'MXN') {
+                          cfdiEnMovMoneda = cfdi.total * tc;
+                        }
+                      }
+                      
                       return (
                         <div key={cfdi.id} className="flex justify-between items-center text-sm bg-white p-2 rounded">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -2158,7 +2169,12 @@ const BankStatementsModule = () => {
                           </div>
                           <div className="text-right shrink-0 ml-2">
                             <span className="font-mono text-green-700">${cfdi.total?.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
-                            <span className="text-xs text-gray-400 ml-1">{cfdi.moneda || 'MXN'}</span>
+                            <span className="text-xs text-gray-400 ml-1">{cfdiMoneda}</span>
+                            {cfdiMoneda !== movMoneda && (
+                              <span className="text-xs text-blue-500 ml-1">
+                                (≈${cfdiEnMovMoneda?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {movMoneda})
+                              </span>
+                            )}
                           </div>
                         </div>
                       );
