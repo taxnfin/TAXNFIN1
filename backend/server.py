@@ -3723,28 +3723,41 @@ async def find_matching_cfdi_for_transaction(
     
     # Determine CFDI type based on transaction type
     # credito (deposit) = ingreso (we received payment for a sale)
-    # debito (withdrawal) = egreso (we paid for a purchase)
+    # debito (withdrawal) = egreso (we paid for a purchase) OR nomina
     cfdi_tipo = 'ingreso' if tipo_movimiento == 'credito' else 'egreso'
     
     # Build query to find matching CFDIs
     # Look for CFDIs with similar amount and within date range
-    query = {
-        'company_id': company_id,
-        'tipo_cfdi': cfdi_tipo,
-        'estatus': 'vigente',
-        'fecha_emision': {'$gte': fecha_inicio, '$lte': fecha_fin}
-    }
+    # For debito, also include nomina type
+    if tipo_movimiento == 'debito':
+        query = {
+            'company_id': company_id,
+            'tipo_cfdi': {'$in': ['egreso', 'nomina']},
+            'estatus': 'vigente',
+            'fecha_emision': {'$gte': fecha_inicio, '$lte': fecha_fin}
+        }
+    else:
+        query = {
+            'company_id': company_id,
+            'tipo_cfdi': cfdi_tipo,
+            'estatus': 'vigente',
+            'fecha_emision': {'$gte': fecha_inicio, '$lte': fecha_fin}
+        }
     
     # Get candidate CFDIs
     cfdis = await db.cfdis.find(query, {'_id': 0}).to_list(200)
+    
+    # Get transaction description for name matching
+    txn_descripcion_upper = (txn.get('descripcion', '') + ' ' + txn.get('referencia', '')).upper()
     
     matches = []
     for cfdi in cfdis:
         cfdi_total = cfdi.get('total', 0)
         cfdi_moneda = cfdi.get('moneda', 'MXN')
+        is_nomina = cfdi.get('tipo_cfdi') == 'nomina' or cfdi.get('is_nomina', False)
         
         # Calculate pending amount
-        if cfdi_tipo == 'ingreso':
+        if cfdi.get('tipo_cfdi') == 'ingreso':
             monto_cubierto = cfdi.get('monto_cobrado', 0) or 0
         else:
             monto_cubierto = cfdi.get('monto_pagado', 0) or 0
