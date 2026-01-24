@@ -274,8 +274,8 @@ const DIOTModule = () => {
           {diotData.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Receipt size={48} className="mx-auto mb-4 opacity-50" />
-              <p>No hay facturas de egreso en el período seleccionado</p>
-              <p className="text-sm mt-2">Sube tus CFDIs de egreso (gastos) en el módulo de CFDIs</p>
+              <p>No hay facturas de egreso <strong>pagadas</strong> en el período seleccionado</p>
+              <p className="text-sm mt-2">Las facturas aparecerán aquí cuando se concilien con movimientos bancarios</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -292,12 +292,11 @@ const DIOTModule = () => {
                     <TableHead className="text-right">IVA MXN</TableHead>
                     <TableHead className="text-right">Total MXN</TableHead>
                     <TableHead>F. Pago</TableHead>
-                    <TableHead>Estado</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {diotData.map((row, idx) => (
-                    <TableRow key={idx} className={row.pagado ? 'bg-green-50/50' : ''}>
+                    <TableRow key={idx} className="bg-green-50/30">
                       <TableCell>
                         <span className="text-xs px-2 py-1 rounded bg-gray-100">{row.tipo_tercero}</span>
                       </TableCell>
@@ -334,14 +333,7 @@ const DIOTModule = () => {
                       <TableCell className="text-right font-mono font-semibold">
                         {formatCurrency(row.valor_actos_pagados_mxn || row.valor_actos_pagados)}
                       </TableCell>
-                      <TableCell className="text-sm">{row.fecha_pago || '-'}</TableCell>
-                      <TableCell>
-                        {row.pagado ? (
-                          <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-700">Pagado</span>
-                        ) : (
-                          <span className="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-700">Pendiente</span>
-                        )}
-                      </TableCell>
+                      <TableCell className="text-sm font-medium text-green-700">{row.fecha_pago || '-'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
