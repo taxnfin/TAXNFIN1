@@ -586,6 +586,7 @@ const BankStatementsModule = () => {
   };
 
   // Calculate totals for reconciliation - handles currency conversion using HISTORICAL rate
+  // Can be overridden with customFxRate if user wants to edit it
   const getReconciliationTotals = () => {
     const movimientoMonto = selectedTransaction?.monto || 0;
     
@@ -593,8 +594,8 @@ const BankStatementsModule = () => {
     const transactionAccount = bankAccounts.find(a => a.id === selectedTransaction?.bank_account_id);
     const movimientoMoneda = selectedTransaction?.moneda || transactionAccount?.moneda || 'MXN';
     
-    // Use historical rate if available, otherwise fallback to current rates
-    const tcHistorico = historicalFxRate?.tasa || fxRates[movimientoMoneda] || 17.5;
+    // Use custom rate if set, otherwise historical rate, otherwise fallback to current rates
+    const tcHistorico = customFxRate ?? historicalFxRate?.tasa ?? fxRates[movimientoMoneda] ?? 17.5;
     
     // Convert movement amount to MXN using HISTORICAL rate (date of transaction)
     const movimientoMontoMXN = convertToMXNHistorical(movimientoMonto, movimientoMoneda, tcHistorico);
@@ -634,7 +635,8 @@ const BankStatementsModule = () => {
       diferenciaMXN,             // Alias for clarity
       tcUsado: tcHistorico,      // Historical exchange rate used
       fechaTc: historicalFxRate?.fecha || fechaMovimiento,  // Date of the rate
-      esHistorico: !!historicalFxRate  // Flag to indicate if historical rate is being used
+      esHistorico: !!historicalFxRate,  // Flag to indicate if historical rate is being used
+      esCustom: customFxRate !== null   // Flag to indicate if custom rate is being used
     };
   };
 
