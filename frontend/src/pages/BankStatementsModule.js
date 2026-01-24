@@ -1644,11 +1644,7 @@ const BankStatementsModule = () => {
           <CardContent>
             <div className={`text-xl font-bold ${saldoFinal >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
               ${saldoFinal.toLocaleString('es-MX', {minimumFractionDigits: 2})}
-              {filterAccount === 'all' ? (
-                <span className="text-xs ml-1">MXN</span>
-              ) : (
-                monedaCuenta !== 'MXN' && <span className="text-xs ml-1">{monedaCuenta}</span>
-              )}
+              <span className="text-xs ml-1">{monedaCuenta}</span>
             </div>
             {filterAccount !== 'all' && monedaCuenta !== 'MXN' && (
               <p className={`text-xs mt-1 ${saldoFinal >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
