@@ -340,6 +340,7 @@ const BankStatementsModule = () => {
   const [bankTransactions, setBankTransactions] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [cfdis, setCfdis] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
