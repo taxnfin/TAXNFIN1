@@ -5414,6 +5414,16 @@ def parse_banbajio_pdf(text: str, tables: List, pdf, saldo_inicial: float = None
     transactions = []
     current_year = datetime.now().year
     
+    # Try to extract year from PDF text (look for patterns like "DICIEMBRE 2025" or "DIC 2025")
+    year_match = re.search(r'(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)[A-Z]*\s*(\d{4})', text.upper())
+    if year_match:
+        current_year = int(year_match.group(2))
+    else:
+        # Also try "PERIODO: ... 2025" pattern
+        period_match = re.search(r'PERIODO[:\s]+.*?(\d{4})', text.upper())
+        if period_match:
+            current_year = int(period_match.group(1))
+    
     months_es = {
         'ENE': '01', 'FEB': '02', 'MAR': '03', 'ABR': '04',
         'MAY': '05', 'JUN': '06', 'JUL': '07', 'AGO': '08',
@@ -5427,6 +5437,16 @@ def parse_banbajio_pdf(text: str, tables: List, pdf, saldo_inicial: float = None
         'REFERENCIA', 'ABONOS', 'CARGOS', 'DEPOSITOS', 'RETIROS',
         'PROMEDIO', 'PERIODO', 'ESTADO DE CUENTA', 'CLIENTE', 'RFC'
     ]
+    
+    def clean_description(desc: str) -> str:
+        """Clean up description by removing extra spaces between characters"""
+        # Remove pattern like "C O M I S I O N" -> "COMISION"
+        # Detect if chars are space-separated
+        if re.search(r'^[A-Z]\s+[A-Z]\s+[A-Z]', desc):
+            # Remove single spaces between single chars
+            cleaned = re.sub(r'(\w)\s+(?=\w\s|\w$)', r'\1', desc)
+            return cleaned
+        return desc
     
     def extract_amount(val: str) -> float:
         """Extract numeric amount from string"""
