@@ -5441,11 +5441,34 @@ def parse_banbajio_pdf(text: str, tables: List, pdf, saldo_inicial: float = None
     def clean_description(desc: str) -> str:
         """Clean up description by removing extra spaces between characters"""
         # Remove pattern like "C O M I S I O N" -> "COMISION"
-        # Detect if chars are space-separated
-        if re.search(r'^[A-Z]\s+[A-Z]\s+[A-Z]', desc):
-            # Remove single spaces between single chars
-            cleaned = re.sub(r'(\w)\s+(?=\w\s|\w$)', r'\1', desc)
-            return cleaned
+        # Also handle "CO MISION" -> "COMISION"
+        
+        # First, try to detect and fix space-separated text
+        # Pattern: uppercase letters separated by single spaces at the start
+        if re.match(r'^[A-Z][A-Z\s]{3,}', desc):
+            # Count ratio of spaces to letters
+            letters = len(re.findall(r'[A-Za-z]', desc[:20]))
+            spaces = len(re.findall(r'\s', desc[:20]))
+            
+            if spaces > 0 and letters / (spaces + letters) < 0.6:
+                # Lots of spaces - likely space-separated
+                cleaned = re.sub(r'(\w)\s+(?=\w)', r'\1', desc)
+                return cleaned
+        
+        # Also fix common patterns like "CO MISION" -> "COMISION"
+        common_fixes = [
+            (r'CO\s+MISION', 'COMISION'),
+            (r'IVA\s+CO', 'IVA CO'),
+            (r'EN\s+VÍO', 'ENVÍO'),
+            (r'EN\s+VIO', 'ENVIO'),
+            (r'DE\s+POSITO', 'DEPOSITO'),
+            (r'PA\s+GO', 'PAGO'),
+            (r'RE\s+TIRO', 'RETIRO'),
+            (r'TRANS\s+FERENCIA', 'TRANSFERENCIA'),
+        ]
+        for pattern, replacement in common_fixes:
+            desc = re.sub(pattern, replacement, desc, flags=re.IGNORECASE)
+        
         return desc
     
     def extract_amount(val: str) -> float:
