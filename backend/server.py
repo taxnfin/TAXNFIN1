@@ -2499,7 +2499,12 @@ async def create_bank_transaction(transaction_data: BankTransactionCreate, reque
     if not account:
         raise HTTPException(status_code=404, detail="Cuenta bancaria no encontrada")
     
-    bank_transaction = BankTransaction(company_id=company_id, **transaction_data.model_dump())
+    # Use account's currency if not specified in transaction
+    txn_data = transaction_data.model_dump()
+    if not txn_data.get('moneda'):
+        txn_data['moneda'] = account.get('moneda', 'MXN')
+    
+    bank_transaction = BankTransaction(company_id=company_id, **txn_data)
     doc = bank_transaction.model_dump()
     for field in ['fecha_movimiento', 'fecha_valor', 'created_at']:
         doc[field] = doc[field].isoformat()
