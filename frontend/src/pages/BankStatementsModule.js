@@ -2130,25 +2130,39 @@ const BankStatementsModule = () => {
                 </div>
               )}
 
-              {/* Selected CFDIs */}
+              {/* Selected CFDIs - Detailed list showing progressive sum */}
               {selectedCfdis.length > 0 && (
                 <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-                  <p className="text-sm font-medium text-green-700 mb-2">CFDIs seleccionados:</p>
-                  <div className="space-y-1">
-                    {selectedCfdis.map(cfdi => (
-                      <div key={cfdi.id} className="flex justify-between items-center text-sm bg-white p-2 rounded">
-                        <div className="flex items-center gap-2">
-                          <button 
-                            onClick={() => toggleCfdiSelection(cfdi)}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            <X size={14} />
-                          </button>
-                          <span className="font-medium">{cfdi.receptor_nombre || cfdi.emisor_nombre}</span>
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-sm font-medium text-green-700">CFDIs seleccionados:</p>
+                    <p className="text-xs text-gray-500">
+                      Total: ${getReconciliationTotals().cfdiTotalOriginal.toLocaleString('es-MX', {minimumFractionDigits: 2})} {getReconciliationTotals().movimientoMoneda}
+                    </p>
+                  </div>
+                  <div className="space-y-1 max-h-[120px] overflow-y-auto">
+                    {selectedCfdis.map((cfdi, idx) => {
+                      // Calculate running total up to this CFDI
+                      const runningTotal = selectedCfdis.slice(0, idx + 1).reduce((sum, c) => sum + (c.total || 0), 0);
+                      return (
+                        <div key={cfdi.id} className="flex justify-between items-center text-sm bg-white p-2 rounded">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <button 
+                              onClick={() => toggleCfdiSelection(cfdi)}
+                              className="text-red-500 hover:text-red-700 shrink-0"
+                              title="Quitar CFDI"
+                            >
+                              <X size={14} />
+                            </button>
+                            <span className="font-medium truncate">{cfdi.receptor_nombre || cfdi.emisor_nombre}</span>
+                            <span className="text-xs text-gray-400 shrink-0">({cfdi.uuid?.substring(0, 8)})</span>
+                          </div>
+                          <div className="text-right shrink-0 ml-2">
+                            <span className="font-mono text-green-700">${cfdi.total?.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+                            <span className="text-xs text-gray-400 ml-1">{cfdi.moneda || 'MXN'}</span>
+                          </div>
                         </div>
-                        <span className="font-mono">${cfdi.total?.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
