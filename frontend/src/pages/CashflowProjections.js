@@ -864,10 +864,13 @@ const CashflowProjections = () => {
                         <div className="flex items-center gap-2">
                           <TrendingDown className="text-red-600" size={16} />
                           EGRESOS
+                          {weeklyTotals.some(w => w.isRealData) && (
+                            <span className="text-xs px-2 py-0.5 bg-red-200 text-red-800 rounded">Incluye Datos Reales</span>
+                          )}
                         </div>
                       </TableCell>
-                      {weeklyData.map((week, idx) => (
-                        <TableCell key={idx} className="text-center text-red-700 font-bold">
+                      {weeklyTotals.map((week, idx) => (
+                        <TableCell key={idx} className={`text-center font-bold ${week.isRealData ? 'text-red-800 bg-red-100' : 'text-red-700'}`}>
                           {formatCurrency(week.egresos.total)}
                         </TableCell>
                       ))}
