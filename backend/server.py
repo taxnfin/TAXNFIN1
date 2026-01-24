@@ -5288,7 +5288,8 @@ async def import_bank_statement(request: Request, file: UploadFile = File(...), 
     content = await file.read()
     df = pd.read_excel(io.BytesIO(content))
     
-    required_cols = ['fecha_movimiento', 'descripcion', 'monto', 'tipo_movimiento', 'saldo']
+    # Only require minimal columns - saldo is OPTIONAL
+    required_cols = ['fecha_movimiento', 'descripcion', 'monto']
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
         raise HTTPException(status_code=400, detail=f"Columnas faltantes: {', '.join(missing)}")
@@ -5298,21 +5299,75 @@ async def import_bank_statement(request: Request, file: UploadFile = File(...), 
     
     for idx, row in df.iterrows():
         try:
+            # Parse fecha_movimiento - handle different formats
+            fecha_mov = row['fecha_movimiento']
+            if pd.isna(fecha_mov):
+                errors.append(f"Fila {idx + 2}: fecha_movimiento vacía")
+                continue
+            
+            # Convert to string and handle datetime objects
+            if hasattr(fecha_mov, 'strftime'):
+                fecha_str = fecha_mov.strftime('%Y-%m-%d')
+            else:
+                fecha_str = str(fecha_mov)[:19]
+            
+            # Parse monto
+            monto = row['monto']
+            if pd.isna(monto):
+                errors.append(f"Fila {idx + 2}: monto vacío")
+                continue
+            monto = float(monto)
+            
+            # Determine tipo_movimiento from monto sign or column
+            tipo_mov = 'credito'
+            if 'tipo_movimiento' in df.columns and not pd.isna(row.get('tipo_movimiento')):
+                tipo_mov = str(row['tipo_movimiento']).lower().strip()
+                if tipo_mov in ['debito', 'débito', 'cargo', 'retiro', 'egreso']:
+                    tipo_mov = 'debito'
+                else:
+                    tipo_mov = 'credito'
+            elif monto < 0:
+                tipo_mov = 'debito'
+                monto = abs(monto)
+            
+            # Get description
+            descripcion = row['descripcion']
+            if pd.isna(descripcion):
+                descripcion = 'Movimiento bancario'
+            descripcion = str(descripcion)[:500]
+            
+            # Get optional saldo
+            saldo = 0
+            if 'saldo' in df.columns and not pd.isna(row.get('saldo')):
+                try:
+                    saldo = float(row['saldo'])
+                except:
+                    saldo = 0
+            
+            # Get optional fecha_valor
+            fecha_valor = fecha_str
+            if 'fecha_valor' in df.columns and not pd.isna(row.get('fecha_valor')):
+                fv = row['fecha_valor']
+                if hasattr(fv, 'strftime'):
+                    fecha_valor = fv.strftime('%Y-%m-%d')
+                else:
+                    fecha_valor = str(fv)[:19]
+            
             txn = {
                 'id': str(uuid.uuid4()),
                 'company_id': company_id,
                 'bank_account_id': bank_account_id,
-                'fecha_movimiento': str(row['fecha_movimiento'])[:19],
-                'fecha_valor': str(row.get('fecha_valor', row['fecha_movimiento']))[:19],
-                'descripcion': str(row['descripcion']),
-                'referencia': str(row.get('referencia', '')),
-                'monto': float(row['monto']),
-                'tipo_movimiento': str(row['tipo_movimiento']).lower(),
-                'saldo': float(row['saldo']),
+                'fecha_movimiento': fecha_str,
+                'fecha_valor': fecha_valor,
+                'descripcion': descripcion,
+                'referencia': str(row.get('referencia', '')) if not pd.isna(row.get('referencia')) else '',
+                'monto': monto,
+                'tipo_movimiento': tipo_mov,
+                'saldo': saldo,
                 'conciliado': False,
                 'estado_conciliacion': 'pendiente',
-                'categoria': str(row.get('categoria', '')),
-                'notas': str(row.get('notas', '')),
+                'categoria': str(row.get('categoria', '')) if not pd.isna(row.get('categoria')) else '',
+                'notas': str(row.get('notas', '')) if not pd.isna(row.get('notas')) else '',
                 'created_at': datetime.now(timezone.utc).isoformat()
             }
             await db.bank_transactions.insert_one(txn)
