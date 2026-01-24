@@ -5225,6 +5225,31 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
                         fecha_pago_dt = fecha_mov
                     else:
                         fecha_pago_str = str(fecha_mov)[:10]
+                        try:
+                            fecha_pago_dt = datetime.fromisoformat(str(fecha_mov).replace('Z', '+00:00'))
+                        except:
+                            pass
+        
+        # DIOT ONLY INCLUDES PAID CFDIs - Skip unpaid ones
+        if not pagado:
+            continue
+        
+        # Filter by payment date if date range is specified
+        if fecha_pago_dt:
+            if fecha_desde_dt and fecha_pago_dt < fecha_desde_dt:
+                continue
+            if fecha_hasta_dt and fecha_pago_dt > fecha_hasta_dt:
+                continue
+        elif fecha_desde_dt or fecha_hasta_dt:
+            # If we have date filters but no payment date, skip this record
+            continue
+                fecha_mov = bank_txn.get('fecha_movimiento')
+                if fecha_mov:
+                    if isinstance(fecha_mov, datetime):
+                        fecha_pago_str = fecha_mov.strftime('%Y-%m-%d')
+                        fecha_pago_dt = fecha_mov
+                    else:
+                        fecha_pago_str = str(fecha_mov)[:10]
         
         # Get FX rate for payment date if currency is not MXN
         if moneda != 'MXN' and fecha_pago_str:
