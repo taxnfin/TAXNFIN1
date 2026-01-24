@@ -5405,8 +5405,7 @@ def parse_bank_statement_pdf(pdf_content: bytes, bank_name: str = "auto") -> Lis
 def parse_mexican_bank_pdf(text: str, tables: List, pdf, saldo_inicial: float = None) -> List[Dict]:
     """
     Universal parser for Mexican bank PDFs.
-    Only captures transactions with valid dates (DD MMM format like "1 DIC", "15 ENE").
-    Ignores summary rows, totals, and invalid data.
+    Enhanced to better handle BanBajío and other Mexican bank formats.
     """
     import re
     from datetime import datetime
@@ -5417,125 +5416,260 @@ def parse_mexican_bank_pdf(text: str, tables: List, pdf, saldo_inicial: float = 
     months_es = {
         'ENE': '01', 'FEB': '02', 'MAR': '03', 'ABR': '04',
         'MAY': '05', 'JUN': '06', 'JUL': '07', 'AGO': '08',
-        'SEP': '09', 'OCT': '10', 'NOV': '11', 'DIC': '12'
+        'SEP': '09', 'OCT': '10', 'NOV': '11', 'DIC': '12',
+        'ENERO': '01', 'FEBRERO': '02', 'MARZO': '03', 'ABRIL': '04',
+        'MAYO': '05', 'JUNIO': '06', 'JULIO': '07', 'AGOSTO': '08',
+        'SEPTIEMBRE': '09', 'OCTUBRE': '10', 'NOVIEMBRE': '11', 'DICIEMBRE': '12'
     }
     
     def is_valid_date(day: int, month: str) -> bool:
         """Check if day and month are valid"""
-        if month not in months_es:
+        if month.upper() not in months_es:
             return False
         if day < 1 or day > 31:
             return False
         return True
     
-    def extract_valid_date(text: str) -> tuple:
-        """Extract and validate date from text. Returns (fecha_str, match_end) or (None, 0)"""
-        # Only match DD MMM at the START of text or after whitespace
-        match = re.search(r'(?:^|\s)(\d{1,2})\s*(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)\b', text.upper())
+    def parse_date(date_str: str) -> str:
+        """Parse date from various formats: DD MMM, DD/MM/YYYY, YYYY-MM-DD"""
+        date_str = date_str.strip()
+        
+        # Format: DD MMM (e.g., "1 DIC", "15 ENE")
+        match = re.match(r'(\d{1,2})\s*(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)', date_str.upper())
         if match:
             day = int(match.group(1))
-            month = match.group(2)
-            if is_valid_date(day, month):
-                month_num = months_es[month]
-                fecha = f"{current_year}-{month_num}-{str(day).zfill(2)}"
-                return (fecha, match.end())
-        return (None, 0)
+            month = months_es.get(match.group(2), '01')
+            return f"{current_year}-{month}-{str(day).zfill(2)}"
+        
+        # Format: DD/MM/YYYY or DD-MM-YYYY
+        match = re.match(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})', date_str)
+        if match:
+            day = match.group(1).zfill(2)
+            month = match.group(2).zfill(2)
+            year = match.group(3)
+            if len(year) == 2:
+                year = f"20{year}"
+            return f"{year}-{month}-{day}"
+        
+        # Format: YYYY-MM-DD
+        match = re.match(r'(\d{4})-(\d{2})-(\d{2})', date_str)
+        if match:
+            return date_str
+        
+        return None
     
-    # Process using plain text - most reliable for Mexican bank PDFs
-    lines = text.split('\n')
+    def extract_amount(val: str) -> float:
+        """Extract numeric amount from string, handling various formats"""
+        if not val:
+            return 0
+        # Remove currency symbols and spaces
+        val = re.sub(r'[^\d.,\-]', '', str(val))
+        # Handle negative values
+        is_negative = '-' in val
+        val = val.replace('-', '')
+        # Handle comma as thousands separator
+        if ',' in val and '.' in val:
+            val = val.replace(',', '')
+        elif ',' in val:
+            # Could be decimal separator or thousands
+            parts = val.split(',')
+            if len(parts[-1]) == 2:  # Likely decimal
+                val = val.replace(',', '.')
+            else:  # Thousands separator
+                val = val.replace(',', '')
+        try:
+            amount = float(val)
+            return -amount if is_negative else amount
+        except:
+            return 0
     
     # Words to skip - these are summary/header lines
     skip_keywords = [
-        'SALDO INICIAL', 'SALDO ANTERIOR', 'SALDO FINAL', 
+        'SALDO INICIAL', 'SALDO ANTERIOR', 'SALDO FINAL', 'SALDO AL',
         'TOTAL', 'RESUMEN', 'DEPOSITOS', 'RETIROS', 'CARGOS',
-        'FECHA', 'NO. REF', 'DESCRIPCION', 'OPERACION',
-        '(+)', '(-)', 'PROMEDIO', 'MENSUAL', 'MINIMO'
+        'FECHA', 'NO. REF', 'DESCRIPCION', 'OPERACION', 'CONCEPTO',
+        '(+)', '(-)', 'PROMEDIO', 'MENSUAL', 'MINIMO', 'PERIODO',
+        'ESTADO DE CUENTA', 'CUENTA', 'CLIENTE', 'RFC', 'DOMICILIO'
     ]
     
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        
-        line_upper = line.upper()
-        
-        # Skip summary and header lines
-        if any(skip in line_upper for skip in skip_keywords):
-            continue
-        
-        # Try to extract a valid date from the beginning of the line
-        fecha, date_end = extract_valid_date(line)
-        if not fecha:
-            continue
-        
-        # Get the rest of the line after the date
-        rest_of_line = line[date_end:].strip() if date_end > 0 else line
-        
-        # Extract all monetary amounts from this line
-        amounts = re.findall(r'([\d,]+\.\d{2})', rest_of_line)
-        amounts = [float(a.replace(',', '')) for a in amounts]
-        
-        # We need at least 2 amounts (movement + saldo) or 3 (dep, ret, saldo)
-        if len(amounts) < 2:
-            continue
-        
-        # Get description - text between date and first amount
-        first_amount_match = re.search(r'[\d,]+\.\d{2}', rest_of_line)
-        if first_amount_match:
-            descripcion = rest_of_line[:first_amount_match.start()].strip()
-        else:
-            descripcion = rest_of_line[:50]
-        
-        # Clean up description - remove reference numbers
-        descripcion = re.sub(r'^\d+\s+', '', descripcion)  # Remove leading numbers (reference)
-        descripcion = descripcion.strip()
-        
-        # Parse amounts based on position
-        # Format: [maybe other numbers...] DEPOSITO RETIRO SALDO
-        # Last 3 values are the key ones
-        deposito = 0
-        retiro = 0
-        saldo = amounts[-1] if amounts else 0  # Last is always SALDO
-        
-        if len(amounts) >= 3:
-            # We have DEP, RET, SALDO
-            dep_val = amounts[-3]
-            ret_val = amounts[-2]
-            
-            # In Mexican bank statements, one of DEP/RET is usually 0
-            # The non-zero one is the movement
-            if dep_val > 0 and (ret_val == 0 or ret_val == dep_val):
-                deposito = dep_val
-                retiro = 0
-            elif ret_val > 0 and (dep_val == 0 or dep_val == ret_val):
-                retiro = ret_val
+    # First try to extract from tables (more structured)
+    if tables:
+        for table in tables:
+            if not table:
+                continue
+            for row in table:
+                if not row or len(row) < 3:
+                    continue
+                
+                # Convert all cells to strings
+                row_str = [str(cell).strip() if cell else '' for cell in row]
+                row_joined = ' '.join(row_str).upper()
+                
+                # Skip header/summary rows
+                if any(skip in row_joined for skip in skip_keywords):
+                    continue
+                
+                # Try to find date in first few cells
+                fecha = None
+                for i, cell in enumerate(row_str[:3]):
+                    fecha = parse_date(cell)
+                    if fecha:
+                        break
+                
+                if not fecha:
+                    continue
+                
+                # Extract description (usually longest non-numeric field)
+                descripcion = ""
+                amounts = []
+                
+                for cell in row_str:
+                    # Check if it's a numeric value
+                    cell_clean = re.sub(r'[^\d.,\-]', '', cell)
+                    if cell_clean and re.match(r'^-?[\d,]+\.?\d*$', cell_clean.replace(',', '')):
+                        amt = extract_amount(cell)
+                        if amt != 0:
+                            amounts.append(amt)
+                    elif len(cell) > len(descripcion) and not re.match(r'^[\d\$\.,\s/-]+$', cell):
+                        descripcion = cell
+                
+                if not amounts or not descripcion:
+                    continue
+                
+                # Determine deposit vs withdrawal
                 deposito = 0
-            elif dep_val > 0 and ret_val > 0 and dep_val != ret_val:
-                # Both have different values - unusual but possible
-                deposito = dep_val
-                retiro = ret_val
-        elif len(amounts) == 2:
-            # Only movement and saldo
-            monto = amounts[0]
-            saldo = amounts[1]
-            
-            # Use description to determine if deposit or withdrawal
-            desc_upper = descripcion.upper()
-            if any(kw in desc_upper for kw in ['DEPOSITO', 'ABONO', 'INGRESO', 'RECIBID', 'TRANSFERENCIA']):
-                deposito = monto
-            else:
-                retiro = monto
+                retiro = 0
+                saldo = abs(amounts[-1]) if len(amounts) > 1 else 0
+                
+                if len(amounts) >= 3:
+                    # Format: ... | DEPOSITO | RETIRO | SALDO
+                    dep_val = amounts[-3]
+                    ret_val = amounts[-2]
+                    if dep_val > 0 and ret_val == 0:
+                        deposito = dep_val
+                    elif ret_val > 0 and dep_val == 0:
+                        retiro = ret_val
+                    elif dep_val > 0:
+                        deposito = dep_val
+                elif len(amounts) >= 2:
+                    monto = amounts[-2]
+                    # Use description to guess type
+                    desc_upper = descripcion.upper()
+                    deposit_keywords = ['DEPOSITO', 'ABONO', 'INGRESO', 'TRANSFERENCIA RECIBIDA', 'PAGO RECIBIDO', 'CREDITO']
+                    withdrawal_keywords = ['RETIRO', 'CARGO', 'PAGO', 'COMISION', 'IVA', 'TRANSFERENCIA ENVIADA', 'DEBITO']
+                    
+                    if any(kw in desc_upper for kw in deposit_keywords):
+                        deposito = abs(monto)
+                    elif any(kw in desc_upper for kw in withdrawal_keywords):
+                        retiro = abs(monto)
+                    elif monto < 0:
+                        retiro = abs(monto)
+                    else:
+                        deposito = monto
+                
+                if deposito > 0 or retiro > 0:
+                    transactions.append({
+                        'fecha': fecha,
+                        'descripcion': descripcion[:200].strip() or 'Movimiento bancario',
+                        'deposito': deposito,
+                        'retiro': retiro,
+                        'saldo': saldo,
+                        'referencia': ''
+                    })
+    
+    # If no transactions from tables, try line-by-line parsing
+    if not transactions:
+        lines = text.split('\n')
         
-        # Only add valid transactions
-        if (deposito > 0 or retiro > 0) and deposito != retiro:
-            transactions.append({
-                'fecha': fecha,
-                'descripcion': descripcion[:200] or 'Movimiento bancario',
-                'deposito': deposito,
-                'retiro': retiro,
-                'saldo': saldo,
-                'referencia': ''
-            })
+        for line in lines:
+            line = line.strip()
+            if not line or len(line) < 10:
+                continue
+            
+            line_upper = line.upper()
+            
+            # Skip summary and header lines
+            if any(skip in line_upper for skip in skip_keywords):
+                continue
+            
+            # Try multiple date patterns
+            fecha = None
+            rest_of_line = line
+            
+            # Pattern 1: DD MMM at start
+            match = re.match(r'^(\d{1,2})\s*(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)\s+(.+)', line, re.IGNORECASE)
+            if match:
+                day = int(match.group(1))
+                month = match.group(2).upper()
+                if is_valid_date(day, month):
+                    fecha = f"{current_year}-{months_es[month]}-{str(day).zfill(2)}"
+                    rest_of_line = match.group(3)
+            
+            # Pattern 2: DD/MM/YYYY at start
+            if not fecha:
+                match = re.match(r'^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\s+(.+)', line)
+                if match:
+                    fecha = parse_date(f"{match.group(1)}/{match.group(2)}/{match.group(3)}")
+                    rest_of_line = match.group(4)
+            
+            if not fecha:
+                continue
+            
+            # Extract amounts
+            amounts = re.findall(r'([\d,]+\.\d{2})', rest_of_line)
+            amounts = [float(a.replace(',', '')) for a in amounts]
+            
+            if len(amounts) < 1:
+                continue
+            
+            # Get description
+            first_amount_match = re.search(r'[\d,]+\.\d{2}', rest_of_line)
+            if first_amount_match:
+                descripcion = rest_of_line[:first_amount_match.start()].strip()
+            else:
+                descripcion = rest_of_line[:50]
+            
+            # Clean description
+            descripcion = re.sub(r'^\d+\s+', '', descripcion).strip()
+            
+            # Determine deposit vs withdrawal
+            deposito = 0
+            retiro = 0
+            saldo = amounts[-1] if len(amounts) > 1 else 0
+            
+            if len(amounts) >= 3:
+                dep_val = amounts[-3]
+                ret_val = amounts[-2]
+                if dep_val > 0 and (ret_val == 0 or ret_val == saldo):
+                    deposito = dep_val
+                elif ret_val > 0 and (dep_val == 0 or dep_val == saldo):
+                    retiro = ret_val
+            elif len(amounts) >= 2:
+                monto = amounts[0]
+                desc_upper = descripcion.upper()
+                if any(kw in desc_upper for kw in ['DEPOSITO', 'ABONO', 'INGRESO', 'RECIBID']):
+                    deposito = monto
+                else:
+                    retiro = monto
+            elif len(amounts) == 1:
+                # Single amount - try to determine from description
+                monto = amounts[0]
+                desc_upper = descripcion.upper()
+                if any(kw in desc_upper for kw in ['DEPOSITO', 'ABONO', 'INGRESO', 'RECIBID', 'TRANSFERENCIA']):
+                    deposito = monto
+                else:
+                    retiro = monto
+                saldo = 0
+            
+            if deposito > 0 or retiro > 0:
+                transactions.append({
+                    'fecha': fecha,
+                    'descripcion': descripcion[:200] or 'Movimiento bancario',
+                    'deposito': deposito,
+                    'retiro': retiro,
+                    'saldo': saldo,
+                    'referencia': ''
+                })
     
     return transactions
 
