@@ -1909,6 +1909,18 @@ const BankStatementsModule = () => {
                                 </Button>
                               </>
                             )}
+                            {txn.conciliado && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-7 text-red-600 border-red-300 hover:bg-red-50"
+                                onClick={() => handleCancelReconciliation(txn)}
+                                title="Cancelar conciliación para poder rehacerla"
+                              >
+                                <RotateCcw size={12} className="mr-1" />
+                                Cancelar
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="sm"
