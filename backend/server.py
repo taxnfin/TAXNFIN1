@@ -2493,12 +2493,13 @@ async def download_transactions_template():
     )
 
 @api_router.post("/bank-transactions", response_model=BankTransaction)
-async def create_bank_transaction(transaction_data: BankTransactionCreate, current_user: Dict = Depends(get_current_user)):
-    account = await db.bank_accounts.find_one({'id': transaction_data.bank_account_id, 'company_id': current_user['company_id']}, {'_id': 0})
+async def create_bank_transaction(transaction_data: BankTransactionCreate, request: Request, current_user: Dict = Depends(get_current_user)):
+    company_id = await get_active_company_id(request, current_user)
+    account = await db.bank_accounts.find_one({'id': transaction_data.bank_account_id, 'company_id': company_id}, {'_id': 0})
     if not account:
         raise HTTPException(status_code=404, detail="Cuenta bancaria no encontrada")
     
-    bank_transaction = BankTransaction(company_id=current_user['company_id'], **transaction_data.model_dump())
+    bank_transaction = BankTransaction(company_id=company_id, **transaction_data.model_dump())
     doc = bank_transaction.model_dump()
     for field in ['fecha_movimiento', 'fecha_valor', 'created_at']:
         doc[field] = doc[field].isoformat()
