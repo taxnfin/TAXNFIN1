@@ -1581,11 +1581,7 @@ const BankStatementsModule = () => {
           <CardContent>
             <div className="text-xl font-bold text-gray-700">
               ${saldoInicial.toLocaleString('es-MX', {minimumFractionDigits: 2})}
-              {filterAccount === 'all' ? (
-                <span className="text-xs ml-1">MXN</span>
-              ) : (
-                monedaCuenta !== 'MXN' && <span className="text-xs ml-1">{monedaCuenta}</span>
-              )}
+              <span className="text-xs ml-1">{monedaCuenta}</span>
             </div>
             {filterAccount === 'all' && bankAccounts.length > 0 && (
               <p className="text-xs text-gray-500">{bankAccounts.length} cuenta(s)</p>
@@ -1608,11 +1604,7 @@ const BankStatementsModule = () => {
           <CardContent>
             <div className="text-xl font-bold text-green-700">
               ${displayDepositos.toLocaleString('es-MX', {minimumFractionDigits: 2})}
-              {filterAccount === 'all' ? (
-                <span className="text-xs ml-1">MXN</span>
-              ) : (
-                monedaCuenta !== 'MXN' && <span className="text-xs ml-1">{monedaCuenta}</span>
-              )}
+              <span className="text-xs ml-1">{monedaCuenta}</span>
             </div>
             {filterAccount !== 'all' && monedaCuenta !== 'MXN' && (
               <p className="text-xs text-green-600 mt-1">
@@ -1632,11 +1624,7 @@ const BankStatementsModule = () => {
           <CardContent>
             <div className="text-xl font-bold text-red-700">
               ${displayRetiros.toLocaleString('es-MX', {minimumFractionDigits: 2})}
-              {filterAccount === 'all' ? (
-                <span className="text-xs ml-1">MXN</span>
-              ) : (
-                monedaCuenta !== 'MXN' && <span className="text-xs ml-1">{monedaCuenta}</span>
-              )}
+              <span className="text-xs ml-1">{monedaCuenta}</span>
             </div>
             {filterAccount !== 'all' && monedaCuenta !== 'MXN' && (
               <p className="text-xs text-red-600 mt-1">
