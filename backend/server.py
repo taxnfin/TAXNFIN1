@@ -5236,10 +5236,16 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
         
         # Filter by payment date if date range is specified
         if fecha_pago_dt:
-            if fecha_desde_dt and fecha_pago_dt < fecha_desde_dt:
-                continue
-            if fecha_hasta_dt and fecha_pago_dt > fecha_hasta_dt:
-                continue
+            # Normalize to naive datetime for comparison
+            fecha_pago_naive = fecha_pago_dt.replace(tzinfo=None) if hasattr(fecha_pago_dt, 'tzinfo') and fecha_pago_dt.tzinfo else fecha_pago_dt
+            if fecha_desde_dt:
+                fecha_desde_naive = fecha_desde_dt.replace(tzinfo=None) if hasattr(fecha_desde_dt, 'tzinfo') and fecha_desde_dt.tzinfo else fecha_desde_dt
+                if fecha_pago_naive < fecha_desde_naive:
+                    continue
+            if fecha_hasta_dt:
+                fecha_hasta_naive = fecha_hasta_dt.replace(tzinfo=None) if hasattr(fecha_hasta_dt, 'tzinfo') and fecha_hasta_dt.tzinfo else fecha_hasta_dt
+                if fecha_pago_naive > fecha_hasta_naive:
+                    continue
         elif fecha_desde_dt or fecha_hasta_dt:
             # If we have date filters but no payment date, skip this record
             continue
