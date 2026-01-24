@@ -237,7 +237,7 @@ const CashflowProjections = () => {
         const section = isIngreso ? week.ingresos : week.egresos;
         
         // Convert CFDI amount to MXN for consistent calculations
-        const cfdiMontoMXN = convertToMXN(cfdi.total, cfdi.moneda, rates);
+        const cfdiMontoMXN = convertToMXN(cfdi.total, cfdi.moneda, effectiveRates);
         
         // Get category and subcategory name
         const category = categoriesData.find(c => c.id === cfdi.category_id);
