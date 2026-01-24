@@ -516,6 +516,11 @@ const BankStatementsModule = () => {
       setBankTransactions(txnRes.data);
       setBankAccounts(accountsRes.data);
       setCfdis(cfdisRes.data);
+      
+      // Load FX rate based on earliest transaction date
+      if (txnRes.data && txnRes.data.length > 0) {
+        loadFxRateFirstOfMonth(txnRes.data);
+      }
     } catch (error) {
       toast.error('Error cargando datos');
     } finally {
