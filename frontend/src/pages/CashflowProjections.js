@@ -150,19 +150,25 @@ const CashflowProjections = () => {
   };
 
   // Helper function to convert amount to MXN
-  const convertToMXN = (amount, currency, rates) => {
+  const convertToMXN = (amount, currency, rates = {}) => {
     if (!amount) return 0;
     if (currency === 'MXN' || !currency) return amount;
+    // Try rates passed in, then fxRates state, then default
     const rate = rates[currency] || fxRates[currency] || 17.50;
     return amount * rate;
   };
 
   const processWeeklyData = (cfdisData, categoriesData, weekStartDay = 1, rates = {}, payments = []) => {
+    // Merge rates
+    const effectiveRates = { MXN: 1, USD: 17.50, EUR: 19.00, ...fxRates, ...rates };
+    
     // Generate 13 weeks - include current week and look back one week for recent CFDIs
     const weeks = [];
     const today = new Date();
     const currentWeekStart = startOfWeek(today, { weekStartsOn: weekStartDay });
     const startDate = addWeeks(currentWeekStart, -1); // Start one week before to capture recent CFDIs
+    
+    console.log('Processing weekly data with', payments.length, 'payments');
     
     for (let i = 0; i < 14; i++) { // 14 weeks to include past week + 13 future
       const weekStart = addWeeks(startDate, i);
@@ -189,13 +195,23 @@ const CashflowProjections = () => {
     // Process REAL payments for past/current weeks
     payments.forEach(payment => {
       if (!payment.fecha_pago && !payment.fecha_vencimiento) return;
-      const paymentDate = new Date(payment.fecha_pago || payment.fecha_vencimiento);
+      
+      // Parse date carefully
+      const fechaStr = payment.fecha_pago || payment.fecha_vencimiento;
+      let paymentDate;
+      try {
+        paymentDate = new Date(fechaStr);
+        if (isNaN(paymentDate.getTime())) return;
+      } catch {
+        return;
+      }
+      
       const weekIdx = weeks.findIndex(w => paymentDate >= w.weekStart && paymentDate < w.weekEnd);
       
       if (weekIdx !== -1 && (weeks[weekIdx].isPast || weeks[weekIdx].isCurrent)) {
-        // Only count completed/real payments for past weeks
+        // Only count completed/real payments
         if (payment.estatus === 'completado' || payment.es_real === true) {
-          const montoMXN = convertToMXN(payment.monto, payment.moneda, rates);
+          const montoMXN = convertToMXN(payment.monto, payment.moneda, effectiveRates);
           if (payment.tipo === 'cobro') {
             weeks[weekIdx].ingresosReales += montoMXN;
           } else {
@@ -203,6 +219,11 @@ const CashflowProjections = () => {
           }
         }
       }
+    });
+    
+    // Log for debugging
+    weeks.filter(w => w.isPast || w.isCurrent).forEach(w => {
+      console.log(`${w.label}: Ingresos Reales=${w.ingresosReales.toFixed(2)}, Egresos Reales=${w.egresosReales.toFixed(2)}`);
     });
     
     // Classify CFDIs by week based on fecha_emision - CONVERTING TO MXN
