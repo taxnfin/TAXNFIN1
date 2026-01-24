@@ -118,6 +118,7 @@ const CFDIModule = () => {
     let successCount = 0;
     let failedCount = 0;
     let aiCategorizedCount = 0;
+    let nominaAutoReconciledCount = 0;
     let newRfcsDetected = [];
     const errors = [];
 
