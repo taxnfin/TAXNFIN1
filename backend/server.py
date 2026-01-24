@@ -2904,6 +2904,96 @@ async def list_reconciliations(
                 r[field] = datetime.fromisoformat(r[field])
     return reconciliations
 
+@api_router.delete("/reconciliations/{reconciliation_id}")
+async def delete_reconciliation(
+    reconciliation_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Delete/cancel a reconciliation.
+    This will:
+    1. Delete the reconciliation record
+    2. Mark the bank transaction as not reconciled
+    3. Reset the CFDI estado_conciliacion to 'pendiente'
+    4. Remove any auto-created payment
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Find the reconciliation
+    recon = await db.reconciliations.find_one({'id': reconciliation_id, 'company_id': company_id}, {'_id': 0})
+    if not recon:
+        raise HTTPException(status_code=404, detail="Conciliación no encontrada")
+    
+    bank_txn_id = recon.get('bank_transaction_id')
+    cfdi_id = recon.get('cfdi_id')
+    
+    # Check if there are other reconciliations for this CFDI
+    other_recons = await db.reconciliations.count_documents({
+        'company_id': company_id,
+        'cfdi_id': cfdi_id,
+        'id': {'$ne': reconciliation_id}
+    })
+    
+    # Delete the reconciliation
+    await db.reconciliations.delete_one({'id': reconciliation_id})
+    
+    # Mark bank transaction as not reconciled (only if no other reconciliations exist for it)
+    if bank_txn_id:
+        other_txn_recons = await db.reconciliations.count_documents({
+            'company_id': company_id,
+            'bank_transaction_id': bank_txn_id
+        })
+        if other_txn_recons == 0:
+            await db.bank_transactions.update_one(
+                {'id': bank_txn_id},
+                {'$set': {'conciliado': False, 'payment_id': None, 'fecha_conciliacion': None}}
+            )
+    
+    # Reset CFDI estado_conciliacion to 'pendiente' if no other reconciliations exist
+    if cfdi_id and other_recons == 0:
+        await db.cfdis.update_one(
+            {'id': cfdi_id},
+            {'$set': {'estado_conciliacion': 'pendiente'}}
+        )
+    
+    # Delete auto-created payment if exists
+    auto_payment = await db.payments.find_one({
+        'company_id': company_id,
+        'bank_transaction_id': bank_txn_id,
+        'auto_created_from_reconciliation': True
+    }, {'_id': 0, 'id': 1})
+    
+    if auto_payment:
+        await db.payments.delete_one({'id': auto_payment['id']})
+    
+    await audit_log(company_id, 'BankReconciliation', reconciliation_id, 'DELETE', current_user['id'])
+    
+    return {"status": "success", "message": "Conciliación cancelada correctamente"}
+
+@api_router.get("/reconciliations/by-cfdi/{cfdi_id}")
+async def get_reconciliations_by_cfdi(
+    cfdi_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Get all reconciliations for a specific CFDI"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    reconciliations = await db.reconciliations.find(
+        {'company_id': company_id, 'cfdi_id': cfdi_id},
+        {'_id': 0}
+    ).to_list(100)
+    
+    # Enrich with bank transaction info
+    for r in reconciliations:
+        if r.get('bank_transaction_id'):
+            txn = await db.bank_transactions.find_one({'id': r['bank_transaction_id']}, {'_id': 0, 'descripcion': 1, 'monto': 1, 'moneda': 1, 'fecha_movimiento': 1})
+            if txn:
+                r['bank_transaction'] = txn
+    
+    return reconciliations
+
 @api_router.get("/reconciliations/summary")
 async def get_reconciliation_summary(
     request: Request,
