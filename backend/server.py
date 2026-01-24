@@ -2355,6 +2355,135 @@ async def upload_cfdi(request: Request, file: UploadFile = File(...), current_us
     except Exception as e:
         logger.warning(f"Auto-categorization failed for CFDI {cfdi.uuid}: {str(e)}")
     
+    # NÓMINA: Auto-categorize as "Sueldos" and auto-reconcile with bank transactions
+    nomina_auto_reconciled = None
+    if parsed.get('is_nomina') or parsed.get('es_nomina_tipo_comprobante'):
+        try:
+            # 1. Find or create "Sueldos" category
+            sueldos_category = await db.categories.find_one({
+                'company_id': company_id,
+                'nombre': {'$regex': '^sueldos?$', '$options': 'i'}
+            }, {'_id': 0})
+            
+            if not sueldos_category:
+                # Also check for "Nómina" or "Nominas"
+                sueldos_category = await db.categories.find_one({
+                    'company_id': company_id,
+                    'nombre': {'$regex': '^n[oó]minas?$', '$options': 'i'}
+                }, {'_id': 0})
+            
+            if not sueldos_category:
+                # Create "Sueldos" category if doesn't exist
+                new_cat_id = str(uuid_lib.uuid4())
+                sueldos_category = {
+                    'id': new_cat_id,
+                    'company_id': company_id,
+                    'nombre': 'Sueldos',
+                    'tipo': 'egreso',
+                    'activo': True,
+                    'created_at': datetime.now(timezone.utc).isoformat()
+                }
+                await db.categories.insert_one(sueldos_category)
+                logger.info(f"Created 'Sueldos' category for company {company_id}")
+            
+            # Assign category to CFDI
+            await db.cfdis.update_one({'id': cfdi.id}, {'$set': {'category_id': sueldos_category['id']}})
+            
+            # 2. Auto-reconcile with bank transactions by employee name and date
+            receptor_nombre = parsed.get('receptor_nombre', '').upper().strip()
+            fecha_emision = parsed.get('fecha_emision', '')[:10]  # YYYY-MM-DD
+            nomina_data = parsed.get('nomina_data', {})
+            fecha_pago_nomina = nomina_data.get('fecha_pago', fecha_emision)[:10] if nomina_data else fecha_emision
+            total_cfdi = parsed.get('total', 0)
+            
+            # Search for bank transactions matching:
+            # - Similar amount (within 5%)
+            # - Similar date (within 7 days of fecha_pago)
+            # - Name match in descripcion
+            if receptor_nombre and total_cfdi > 0:
+                # Parse dates for search range
+                try:
+                    fecha_ref = datetime.strptime(fecha_pago_nomina, '%Y-%m-%d')
+                    fecha_desde = (fecha_ref - timedelta(days=7)).isoformat()
+                    fecha_hasta = (fecha_ref + timedelta(days=7)).isoformat()
+                    
+                    # Find matching bank transactions
+                    bank_txns = await db.bank_transactions.find({
+                        'company_id': company_id,
+                        'tipo_movimiento': 'debito',  # Payroll is a debit (money going out)
+                        'conciliado': {'$ne': True},
+                        'fecha_movimiento': {'$gte': fecha_desde, '$lte': fecha_hasta}
+                    }, {'_id': 0}).to_list(100)
+                    
+                    best_match = None
+                    best_score = 0
+                    
+                    for txn in bank_txns:
+                        score = 0
+                        txn_monto = abs(txn.get('monto', 0))
+                        txn_desc = txn.get('descripcion', '').upper()
+                        
+                        # Check amount match (within 5%)
+                        if txn_monto > 0:
+                            diff_pct = abs(txn_monto - total_cfdi) / total_cfdi * 100
+                            if diff_pct <= 5:
+                                score += 50
+                            elif diff_pct <= 10:
+                                score += 30
+                        
+                        # Check name match in description
+                        receptor_parts = receptor_nombre.split()
+                        matches = sum(1 for part in receptor_parts if len(part) > 2 and part in txn_desc)
+                        if matches >= 2:
+                            score += 40
+                        elif matches >= 1:
+                            score += 20
+                        
+                        if score > best_score and score >= 50:
+                            best_score = score
+                            best_match = txn
+                    
+                    # Auto-reconcile if good match found
+                    if best_match and best_score >= 50:
+                        recon_id = str(uuid_lib.uuid4())
+                        recon_doc = {
+                            'id': recon_id,
+                            'company_id': company_id,
+                            'bank_transaction_id': best_match['id'],
+                            'cfdi_id': cfdi.id,
+                            'metodo_conciliacion': 'auto_nomina',
+                            'porcentaje_match': best_score,
+                            'notas': f'Auto-conciliado: Nómina de {receptor_nombre}',
+                            'fecha_conciliacion': datetime.now(timezone.utc).isoformat(),
+                            'created_at': datetime.now(timezone.utc).isoformat()
+                        }
+                        await db.reconciliations.insert_one(recon_doc)
+                        
+                        # Update bank transaction as reconciled
+                        await db.bank_transactions.update_one(
+                            {'id': best_match['id']},
+                            {'$set': {'conciliado': True, 'fecha_conciliacion': datetime.now(timezone.utc).isoformat()}}
+                        )
+                        
+                        # Update CFDI as reconciled
+                        await db.cfdis.update_one(
+                            {'id': cfdi.id},
+                            {'$set': {'estado_conciliacion': 'conciliado'}}
+                        )
+                        
+                        nomina_auto_reconciled = {
+                            'bank_transaction_id': best_match['id'],
+                            'bank_descripcion': best_match.get('descripcion', '')[:50],
+                            'match_score': best_score,
+                            'empleado': receptor_nombre
+                        }
+                        
+                        logger.info(f"Auto-reconciled nómina CFDI {cfdi.uuid} for {receptor_nombre} with bank txn {best_match['id']}")
+                except Exception as inner_e:
+                    logger.warning(f"Nómina auto-reconciliation failed: {str(inner_e)}")
+        except Exception as e:
+            logger.warning(f"Nómina processing failed for CFDI {cfdi.uuid}: {str(e)}")
+    
     # Auto-detect customer/vendor by RFC
     auto_linked = None
     try:
