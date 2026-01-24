@@ -733,10 +733,13 @@ const CashflowProjections = () => {
                   <TableHeader>
                     <TableRow className="bg-gray-100">
                       <TableHead className="sticky left-0 bg-gray-100 min-w-[200px] font-bold">CONCEPTO</TableHead>
-                      {weeklyData.map((week, idx) => (
-                        <TableHead key={idx} className="text-center min-w-[100px]">
+                      {weeklyTotals.map((week, idx) => (
+                        <TableHead key={idx} className={`text-center min-w-[100px] ${week.isRealData ? 'bg-yellow-50' : ''}`}>
                           <div className="font-bold">{week.label}</div>
                           <div className="text-xs text-gray-500">{week.dateLabel}</div>
+                          {week.isRealData && (
+                            <div className="text-xs text-yellow-600 font-semibold">Real</div>
+                          )}
                         </TableHead>
                       ))}
                       <TableHead className="text-center min-w-[120px] bg-blue-50 font-bold">TOTAL</TableHead>
@@ -751,7 +754,7 @@ const CashflowProjections = () => {
                           SALDO INICIAL BANCOS
                         </div>
                       </TableCell>
-                      {weeklyData.map((week, idx) => (
+                      {weeklyTotals.map((week, idx) => (
                         <TableCell key={idx} className="text-center text-blue-700 font-bold">
                           {idx === 0 ? formatCurrency(saldoInicialBancos) : '-'}
                         </TableCell>
