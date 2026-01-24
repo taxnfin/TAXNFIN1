@@ -600,24 +600,35 @@ const BankStatementsModule = () => {
     // Convert movement amount to MXN using HISTORICAL rate (date of transaction)
     const movimientoMontoMXN = convertToMXNHistorical(movimientoMonto, movimientoMoneda, tcHistorico);
     
-    // Sum CFDIs - each CFDI may have its own currency
-    // Note: CFDIs should use their own currency's historical rate, but typically they match
+    // Sum CFDIs - track both original currency and MXN totals
     let cfdiTotalMXN = 0;
+    let cfdiTotalOriginal = 0; // Total in original currency (same as movement)
+    
     selectedCfdis.forEach(cfdi => {
       const cfdiMoneda = cfdi.moneda || 'MXN';
-      // For CFDIs, we use the same historical rate if same currency, otherwise convert
+      const cfdiMonto = cfdi.total || 0;
+      
+      // Track total in original currency (for USD difference)
       if (cfdiMoneda === movimientoMoneda) {
-        cfdiTotalMXN += convertToMXNHistorical(cfdi.total || 0, cfdiMoneda, tcHistorico);
+        cfdiTotalOriginal += cfdiMonto;
+        cfdiTotalMXN += convertToMXNHistorical(cfdiMonto, cfdiMoneda, tcHistorico);
       } else if (cfdiMoneda === 'MXN') {
-        cfdiTotalMXN += cfdi.total || 0;
+        cfdiTotalMXN += cfdiMonto;
+        // Convert MXN to original currency for tracking
+        if (movimientoMoneda !== 'MXN' && tcHistorico > 0) {
+          cfdiTotalOriginal += cfdiMonto / tcHistorico;
+        }
       } else {
         // Different foreign currency - use current rates as approximation
-        cfdiTotalMXN += convertToMXN(cfdi.total || 0, cfdiMoneda);
+        cfdiTotalMXN += convertToMXN(cfdiMonto, cfdiMoneda);
       }
     });
     
     // Calculate difference in MXN (converted values)
     const diferenciaMXN = movimientoMontoMXN - cfdiTotalMXN;
+    
+    // Calculate difference in original currency (USD)
+    const diferenciaOriginal = movimientoMonto - cfdiTotalOriginal;
     
     // Also return original values for display
     const cfdiTotal = selectedCfdis.reduce((sum, cfdi) => sum + (cfdi.total || 0), 0);
@@ -631,8 +642,10 @@ const BankStatementsModule = () => {
       movimientoMontoMXN,        // Converted to MXN using historical rate
       cfdiTotal,                 // Original CFDI total (might be in different currency)
       cfdiTotalMXN,              // CFDI total in MXN
+      cfdiTotalOriginal,         // CFDI total in original currency (USD)
       diferencia: diferenciaMXN, // Difference in MXN
       diferenciaMXN,             // Alias for clarity
+      diferenciaOriginal,        // Difference in original currency (USD)
       tcUsado: tcHistorico,      // Historical exchange rate used
       fechaTc: historicalFxRate?.fecha || fechaMovimiento,  // Date of the rate
       esHistorico: !!historicalFxRate,  // Flag to indicate if historical rate is being used
