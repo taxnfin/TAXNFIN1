@@ -14,7 +14,7 @@ import {
   Plus, CheckCircle, Building2, Trash2, DollarSign, 
   Upload, Download, Link2, RefreshCw, FileSpreadsheet,
   ArrowUpCircle, ArrowDownCircle, Search, Filter, X,
-  AlertCircle, Clock, Check, FileText, ArrowRightLeft, Pencil, Sparkles
+  AlertCircle, Clock, Check, FileText, ArrowRightLeft, Pencil, Sparkles, RotateCcw
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
