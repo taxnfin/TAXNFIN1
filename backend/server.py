@@ -741,7 +741,19 @@ def parse_cfdi_xml(xml_content: str) -> Dict[str, Any]:
         
         # Check for payroll (nómina) complement - ALWAYS treat as egreso
         nomina_element = root.find('.//nomina12:Nomina', ns)
-        is_nomina = nomina_element is not None
+        is_nomina = nomina_element is not None or es_nomina_por_tipo
+        
+        # Extract Nómina specific data if present
+        nomina_data = {}
+        if nomina_element is not None:
+            nomina_data = {
+                'fecha_pago': nomina_element.get('FechaPago', ''),
+                'fecha_inicial_pago': nomina_element.get('FechaInicialPago', ''),
+                'fecha_final_pago': nomina_element.get('FechaFinalPago', ''),
+                'num_dias_pagados': nomina_element.get('NumDiasPagados', ''),
+                'total_percepciones': float(nomina_element.get('TotalPercepciones', 0) or 0),
+                'total_deducciones': float(nomina_element.get('TotalDeducciones', 0) or 0),
+            }
         
         # Check for payroll keywords in concepts
         conceptos = root.findall('.//cfdi:Concepto', ns)
