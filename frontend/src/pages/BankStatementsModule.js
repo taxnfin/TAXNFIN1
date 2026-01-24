@@ -2125,15 +2125,45 @@ const BankStatementsModule = () => {
                 </div>
               )}
 
-              {/* Search CFDIs */}
-              <div className="relative">
-                <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                <Input
-                  placeholder="Buscar por cliente, RFC o UUID..."
-                  value={cfdiSearchTerm}
-                  onChange={(e) => setCfdiSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
+              {/* Search CFDIs with Auto-Match Button */}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <Input
+                    placeholder="Buscar por cliente, RFC o UUID..."
+                    value={cfdiSearchTerm}
+                    onChange={(e) => setCfdiSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-purple-600 border-purple-300 hover:bg-purple-50"
+                  onClick={async () => {
+                    if (!selectedTransaction) return;
+                    try {
+                      const res = await api.get(`/bank-transactions/${selectedTransaction.id}/match-cfdi?tolerance_days=90`);
+                      const matches = res.data.matches || [];
+                      if (matches.length > 0) {
+                        // Auto-select the best match
+                        const bestMatch = matches[0];
+                        const cfdiToSelect = cfdis.find(c => c.id === bestMatch.id);
+                        if (cfdiToSelect && !selectedCfdis.find(c => c.id === cfdiToSelect.id)) {
+                          setSelectedCfdis([...selectedCfdis, cfdiToSelect]);
+                          toast.success(`Sugerencia: ${bestMatch.emisor_nombre || bestMatch.receptor_nombre} - Score: ${bestMatch.score}%`);
+                        }
+                      } else {
+                        toast.info('No se encontraron coincidencias automáticas');
+                      }
+                    } catch (err) {
+                      console.error('Auto-match error:', err);
+                    }
+                  }}
+                >
+                  <Sparkles size={14} className="mr-1" />
+                  Sugerir
+                </Button>
               </div>
 
               {/* CFDIs list */}
