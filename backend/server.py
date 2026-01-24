@@ -5103,17 +5103,76 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
                 payments_by_cfdi[cfdi_id] = []
             payments_by_cfdi[cfdi_id].append(p)
     
+    # Get reconciliations to find bank transaction info (for TC from bank statement)
+    reconciliations = await db.reconciliations.find({'company_id': company_id}, {'_id': 0}).to_list(10000)
+    recon_by_cfdi = {r['cfdi_id']: r for r in reconciliations if r.get('cfdi_id')}
+    
+    # Get bank transactions (for payment date and TC)
+    bank_txns = await db.bank_transactions.find({'company_id': company_id}, {'_id': 0}).to_list(10000)
+    bank_txn_by_id = {t['id']: t for t in bank_txns}
+    
+    # Cache for FX rates by date
+    fx_rates_cache = {}
+    
+    async def get_fx_rate_for_date(moneda: str, fecha: str) -> float:
+        """Get FX rate for a specific date, with caching"""
+        cache_key = f"{moneda}_{fecha[:10]}"
+        if cache_key in fx_rates_cache:
+            return fx_rates_cache[cache_key]
+        
+        # Try to find exact date rate
+        rate = await db.fx_rates.find_one({
+            'company_id': company_id,
+            '$or': [
+                {'moneda_cotizada': moneda},
+                {'moneda_origen': moneda}
+            ],
+            'fecha_vigencia': {'$regex': f'^{fecha[:10]}'}
+        }, {'_id': 0})
+        
+        if rate:
+            tc = rate.get('tipo_cambio') or rate.get('tasa') or 1
+            fx_rates_cache[cache_key] = tc
+            return tc
+        
+        # Fallback: find closest rate before the date
+        rate = await db.fx_rates.find_one({
+            'company_id': company_id,
+            '$or': [
+                {'moneda_cotizada': moneda},
+                {'moneda_origen': moneda}
+            ],
+            'fecha_vigencia': {'$lte': fecha}
+        }, {'_id': 0}, sort=[('fecha_vigencia', -1)])
+        
+        if rate:
+            tc = rate.get('tipo_cambio') or rate.get('tasa') or 1
+            fx_rates_cache[cache_key] = tc
+            return tc
+        
+        # Default fallback
+        default_rate = 17.5 if moneda == 'USD' else 19.0 if moneda == 'EUR' else 1
+        fx_rates_cache[cache_key] = default_rate
+        return default_rate
+    
     records = []
     total_iva_acreditable = 0
     total_iva_retenido = 0
     total_monto = 0
+    total_monto_mxn = 0
     
     for cfdi in cfdis:
+        # Get CFDI currency
+        moneda = cfdi.get('moneda', 'MXN')
+        
         # Get payment info if exists
         cfdi_payments = payments_by_cfdi.get(cfdi['id'], [])
         fecha_pago_str = ''
         pagado = False
+        tipo_cambio_pago = 1.0
+        fecha_pago_dt = None
         
+        # Check if paid via payment record
         if cfdi_payments:
             pagado = True
             latest_payment = max(cfdi_payments, key=lambda p: p.get('fecha_pago', datetime.min) if p.get('fecha_pago') else datetime.min)
@@ -5121,8 +5180,55 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
             if fecha_pago:
                 if isinstance(fecha_pago, datetime):
                     fecha_pago_str = fecha_pago.strftime('%Y-%m-%d')
+                    fecha_pago_dt = fecha_pago
                 else:
                     fecha_pago_str = str(fecha_pago)[:10]
+                    try:
+                        fecha_pago_dt = datetime.fromisoformat(str(fecha_pago).replace('Z', '+00:00'))
+                    except:
+                        pass
+            # Use stored TC if available
+            if latest_payment.get('tipo_cambio_historico'):
+                tipo_cambio_pago = latest_payment.get('tipo_cambio_historico')
+        
+        # Also check if paid via reconciliation (bank transaction)
+        recon = recon_by_cfdi.get(cfdi['id'])
+        if recon and not pagado:
+            bank_txn = bank_txn_by_id.get(recon.get('bank_transaction_id'))
+            if bank_txn:
+                pagado = True
+                fecha_mov = bank_txn.get('fecha_movimiento')
+                if fecha_mov:
+                    if isinstance(fecha_mov, datetime):
+                        fecha_pago_str = fecha_mov.strftime('%Y-%m-%d')
+                        fecha_pago_dt = fecha_mov
+                    else:
+                        fecha_pago_str = str(fecha_mov)[:10]
+                        try:
+                            fecha_pago_dt = datetime.fromisoformat(str(fecha_mov).replace('Z', '+00:00'))
+                        except:
+                            pass
+        elif recon and pagado:
+            # Already paid but reconciled - use bank transaction date as fecha_pago
+            bank_txn = bank_txn_by_id.get(recon.get('bank_transaction_id'))
+            if bank_txn:
+                fecha_mov = bank_txn.get('fecha_movimiento')
+                if fecha_mov:
+                    if isinstance(fecha_mov, datetime):
+                        fecha_pago_str = fecha_mov.strftime('%Y-%m-%d')
+                        fecha_pago_dt = fecha_mov
+                    else:
+                        fecha_pago_str = str(fecha_mov)[:10]
+        
+        # Get FX rate for payment date if currency is not MXN
+        if moneda != 'MXN' and fecha_pago_str:
+            tipo_cambio_pago = await get_fx_rate_for_date(moneda, fecha_pago_str)
+        elif moneda != 'MXN':
+            # Use emission date FX rate as fallback
+            fecha_emision = cfdi.get('fecha_emision', '')
+            if fecha_emision:
+                fecha_str = fecha_emision.strftime('%Y-%m-%d') if isinstance(fecha_emision, datetime) else str(fecha_emision)[:10]
+                tipo_cambio_pago = await get_fx_rate_for_date(moneda, fecha_str)
         
         # Determine tipo_tercero based on RFC
         rfc = cfdi.get('emisor_rfc', '')
@@ -5143,6 +5249,10 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
         impuestos = cfdi.get('impuestos', 0) or 0
         total = cfdi.get('total', 0) or 0
         
+        # Calculate MXN amounts
+        subtotal_mxn = subtotal * tipo_cambio_pago if moneda != 'MXN' else subtotal
+        total_mxn = total * tipo_cambio_pago if moneda != 'MXN' else total
+        
         # Get IVA components from CFDI (parsed from XML)
         # IVA acreditable (trasladado)
         iva_acreditable = cfdi.get('iva_trasladado', 0) or impuestos
@@ -5154,6 +5264,11 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
         
         # ISR retenido (if present) - check both field names for compatibility
         isr_retenido = cfdi.get('isr_retenido', 0) or cfdi.get('retencion_isr', 0) or 0
+        
+        # Convert IVA to MXN
+        iva_acreditable_mxn = iva_acreditable * tipo_cambio_pago if moneda != 'MXN' else iva_acreditable
+        iva_retenido_mxn = iva_retenido * tipo_cambio_pago if moneda != 'MXN' else iva_retenido
+        isr_retenido_mxn = isr_retenido * tipo_cambio_pago if moneda != 'MXN' else isr_retenido
         
         categoria = categories.get(cfdi.get('category_id'), {}).get('nombre', '')
         subcategoria = subcategories.get(cfdi.get('subcategory_id'), {}).get('nombre', '')
@@ -5174,14 +5289,26 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
             'nombre': cfdi.get('emisor_nombre', ''),
             'pais': 'MX',
             'nacionalidad': 'Nacional',
+            # Original amounts (in CFDI currency)
+            'moneda': moneda,
             'valor_actos_pagados': total,
             'subtotal': subtotal,
+            # MXN amounts (converted)
+            'valor_actos_pagados_mxn': round(total_mxn, 2),
+            'subtotal_mxn': round(subtotal_mxn, 2),
+            'tipo_cambio': round(tipo_cambio_pago, 4),
+            # For DIOT report (always in MXN)
             'valor_actos_0': 0,
             'valor_actos_exentos': 0,
-            'valor_actos_16': subtotal,
-            'iva_retenido': round(iva_retenido, 2),
-            'isr_retenido': round(isr_retenido, 2),
-            'iva_acreditable': round(iva_acreditable, 2),
+            'valor_actos_16': round(subtotal_mxn, 2),
+            'iva_retenido': round(iva_retenido_mxn, 2),
+            'isr_retenido': round(isr_retenido_mxn, 2),
+            'iva_acreditable': round(iva_acreditable_mxn, 2),
+            # Original IVA (in CFDI currency)
+            'iva_retenido_original': round(iva_retenido, 2),
+            'isr_retenido_original': round(isr_retenido, 2),
+            'iva_acreditable_original': round(iva_acreditable, 2),
+            # Dates
             'fecha_emision': fecha_emision_str,
             'fecha_pago': fecha_pago_str,
             'pagado': pagado,
@@ -5191,9 +5318,10 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
             'cfdi_id': cfdi.get('id', '')
         })
         
-        total_iva_acreditable += iva_acreditable
-        total_iva_retenido += iva_retenido
+        total_iva_acreditable += iva_acreditable_mxn
+        total_iva_retenido += iva_retenido_mxn
         total_monto += total
+        total_monto_mxn += total_mxn
     
     return {
         'records': records,
@@ -5201,7 +5329,8 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
             'totalOperaciones': len(records),
             'totalIVA': round(total_iva_acreditable, 2),
             'totalIVARetenido': round(total_iva_retenido, 2),
-            'totalMonto': round(total_monto, 2)
+            'totalMonto': round(total_monto, 2),
+            'totalMontoMXN': round(total_monto_mxn, 2)
         }
     }
 
