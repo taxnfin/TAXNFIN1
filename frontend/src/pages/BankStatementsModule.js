@@ -1957,6 +1957,8 @@ const BankStatementsModule = () => {
           setSelectedCfdis([]);
           setCfdiSearchTerm('');
           setHistoricalFxRate(null);  // Clear historical rate when dialog closes
+          setCustomFxRate(null);      // Clear custom FX rate when dialog closes
+          setIsEditingFxRate(false);  // Reset editing state
         }
         setReconcileDialogOpen(open);
       }}>
