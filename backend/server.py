@@ -5164,7 +5164,7 @@ async def download_bank_statement_template():
     """Download Excel template for importing bank statements"""
     import io
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from fastapi.responses import StreamingResponse
     
     wb = Workbook()
@@ -5179,12 +5179,19 @@ async def download_bank_statement_template():
     
     header_fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
     
     for col, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=header)
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = Alignment(horizontal='center')
+        cell.border = thin_border
     
     # Example rows
     example_data = [
@@ -5196,35 +5203,61 @@ async def download_bank_statement_template():
     
     for row_idx, row_data in enumerate(example_data, 2):
         for col_idx, value in enumerate(row_data, 1):
-            ws.cell(row=row_idx, column=col_idx, value=value)
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.border = thin_border
     
     # Adjust column widths
-    column_widths = [15, 15, 40, 15, 12, 15, 12, 20, 30]
+    column_widths = [18, 15, 45, 15, 14, 15, 14, 20, 30]
     for col, width in enumerate(column_widths, 1):
         ws.column_dimensions[chr(64 + col)].width = width
     
     # Instructions sheet
     ws2 = wb.create_sheet("Instrucciones")
     instructions = [
+        ["INSTRUCCIONES PARA IMPORTAR ESTADO DE CUENTA", "", "", ""],
+        ["", "", "", ""],
+        ["⚠️ IMPORTANTE: Al importar este archivo, deberás SELECCIONAR LA CUENTA BANCARIA en el sistema.", "", "", ""],
+        ["", "", "", ""],
         ["Campo", "Descripción", "Formato", "Requerido"],
-        ["fecha_movimiento", "Fecha del movimiento bancario", "YYYY-MM-DD", "Sí"],
-        ["fecha_valor", "Fecha valor del banco", "YYYY-MM-DD", "Sí"],
+        ["fecha_movimiento", "Fecha del movimiento bancario", "YYYY-MM-DD o DD/MM/YYYY", "Sí"],
+        ["fecha_valor", "Fecha valor del banco", "YYYY-MM-DD o DD/MM/YYYY", "Sí"],
         ["descripcion", "Descripción del movimiento", "Texto", "Sí"],
         ["referencia", "Referencia bancaria", "Texto", "No"],
-        ["monto", "Monto del movimiento (positivo o negativo)", "Número", "Sí"],
-        ["tipo_movimiento", "Tipo: credito (abono) o debito (cargo)", "credito/debito", "Sí"],
-        ["saldo", "Saldo después del movimiento", "Número", "Sí"],
+        ["monto", "Monto del movimiento", "Número (positivo o negativo)", "Sí"],
+        ["tipo_movimiento", "Tipo de movimiento", "credito (abono) / debito (cargo)", "Sí"],
+        ["saldo", "Saldo después del movimiento", "Número", "Opcional"],
         ["categoria", "Categoría del movimiento", "Texto", "No"],
         ["notas", "Notas adicionales", "Texto", "No"],
         ["", "", "", ""],
-        ["IMPORTANTE:", "", "", ""],
-        ["- Los montos de débito pueden ser negativos o positivos con tipo_movimiento='debito'", "", "", ""],
-        ["- El saldo debe coincidir con su estado de cuenta", "", "", ""],
-        ["- Las fechas deben estar en formato YYYY-MM-DD", "", "", ""],
+        ["NOTAS:", "", "", ""],
+        ["- Los montos de débito (cargos) deben ser NEGATIVOS o tener tipo_movimiento='debito'", "", "", ""],
+        ["- Los montos de crédito (abonos) deben ser POSITIVOS o tener tipo_movimiento='credito'", "", "", ""],
+        ["- Las fechas pueden estar en formato YYYY-MM-DD o DD/MM/YYYY", "", "", ""],
+        ["- Si el monto ya tiene signo, el sistema detectará automáticamente el tipo", "", "", ""],
+        ["- La cuenta bancaria se selecciona al momento de importar en el sistema", "", "", ""],
     ]
+    
+    # Style instructions
+    title_font = Font(bold=True, size=14, color="0F172A")
+    warning_font = Font(bold=True, color="DC2626")
+    header_inst_fill = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
+    
     for row_idx, row_data in enumerate(instructions, 1):
         for col_idx, value in enumerate(row_data, 1):
-            ws2.cell(row=row_idx, column=col_idx, value=value)
+            cell = ws2.cell(row=row_idx, column=col_idx, value=value)
+            if row_idx == 1:
+                cell.font = title_font
+            elif row_idx == 3:
+                cell.font = warning_font
+            elif row_idx == 5:
+                cell.fill = header_inst_fill
+                cell.font = Font(bold=True)
+    
+    # Adjust instruction column widths
+    ws2.column_dimensions['A'].width = 20
+    ws2.column_dimensions['B'].width = 45
+    ws2.column_dimensions['C'].width = 30
+    ws2.column_dimensions['D'].width = 12
     
     output = io.BytesIO()
     wb.save(output)
