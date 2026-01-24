@@ -2105,10 +2105,16 @@ const BankStatementsModule = () => {
                   variant="outline"
                   size="sm"
                   className="text-purple-600 border-purple-300 hover:bg-purple-50"
+                  data-testid="sugerir-btn"
                   onClick={async () => {
-                    if (!selectedTransaction) return;
+                    if (!selectedTransaction) {
+                      toast.error('No hay movimiento seleccionado');
+                      return;
+                    }
                     try {
+                      toast.loading('Buscando coincidencias...', { id: 'auto-match' });
                       const res = await api.get(`/bank-transactions/${selectedTransaction.id}/match-cfdi?tolerance_days=90`);
+                      toast.dismiss('auto-match');
                       const matches = res.data.matches || [];
                       if (matches.length > 0) {
                         // Auto-select the best match
@@ -2116,13 +2122,19 @@ const BankStatementsModule = () => {
                         const cfdiToSelect = cfdis.find(c => c.id === bestMatch.id);
                         if (cfdiToSelect && !selectedCfdis.find(c => c.id === cfdiToSelect.id)) {
                           setSelectedCfdis([...selectedCfdis, cfdiToSelect]);
-                          toast.success(`Sugerencia: ${bestMatch.emisor_nombre || bestMatch.receptor_nombre} - Score: ${bestMatch.score}%`);
+                          toast.success(`Sugerencia encontrada: ${bestMatch.emisor_nombre || bestMatch.receptor_nombre} - Score: ${bestMatch.score}%`);
+                        } else if (!cfdiToSelect) {
+                          toast.info('El CFDI sugerido ya no está disponible');
+                        } else {
+                          toast.info('El CFDI sugerido ya está seleccionado');
                         }
                       } else {
-                        toast.info('No se encontraron coincidencias automáticas');
+                        toast.info('No se encontraron coincidencias automáticas para este movimiento');
                       }
                     } catch (err) {
+                      toast.dismiss('auto-match');
                       console.error('Auto-match error:', err);
+                      toast.error(err.response?.data?.detail || 'Error buscando coincidencias');
                     }
                   }}
                 >
