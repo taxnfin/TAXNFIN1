@@ -399,11 +399,15 @@ const BankStatementsModule = () => {
   
   // Reconciliation summary
   const [reconSummary, setReconSummary] = useState(null);
+  
+  // Exchange rate for first day of month (for balance calculations)
+  const [fxRateFirstOfMonth, setFxRateFirstOfMonth] = useState({ USD: 17.5, EUR: 19.0 });
 
   useEffect(() => {
     loadData();
     loadFxRates();
     loadReconSummary();
+    loadFxRateFirstOfMonth();
   }, []);
 
   const loadReconSummary = async () => {
@@ -412,6 +416,21 @@ const BankStatementsModule = () => {
       setReconSummary(res.data);
     } catch (error) {
       console.log('Error loading reconciliation summary');
+    }
+  };
+  
+  const loadFxRateFirstOfMonth = async () => {
+    try {
+      // Get USD rate for first of current month
+      const usdRes = await api.get('/fx-rates/first-of-month?moneda=USD');
+      const eurRes = await api.get('/fx-rates/first-of-month?moneda=EUR');
+      setFxRateFirstOfMonth({
+        USD: usdRes.data.tasa || 17.5,
+        EUR: eurRes.data.tasa || 19.0,
+        fecha: usdRes.data.fecha
+      });
+    } catch (error) {
+      console.log('Using default FX rates for first of month');
     }
   };
 
