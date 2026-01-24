@@ -2532,40 +2532,6 @@ const BankStatementsModule = () => {
                 )}
               </>
             )}
-
-            {/* Account Selection - Only show if preview has transactions */}
-            {pdfPreview?.total_movimientos > 0 && (
-              <div className="space-y-2 pt-2 border-t">
-                <Label className="text-sm font-medium">Cuenta Bancaria Destino *</Label>
-                <Select value={pdfAccountId} onValueChange={setPdfAccountId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar cuenta..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {bankAccounts.map(acc => (
-                      <SelectItem key={acc.id} value={acc.id}>
-                        <div className="flex items-center gap-2">
-                          <Building2 size={14} className="text-gray-500" />
-                          <span className="font-medium">{acc.banco}</span>
-                          <span className="text-gray-500">-</span>
-                          <span>{acc.nombre}</span>
-                          <span className={`ml-2 text-xs px-2 py-0.5 rounded ${
-                            acc.moneda === 'USD' ? 'bg-blue-100 text-blue-700' :
-                            acc.moneda === 'EUR' ? 'bg-purple-100 text-purple-700' :
-                            'bg-gray-100 text-gray-700'
-                          }`}>
-                            {acc.moneda}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-gray-500">
-                  Los movimientos duplicados serán omitidos automáticamente.
-                </p>
-              </div>
-            )}
           </div>
 
           <DialogFooter>
