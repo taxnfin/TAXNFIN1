@@ -5061,32 +5061,23 @@ async def update_cfdi_notes(cfdi_id: str, request: Request, current_user: Dict =
 # ===== DIOT (Declaración Informativa de Operaciones con Terceros) =====
 @api_router.get("/diot/preview")
 async def get_diot_preview(request: Request, current_user: Dict = Depends(get_current_user), fecha_desde: str = None, fecha_hasta: str = None):
-    """Get DIOT data preview - all EGRESO CFDIs in date range (based on fecha_emision)"""
+    """
+    Get DIOT data preview - ONLY PAID EGRESO CFDIs
+    
+    IMPORTANT: DIOT only includes CFDIs that have been PAID (pagados).
+    A CFDI is considered paid when:
+    1. It has a payment record with estatus='completado', OR
+    2. It has been reconciled with a bank transaction (conciliado)
+    
+    The date filter is based on PAYMENT DATE, not emission date.
+    """
     company_id = await get_active_company_id(request, current_user)
     
-    # Build date filter for CFDIs
+    # Get all EGRESO CFDIs (we'll filter by payment date later)
     cfdi_query = {
         'company_id': company_id,
         'tipo_cfdi': 'egreso'
     }
-    
-    if fecha_desde or fecha_hasta:
-        cfdi_query['fecha_emision'] = {}
-        if fecha_desde:
-            try:
-                fecha_desde_dt = datetime.fromisoformat(fecha_desde.replace('Z', '+00:00')) if 'T' in fecha_desde else datetime.strptime(fecha_desde, '%Y-%m-%d')
-                cfdi_query['fecha_emision']['$gte'] = fecha_desde_dt.isoformat()
-            except:
-                pass
-        if fecha_hasta:
-            try:
-                fecha_hasta_dt = datetime.fromisoformat(fecha_hasta.replace('Z', '+00:00')) if 'T' in fecha_hasta else datetime.strptime(fecha_hasta, '%Y-%m-%d')
-                fecha_hasta_dt = fecha_hasta_dt.replace(hour=23, minute=59, second=59)
-                cfdi_query['fecha_emision']['$lte'] = fecha_hasta_dt.isoformat()
-            except:
-                pass
-    
-    # Get all EGRESO CFDIs in date range
     cfdis = await db.cfdis.find(cfdi_query, {'_id': 0}).to_list(10000)
     
     # Get categories
@@ -5094,7 +5085,7 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
     subcategories = {s['id']: s for s in await db.subcategories.find({'company_id': company_id}, {'_id': 0}).to_list(1000)}
     
     # Get payments to check which CFDIs are paid
-    payments = await db.payments.find({'company_id': company_id, 'tipo': 'pago'}, {'_id': 0}).to_list(10000)
+    payments = await db.payments.find({'company_id': company_id, 'tipo': 'pago', 'estatus': 'completado'}, {'_id': 0}).to_list(10000)
     payments_by_cfdi = {}
     for p in payments:
         cfdi_id = p.get('cfdi_id')
@@ -5110,6 +5101,21 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
     # Get bank transactions (for payment date and TC)
     bank_txns = await db.bank_transactions.find({'company_id': company_id}, {'_id': 0}).to_list(10000)
     bank_txn_by_id = {t['id']: t for t in bank_txns}
+    
+    # Parse date filters
+    fecha_desde_dt = None
+    fecha_hasta_dt = None
+    if fecha_desde:
+        try:
+            fecha_desde_dt = datetime.fromisoformat(fecha_desde.replace('Z', '+00:00')) if 'T' in fecha_desde else datetime.strptime(fecha_desde, '%Y-%m-%d')
+        except:
+            pass
+    if fecha_hasta:
+        try:
+            fecha_hasta_dt = datetime.fromisoformat(fecha_hasta.replace('Z', '+00:00')) if 'T' in fecha_hasta else datetime.strptime(fecha_hasta, '%Y-%m-%d')
+            fecha_hasta_dt = fecha_hasta_dt.replace(hour=23, minute=59, second=59)
+        except:
+            pass
     
     # Cache for FX rates by date
     fx_rates_cache = {}
