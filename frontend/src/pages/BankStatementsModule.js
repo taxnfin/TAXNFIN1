@@ -709,6 +709,55 @@ const BankStatementsModule = () => {
     }
   };
 
+  // Cancel/delete a reconciliation to allow re-reconciliation
+  const handleCancelReconciliation = async (txn) => {
+    if (!txn.conciliado) return;
+    
+    // Confirm before canceling
+    const confirmCancel = window.confirm(
+      `¿Estás seguro de cancelar la conciliación de "${txn.descripcion?.substring(0, 40)}..."?\n\nEsto permitirá volver a conciliar el movimiento con otro CFDI.`
+    );
+    
+    if (!confirmCancel) return;
+    
+    try {
+      toast.loading('Buscando conciliaciones...', { id: 'cancel-recon' });
+      
+      // Get all reconciliations for this bank transaction
+      const res = await api.get('/reconciliations', { params: { limit: 1000 } });
+      const reconciliations = res.data.filter(r => r.bank_transaction_id === txn.id);
+      
+      if (reconciliations.length === 0) {
+        // No reconciliation found, just reset the transaction
+        toast.dismiss('cancel-recon');
+        toast.info('No se encontró registro de conciliación, actualizando estado...');
+        // Try to reset manually - this shouldn't normally happen
+        await api.put(`/bank-transactions/${txn.id}`, { ...txn, conciliado: false });
+        loadData();
+        return;
+      }
+      
+      // Delete all reconciliations for this transaction
+      for (const recon of reconciliations) {
+        await api.delete(`/reconciliations/${recon.id}`);
+      }
+      
+      toast.dismiss('cancel-recon');
+      toast.success(`Conciliación cancelada. El movimiento está ahora disponible para re-conciliar.`);
+      loadData();
+      loadReconSummary();
+      
+      // Also reload CFDIs to refresh their estado_conciliacion
+      const cfdisRes = await api.get('/cfdi?limit=500');
+      setCfdis(cfdisRes.data);
+      
+    } catch (error) {
+      toast.dismiss('cancel-recon');
+      console.error('Error canceling reconciliation:', error);
+      toast.error(error.response?.data?.detail || 'Error al cancelar conciliación');
+    }
+  };
+
   // Mark transaction as reconciled WITHOUT UUID - with category selection
   const [sinUUIDDialogOpen, setSinUUIDDialogOpen] = useState(false);
   const [sinUUIDTransaction, setSinUUIDTransaction] = useState(null);
