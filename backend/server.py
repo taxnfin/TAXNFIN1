@@ -2552,7 +2552,9 @@ async def upload_cfdi(request: Request, file: UploadFile = File(...), current_us
         'ai_categorized': ai_category is not None,
         'ai_category': ai_category,
         'auto_linked': auto_linked,
-        'new_rfc_detected': new_rfc_detected
+        'new_rfc_detected': new_rfc_detected,
+        'is_nomina': parsed.get('is_nomina', False),
+        'nomina_auto_reconciled': nomina_auto_reconciled
     }
 
 @api_router.get("/cfdi", response_model=List[CFDI])
