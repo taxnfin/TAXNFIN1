@@ -277,7 +277,8 @@ const CashflowProjections = () => {
 
   const formatCurrency = (amount) => {
     const converted = convertToCurrency(amount || 0);
-    const symbol = selectedCurrency === 'USD' ? 'US$' : selectedCurrency === 'EUR' ? '€' : '$';
+    const currencyInfo = CURRENCIES.find(c => c.code === selectedCurrency);
+    const symbol = currencyInfo?.symbol || '$';
     return `${symbol}${converted.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
