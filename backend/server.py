@@ -5388,9 +5388,10 @@ def parse_bank_statement_pdf(pdf_content: bytes, bank_name: str = "auto") -> Lis
                     saldo_inicial = float(saldo_str)
                     break
             
-            # Parse based on detected bank - use universal parser for all
-            # The universal parser identifies columns by header names
-            if detected_bank in ["banbajio", "banorte", "bbva", "santander", "hsbc", "banamex", "scotiabank"]:
+            # Parse based on detected bank
+            if detected_bank == "banbajio":
+                transactions = parse_banbajio_pdf(full_text, all_tables, pdf, saldo_inicial)
+            elif detected_bank in ["banorte", "bbva", "santander", "hsbc", "banamex", "scotiabank"]:
                 transactions = parse_mexican_bank_pdf(full_text, all_tables, pdf, saldo_inicial)
             else:
                 transactions = parse_mexican_bank_pdf(full_text, all_tables, pdf, saldo_inicial)
