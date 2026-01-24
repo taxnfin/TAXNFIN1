@@ -2117,14 +2117,16 @@ const BankStatementsModule = () => {
                       toast.dismiss('auto-match');
                       const matches = res.data.matches || [];
                       if (matches.length > 0) {
-                        // Auto-select the best match
+                        // Auto-select the best match - use cfdi_id from backend response
                         const bestMatch = matches[0];
-                        const cfdiToSelect = cfdis.find(c => c.id === bestMatch.id);
+                        const cfdiId = bestMatch.cfdi_id || bestMatch.id;
+                        const cfdiToSelect = cfdis.find(c => c.id === cfdiId);
                         if (cfdiToSelect && !selectedCfdis.find(c => c.id === cfdiToSelect.id)) {
                           setSelectedCfdis([...selectedCfdis, cfdiToSelect]);
-                          toast.success(`Sugerencia encontrada: ${bestMatch.emisor_nombre || bestMatch.receptor_nombre} - Score: ${bestMatch.score}%`);
+                          toast.success(`Sugerencia: ${bestMatch.emisor_nombre || bestMatch.receptor_nombre} - Score: ${bestMatch.score}%`);
                         } else if (!cfdiToSelect) {
-                          toast.info('El CFDI sugerido ya no está disponible');
+                          // CFDI might be filtered out (already reconciled)
+                          toast.info(`Mejor coincidencia: ${bestMatch.emisor_nombre || bestMatch.receptor_nombre} ($${bestMatch.total?.toLocaleString()}) pero no está disponible para selección`);
                         } else {
                           toast.info('El CFDI sugerido ya está seleccionado');
                         }
