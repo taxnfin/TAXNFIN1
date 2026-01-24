@@ -2374,7 +2374,7 @@ async def upload_cfdi(request: Request, file: UploadFile = File(...), current_us
             
             if not sueldos_category:
                 # Create "Sueldos" category if doesn't exist
-                new_cat_id = str(uuid_lib.uuid4())
+                new_cat_id = str(uuid.uuid4())
                 sueldos_category = {
                     'id': new_cat_id,
                     'company_id': company_id,
@@ -2445,7 +2445,7 @@ async def upload_cfdi(request: Request, file: UploadFile = File(...), current_us
                     
                     # Auto-reconcile if good match found
                     if best_match and best_score >= 50:
-                        recon_id = str(uuid_lib.uuid4())
+                        recon_id = str(uuid.uuid4())
                         recon_doc = {
                             'id': recon_id,
                             'company_id': company_id,
