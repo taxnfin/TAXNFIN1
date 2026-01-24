@@ -1057,6 +1057,10 @@ const BankStatementsModule = () => {
               continue;
             }
 
+            // Get account currency
+            const importAccount = bankAccounts.find(a => a.id === importAccountId);
+            const accountCurrency = importAccount?.moneda || 'MXN';
+
             const txnData = {
               bank_account_id: importAccountId,
               fecha_movimiento: fechaMovimiento.toISOString(),
@@ -1064,6 +1068,7 @@ const BankStatementsModule = () => {
               descripcion: String(descripcion).substring(0, 500),
               referencia: String(referencia).substring(0, 100),
               monto: monto,
+              moneda: accountCurrency,  // Always use account's currency
               tipo_movimiento: tipoMovimiento,
               saldo: saldo || 0,
               fuente: 'excel_import'
