@@ -423,15 +423,35 @@ const BankStatementsModule = () => {
     }
   };
   
-  const loadFxRateFirstOfMonth = async () => {
+  // Load FX rate for first day of the month based on transactions
+  // Uses the earliest transaction date to determine the month
+  const loadFxRateFirstOfMonth = async (transactions = null) => {
     try {
-      // Get USD rate for first of current month
-      const usdRes = await api.get('/fx-rates/first-of-month?moneda=USD');
-      const eurRes = await api.get('/fx-rates/first-of-month?moneda=EUR');
+      const txns = transactions || bankTransactions;
+      let year = null;
+      let month = null;
+      
+      // Find the earliest transaction date to determine the month
+      if (txns && txns.length > 0) {
+        const sortedTxns = [...txns].sort((a, b) => 
+          new Date(a.fecha_movimiento) - new Date(b.fecha_movimiento)
+        );
+        const earliestDate = new Date(sortedTxns[0].fecha_movimiento);
+        year = earliestDate.getFullYear();
+        month = earliestDate.getMonth() + 1; // getMonth() is 0-indexed
+      }
+      
+      // Build query params
+      const params = year && month ? `&year=${year}&month=${month}` : '';
+      
+      const usdRes = await api.get(`/fx-rates/first-of-month?moneda=USD${params}`);
+      const eurRes = await api.get(`/fx-rates/first-of-month?moneda=EUR${params}`);
       setFxRateFirstOfMonth({
         USD: usdRes.data.tasa || 17.5,
         EUR: eurRes.data.tasa || 19.0,
-        fecha: usdRes.data.fecha
+        fecha: usdRes.data.fecha,
+        year: usdRes.data.year,
+        month: usdRes.data.month
       });
     } catch (error) {
       console.log('Using default FX rates for first of month');
