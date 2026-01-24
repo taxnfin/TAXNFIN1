@@ -544,6 +544,38 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
+## Recent Updates (January 24, 2026)
+
+### Mejoras en Conciliaciones Bancarias ✅
+
+1. ✅ **Balance Inicial con TC del Primer Día del Mes**
+   - El saldo inicial consolidado ahora usa el TC del primer día del mes de las transacciones
+   - Automáticamente detecta el mes de la transacción más antigua y obtiene el TC correspondiente
+   - Endpoint: `GET /api/fx-rates/first-of-month?moneda=USD&year=YYYY&month=MM`
+   - Mejora la precisión del balance cuando hay transacciones de meses anteriores
+
+2. ✅ **Tipo de Cambio Editable en Conciliaciones**
+   - Nuevo ícono de lápiz (✏️) junto al TC en el diálogo de conciliación
+   - Al hacer clic, muestra un input numérico para modificar el TC manualmente
+   - Botones de confirmar (✓) y cancelar (✗) para aplicar o descartar cambios
+   - El TC personalizado se usa solo para la conciliación actual
+   - Indicador visual cuando se usa TC personalizado vs histórico
+
+3. ✅ **Botón "Sugerir" Mejorado**
+   - Mejor manejo de errores con toast messages informativos
+   - Indicador de carga mientras busca coincidencias
+   - Mensajes claros cuando no hay coincidencias o cuando el CFDI ya está seleccionado
+   - data-testid="sugerir-btn" para testing
+
+**Archivos Modificados:**
+- `frontend/src/pages/BankStatementsModule.js`:
+  - Nuevos estados: `customFxRate`, `isEditingFxRate`
+  - Función `loadFxRateFirstOfMonth` actualizada para usar fecha de transacciones
+  - Función `getReconciliationTotals` actualizada para soportar TC personalizado
+  - UI de edición de TC en el diálogo de conciliación
+
+---
+
 ## Backlog (P0 - P2)
 
 ### P0 - Critical (COMPLETED)
