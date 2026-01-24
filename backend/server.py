@@ -7123,6 +7123,50 @@ async def get_fx_rate_by_specific_date(
     }
 
 
+@api_router.get("/fx-rates/first-of-month")
+async def get_fx_rate_first_of_month(
+    request: Request, 
+    current_user: Dict = Depends(get_current_user),
+    moneda: str = "USD",
+    year: int = None,
+    month: int = None
+):
+    """Get the exchange rate for the first day of a specific month.
+    Used for calculating account balances with consistent historical rates.
+    
+    Args:
+        moneda: Currency code (USD, EUR, etc.)
+        year: Year (defaults to current year)
+        month: Month 1-12 (defaults to current month)
+    
+    Returns:
+        Exchange rate for the first day of the month
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    if moneda == 'MXN':
+        return {"moneda": "MXN", "tasa": 1.0, "fecha": None}
+    
+    # Use current year/month if not specified
+    now = datetime.now(timezone.utc)
+    year = year or now.year
+    month = month or now.month
+    
+    # First day of the month
+    first_of_month = datetime(year, month, 1, tzinfo=timezone.utc)
+    
+    # Get the rate for first of month
+    tasa = await get_fx_rate_by_date(company_id, moneda, first_of_month)
+    
+    return {
+        "moneda": moneda,
+        "tasa": tasa,
+        "fecha": first_of_month.isoformat(),
+        "year": year,
+        "month": month
+    }
+
+
 @api_router.post("/fx-rates/sync")
 async def sync_fx_rates_realtime(request: Request, current_user: Dict = Depends(get_current_user)):
     """
