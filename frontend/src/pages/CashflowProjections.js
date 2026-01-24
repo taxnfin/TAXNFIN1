@@ -59,11 +59,16 @@ const CashflowProjections = () => {
     recurrente: false
   });
 
-  // Currency list
+  // Currency list - All available currencies
   const CURRENCIES = [
     { code: 'MXN', name: 'Peso Mexicano', symbol: '$' },
-    { code: 'USD', name: 'Dólar', symbol: 'US$' },
+    { code: 'USD', name: 'Dólar USA', symbol: 'US$' },
     { code: 'EUR', name: 'Euro', symbol: '€' },
+    { code: 'GBP', name: 'Libra Esterlina', symbol: '£' },
+    { code: 'JPY', name: 'Yen Japonés', symbol: '¥' },
+    { code: 'CHF', name: 'Franco Suizo', symbol: 'Fr' },
+    { code: 'CAD', name: 'Dólar Canadiense', symbol: 'C$' },
+    { code: 'CNY', name: 'Yuan Chino', symbol: '¥' },
   ];
 
   useEffect(() => {
