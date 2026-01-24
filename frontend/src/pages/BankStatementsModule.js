@@ -2055,27 +2055,77 @@ const BankStatementsModule = () => {
                 </div>
               </div>
 
-              {/* Balance tracker */}
+              {/* Balance tracker - Improved presentation */}
               {selectedCfdis.length > 0 && (
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="p-3 bg-gray-100 rounded-lg text-center">
-                    <p className="text-xs text-gray-500">Monto Movimiento (en MXN)</p>
-                    <p className="font-mono font-bold">${getReconciliationTotals().movimientoMontoMXN.toLocaleString('es-MX', {minimumFractionDigits: 2})}</p>
-                    {getReconciliationTotals().movimientoMoneda !== 'MXN' && (
-                      <p className="text-xs text-gray-400">
-                        ({getReconciliationTotals().movimientoMonto.toLocaleString('es-MX', {minimumFractionDigits: 2})} {getReconciliationTotals().movimientoMoneda})
-                      </p>
-                    )}
-                  </div>
-                  <div className="p-3 bg-green-100 rounded-lg text-center">
-                    <p className="text-xs text-green-700">CFDIs Seleccionados ({selectedCfdis.length})</p>
-                    <p className="font-mono font-bold text-green-700">${getReconciliationTotals().cfdiTotalMXN.toLocaleString('es-MX', {minimumFractionDigits: 2})}</p>
-                  </div>
-                  <div className={`p-3 rounded-lg text-center ${Math.abs(getReconciliationTotals().diferenciaMXN) < 0.01 ? 'bg-green-100' : 'bg-yellow-100'}`}>
-                    <p className="text-xs text-gray-600">Diferencia (MXN)</p>
-                    <p className={`font-mono font-bold ${Math.abs(getReconciliationTotals().diferenciaMXN) < 0.01 ? 'text-green-700' : 'text-yellow-700'}`}>
-                      ${getReconciliationTotals().diferenciaMXN.toLocaleString('es-MX', {minimumFractionDigits: 2})}
-                    </p>
+                <div className="space-y-3">
+                  {/* Main summary - Horizontal */}
+                  <div className="p-4 bg-gradient-to-r from-blue-50 to-gray-50 rounded-lg border border-blue-200">
+                    <div className="flex items-center justify-between">
+                      {/* Movimiento bancario */}
+                      <div className="text-center">
+                        <p className="text-xs text-blue-600 font-medium mb-1">Movimiento Bancario</p>
+                        <p className="font-mono text-lg font-bold text-blue-700">
+                          ${getReconciliationTotals().movimientoMonto.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                          <span className="text-sm ml-1">{getReconciliationTotals().movimientoMoneda}</span>
+                        </p>
+                        {getReconciliationTotals().movimientoMoneda !== 'MXN' && (
+                          <p className="text-xs text-gray-500">
+                            ≈ ${getReconciliationTotals().movimientoMontoMXN.toLocaleString('es-MX', {minimumFractionDigits: 0})} MXN
+                          </p>
+                        )}
+                      </div>
+                      
+                      {/* Minus sign */}
+                      <div className="text-2xl text-gray-400 font-bold">−</div>
+                      
+                      {/* CFDIs seleccionados */}
+                      <div className="text-center">
+                        <p className="text-xs text-green-600 font-medium mb-1">CFDIs ({selectedCfdis.length})</p>
+                        <p className="font-mono text-lg font-bold text-green-700">
+                          ${getReconciliationTotals().cfdiTotalOriginal.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                          <span className="text-sm ml-1">{getReconciliationTotals().movimientoMoneda}</span>
+                        </p>
+                        {getReconciliationTotals().movimientoMoneda !== 'MXN' && (
+                          <p className="text-xs text-gray-500">
+                            ≈ ${getReconciliationTotals().cfdiTotalMXN.toLocaleString('es-MX', {minimumFractionDigits: 0})} MXN
+                          </p>
+                        )}
+                      </div>
+                      
+                      {/* Equals sign */}
+                      <div className="text-2xl text-gray-400 font-bold">=</div>
+                      
+                      {/* Diferencia / Faltante */}
+                      <div className={`text-center p-3 rounded-lg ${
+                        Math.abs(getReconciliationTotals().diferenciaOriginal) < 0.01 
+                          ? 'bg-green-100' 
+                          : getReconciliationTotals().diferenciaOriginal > 0 
+                            ? 'bg-yellow-100' 
+                            : 'bg-red-100'
+                      }`}>
+                        <p className="text-xs font-medium mb-1">
+                          {Math.abs(getReconciliationTotals().diferenciaOriginal) < 0.01 
+                            ? '✓ Cuadra' 
+                            : getReconciliationTotals().diferenciaOriginal > 0 
+                              ? '⚠ Falta por cubrir'
+                              : '⚠ Excede movimiento'}
+                        </p>
+                        <p className={`font-mono text-xl font-bold ${
+                          Math.abs(getReconciliationTotals().diferenciaOriginal) < 0.01 
+                            ? 'text-green-700' 
+                            : 'text-yellow-700'
+                        }`}>
+                          {getReconciliationTotals().diferenciaOriginal > 0 ? '+' : ''}
+                          ${getReconciliationTotals().diferenciaOriginal.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                          <span className="text-sm ml-1">{getReconciliationTotals().movimientoMoneda}</span>
+                        </p>
+                        {getReconciliationTotals().movimientoMoneda !== 'MXN' && Math.abs(getReconciliationTotals().diferenciaOriginal) >= 0.01 && (
+                          <p className="text-xs text-gray-500">
+                            ≈ ${getReconciliationTotals().diferenciaMXN.toLocaleString('es-MX', {minimumFractionDigits: 0})} MXN
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
