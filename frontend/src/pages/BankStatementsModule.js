@@ -1233,16 +1233,26 @@ const BankStatementsModule = () => {
     ? bankAccounts.find(a => a.id === filterAccount)
     : null;
   
+  // Convert to MXN using first-of-month rate (for balance calculations)
+  const convertToMXNFirstOfMonth = (monto, moneda) => {
+    if (!monto) return 0;
+    if (moneda === 'MXN') return monto;
+    if (moneda === 'USD') return monto * (fxRateFirstOfMonth.USD || 17.5);
+    if (moneda === 'EUR') return monto * (fxRateFirstOfMonth.EUR || 19.0);
+    return monto;
+  };
+  
   // Calculate consolidated initial balance when viewing all accounts
+  // Uses FIRST OF MONTH exchange rate for consistency
   const calcConsolidatedSaldoInicial = () => {
     if (filterAccount !== 'all') {
       return selectedAccount?.saldo_inicial || 0;
     }
-    // Sum all accounts converted to MXN
+    // Sum all accounts converted to MXN using first-of-month rate
     return bankAccounts.reduce((total, acc) => {
       const saldo = acc.saldo_inicial || 0;
       const moneda = acc.moneda || 'MXN';
-      return total + convertToMXN(saldo, moneda);
+      return total + convertToMXNFirstOfMonth(saldo, moneda);
     }, 0);
   };
   
