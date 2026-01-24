@@ -2406,6 +2406,43 @@ const BankStatementsModule = () => {
             {/* Preview Results */}
             {pdfPreview && !loadingPreview && (
               <>
+                {/* ACCOUNT SELECTION - FIRST and PROMINENT */}
+                {pdfPreview.total_movimientos > 0 && (
+                  <div className="space-y-2 p-4 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+                    <Label className="text-sm font-bold text-yellow-800 flex items-center gap-2">
+                      <AlertCircle size={16} />
+                      Selecciona la Cuenta Bancaria *
+                    </Label>
+                    <Select value={pdfAccountId} onValueChange={setPdfAccountId}>
+                      <SelectTrigger className="bg-white border-yellow-400">
+                        <SelectValue placeholder="⚠️ Seleccionar cuenta destino..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {bankAccounts.map(acc => (
+                          <SelectItem key={acc.id} value={acc.id}>
+                            <div className="flex items-center gap-2">
+                              <Building2 size={14} className="text-gray-500" />
+                              <span className="font-medium">{acc.banco}</span>
+                              <span className="text-gray-500">-</span>
+                              <span>{acc.nombre}</span>
+                              <span className={`ml-2 text-xs px-2 py-0.5 rounded font-bold ${
+                                acc.moneda === 'USD' ? 'bg-blue-100 text-blue-700' :
+                                acc.moneda === 'EUR' ? 'bg-purple-100 text-purple-700' :
+                                'bg-green-100 text-green-700'
+                              }`}>
+                                {acc.moneda}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-yellow-700">
+                      Los movimientos se asociarán a esta cuenta. Movimientos duplicados serán omitidos.
+                    </p>
+                  </div>
+                )}
+
                 {/* Summary Cards */}
                 {pdfPreview.total_movimientos > 0 ? (
                   <div className="grid grid-cols-4 gap-3">
