@@ -2985,13 +2985,17 @@ const BankStatementsModule = () => {
                     <SelectValue placeholder="Seleccionar categoría..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {EXPENSE_CATEGORIES.map(cat => (
+                    {getAllCategories().map(cat => (
                       <SelectItem key={cat.value} value={cat.value}>
+                        {cat.isUser && <span className="text-blue-600 mr-1">●</span>}
                         {cat.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-gray-500">
+                  <span className="text-blue-600">●</span> = Categorías personalizadas del módulo Categorías
+                </p>
               </div>
 
               {/* Concept */}
