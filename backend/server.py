@@ -5216,25 +5216,24 @@ async def download_bank_statement_template():
     instructions = [
         ["INSTRUCCIONES PARA IMPORTAR ESTADO DE CUENTA", "", "", ""],
         ["", "", "", ""],
-        ["⚠️ IMPORTANTE: Al importar este archivo, deberás SELECCIONAR LA CUENTA BANCARIA en el sistema.", "", "", ""],
+        ["⚠️ IMPORTANTE: Al importar, deberás SELECCIONAR LA CUENTA BANCARIA en el sistema.", "", "", ""],
         ["", "", "", ""],
         ["Campo", "Descripción", "Formato", "Requerido"],
         ["fecha_movimiento", "Fecha del movimiento bancario", "YYYY-MM-DD o DD/MM/YYYY", "Sí"],
-        ["fecha_valor", "Fecha valor del banco", "YYYY-MM-DD o DD/MM/YYYY", "Sí"],
         ["descripcion", "Descripción del movimiento", "Texto", "Sí"],
+        ["monto", "Monto (negativo=cargo, positivo=abono)", "Número", "Sí"],
+        ["tipo_movimiento", "credito o debito (opcional si monto tiene signo)", "credito/debito", "No"],
+        ["fecha_valor", "Fecha valor del banco", "YYYY-MM-DD", "No"],
         ["referencia", "Referencia bancaria", "Texto", "No"],
-        ["monto", "Monto del movimiento", "Número (positivo o negativo)", "Sí"],
-        ["tipo_movimiento", "Tipo de movimiento", "credito (abono) / debito (cargo)", "Sí"],
-        ["saldo", "Saldo después del movimiento", "Número", "Opcional"],
+        ["saldo", "Saldo después del movimiento", "Número", "No"],
         ["categoria", "Categoría del movimiento", "Texto", "No"],
         ["notas", "Notas adicionales", "Texto", "No"],
         ["", "", "", ""],
         ["NOTAS:", "", "", ""],
-        ["- Los montos de débito (cargos) deben ser NEGATIVOS o tener tipo_movimiento='debito'", "", "", ""],
-        ["- Los montos de crédito (abonos) deben ser POSITIVOS o tener tipo_movimiento='credito'", "", "", ""],
-        ["- Las fechas pueden estar en formato YYYY-MM-DD o DD/MM/YYYY", "", "", ""],
-        ["- Si el monto ya tiene signo, el sistema detectará automáticamente el tipo", "", "", ""],
-        ["- La cuenta bancaria se selecciona al momento de importar en el sistema", "", "", ""],
+        ["- Solo se requieren: fecha_movimiento, descripcion y monto", "", "", ""],
+        ["- Si el monto es negativo, se registra como débito (cargo)", "", "", ""],
+        ["- Si el monto es positivo, se registra como crédito (abono)", "", "", ""],
+        ["- La cuenta bancaria se selecciona al momento de importar", "", "", ""],
     ]
     
     # Style instructions
@@ -5255,8 +5254,8 @@ async def download_bank_statement_template():
     
     # Adjust instruction column widths
     ws2.column_dimensions['A'].width = 20
-    ws2.column_dimensions['B'].width = 45
-    ws2.column_dimensions['C'].width = 30
+    ws2.column_dimensions['B'].width = 50
+    ws2.column_dimensions['C'].width = 35
     ws2.column_dimensions['D'].width = 12
     
     output = io.BytesIO()
