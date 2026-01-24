@@ -2392,17 +2392,28 @@ const BankStatementsModule = () => {
                                 <div>
                                   <p className="font-medium text-gray-800">
                                     {cfdi.tipo_cfdi === 'ingreso' ? (
-                                      <span className="text-green-700">Cliente: </span>
+                                      <>
+                                        <span className="text-green-700">Cliente: </span>
+                                        {cfdi.receptor_nombre}
+                                      </>
+                                    ) : cfdi.tipo_cfdi === 'nomina' || cfdi.is_nomina ? (
+                                      <>
+                                        <span className="text-purple-700">Empleado: </span>
+                                        {cfdi.receptor_nombre}
+                                        <span className="text-xs text-gray-400 ml-2">({cfdi.emisor_nombre?.substring(0, 20)}...)</span>
+                                      </>
                                     ) : (
-                                      <span className="text-red-700">Proveedor: </span>
+                                      <>
+                                        <span className="text-red-700">Proveedor: </span>
+                                        {cfdi.emisor_nombre}
+                                      </>
                                     )}
-                                    {cfdi.tipo_cfdi === 'ingreso' ? cfdi.receptor_nombre : cfdi.emisor_nombre}
                                   </p>
                                   <p className="text-xs text-gray-500">
-                                    RFC: {cfdi.tipo_cfdi === 'ingreso' ? cfdi.receptor_rfc : cfdi.emisor_rfc}
+                                    RFC: {cfdi.tipo_cfdi === 'ingreso' || cfdi.tipo_cfdi === 'nomina' || cfdi.is_nomina ? cfdi.receptor_rfc : cfdi.emisor_rfc}
                                   </p>
                                   <p className="text-xs text-gray-400">
-                                    {cfdi.tipo_cfdi?.toUpperCase()} | {cfdi.fecha_emision?.slice(0, 10)} | {cfdi.uuid?.slice(0, 8)}...
+                                    {cfdi.tipo_cfdi === 'nomina' || cfdi.is_nomina ? '💼 NÓMINA' : cfdi.tipo_cfdi?.toUpperCase()} | {cfdi.fecha_emision?.slice(0, 10)} | {cfdi.uuid?.slice(0, 8)}...
                                   </p>
                                 </div>
                               </div>
