@@ -3822,10 +3822,46 @@ async def find_matching_cfdi_for_transaction(
         
         # Check if CFDI UUID appears in transaction description or reference
         cfdi_uuid = cfdi.get('uuid', '')
-        txn_text = (txn.get('descripcion', '') + ' ' + txn.get('referencia', '')).upper()
-        if cfdi_uuid and cfdi_uuid.upper()[:8] in txn_text:
+        if cfdi_uuid and cfdi_uuid.upper()[:8] in txn_descripcion_upper:
             score += 40
             match_reasons.append("UUID parcial en descripción")
+        
+        # NAME MATCHING: Check if receptor/emisor name appears in transaction description
+        # This is especially important for nóminas where receptor is the employee
+        nombres_buscar = []
+        if is_nomina:
+            # For nóminas, search for employee name (receptor)
+            receptor = cfdi.get('receptor_nombre', '')
+            if receptor:
+                nombres_buscar.append(receptor.upper())
+        else:
+            # For regular egresos, search for provider name (emisor)
+            emisor = cfdi.get('emisor_nombre', '')
+            if emisor:
+                nombres_buscar.append(emisor.upper())
+            # Also check receptor in case it's in description
+            receptor = cfdi.get('receptor_nombre', '')
+            if receptor:
+                nombres_buscar.append(receptor.upper())
+        
+        # Check name parts in transaction description
+        for nombre in nombres_buscar:
+            nombre_parts = [p for p in nombre.split() if len(p) > 2]
+            if nombre_parts:
+                # Count how many name parts appear in description
+                matches_count = sum(1 for part in nombre_parts if part in txn_descripcion_upper)
+                if matches_count >= 3:
+                    score += 50
+                    match_reasons.append(f"Nombre completo coincide")
+                    break
+                elif matches_count >= 2:
+                    score += 35
+                    match_reasons.append(f"Nombre parcial coincide ({matches_count} partes)")
+                    break
+                elif matches_count >= 1 and len(nombre_parts) <= 2:
+                    score += 20
+                    match_reasons.append(f"Nombre parcial coincide")
+                    break
         
         # Only include if score is meaningful
         if score >= 20:
