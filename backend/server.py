@@ -690,11 +690,14 @@ def parse_cfdi_xml(xml_content: str) -> Dict[str, Any]:
             'i': 'ingreso',
             'e': 'egreso', 
             'p': 'pago',
-            'n': 'nota_credito',
+            'n': 'nomina',  # Nómina - Payroll
             't': 'ingreso'  # Traslado -> treat as ingreso
         }
         tipo_raw = root.get('TipoDeComprobante', 'I').lower()
         tipo_cfdi = tipo_comprobante_map.get(tipo_raw, 'ingreso')
+        
+        # If TipoDeComprobante is 'N' (Nómina), mark it specially
+        es_nomina_por_tipo = tipo_raw == 'n'
         
         # Extract MetodoPago, FormaPago and other fields from XML
         metodo_pago = root.get('MetodoPago', '')  # PUE or PPD
