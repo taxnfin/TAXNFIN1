@@ -5403,6 +5403,188 @@ def parse_bank_statement_pdf(pdf_content: bytes, bank_name: str = "auto") -> Lis
     return transactions
 
 
+def parse_banbajio_pdf(text: str, tables: List, pdf, saldo_inicial: float = None) -> List[Dict]:
+    """
+    Parser específico para estados de cuenta de BanBajío.
+    Formato: DD MMM | Descripción | Referencia | Depósitos | Retiros | Saldo
+    """
+    import re
+    from datetime import datetime
+    
+    transactions = []
+    current_year = datetime.now().year
+    
+    months_es = {
+        'ENE': '01', 'FEB': '02', 'MAR': '03', 'ABR': '04',
+        'MAY': '05', 'JUN': '06', 'JUL': '07', 'AGO': '08',
+        'SEP': '09', 'OCT': '10', 'NOV': '11', 'DIC': '12'
+    }
+    
+    # Skip keywords for summary/header rows
+    skip_keywords = [
+        'SALDO INICIAL', 'SALDO ANTERIOR', 'SALDO FINAL', 'SALDO AL',
+        'TOTAL', 'RESUMEN', 'MOVIMIENTOS', 'DESCRIPCION', 'FECHA',
+        'REFERENCIA', 'ABONOS', 'CARGOS', 'DEPOSITOS', 'RETIROS',
+        'PROMEDIO', 'PERIODO', 'ESTADO DE CUENTA', 'CLIENTE', 'RFC'
+    ]
+    
+    def extract_amount(val: str) -> float:
+        """Extract numeric amount from string"""
+        if not val:
+            return 0
+        val = re.sub(r'[^\d.,\-]', '', str(val))
+        val = val.replace(',', '')
+        try:
+            return float(val)
+        except:
+            return 0
+    
+    # Process line by line - BanBajío format
+    lines = text.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        if not line or len(line) < 10:
+            continue
+        
+        line_upper = line.upper()
+        
+        # Skip header/summary rows
+        if any(skip in line_upper for skip in skip_keywords):
+            continue
+        
+        # BanBajío format: "DD MMM DESCRIPCION ... $MONTO $SALDO" or with reference
+        # Pattern 1: DD MMM at start (e.g., "1 DIC", "15 ENE", "31 DIC")
+        date_match = re.match(r'^(\d{1,2})\s*(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|OCT|NOV|DIC)\s+(.+)', line, re.IGNORECASE)
+        
+        if not date_match:
+            continue
+        
+        day = int(date_match.group(1))
+        month = date_match.group(2).upper()
+        rest_of_line = date_match.group(3)
+        
+        # Validate date
+        if day < 1 or day > 31 or month not in months_es:
+            continue
+        
+        fecha = f"{current_year}-{months_es[month]}-{str(day).zfill(2)}"
+        
+        # Extract all amounts from the line (format: numbers with decimals like 1,234.56 or 1234.56)
+        amounts = re.findall(r'([\d,]+\.\d{2})', rest_of_line)
+        amounts = [float(a.replace(',', '')) for a in amounts]
+        
+        if len(amounts) < 1:
+            continue
+        
+        # Extract description - everything before the first amount
+        first_amount_pos = rest_of_line.find(str(int(amounts[0])).replace(',', '').split('.')[0] if amounts else '')
+        if first_amount_pos == -1:
+            first_amount_match = re.search(r'[\d,]+\.\d{2}', rest_of_line)
+            first_amount_pos = first_amount_match.start() if first_amount_match else len(rest_of_line)
+        
+        descripcion = rest_of_line[:first_amount_pos].strip()
+        
+        # Clean description - remove trailing reference numbers
+        descripcion = re.sub(r'\s+\d{5,}$', '', descripcion)  # Remove trailing long numbers
+        descripcion = descripcion.strip()
+        
+        # Determine deposit vs withdrawal based on amounts
+        deposito = 0
+        retiro = 0
+        saldo = 0
+        
+        # BanBajío typically has: DEPOSITO | RETIRO | SALDO (3 amounts)
+        # or just: MONTO | SALDO (2 amounts)
+        if len(amounts) >= 3:
+            # Last amount is saldo, one of the previous two is the movement
+            saldo = amounts[-1]
+            
+            # Check which column has the movement based on position in text
+            # Find positions of amounts in text
+            amount_positions = []
+            for amt in amounts[:-1]:  # Exclude saldo
+                amt_str = f"{amt:,.2f}".replace(',', '')
+                pos = rest_of_line.rfind(amt_str[:6])  # Use first 6 chars to find
+                amount_positions.append((amt, pos))
+            
+            # Sort by position
+            amount_positions.sort(key=lambda x: x[1])
+            
+            if len(amount_positions) >= 2:
+                # First non-zero is the movement
+                for amt, pos in amount_positions:
+                    if amt > 0:
+                        # Determine if deposit or withdrawal by description
+                        desc_upper = descripcion.upper()
+                        if any(kw in desc_upper for kw in ['DEPOSITO', 'ABONO', 'DEVOLUCION', 'SPEI:', 'TRASPASO DE RECURSOS A']):
+                            if 'ENVÍO SPEI' in desc_upper or 'ENVIO SPEI' in desc_upper:
+                                retiro = amt  # Envío SPEI es retiro
+                            else:
+                                deposito = amt
+                        elif any(kw in desc_upper for kw in ['COMISION', 'IVA ', 'PAGO ', 'ENVÍO', 'ENVIO', 'RETIRO', 'COMPRA', 'CARGO']):
+                            retiro = amt
+                        else:
+                            # If description has "POR OPERACION CAMBIOS" it's usually a deposit
+                            if 'OPERACION CAMBIOS' in desc_upper:
+                                deposito = amt
+                            else:
+                                retiro = amt
+                        break
+        elif len(amounts) == 2:
+            # MONTO | SALDO
+            monto = amounts[0]
+            saldo = amounts[1]
+            
+            # Determine type by description
+            desc_upper = descripcion.upper()
+            deposit_keywords = ['DEPOSITO', 'DEPÓSITO', 'ABONO', 'DEVOLUCION', 'DEVOLUCIÓN']
+            withdrawal_keywords = ['COMISION', 'COMISIÓN', 'IVA ', 'PAGO ', 'ENVÍO', 'ENVIO', 'RETIRO', 
+                                   'COMPRA', 'CARGO', 'TRASPASO DE RECURSOS A', 'DOMICILIACION']
+            
+            # SPEI transactions
+            if 'SPEI' in desc_upper:
+                if 'ENVÍO SPEI' in desc_upper or 'ENVIO SPEI' in desc_upper:
+                    retiro = monto  # Envío = outgoing
+                elif 'DEPÓSITO SPEI' in desc_upper or 'DEPOSITO SPEI' in desc_upper:
+                    deposito = monto
+                elif 'DEVOLUCIÓN' in desc_upper or 'DEVOLUCION' in desc_upper:
+                    deposito = monto
+                else:
+                    retiro = monto  # Default SPEI to withdrawal
+            elif any(kw in desc_upper for kw in deposit_keywords):
+                deposito = monto
+            elif any(kw in desc_upper for kw in withdrawal_keywords):
+                retiro = monto
+            elif 'OPERACION CAMBIOS' in desc_upper:
+                deposito = monto  # Currency exchange deposit
+            else:
+                retiro = monto  # Default to withdrawal for unclassified
+        elif len(amounts) == 1:
+            # Just one amount - try to determine from description
+            monto = amounts[0]
+            desc_upper = descripcion.upper()
+            
+            if any(kw in desc_upper for kw in ['DEPOSITO', 'DEPÓSITO', 'ABONO']):
+                deposito = monto
+            else:
+                retiro = monto
+            saldo = 0
+        
+        # Only add if we have a movement
+        if deposito > 0 or retiro > 0:
+            transactions.append({
+                'fecha': fecha,
+                'descripcion': descripcion[:300] or 'Movimiento bancario',
+                'deposito': deposito,
+                'retiro': retiro,
+                'saldo': saldo,
+                'referencia': ''
+            })
+    
+    return transactions
+
+
 def parse_mexican_bank_pdf(text: str, tables: List, pdf, saldo_inicial: float = None) -> List[Dict]:
     """
     Universal parser for Mexican bank PDFs.
