@@ -800,7 +800,8 @@ const BankStatementsModule = () => {
     notas: ''
   });
 
-  const EXPENSE_CATEGORIES = [
+  // Default expense categories for Sin UUID dialog
+  const DEFAULT_EXPENSE_CATEGORIES = [
     { value: 'comision_bancaria', label: 'Comisión Bancaria' },
     { value: 'gasto_sin_factura', label: 'Gasto sin Factura' },
     { value: 'transferencia_interna', label: 'Transferencia Interna' },
@@ -811,6 +812,15 @@ const BankStatementsModule = () => {
     { value: 'deposito_no_identificado', label: 'Depósito No Identificado' },
     { value: 'otro', label: 'Otro' }
   ];
+
+  // Combined categories: user categories + default categories
+  const getAllCategories = () => {
+    const tipo = sinUUIDTransaction?.tipo_movimiento === 'credito' ? 'ingreso' : 'egreso';
+    const userCats = categories
+      .filter(c => c.tipo === tipo && c.activo !== false)
+      .map(c => ({ value: `user_${c.id}`, label: c.nombre, isUser: true, categoryId: c.id }));
+    return [...userCats, ...DEFAULT_EXPENSE_CATEGORIES];
+  };
 
   const openSinUUIDDialog = (txn, tipo = 'sin_uuid') => {
     setSinUUIDTransaction(txn);
