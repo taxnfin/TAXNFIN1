@@ -2116,19 +2116,28 @@ const BankStatementsModule = () => {
                       const res = await api.get(`/bank-transactions/${selectedTransaction.id}/match-cfdi?tolerance_days=90`);
                       toast.dismiss('auto-match');
                       
+                      console.log('Match response:', res.data);
+                      console.log('Total CFDIs in state:', cfdis.length);
+                      
                       // Use all_matches from response, fallback to matches for compatibility
                       const matches = res.data.all_matches || res.data.matches || [];
                       const bestMatch = res.data.best_match;
                       
+                      console.log('Best match:', bestMatch);
+                      
                       if (bestMatch && bestMatch.cfdi_id) {
                         // Use best_match directly
+                        console.log('Looking for CFDI with id:', bestMatch.cfdi_id);
                         const cfdiToSelect = cfdis.find(c => c.id === bestMatch.cfdi_id);
+                        console.log('Found CFDI:', cfdiToSelect);
+                        
                         if (cfdiToSelect && !selectedCfdis.find(c => c.id === cfdiToSelect.id)) {
-                          setSelectedCfdis([...selectedCfdis, cfdiToSelect]);
-                          toast.success(`Sugerencia: ${bestMatch.emisor_nombre || bestMatch.receptor_nombre} - Score: ${bestMatch.score}% (${bestMatch.match_reasons?.join(', ')})`);
+                          setSelectedCfdis(prev => [...prev, cfdiToSelect]);
+                          toast.success(`✓ Auto-seleccionado: ${bestMatch.emisor_nombre || bestMatch.receptor_nombre} - Score: ${bestMatch.score}% (${bestMatch.match_reasons?.join(', ')})`);
                         } else if (!cfdiToSelect) {
                           // CFDI might be filtered out (already reconciled)
-                          toast.info(`Mejor coincidencia: ${bestMatch.emisor_nombre || bestMatch.receptor_nombre} ($${bestMatch.total?.toLocaleString()}) pero no está disponible`);
+                          console.log('CFDI not found in state. Available IDs:', cfdis.slice(0, 5).map(c => c.id));
+                          toast.warning(`Mejor coincidencia: ${bestMatch.emisor_nombre || bestMatch.receptor_nombre} ($${bestMatch.total?.toLocaleString()}) pero no está en la lista`);
                         } else {
                           toast.info('El CFDI sugerido ya está seleccionado');
                         }
@@ -2138,8 +2147,8 @@ const BankStatementsModule = () => {
                         const cfdiId = firstMatch.cfdi_id || firstMatch.id;
                         const cfdiToSelect = cfdis.find(c => c.id === cfdiId);
                         if (cfdiToSelect && !selectedCfdis.find(c => c.id === cfdiToSelect.id)) {
-                          setSelectedCfdis([...selectedCfdis, cfdiToSelect]);
-                          toast.success(`Sugerencia: ${firstMatch.emisor_nombre || firstMatch.receptor_nombre} - Score: ${firstMatch.score}%`);
+                          setSelectedCfdis(prev => [...prev, cfdiToSelect]);
+                          toast.success(`✓ Auto-seleccionado: ${firstMatch.emisor_nombre || firstMatch.receptor_nombre} - Score: ${firstMatch.score}%`);
                         }
                       } else {
                         toast.info('No se encontraron coincidencias automáticas para este movimiento');
