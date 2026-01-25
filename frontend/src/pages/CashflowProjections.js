@@ -565,11 +565,10 @@ const CashflowProjections = () => {
   };
 
   // Calculate running totals including custom concepts
-  // For past weeks: use REAL payment data if available
-  // For future weeks: use CFDI projections
-  // USD buy/sell operations are tracked separately and don't affect cash flow
+  // NUEVA LÓGICA SIMPLIFICADA:
+  // - Usa directamente ingresos.total y egresos.total de processWeeklyData
+  // - TOTAL = Suma exacta de categorías (ya calculado correctamente)
   const calculateRunningTotals = () => {
-    // Use the bank account balance as initial amount
     let saldoInicial = saldoInicialBancos;
     const totals = [];
     
@@ -586,18 +585,41 @@ const CashflowProjections = () => {
       const compraUSD = week.compraUSD || 0;
       const ventaUSD = week.ventaUSD || 0;
       
-      // Calculate CFDI-based projections
-      const ingresosCFDI = week.ingresos.total || 0;
-      const egresosCFDI = week.egresos.total || 0;
+      // TOTALES DIRECTOS: ya vienen calculados como suma de categorías
+      const totalIngresos = (week.ingresos.total || 0) + customIngresos;
+      const totalEgresos = (week.egresos.total || 0) + customEgresos;
       
-      // Get real payment data for past/current weeks
-      const ingresosReales = week.ingresosReales || 0;
-      const egresosReales = week.egresosReales || 0;
+      // Net cash flow from operations (excluding USD conversions)
+      const flujoNetoOperativo = totalIngresos - totalEgresos;
+      const flujoDivisas = ventaUSD - compraUSD;
+      const flujoNeto = flujoNetoOperativo + flujoDivisas;
+      const saldoFinal = saldoInicial + flujoNeto;
       
-      // For display and drill-down, we need to show breakdown:
-      // Past weeks: Real + CFDI (if different)
-      // Future weeks: Only CFDI projections
-      let totalIngresos, totalEgresos;
+      totals.push({
+        ...week,
+        ingresos: { 
+          ...week.ingresos, 
+          total: totalIngresos,
+          custom: customIngresos
+        },
+        egresos: { 
+          ...week.egresos, 
+          total: totalEgresos,
+          custom: customEgresos
+        },
+        compraUSD,
+        ventaUSD,
+        flujoDivisas,
+        saldoInicial,
+        flujoNeto,
+        saldoFinal
+      });
+      
+      saldoInicial = saldoFinal;
+    });
+    
+    return totals;
+  };
       let isRealData = false;
       let cobrosRealesSinCFDI = 0;
       let pagosRealesSinCFDI = 0;
