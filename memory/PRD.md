@@ -854,6 +854,22 @@ All P0 features implemented and tested:
   - Pagos Excel ahora incluye columnas Categoría y Subcategoría
   - Carga automática de categorías en PaymentsModule
 
+- **Feature: Herencia de Categoría/Subcategoría CFDI → Pagos** (IMPORTANTE)
+  - Cuando un CFDI tiene categoría asignada y se cobra/paga o concilia:
+    - El registro de Cobranza/Pagos HEREDA automáticamente:
+      - `category_id` del CFDI
+      - `subcategory_id` del CFDI
+      - `cfdi_uuid` del CFDI
+      - `cfdi_emisor` y `cfdi_receptor`
+  - Actualizado: `routes/payments.py` (create_payment)
+  - Actualizado: `routes/reconciliations.py` (create_reconciliation)
+  - Nuevo endpoint: `POST /api/payments/backfill-categories` para actualizar pagos existentes
+  - UI de Cobranza y Pagos actualizada:
+    - Nueva columna "UUID CFDI"
+    - Nueva columna "Categoría" (con subcategoría)
+    - Botón "Sincronizar Categorías" para backfill
+  - **21 de 31 pagos existentes actualizados** con categorías heredadas
+
 - **Refactoring Avance**: 11 routers modulares ahora integrados
   - cfdi.py, fx_rates.py, bank_transactions.py creados con endpoints funcionales
   - server.py reducido a 7,408 líneas
