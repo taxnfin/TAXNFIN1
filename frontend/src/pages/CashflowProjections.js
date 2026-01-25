@@ -160,10 +160,15 @@ const CashflowProjections = () => {
   };
 
   const processWeeklyData = (cfdisData, categoriesData, weekStartDay = 1, rates = {}, payments = []) => {
-    // Merge rates
+    // =====================================================================
+    // NUEVA LÓGICA: ÚNICA FUENTE DE VERDAD
+    // - Semanas pasadas/actuales: SOLO datos de Cobranza y Pagos
+    // - Semanas futuras: CFDIs pendientes (proyecciones)
+    // - TOTAL INGRESOS = Suma exacta de sublíneas por categoría
+    // =====================================================================
+    
     const effectiveRates = { MXN: 1, USD: 17.599, EUR: 20.4852, ...fxRates, ...rates };
     
-    // Helper to get Monday of a given date
     const getMonday = (date) => {
       const d = new Date(date);
       const day = d.getDay();
@@ -174,10 +179,9 @@ const CashflowProjections = () => {
     const today = new Date();
     const currentMonday = getMonday(today);
     
-    // Find the earliest payment date
+    // Find earliest payment date for starting point
     let earliestDate = null;
-    payments.forEach(p => {
-      if (p.estatus !== 'completado') return;
+    payments.filter(p => p.estatus === 'completado').forEach(p => {
       const fecha = p.fecha_pago;
       if (fecha) {
         const d = new Date(fecha);
@@ -185,14 +189,11 @@ const CashflowProjections = () => {
       }
     });
     
-    // Start from earliest payment or 4 weeks ago
     const fourWeeksAgo = addWeeks(currentMonday, -4);
     const startMonday = earliestDate ? getMonday(earliestDate < fourWeeksAgo ? fourWeeksAgo : earliestDate) : fourWeeksAgo;
     
-    // Generate 13 weeks: S1, S2, S3... starting from oldest
+    // Generate 13 weeks
     const weeks = [];
-    console.log('Processing weekly data with', payments.length, 'payments');
-    
     for (let i = 0; i < 13; i++) {
       const weekStart = addWeeks(startMonday, i);
       const weekEnd = addWeeks(weekStart, 1);
@@ -207,147 +208,210 @@ const CashflowProjections = () => {
         dateLabel: format(weekStart, 'dd MMM', { locale: es }),
         isPast,
         isCurrent,
-        ingresos: { total: 0, byCategory: {}, byCfdi: [] },
-        egresos: { total: 0, byCategory: {}, byCfdi: [] },
-        // Track real payments separately
-        ingresosReales: 0,
-        egresosReales: 0,
-        // Separate tracking for USD buy/sell operations
+        // INGRESOS structure by category/subcategory
+        ingresos: { total: 0, byCategory: {} },
+        // EGRESOS structure by category/subcategory
+        egresos: { total: 0, byCategory: {} },
+        // USD operations tracked separately
         compraUSD: 0,
-        ventaUSD: 0
+        ventaUSD: 0,
+        // Source flags
+        hasRealData: false
       });
     }
     
-    // Track processed bank transactions to avoid duplicates
-    const processedBankTxns = new Set();
+    // Build category/subcategory lookup maps
+    const categoryMap = {};
+    const subcategoryMap = {};
+    categoriesData.forEach(cat => {
+      categoryMap[cat.id] = cat;
+      cat.subcategorias?.forEach(sub => {
+        subcategoryMap[sub.id] = { ...sub, categoryName: cat.nombre, categoryId: cat.id };
+      });
+    });
     
-    // Find the category IDs for "Compra de USD" and "Venta de USD"
+    // Find USD operation categories
     const compraUSDCategory = categoriesData.find(c => c.nombre?.toLowerCase().includes('compra de usd') || c.nombre?.toLowerCase().includes('compra usd'));
     const ventaUSDCategory = categoriesData.find(c => c.nombre?.toLowerCase().includes('venta de usd') || c.nombre?.toLowerCase().includes('venta usd'));
     const compraUSDId = compraUSDCategory?.id;
     const ventaUSDId = ventaUSDCategory?.id;
     
-    // Process REAL payments for past/current weeks - FILTER DUPLICATES
+    // Track processed bank transactions to avoid duplicates
+    const processedBankTxns = new Set();
+    
+    // =====================================================================
+    // PASO 1: Procesar Cobranza y Pagos (DATOS REALES para semanas pasadas)
+    // =====================================================================
     payments.forEach(payment => {
-      if (!payment.fecha_pago && !payment.fecha_vencimiento) return;
+      if (payment.estatus !== 'completado') return;
+      if (!payment.fecha_pago) return;
       
-      // Skip duplicates by bank_transaction_id
+      // Deduplicate by bank_transaction_id
       const bankTxnId = payment.bank_transaction_id;
       if (bankTxnId) {
-        if (processedBankTxns.has(bankTxnId)) return; // Skip duplicate
+        if (processedBankTxns.has(bankTxnId)) return;
         processedBankTxns.add(bankTxnId);
       }
       
-      // Parse date carefully
-      const fechaStr = payment.fecha_pago || payment.fecha_vencimiento;
-      let paymentDate;
-      try {
-        paymentDate = new Date(fechaStr);
-        if (isNaN(paymentDate.getTime())) return;
-      } catch {
+      const paymentDate = new Date(payment.fecha_pago);
+      if (isNaN(paymentDate.getTime())) return;
+      
+      const weekIdx = weeks.findIndex(w => paymentDate >= w.weekStart && paymentDate < w.weekEnd);
+      if (weekIdx === -1) return;
+      
+      const week = weeks[weekIdx];
+      if (!week.isPast && !week.isCurrent) return; // Only process real data for past/current weeks
+      
+      week.hasRealData = true;
+      
+      const montoMXN = convertToMXN(payment.monto, payment.moneda, effectiveRates);
+      
+      // Get category and subcategory names from payment's inherited data
+      const category = categoryMap[payment.category_id];
+      const categoryName = category?.nombre || 'Sin categoría';
+      const subcategoryInfo = subcategoryMap[payment.subcategory_id];
+      const subcategoryName = subcategoryInfo?.nombre || null;
+      
+      // Check if USD operation
+      const isCompraUSD = payment.category_id === compraUSDId;
+      const isVentaUSD = payment.category_id === ventaUSDId;
+      
+      if (isCompraUSD) {
+        week.compraUSD += montoMXN;
+        return; // Don't add to regular ingresos/egresos
+      }
+      if (isVentaUSD) {
+        week.ventaUSD += montoMXN;
+        return; // Don't add to regular ingresos/egresos
+      }
+      
+      // Determine section (ingresos or egresos)
+      const section = payment.tipo === 'cobro' ? week.ingresos : week.egresos;
+      
+      // Add to category total
+      if (!section.byCategory[categoryName]) {
+        section.byCategory[categoryName] = { total: 0, bySubcategory: {}, items: [] };
+      }
+      section.byCategory[categoryName].total += montoMXN;
+      section.byCategory[categoryName].items.push({
+        id: payment.id,
+        monto: montoMXN,
+        concepto: payment.concepto,
+        beneficiario: payment.beneficiario,
+        uuid: payment.cfdi_uuid,
+        source: 'payment'
+      });
+      
+      // Add to subcategory
+      const subKey = subcategoryName || 'General';
+      if (!section.byCategory[categoryName].bySubcategory[subKey]) {
+        section.byCategory[categoryName].bySubcategory[subKey] = { total: 0, items: [] };
+      }
+      section.byCategory[categoryName].bySubcategory[subKey].total += montoMXN;
+      section.byCategory[categoryName].bySubcategory[subKey].items.push({
+        id: payment.id,
+        monto: montoMXN,
+        source: 'payment'
+      });
+      
+      // Add to section total
+      section.total += montoMXN;
+    });
+    
+    // =====================================================================
+    // PASO 2: Procesar CFDIs (PROYECCIONES para semanas futuras)
+    // =====================================================================
+    cfdisData.forEach(cfdi => {
+      // For projections, use fecha_vencimiento or estimated date
+      let projectedDate;
+      if (cfdi.fecha_vencimiento) {
+        projectedDate = new Date(cfdi.fecha_vencimiento);
+      } else {
+        // Default: 30 days after emission
+        projectedDate = new Date(cfdi.fecha_emision);
+        projectedDate.setDate(projectedDate.getDate() + 30);
+      }
+      
+      const weekIdx = weeks.findIndex(w => projectedDate >= w.weekStart && projectedDate < w.weekEnd);
+      if (weekIdx === -1) return;
+      
+      const week = weeks[weekIdx];
+      
+      // Only add CFDIs to FUTURE weeks (projections)
+      // For past weeks, we already have real payment data
+      if (week.isPast || week.isCurrent) return;
+      
+      // Calculate pending amount
+      const total = cfdi.total || 0;
+      const pagado = cfdi.monto_pagado || 0;
+      const cobrado = cfdi.monto_cobrado || 0;
+      
+      let pendiente = 0;
+      if (cfdi.tipo_cfdi === 'ingreso') {
+        pendiente = total - cobrado;
+      } else {
+        pendiente = total - pagado;
+      }
+      
+      if (pendiente <= 0) return; // Already fully paid/collected
+      
+      const montoMXN = convertToMXN(pendiente, cfdi.moneda, effectiveRates);
+      
+      const category = categoryMap[cfdi.category_id];
+      const categoryName = category?.nombre || 'Sin categoría';
+      const subcategoryInfo = subcategoryMap[cfdi.subcategory_id];
+      const subcategoryName = subcategoryInfo?.nombre || null;
+      
+      // Check if USD operation
+      const isCompraUSD = cfdi.category_id === compraUSDId;
+      const isVentaUSD = cfdi.category_id === ventaUSDId;
+      
+      if (isCompraUSD) {
+        week.compraUSD += montoMXN;
+        return;
+      }
+      if (isVentaUSD) {
+        week.ventaUSD += montoMXN;
         return;
       }
       
-      const weekIdx = weeks.findIndex(w => paymentDate >= w.weekStart && paymentDate < w.weekEnd);
+      // Determine section
+      const section = cfdi.tipo_cfdi === 'ingreso' ? week.ingresos : week.egresos;
       
-      if (weekIdx !== -1 && (weeks[weekIdx].isPast || weeks[weekIdx].isCurrent)) {
-        // Only count completed/real payments
-        if (payment.estatus === 'completado' || payment.es_real === true) {
-          const montoMXN = convertToMXN(payment.monto, payment.moneda, effectiveRates);
-          
-          // Check if this is a USD buy/sell operation based on category
-          const isCompraUSD = payment.category_id === compraUSDId;
-          const isVentaUSD = payment.category_id === ventaUSDId;
-          
-          if (isCompraUSD) {
-            // Compra de USD is an "ingreso" in the category but represents buying dollars
-            weeks[weekIdx].compraUSD += montoMXN;
-          } else if (isVentaUSD) {
-            // Venta de USD is an "egreso" in the category but represents selling dollars
-            weeks[weekIdx].ventaUSD += montoMXN;
-          } else if (payment.tipo === 'cobro') {
-            weeks[weekIdx].ingresosReales += montoMXN;
-          } else {
-            weeks[weekIdx].egresosReales += montoMXN;
-          }
-        }
+      // Add to category
+      if (!section.byCategory[categoryName]) {
+        section.byCategory[categoryName] = { total: 0, bySubcategory: {}, items: [] };
       }
+      section.byCategory[categoryName].total += montoMXN;
+      section.byCategory[categoryName].items.push({
+        id: cfdi.id,
+        monto: montoMXN,
+        uuid: cfdi.uuid,
+        emisor: cfdi.emisor_nombre,
+        receptor: cfdi.receptor_nombre,
+        source: 'cfdi'
+      });
+      
+      // Add to subcategory
+      const subKey = subcategoryName || 'General';
+      if (!section.byCategory[categoryName].bySubcategory[subKey]) {
+        section.byCategory[categoryName].bySubcategory[subKey] = { total: 0, items: [] };
+      }
+      section.byCategory[categoryName].bySubcategory[subKey].total += montoMXN;
+      
+      // Add to section total
+      section.total += montoMXN;
     });
     
     // Log for debugging
-    weeks.filter(w => w.isPast || w.isCurrent).forEach(w => {
-      console.log(`${w.label}: Ingresos Reales=${w.ingresosReales.toFixed(2)}, Egresos Reales=${w.egresosReales.toFixed(2)}, Compra USD=${w.compraUSD.toFixed(2)}, Venta USD=${w.ventaUSD.toFixed(2)}`);
+    console.log('=== DATOS POR SEMANA (Única Fuente de Verdad) ===');
+    weeks.forEach(w => {
+      const status = w.isPast ? 'REAL' : (w.isCurrent ? 'ACTUAL' : 'PROY');
+      console.log(`${w.label} (${status}): Ingresos=${w.ingresos.total.toFixed(2)}, Egresos=${w.egresos.total.toFixed(2)}, VentaUSD=${w.ventaUSD.toFixed(2)}`);
     });
     
-    // Classify CFDIs by week based on fecha_emision - CONVERTING TO MXN
-    // Also separate USD buy/sell CFDIs from regular income/expenses
-    cfdisData.forEach(cfdi => {
-      const cfdiDate = new Date(cfdi.fecha_emision);
-      const weekIdx = weeks.findIndex(w => cfdiDate >= w.weekStart && cfdiDate < w.weekEnd);
-      
-      if (weekIdx !== -1) {
-        const week = weeks[weekIdx];
-        const isIngreso = cfdi.tipo_cfdi === 'ingreso';
-        
-        // Convert CFDI amount to MXN for consistent calculations
-        const cfdiMontoMXN = convertToMXN(cfdi.total, cfdi.moneda, effectiveRates);
-        
-        // Get category and subcategory name
-        const category = categoriesData.find(c => c.id === cfdi.category_id);
-        const categoryName = category?.nombre || 'Sin categoría';
-        
-        // Check if this CFDI belongs to USD buy/sell categories
-        const isCompraUSD = cfdi.category_id === compraUSDId;
-        const isVentaUSD = cfdi.category_id === ventaUSDId;
-        
-        // If it's a USD operation, add to the separate tracking (for projections)
-        // but still categorize it for display purposes
-        if (isCompraUSD && !week.isPast && !week.isCurrent) {
-          week.compraUSD += cfdiMontoMXN;
-        } else if (isVentaUSD && !week.isPast && !week.isCurrent) {
-          week.ventaUSD += cfdiMontoMXN;
-        }
-        
-        // Get section for regular tracking (still include in byCategory for display)
-        const section = isIngreso ? week.ingresos : week.egresos;
-        
-        // Get subcategory if exists
-        let subcategoryName = null;
-        if (cfdi.subcategory_id && category?.subcategorias) {
-          const subcategory = category.subcategorias.find(s => s.id === cfdi.subcategory_id);
-          subcategoryName = subcategory?.nombre || null;
-        }
-        
-        // Don't add to totals if it's a USD operation (we track those separately)
-        if (!isCompraUSD && !isVentaUSD) {
-          section.total += cfdiMontoMXN;
-        }
-        
-        if (!section.byCategory[categoryName]) {
-          section.byCategory[categoryName] = { total: 0, cfdis: [], bySubcategory: {}, isUSDOperation: isCompraUSD || isVentaUSD };
-        }
-        section.byCategory[categoryName].total += cfdiMontoMXN;
-        section.byCategory[categoryName].cfdis.push({ ...cfdi, totalMXN: cfdiMontoMXN });
-        
-        // Track by subcategory
-        const subKey = subcategoryName || 'Sin subcategoría';
-        if (!section.byCategory[categoryName].bySubcategory[subKey]) {
-          section.byCategory[categoryName].bySubcategory[subKey] = { total: 0, cfdis: [] };
-        }
-        section.byCategory[categoryName].bySubcategory[subKey].total += cfdiMontoMXN;
-        section.byCategory[categoryName].bySubcategory[subKey].cfdis.push({ ...cfdi, totalMXN: cfdiMontoMXN });
-        
-        section.byCfdi.push({ ...cfdi, totalMXN: cfdiMontoMXN });
-      }
-    });
-    
-    // For past weeks, use REAL payments if they exist, otherwise use CFDI data
-    weeks.forEach(week => {
-      if (week.isPast || week.isCurrent) {
-        // If we have real payment data, use it; otherwise fall back to CFDI totals
-        if (week.ingresosReales > 0 || week.egresosReales > 0) {
-          // We have real data - mark the week
-          week.hasRealData = true;
+    return weeks;
+  };
         }
       }
     });
