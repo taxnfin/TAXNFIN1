@@ -4391,14 +4391,25 @@ async def get_diot_preview(request: Request, current_user: Dict = Depends(get_cu
 # ===== EXPORTAR DIOT =====
 @api_router.get("/export/diot")
 async def export_diot(request: Request, current_user: Dict = Depends(get_current_user), fecha_desde: str = None, fecha_hasta: str = None):
-    """Export CFDIs in DIOT format (CSV)"""
+    """Export CFDIs in DIOT format (CSV) - ONLY EGRESO WITH IVA, EXCLUDES NOMINA"""
     from fastapi.responses import StreamingResponse
     import io
     import csv
     
     company_id = await get_active_company_id(request, current_user)
     
-    query = {'company_id': company_id}
+    # DIOT query: Only egreso CFDIs with IVA acreditable, excluding nómina
+    query = {
+        'company_id': company_id,
+        'tipo_cfdi': 'egreso',
+        # Exclude nómina and non-deductible items (CN01 = sin efectos fiscales / nómina)
+        'uso_cfdi': {'$nin': ['CN01', 'CP01', 'D01', 'D02', 'D03', 'D04', 'D05', 'D06', 'D07', 'D08', 'D09', 'D10']},
+        # Must have IVA acreditable
+        '$or': [
+            {'impuestos': {'$gt': 0}},
+            {'iva_trasladado': {'$gt': 0}}
+        ]
+    }
     if fecha_desde:
         query['fecha_emision'] = {'$gte': fecha_desde}
     if fecha_hasta:
