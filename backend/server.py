@@ -4904,12 +4904,15 @@ async def complete_payment(payment_id: str, request: Request, current_user: Dict
     if not existing:
         raise HTTPException(status_code=404, detail="Pago no encontrado")
     
+    # Use fecha_vencimiento as fecha_pago if available, otherwise use current date
+    fecha_pago = existing.get('fecha_vencimiento') or datetime.now(timezone.utc).isoformat()
+    
     # Update payment status
     await db.payments.update_one(
         {'id': payment_id},
         {'$set': {
             'estatus': 'completado',
-            'fecha_pago': datetime.now(timezone.utc).isoformat()
+            'fecha_pago': fecha_pago
         }}
     )
     
