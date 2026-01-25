@@ -312,8 +312,8 @@ const CashflowProjections = () => {
       }
     });
     
-    // Keep only 13 weeks
-    setWeeklyData(weeks.slice(0, 13));
+    // Set the 13 weeks
+    setWeeklyData(weeks);
   };
 
   const processMonthlyData = (cfdisData, categoriesData) => {
