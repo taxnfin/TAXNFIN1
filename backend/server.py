@@ -27,6 +27,12 @@ db = client[os.environ['DB_NAME']]
 app = FastAPI(title="TaxnFin Cashflow API", version="1.0.0")
 api_router = APIRouter(prefix="/api")
 
+# Import modular routers
+from routes.auth import router as auth_router
+
+# Include modular routers in api_router
+api_router.include_router(auth_router)
+
 JWT_SECRET = os.environ.get('JWT_SECRET', 'taxnfin-secret-key-change-in-production')
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_HOURS = 24 * 7
