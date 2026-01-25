@@ -4,9 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { format, startOfWeek, addWeeks, addDays, isBefore, isAfter, parseISO } from 'date-fns';
-import { es } from 'date-fns/locale';
-import { TrendingUp, TrendingDown, Calendar, RefreshCw, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { format, addWeeks, addDays } from 'date-fns';
+import { TrendingUp, TrendingDown, Calendar, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // All available currencies
@@ -27,7 +26,6 @@ const Reports = () => {
   const [loading, setLoading] = useState(true);
   const [selectedCurrency, setSelectedCurrency] = useState('MXN');
   const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.599, EUR: 20.4852, GBP: 22.00, JPY: 0.13, CHF: 20.00, CAD: 13.00, CNY: 2.40 });
-  const weekStartDay = 1; // Monday = 1
 
   useEffect(() => {
     loadData();
@@ -44,7 +42,6 @@ const Reports = () => {
       setPayments(paymentsRes.data || []);
       setCfdis(cfdisRes.data || []);
       
-      // Load FX rates
       if (fxRes.data?.rates) {
         setFxRates(prev => ({ ...prev, ...fxRes.data.rates }));
       }
@@ -81,53 +78,42 @@ const Reports = () => {
   const getMonday = (date) => {
     const d = new Date(date);
     const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(d.setDate(diff));
   };
 
-  // Generate weeks based on actual payment data
+  // Generate 13 weeks: weeks are numbered S1, S2, S3... starting from earliest data
   const weeksData = useMemo(() => {
     const today = new Date();
     const currentMonday = getMonday(today);
     
-    // Find the earliest payment date to determine start
-    let earliestDate = currentMonday;
+    // Find the earliest payment date
+    let earliestDate = null;
     payments.forEach(p => {
       if (p.estatus !== 'completado') return;
       const fecha = p.fecha_pago;
       if (fecha) {
         const d = new Date(fecha);
-        if (d < earliestDate) earliestDate = d;
+        if (!earliestDate || d < earliestDate) earliestDate = d;
       }
     });
     
-    // Start from 4 weeks before current week or earliest payment
+    // Start from earliest payment or 4 weeks ago
     const fourWeeksAgo = addWeeks(currentMonday, -4);
-    const startMonday = getMonday(earliestDate < fourWeeksAgo ? fourWeeksAgo : earliestDate);
+    const startMonday = earliestDate ? getMonday(earliestDate < fourWeeksAgo ? fourWeeksAgo : earliestDate) : fourWeeksAgo;
     
-    // Generate 17 weeks (4 past + current + 12 future)
+    // Generate 13 weeks starting from S1 (oldest)
     const weeks = [];
-    for (let i = 0; i < 17; i++) {
+    for (let i = 0; i < 13; i++) {
       const weekStart = addWeeks(startMonday, i);
       const weekEnd = addDays(weekStart, 6); // Sunday
-      const weekEndForComparison = addWeeks(weekStart, 1); // Next Monday for comparison
+      const weekEndForComparison = addWeeks(weekStart, 1); // Next Monday
       const isPast = weekEndForComparison <= today;
       const isCurrent = weekStart <= today && today < weekEndForComparison;
       
-      // Calculate week number relative to current week
-      const weeksDiff = Math.round((weekStart.getTime() - currentMonday.getTime()) / (7 * 24 * 60 * 60 * 1000));
-      let label;
-      if (weeksDiff < 0) {
-        label = `S${weeksDiff}`; // S-3, S-2, S-1
-      } else if (weeksDiff === 0) {
-        label = 'S0'; // Current week
-      } else {
-        label = `S${weeksDiff}`; // S1, S2, S3...
-      }
-      
       weeks.push({
-        weekNum: i,
-        label,
+        weekNum: i + 1, // S1, S2, S3...
+        label: `S${i + 1}`,
         weekStart,
         weekEnd,
         weekEndForComparison,
@@ -148,7 +134,6 @@ const Reports = () => {
     payments.forEach(payment => {
       if (payment.estatus !== 'completado') return;
       
-      // Skip duplicates by bank_transaction_id
       const bankTxnId = payment.bank_transaction_id;
       if (bankTxnId) {
         if (processedBankTxns.has(bankTxnId)) return;
@@ -164,7 +149,6 @@ const Reports = () => {
         if (isNaN(paymentDate.getTime())) return;
       } catch { return; }
       
-      // Find the week this payment belongs to
       const weekIdx = weeks.findIndex(w => 
         paymentDate >= w.weekStart && paymentDate < w.weekEndForComparison
       );
@@ -180,7 +164,7 @@ const Reports = () => {
       }
     });
     
-    // Process PROJECTED data from pending CFDIs (for future weeks only)
+    // Process PROJECTED data from pending CFDIs (for future weeks)
     cfdis.forEach(cfdi => {
       const total = cfdi.total || 0;
       const pagado = cfdi.monto_pagado || 0;
@@ -197,7 +181,6 @@ const Reports = () => {
       
       const pendienteMXN = convertToMXN(pendiente, cfdi.moneda);
       
-      // Estimate payment date (30 days from emission if no vencimiento)
       let estimatedDate;
       if (cfdi.fecha_vencimiento) {
         estimatedDate = new Date(cfdi.fecha_vencimiento);
@@ -211,7 +194,6 @@ const Reports = () => {
       );
       
       if (weekIdx === -1) return;
-      // Only add to future weeks
       if (weeks[weekIdx].isPast && !weeks[weekIdx].isCurrent) return;
       
       if (cfdi.tipo_cfdi === 'ingreso') {
@@ -221,19 +203,7 @@ const Reports = () => {
       }
     });
     
-    // Filter out weeks with no data that are too far in the past or future
-    const firstWeekWithData = weeks.findIndex(w => 
-      w.cobrosReales > 0 || w.pagosReales > 0 || w.isCurrent
-    );
-    const lastWeekWithData = weeks.findLastIndex(w => 
-      w.cobrosReales > 0 || w.pagosReales > 0 || w.cobrosProyectados > 0 || w.pagosProyectados > 0 || w.isCurrent
-    );
-    
-    // Keep from first data week to at least 13 weeks from current
-    const start = Math.max(0, firstWeekWithData);
-    const end = Math.max(lastWeekWithData + 1, weeks.findIndex(w => w.isCurrent) + 13);
-    
-    return weeks.slice(start, Math.min(end, weeks.length));
+    return weeks;
   }, [payments, cfdis, fxRates]);
 
   // Calculate totals
@@ -255,7 +225,7 @@ const Reports = () => {
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{fontFamily: 'Manrope'}}>Reportes</h1>
-          <p className="text-[#64748B]">Flujo de Efectivo Real vs Proyectado (Semanas = Lunes a Domingo)</p>
+          <p className="text-[#64748B]">12 Rolling Cash Flow - Real vs Proyectado (Lunes a Domingo)</p>
         </div>
         <div className="flex gap-2 items-center">
           <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
@@ -288,14 +258,14 @@ const Reports = () => {
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Calendar size={20} />
-            Flujo de Efectivo Semanal
+            Flujo de Efectivo - 13 Semanas
           </CardTitle>
           <CardDescription>
             <span className="inline-flex items-center gap-1 mr-4">
-              <span className="w-2 h-2 rounded-full bg-green-500"></span> Cobrado
+              <span className="w-2 h-2 rounded-full bg-green-500"></span> Cobrado (Real)
             </span>
             <span className="inline-flex items-center gap-1 mr-4">
-              <span className="w-2 h-2 rounded-full bg-red-500"></span> Pagado
+              <span className="w-2 h-2 rounded-full bg-red-500"></span> Pagado (Real)
             </span>
             <span className="inline-flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-gray-400"></span> Proyectado
@@ -307,7 +277,7 @@ const Reports = () => {
             <Table className="text-sm">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-16 font-bold">Sem</TableHead>
+                  <TableHead className="w-14 font-bold">Sem</TableHead>
                   <TableHead className="w-28">Período</TableHead>
                   <TableHead className="w-16 text-center">Tipo</TableHead>
                   <TableHead className="text-right">Cobros Real</TableHead>
