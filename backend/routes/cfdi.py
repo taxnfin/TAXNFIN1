@@ -17,10 +17,11 @@ logger = logging.getLogger(__name__)
 async def get_cfdi_summary(
     request: Request,
     current_user: Dict = Depends(get_current_user),
+    moneda_vista: str = Query('MXN', description="Moneda para mostrar totales"),
     fecha_desde: Optional[str] = None,
     fecha_hasta: Optional[str] = None
 ):
-    """Get summary of CFDIs by type and status"""
+    """Get summary of CFDIs by type and status with currency conversion"""
     company_id = await get_active_company_id(request, current_user)
     
     query = {'company_id': company_id}
@@ -34,38 +35,68 @@ async def get_cfdi_summary(
     # Get all CFDIs
     cfdis = await db.cfdis.find(query, {'_id': 0, 'xml_original': 0}).to_list(10000)
     
-    # Calculate summary
-    total_ingresos = 0
-    total_egresos = 0
-    count_ingresos = 0
-    count_egresos = 0
+    # Get company's base currency
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0, 'moneda_base': 1})
+    moneda_base = company.get('moneda_base', 'MXN') if company else 'MXN'
+    
+    # Get FX rates
+    rates_docs = await db.fx_rates.find({'company_id': company_id}).sort('fecha_vigencia', -1).to_list(100)
+    rates = {'MXN': 1.0, 'USD': 17.50, 'EUR': 19.00}  # Defaults
+    for r in rates_docs:
+        moneda = r.get('moneda_cotizada') or r.get('moneda_origen')
+        tasa = r.get('tipo_cambio') or r.get('tasa')
+        if moneda and tasa:
+            rates[moneda] = tasa
+    
+    # Calculate totals by currency and converted
+    totals_by_currency = {'ingresos': {}, 'egresos': {}}
+    totals_converted = {'ingresos': 0.0, 'egresos': 0.0}
     pendientes = 0
     conciliados = 0
     
     for c in cfdis:
-        total = c.get('total', 0)
-        if c.get('tipo_cfdi') == 'ingreso':
-            total_ingresos += total
-            count_ingresos += 1
-        else:
-            total_egresos += total
-            count_egresos += 1
+        total = c.get('total', 0) or 0
+        moneda = c.get('moneda', 'MXN') or 'MXN'
+        tipo = 'ingresos' if c.get('tipo_cfdi') == 'ingreso' else 'egresos'
         
+        # Sum by original currency
+        if moneda not in totals_by_currency[tipo]:
+            totals_by_currency[tipo][moneda] = 0
+        totals_by_currency[tipo][moneda] += total
+        
+        # Convert to view currency
+        if moneda == moneda_vista:
+            totals_converted[tipo] += total
+        elif moneda in rates and moneda_vista in rates:
+            if moneda == 'MXN':
+                converted = total / rates.get(moneda_vista, 1)
+            elif moneda_vista == 'MXN':
+                converted = total * rates.get(moneda, 1)
+            else:
+                # Cross rate
+                to_mxn = total * rates.get(moneda, 1)
+                converted = to_mxn / rates.get(moneda_vista, 1)
+            totals_converted[tipo] += converted
+        else:
+            totals_converted[tipo] += total
+        
+        # Count reconciliation status
         if c.get('estado_conciliacion') == 'conciliado':
             conciliados += 1
         else:
             pendientes += 1
     
     return {
+        'moneda_vista': moneda_vista,
+        'moneda_base': moneda_base,
+        'totales_por_moneda': totals_by_currency,
+        'totales_convertidos': {
+            'ingresos': round(totals_converted['ingresos'], 2),
+            'egresos': round(totals_converted['egresos'], 2)
+        },
+        'balance_convertido': round(totals_converted['ingresos'] - totals_converted['egresos'], 2),
+        'tipos_cambio_usados': rates,
         'total_cfdis': len(cfdis),
-        'ingresos': {
-            'count': count_ingresos,
-            'total': round(total_ingresos, 2)
-        },
-        'egresos': {
-            'count': count_egresos,
-            'total': round(total_egresos, 2)
-        },
         'conciliados': conciliados,
         'pendientes': pendientes,
         'porcentaje_conciliado': round(conciliados / len(cfdis) * 100, 1) if cfdis else 0
