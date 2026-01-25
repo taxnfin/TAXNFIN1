@@ -345,3 +345,37 @@ async def backfill_payment_categories(request: Request, current_user: Dict = Dep
         'total_checked': len(payments_to_update),
         'errors': errors[:10] if errors else []  # Return first 10 errors
     }
+
+
+@router.put("/{payment_id}/categorize")
+async def categorize_payment_direct(
+    payment_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    category_id: str = Query(None),
+    subcategory_id: str = Query(None)
+):
+    """
+    Categorize a payment directly (for payments without CFDI).
+    This is useful for bank fees, manual entries, etc.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    payment = await db.payments.find_one({'id': payment_id, 'company_id': company_id}, {'_id': 0})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    
+    update_data = {}
+    if category_id:
+        update_data['category_id'] = category_id
+    if subcategory_id:
+        update_data['subcategory_id'] = subcategory_id
+    
+    if update_data:
+        await db.payments.update_one(
+            {'id': payment_id, 'company_id': company_id},
+            {'$set': update_data}
+        )
+        await audit_log(company_id, 'Payment', payment_id, 'CATEGORIZE', current_user['id'], update_data)
+    
+    return {'status': 'success', 'message': 'Pago categorizado correctamente'}
