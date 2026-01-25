@@ -1282,7 +1282,14 @@ const PaymentsModule = () => {
                   if (filterEsReal === 'real') return p.es_real === true;
                   if (filterEsReal === 'proyeccion') return p.es_real === false;
                   return true;
-                }).map((payment) => (
+                }).map((payment) => {
+                  // Find category and subcategory names
+                  const category = categories.find(c => c.id === payment.category_id);
+                  const categoryName = category?.nombre || '';
+                  const subcategory = category?.subcategorias?.find(s => s.id === payment.subcategory_id);
+                  const subcategoryName = subcategory?.nombre || '';
+                  
+                  return (
                   <TableRow key={payment.id} className={payment.es_real === false ? 'bg-blue-50/30' : ''}>
                     <TableCell className="mono text-sm">
                       {format(new Date(payment.fecha_vencimiento), 'dd/MM/yyyy')}
@@ -1308,16 +1315,29 @@ const PaymentsModule = () => {
                         )}
                       </span>
                     </TableCell>
-                    <TableCell className="max-w-[180px] truncate">{payment.concepto}</TableCell>
-                    <TableCell className="text-sm">{payment.beneficiario || '-'}</TableCell>
-                    <TableCell className="text-xs font-mono text-gray-500">
-                      {payment.referencia ? payment.referencia.substring(0, 12) + (payment.referencia.length > 12 ? '...' : '') : '-'}
+                    <TableCell className="font-mono text-xs">
+                      {payment.cfdi_uuid ? (
+                        <span className="text-purple-600" title={payment.cfdi_uuid}>
+                          {payment.cfdi_uuid.substring(0, 8)}...
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
                     </TableCell>
                     <TableCell>
-                      <span className="text-xs px-2 py-1 bg-gray-100 text-gray-800 rounded capitalize">
-                        {payment.metodo_pago}
-                      </span>
+                      {categoryName ? (
+                        <div className="text-xs">
+                          <span className="font-medium text-gray-700">{categoryName}</span>
+                          {subcategoryName && (
+                            <span className="block text-gray-500">{subcategoryName}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-amber-600">Sin categoría</span>
+                      )}
                     </TableCell>
+                    <TableCell className="max-w-[150px] truncate text-sm">{payment.concepto}</TableCell>
+                    <TableCell className="text-sm">{payment.beneficiario || '-'}</TableCell>
                     <TableCell className={`mono font-semibold ${
                       payment.tipo === 'cobro' ? 'text-green-600' : 'text-red-600'
                     }`}>
