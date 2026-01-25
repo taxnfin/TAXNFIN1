@@ -842,6 +842,18 @@ All P0 features implemented and tested:
   - Ahora muestra totales_convertidos y totales_por_moneda
   - Ingresos y Egresos ahora visibles en el módulo SAT
 
+- **Feature: Proyecciones Drill-Down y Desglose**
+  - Nueva sublínea "📥 Depósitos / Otros Cobros (sin CFDI)" para ingresos reales sin factura
+  - Endpoint `/api/projections/week-detail` para auditar transacciones por semana:
+    - Lista CFDIs con categoría/subcategoría
+    - Lista Payments con origen (Banco/CFDI/Manual)
+    - Calcula diferencia entre cobros y CFDIs
+  - Corrección de lógica: INGRESOS = MAX(real, cfdi) para evitar duplicados
+
+- **Feature: Export Excel con Categoría/Subcategoría**
+  - Pagos Excel ahora incluye columnas Categoría y Subcategoría
+  - Carga automática de categorías en PaymentsModule
+
 - **Refactoring Avance**: 11 routers modulares ahora integrados
   - cfdi.py, fx_rates.py, bank_transactions.py creados con endpoints funcionales
   - server.py reducido a 7,408 líneas
