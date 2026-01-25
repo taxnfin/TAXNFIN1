@@ -510,6 +510,7 @@ const CashflowProjections = () => {
   // Calculate running totals including custom concepts
   // For past weeks: use REAL payment data if available
   // For future weeks: use CFDI projections
+  // USD buy/sell operations are tracked separately and don't affect cash flow
   const calculateRunningTotals = () => {
     // Use the bank account balance as initial amount
     let saldoInicial = saldoInicialBancos;
@@ -529,7 +530,11 @@ const CashflowProjections = () => {
       let totalIngresos, totalEgresos;
       let isRealData = false;
       
-      if ((week.isPast || week.isCurrent) && (week.ingresosReales > 0 || week.egresosReales > 0)) {
+      // Get USD operations for this week
+      const compraUSD = week.compraUSD || 0;
+      const ventaUSD = week.ventaUSD || 0;
+      
+      if ((week.isPast || week.isCurrent) && (week.ingresosReales > 0 || week.egresosReales > 0 || compraUSD > 0 || ventaUSD > 0)) {
         // Use REAL payment data for past weeks
         totalIngresos = week.ingresosReales + customIngresos;
         totalEgresos = week.egresosReales + customEgresos;
@@ -540,7 +545,12 @@ const CashflowProjections = () => {
         totalEgresos = week.egresos.total + customEgresos;
       }
       
-      const flujoNeto = totalIngresos - totalEgresos;
+      // Net cash flow from operations (excluding USD conversions)
+      // Compra USD: Money out (egreso) -> reduces cash
+      // Venta USD: Money in (ingreso) -> increases cash
+      const flujoNetoOperativo = totalIngresos - totalEgresos;
+      const flujoDivisas = ventaUSD - compraUSD; // Net effect of USD operations
+      const flujoNeto = flujoNetoOperativo + flujoDivisas;
       const saldoFinal = saldoInicial + flujoNeto;
       
       totals.push({
@@ -557,6 +567,9 @@ const CashflowProjections = () => {
           custom: customEgresos,
           isReal: isRealData 
         },
+        compraUSD,
+        ventaUSD,
+        flujoDivisas,
         saldoInicial,
         flujoNeto,
         saldoFinal,
