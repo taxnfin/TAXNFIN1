@@ -30,10 +30,12 @@ api_router = APIRouter(prefix="/api")
 # Import modular routers
 from routes.auth import router as auth_router
 from routes.companies import router as companies_router
+from routes.categories import router as categories_router
 
 # Include modular routers in api_router
 api_router.include_router(auth_router)
 api_router.include_router(companies_router)
+api_router.include_router(categories_router)
 
 JWT_SECRET = os.environ.get('JWT_SECRET', 'taxnfin-secret-key-change-in-production')
 JWT_ALGORITHM = 'HS256'
