@@ -820,6 +820,27 @@ All P0 features implemented and tested:
     - Sueldos, asimilados, cargas sociales
   - Operaciones reducidas de 33 → 21 (solo proveedores con IVA)
   - Agregado banner de advertencia en UI sobre exclusiones
+  - Agregadas columnas de Categoría y Subcategoría en tabla
+  - Mejorado layout compacto con moneda origen y moneda MXN
+
+- **Feature: Dashboard KPIs Ejecutivos Mejorado**
+  - Nueva sección "KPIs Clave de Liquidez":
+    - RUNWAY: Semanas de operación con saldo actual
+    - BURN RATE: Promedio de egresos semanales
+    - COBRANZA VS PAGOS: Ratio ingresos/egresos
+    - SEMANA CRÍTICA: Menor saldo proyectado
+  - Nueva sección "¿Qué Hacer Ahora?":
+    - Acciones recomendadas dinámicas basadas en el flujo
+    - Alertas de liquidez crítica, cobranza baja, CFDIs sin conciliar
+  - Nueva sección "Análisis de Escenarios":
+    - Escenario Pesimista (cobranza -30%, gastos +15%)
+    - Escenario Base (tendencia actual)
+    - Escenario Optimista (cobranza +20%, gastos -10%)
+
+- **Bug Fix: CFDI Summary endpoint**
+  - Corregido routes/cfdi.py para devolver estructura correcta
+  - Ahora muestra totales_convertidos y totales_por_moneda
+  - Ingresos y Egresos ahora visibles en el módulo SAT
 
 - **Refactoring Avance**: 11 routers modulares ahora integrados
   - cfdi.py, fx_rates.py, bank_transactions.py creados con endpoints funcionales
