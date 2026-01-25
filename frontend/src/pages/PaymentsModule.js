@@ -164,12 +164,14 @@ const PaymentsModule = () => {
 
   const loadPartiesData = async () => {
     try {
-      const [customersRes, vendorsRes] = await Promise.all([
+      const [customersRes, vendorsRes, categoriesRes] = await Promise.all([
         api.get('/customers'),
-        api.get('/vendors')
+        api.get('/vendors'),
+        api.get('/categories')
       ]);
       setCustomers(customersRes.data);
       setVendors(vendorsRes.data);
+      setCategories(categoriesRes.data);
     } catch (error) {
       console.error('Error loading parties:', error);
     }
