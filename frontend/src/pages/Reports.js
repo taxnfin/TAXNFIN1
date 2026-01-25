@@ -291,11 +291,6 @@ const Reports = () => {
                 {weeksData.map((week) => {
                   const flujoNeto = (week.cobrosReales + week.cobrosProyectados) - (week.pagosReales + week.pagosProyectados);
                   
-                  // Debug S3
-                  if (week.label === 'S3') {
-                    console.log('S3 render - cobrosReales:', week.cobrosReales, 'formatted:', formatCurrency(week.cobrosReales));
-                  }
-                  
                   return (
                     <TableRow 
                       key={week.label} 
