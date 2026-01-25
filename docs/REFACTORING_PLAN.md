@@ -1,62 +1,65 @@
 # Server.py Refactoring Plan
 
-## Current State (January 25, 2026)
-- **server.py**: 8,122 lines (reduced from 8,630)
-- **routes/*.py**: 8 files, 6 integrated
-- **Lines removed**: ~508 lines
+## Current State (January 25, 2026 - PHASE 2 COMPLETE)
+- **server.py**: 7,402 lines (reduced from 8,630 - **14% reduction**)
+- **routes/*.py**: 8 files, ALL integrated
+- **Lines removed**: ~1,228 lines
+- **Endpoints moved to modular routers**: 43
 
-## Migration Status
+## Migration Status - ALL 8 ROUTERS INTEGRATED ✅
 
-### ✅ INTEGRATED ROUTERS (6)
-| Module | File | Endpoints | Status |
-|--------|------|-----------|--------|
-| Auth | routes/auth.py | 7 | ✅ Integrated |
-| Companies | routes/companies.py | 4 | ✅ Integrated |
-| Categories | routes/categories.py | 6 | ✅ Integrated |
-| Vendors | routes/vendors.py | 4 | ✅ Integrated |
-| Customers | routes/customers.py | 4 | ✅ Integrated |
-| Bank Accounts | routes/bank_accounts.py | 5 | ✅ Integrated |
+### ✅ FULLY INTEGRATED ROUTERS
+| Module | File | Endpoints | Features |
+|--------|------|-----------|----------|
+| Auth | routes/auth.py | 7 | Login, Register, Me, Auth0 integration |
+| Companies | routes/companies.py | 4 | CRUD + cashflow initialization |
+| Categories | routes/categories.py | 6 | Categories + Subcategories CRUD |
+| Vendors | routes/vendors.py | 4 | CRUD |
+| Customers | routes/customers.py | 4 | CRUD |
+| Bank Accounts | routes/bank_accounts.py | 5 | CRUD + Summary with FX |
+| Payments | routes/payments.py | 6 | CRUD + CFDI reversal logic |
+| Reconciliations | routes/reconciliations.py | 7 | CRUD + Summary + mark-without-uuid |
 
-**Total endpoints moved to modular routers: 30**
+**Total: 43 endpoints in modular architecture**
 
-### ❌ NOT INTEGRATED (2)
-| Module | File | Reason |
-|--------|------|--------|
-| Payments | routes/payments.py | server.py has CFDI reversal logic that modules don't have |
-| Reconciliations | routes/reconciliations.py | Critical data integrity logic, too risky to migrate |
-
-### ❌ NOT CREATED YET
+### ❌ MODULES NOT YET CREATED
 - cfdi.py (~10 endpoints)
-- fx_rates.py (~10 endpoints)
+- fx_rates.py (~10 endpoints)  
 - bank_transactions.py (~13 endpoints)
 - belvo.py (~9 endpoints)
 - reports.py (~5 endpoints)
 - exports.py (~5 endpoints)
 - advanced.py (AI/optimization)
 
-## Endpoints Remaining in server.py: 97
+## Endpoints Remaining in server.py: ~55
 
-## Key Decisions Made
+## Key Features Preserved
 
-1. **Payments router NOT integrated** - The server.py version correctly reverses CFDI monto_cobrado/monto_pagado when payments are deleted. The module version is simpler and would lose this functionality.
+### Payments Module (routes/payments.py)
+- ✅ Automatic FX rate capture for non-MXN currencies
+- ✅ CFDI amount updates when payment is created (monto_cobrado/monto_pagado)
+- ✅ CFDI amount reversal when payment is deleted
+- ✅ CFDI amount adjustment when payment is edited
+- ✅ Bulk delete with full CFDI reset
 
-2. **Reconciliations router NOT integrated** - Too critical for data integrity. Multiple endpoints with complex duplicate-prevention logic and bank transaction updates.
-
-3. **Categories, Vendors, Customers fully migrated** - These are simple CRUD operations with no complex business logic dependencies.
-
-4. **Bank accounts summary preserved** - The module has complete logic including historical FX rate lookups.
+### Reconciliations Module (routes/reconciliations.py)
+- ✅ Duplicate prevention (same bank_transaction + cfdi)
+- ✅ Automatic payment creation on reconciliation
+- ✅ CFDI estado_conciliacion update
+- ✅ Historical FX rate capture
+- ✅ mark-without-uuid for bank fees and non-invoice expenses
+- ✅ Summary by reconciliation type (con_uuid, sin_uuid, no_relacionado)
+- ✅ Full cleanup on delete (payment, bank transaction status, CFDI status)
 
 ## Testing Performed
-- All 6 integrated routers tested via curl
+- All 8 routers tested via curl
 - Login/auth flow verified
-- Companies CRUD verified
-- Categories CRUD verified
-- Vendors/Customers CRUD verified
-- Bank accounts + summary verified
+- Full CRUD operations verified for all modules
+- Reconciliation summary verified
 - Frontend dashboard loads correctly
 
-## Next Steps
-1. Create new route modules for cfdi, fx_rates, bank_transactions
-2. Update payments module to include CFDI reversal logic
-3. Update reconciliations module with full data integrity logic
-4. Gradually integrate remaining modules
+## Next Steps (Phase 3)
+1. Create cfdi.py module
+2. Create fx_rates.py module
+3. Create bank_transactions.py module
+4. Continue reducing server.py
