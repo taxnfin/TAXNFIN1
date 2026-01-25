@@ -2969,8 +2969,10 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
             raise HTTPException(status_code=400, detail=f"Este CFDI ya está conciliado con: {other_desc}...")
         
         # Check if payment exists, if not create one automatically
+        # CHECK BY BOTH bank_transaction_id AND cfdi_id to prevent duplicates
         payment_exists = await db.payments.find_one({
             'company_id': company_id,
+            'bank_transaction_id': reconciliation_data.bank_transaction_id,
             'cfdi_id': reconciliation_data.cfdi_id
         }, {'_id': 0, 'id': 1})
         
