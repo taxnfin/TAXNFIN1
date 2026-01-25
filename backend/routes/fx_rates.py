@@ -7,7 +7,7 @@ import logging
 
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
-from models.fx_rate import FXRate, FXRateCreate
+from models.fx import FXRate, FXRateCreate
 from services.audit import audit_log
 
 router = APIRouter(prefix="/fx-rates")
