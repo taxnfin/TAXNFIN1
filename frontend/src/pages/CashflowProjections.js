@@ -971,11 +971,17 @@ const CashflowProjections = () => {
                     </TableRow>
                     
                     {/* Egresos by Category - Show all including "Sin categoría" as "Proveedores Costo" */}
+                    {/* Exclude "Venta de USD" category as it's shown separately */}
                     {(() => {
                       // Collect all unique category names from egresos including "Sin categoría"
                       const allEgresoCategories = new Set();
                       weeklyData.forEach(w => {
-                        Object.keys(w.egresos.byCategory).forEach(cat => allEgresoCategories.add(cat));
+                        Object.keys(w.egresos.byCategory).forEach(cat => {
+                          // Exclude USD operations from EGRESOS section
+                          if (!cat.toLowerCase().includes('venta de usd') && !cat.toLowerCase().includes('venta usd')) {
+                            allEgresoCategories.add(cat);
+                          }
+                        });
                       });
                       
                       return Array.from(allEgresoCategories).map(categoryName => {
