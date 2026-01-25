@@ -192,9 +192,19 @@ const CashflowProjections = () => {
       });
     }
     
-    // Process REAL payments for past/current weeks
+    // Track processed bank transactions to avoid duplicates
+    const processedBankTxns = new Set();
+    
+    // Process REAL payments for past/current weeks - FILTER DUPLICATES
     payments.forEach(payment => {
       if (!payment.fecha_pago && !payment.fecha_vencimiento) return;
+      
+      // Skip duplicates by bank_transaction_id
+      const bankTxnId = payment.bank_transaction_id;
+      if (bankTxnId) {
+        if (processedBankTxns.has(bankTxnId)) return; // Skip duplicate
+        processedBankTxns.add(bankTxnId);
+      }
       
       // Parse date carefully
       const fechaStr = payment.fecha_pago || payment.fecha_vencimiento;
