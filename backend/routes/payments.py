@@ -1,8 +1,8 @@
-"""Payment routes"""
+"""Payment routes with full CFDI reversal logic"""
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from typing import Dict, List, Optional
 from datetime import datetime, timezone, timedelta
-import uuid
+import logging
 
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
@@ -10,11 +10,12 @@ from models.payment import Payment, PaymentCreate
 from services.audit import audit_log
 
 router = APIRouter(prefix="/payments")
+logger = logging.getLogger(__name__)
 
 
 @router.post("", response_model=Payment)
 async def create_payment(payment_data: PaymentCreate, request: Request, current_user: Dict = Depends(get_current_user)):
-    """Create a new payment"""
+    """Create a new payment with automatic CFDI amount updates"""
     company_id = await get_active_company_id(request, current_user)
     payment = Payment(company_id=company_id, **payment_data.model_dump())
     doc = payment.model_dump()
@@ -36,7 +37,6 @@ async def create_payment(payment_data: PaymentCreate, request: Request, current_
             doc['tipo_cambio_historico'] = default_rates.get(doc['moneda'], 1)
     
     # If payment is "Real", automatically mark as completed
-    # Only set fecha_pago if not already provided (use fecha_vencimiento as fallback)
     if doc.get('es_real') == True:
         doc['estatus'] = 'completado'
         if not doc.get('fecha_pago'):
@@ -61,6 +61,7 @@ async def create_payment(payment_data: PaymentCreate, request: Request, current_
                     {'id': doc['cfdi_id']},
                     {'$set': {'monto_cobrado': new_cobrado}}
                 )
+                logger.info(f"Auto-completed payment: Updated CFDI {doc['cfdi_id']} monto_cobrado: {current_cobrado} -> {new_cobrado}")
             else:
                 current_pagado = cfdi.get('monto_pagado', 0) or 0
                 new_pagado = current_pagado + doc['monto']
@@ -68,6 +69,7 @@ async def create_payment(payment_data: PaymentCreate, request: Request, current_
                     {'id': doc['cfdi_id']},
                     {'$set': {'monto_pagado': new_pagado}}
                 )
+                logger.info(f"Auto-completed payment: Updated CFDI {doc['cfdi_id']} monto_pagado: {current_pagado} -> {new_pagado}")
     
     await audit_log(company_id, 'Payment', payment.id, 'CREATE', current_user['id'])
     return payment
@@ -109,48 +111,137 @@ async def list_payments(
     
     for p in payments:
         for field in ['fecha_vencimiento', 'fecha_pago', 'created_at']:
-            if p.get(field) and isinstance(p[field], str):
-                try:
-                    p[field] = datetime.fromisoformat(p[field])
-                except:
-                    pass
-    
+            if isinstance(p.get(field), str):
+                p[field] = datetime.fromisoformat(p[field])
     return payments
 
 
-# NOTE: /summary endpoint is handled by server.py with more complete CFDI-based logic
-# The basic summary logic was moved here but server.py version uses CFDI data for accurate calculations
+@router.put("/{payment_id}")
+async def update_payment(payment_id: str, payment_data: PaymentCreate, request: Request, current_user: Dict = Depends(get_current_user)):
+    """Update a payment with CFDI amount adjustment"""
+    company_id = await get_active_company_id(request, current_user)
+    existing = await db.payments.find_one({'id': payment_id, 'company_id': company_id}, {'_id': 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    
+    old_monto = existing.get('monto', 0)
+    old_cfdi_id = existing.get('cfdi_id')
+    old_estatus = existing.get('estatus')
+    
+    update_data = payment_data.model_dump()
+    for field in ['fecha_vencimiento', 'fecha_pago']:
+        if update_data.get(field):
+            update_data[field] = update_data[field].isoformat()
+    
+    await db.payments.update_one(
+        {'id': payment_id, 'company_id': company_id},
+        {'$set': update_data}
+    )
+    
+    # If payment was completed and linked to a CFDI, update the CFDI's collected/paid amount
+    if old_estatus == 'completado' and old_cfdi_id:
+        cfdi = await db.cfdis.find_one({'id': old_cfdi_id}, {'_id': 0})
+        if cfdi:
+            # Calculate the difference between old and new amount
+            new_monto = update_data.get('monto', old_monto)
+            diff = new_monto - old_monto
+            
+            if existing['tipo'] == 'cobro':
+                current_cobrado = cfdi.get('monto_cobrado', 0) or 0
+                new_cobrado = max(0, current_cobrado + diff)
+                await db.cfdis.update_one(
+                    {'id': old_cfdi_id},
+                    {'$set': {'monto_cobrado': new_cobrado}}
+                )
+                logger.info(f"Updated CFDI {old_cfdi_id} monto_cobrado after payment edit: {current_cobrado} -> {new_cobrado}")
+            else:
+                current_pagado = cfdi.get('monto_pagado', 0) or 0
+                new_pagado = max(0, current_pagado + diff)
+                await db.cfdis.update_one(
+                    {'id': old_cfdi_id},
+                    {'$set': {'monto_pagado': new_pagado}}
+                )
+                logger.info(f"Updated CFDI {old_cfdi_id} monto_pagado after payment edit: {current_pagado} -> {new_pagado}")
+    
+    await audit_log(company_id, 'Payment', payment_id, 'UPDATE', current_user['id'])
+    return {'status': 'success', 'message': 'Pago actualizado'}
 
 
 @router.post("/{payment_id}/complete")
 async def complete_payment(payment_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
-    """Mark a payment as completed"""
+    """Mark a payment as completed with CFDI amount update"""
     company_id = await get_active_company_id(request, current_user)
-    
-    payment = await db.payments.find_one({'id': payment_id, 'company_id': company_id}, {'_id': 0})
-    if not payment:
+    existing = await db.payments.find_one({'id': payment_id, 'company_id': company_id}, {'_id': 0})
+    if not existing:
         raise HTTPException(status_code=404, detail="Pago no encontrado")
     
+    # Use fecha_vencimiento as fecha_pago if available, otherwise use current date
+    fecha_pago = existing.get('fecha_vencimiento') or datetime.now(timezone.utc).isoformat()
+    
+    # Update payment status
     await db.payments.update_one(
         {'id': payment_id},
         {'$set': {
             'estatus': 'completado',
-            'fecha_pago': datetime.now(timezone.utc).isoformat()
+            'fecha_pago': fecha_pago
         }}
     )
     
+    # If payment is linked to a CFDI, update the paid/collected amount
+    if existing.get('cfdi_id'):
+        cfdi = await db.cfdis.find_one({'id': existing['cfdi_id']}, {'_id': 0})
+        if cfdi:
+            if existing['tipo'] == 'cobro':
+                # Update monto_cobrado for income CFDI
+                current_cobrado = cfdi.get('monto_cobrado', 0) or 0
+                new_cobrado = current_cobrado + existing['monto']
+                await db.cfdis.update_one(
+                    {'id': existing['cfdi_id']},
+                    {'$set': {'monto_cobrado': new_cobrado}}
+                )
+                logger.info(f"Updated CFDI {existing['cfdi_id']} monto_cobrado: {current_cobrado} -> {new_cobrado}")
+            else:
+                # Update monto_pagado for expense CFDI
+                current_pagado = cfdi.get('monto_pagado', 0) or 0
+                new_pagado = current_pagado + existing['monto']
+                await db.cfdis.update_one(
+                    {'id': existing['cfdi_id']},
+                    {'$set': {'monto_pagado': new_pagado}}
+                )
+                logger.info(f"Updated CFDI {existing['cfdi_id']} monto_pagado: {current_pagado} -> {new_pagado}")
+    
     await audit_log(company_id, 'Payment', payment_id, 'COMPLETE', current_user['id'])
-    return {'status': 'success', 'message': 'Pago marcado como completado'}
+    return {'status': 'success', 'message': 'Pago completado'}
 
 
 @router.delete("/{payment_id}")
 async def delete_payment(payment_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
-    """Delete a payment"""
+    """Delete a payment with CFDI amount reversal"""
     company_id = await get_active_company_id(request, current_user)
-    
-    payment = await db.payments.find_one({'id': payment_id, 'company_id': company_id}, {'_id': 0})
-    if not payment:
+    existing = await db.payments.find_one({'id': payment_id, 'company_id': company_id}, {'_id': 0})
+    if not existing:
         raise HTTPException(status_code=404, detail="Pago no encontrado")
+    
+    # If payment was completed and linked to a CFDI, reverse the collected/paid amount
+    if existing.get('estatus') == 'completado' and existing.get('cfdi_id'):
+        cfdi = await db.cfdis.find_one({'id': existing['cfdi_id']}, {'_id': 0})
+        if cfdi:
+            if existing['tipo'] == 'cobro':
+                current_cobrado = cfdi.get('monto_cobrado', 0) or 0
+                new_cobrado = max(0, current_cobrado - existing['monto'])
+                await db.cfdis.update_one(
+                    {'id': existing['cfdi_id']},
+                    {'$set': {'monto_cobrado': new_cobrado}}
+                )
+                logger.info(f"Reversed CFDI {existing['cfdi_id']} monto_cobrado after payment delete: {current_cobrado} -> {new_cobrado}")
+            else:
+                current_pagado = cfdi.get('monto_pagado', 0) or 0
+                new_pagado = max(0, current_pagado - existing['monto'])
+                await db.cfdis.update_one(
+                    {'id': existing['cfdi_id']},
+                    {'$set': {'monto_pagado': new_pagado}}
+                )
+                logger.info(f"Reversed CFDI {existing['cfdi_id']} monto_pagado after payment delete: {current_pagado} -> {new_pagado}")
     
     await db.payments.delete_one({'id': payment_id})
     await audit_log(company_id, 'Payment', payment_id, 'DELETE', current_user['id'])
@@ -159,9 +250,16 @@ async def delete_payment(payment_id: str, request: Request, current_user: Dict =
 
 @router.delete("/bulk/all")
 async def delete_all_payments(request: Request, current_user: Dict = Depends(get_current_user)):
-    """Delete ALL payments for the current company"""
+    """Delete ALL payments/collections for the current company with CFDI reset"""
     company_id = await get_active_company_id(request, current_user)
     
+    # Reset all CFDIs monto_cobrado and monto_pagado
+    await db.cfdis.update_many(
+        {'company_id': company_id},
+        {'$set': {'monto_cobrado': 0, 'monto_pagado': 0}}
+    )
+    
+    # Delete all payments
     result = await db.payments.delete_many({'company_id': company_id})
     
     await audit_log(company_id, 'Payment', 'BULK_DELETE', 'DELETE', current_user['id'], 
@@ -169,6 +267,6 @@ async def delete_all_payments(request: Request, current_user: Dict = Depends(get
     
     return {
         'status': 'success',
-        'deleted_count': result.deleted_count,
-        'message': f'Se eliminaron {result.deleted_count} pagos/cobranzas'
+        'message': f'Se eliminaron {result.deleted_count} pagos/cobranzas',
+        'deleted_count': result.deleted_count
     }
