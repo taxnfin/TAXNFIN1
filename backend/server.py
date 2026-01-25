@@ -4166,6 +4166,16 @@ async def batch_create_payments_from_bank(
     
     for txn_id in transaction_ids:
         try:
+            # Check if payment already exists for this bank transaction (prevent duplicates)
+            existing_payment = await db.payments.find_one({
+                'company_id': company_id,
+                'bank_transaction_id': txn_id
+            }, {'_id': 0, 'id': 1})
+            
+            if existing_payment:
+                results.append({'transaction_id': txn_id, 'status': 'skipped', 'message': 'Ya tiene pago creado'})
+                continue
+            
             # Get the bank transaction
             txn = await db.bank_transactions.find_one({'id': txn_id, 'company_id': company_id}, {'_id': 0})
             if not txn:
