@@ -594,11 +594,19 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
   - Nueva sección visual "OPERACIONES CON DIVISAS"
   - Cálculo de `flujoDivisas` = ventaUSD - compraUSD
 
-**Refactorización de server.py - Estado Actual:**
-- Archivo actual: 8,630 líneas
-- Estructura modular creada pero NO integrada
-- 8 archivos de rutas creados en `/app/backend/routes/`
-- Documentación de plan de migración en `/app/docs/REFACTORING_PLAN.md`
+**Refactorización de server.py - FASE 2 COMPLETADA:**
+- Archivo reducido: 8,630 → 7,402 líneas (**14% reducción**)
+- **TODOS los 8 routers ahora integrados**:
+  - auth (7 endpoints)
+  - companies (4 endpoints)
+  - categories (6 endpoints)
+  - vendors (4 endpoints)
+  - customers (4 endpoints)
+  - bank_accounts (5 endpoints)
+  - payments (6 endpoints) - con lógica de reversión CFDI
+  - reconciliations (7 endpoints) - con lógica de integridad de datos
+- **43 endpoints** en arquitectura modular
+- Documentación: `/app/docs/REFACTORING_PLAN.md`
 
 ---
 
@@ -609,18 +617,10 @@ All P0 features implemented and tested:
 - ✅ P0 - Matching Automático de CFDIs (January 22, 2026)
 
 ### P1 - High Priority
-1. 🔄 **Refactor `server.py`** - IN PROGRESS (structure created, integration pending)
-   - Created modular structure:
-     - `/app/backend/core/` - Database, Auth, Config modules
-     - `/app/backend/models/` - Pydantic models (15 files)
-     - `/app/backend/services/` - Business logic (audit, fx, cfdi_parser, cashflow)
-     - `/app/backend/routes/` - API endpoints by domain (8 files)
-   - **REFACTORING STATUS (January 25, 2026)**:
-     - 6 routers INTEGRATED: auth, companies, categories, vendors, customers, bank_accounts
-     - 2 routers NOT INTEGRATED: payments, reconciliations (complex CFDI logic)
-     - server.py reduced from 8,630 to 8,122 lines (~508 lines removed)
-     - 30 endpoints moved to modular routers
-     - See `/app/docs/REFACTORING_PLAN.md` for details
+1. ✅ **Refactor `server.py` - PHASE 2 COMPLETE** (January 25, 2026)
+   - All 8 routers integrated with full functionality
+   - server.py reduced by 14%
+   - Next phase: Create cfdi.py, fx_rates.py, bank_transactions.py modules
 
 2. **Notificaciones automáticas** - Alertas por email/SMS para vencimientos
 3. ✅ **Bug Fix: Conciliación sin Pago** - COMPLETED (January 22, 2026)
