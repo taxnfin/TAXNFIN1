@@ -782,7 +782,7 @@ const CashflowProjections = () => {
                       </TableCell>
                       {weeklyTotals.map((week, idx) => (
                         <TableCell key={idx} className="text-center text-blue-700 font-bold">
-                          {idx === 0 ? formatCurrency(saldoInicialBancos) : '-'}
+                          {formatCurrency(week.saldoInicial)}
                         </TableCell>
                       ))}
                       <TableCell className="text-center bg-blue-200 text-blue-800 font-bold">
