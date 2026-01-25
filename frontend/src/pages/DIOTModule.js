@@ -160,7 +160,10 @@ const DIOTModule = () => {
           <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{fontFamily: 'Manrope'}}>
             Reporte DIOT
           </h1>
-          <p className="text-[#64748B]">Declaración Informativa de Operaciones con Terceros (Solo Egresos)</p>
+          <p className="text-[#64748B]">Declaración Informativa de Operaciones con Terceros (Solo Egresos con IVA)</p>
+          <p className="text-xs text-orange-600 mt-1">
+            ⚠️ Excluye automáticamente: Nómina, sueldos, asimilados y CFDIs sin IVA acreditable
+          </p>
         </div>
         <div className="flex gap-2">
           <Button onClick={exportToExcel} className="gap-2 bg-green-600 hover:bg-green-700" data-testid="export-diot-excel">
