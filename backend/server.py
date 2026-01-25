@@ -3001,7 +3001,7 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
                 'moneda': moneda,
                 'metodo_pago': 'transferencia',
                 'fecha_vencimiento': bank_txn.get('fecha_movimiento'),
-                'fecha_pago': datetime.now(timezone.utc).isoformat(),
+                'fecha_pago': bank_txn.get('fecha_movimiento'),  # Use bank transaction date, NOT current date
                 'estatus': 'completado',
                 'referencia': bank_txn.get('referencia', ''),
                 'beneficiario': beneficiario_nombre,
