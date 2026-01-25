@@ -1250,9 +1250,32 @@ const PaymentsModule = () => {
 
       {/* Payments Table */}
       <Card className="border-[#E2E8F0]">
-        <CardHeader>
-          <CardTitle>Listado de Cobranza y Pagos</CardTitle>
-          <CardDescription>{payments.length} registros encontrados</CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Listado de Cobranza y Pagos</CardTitle>
+            <CardDescription>{payments.length} registros encontrados</CardDescription>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={async () => {
+              try {
+                const res = await api.post('/payments/backfill-categories');
+                if (res.data.updated_count > 0) {
+                  toast.success(`Se actualizaron ${res.data.updated_count} pagos con categorías de CFDIs`);
+                  loadData();
+                } else {
+                  toast.info('Todos los pagos ya tienen sus categorías actualizadas');
+                }
+              } catch (error) {
+                toast.error('Error actualizando categorías');
+              }
+            }}
+            title="Actualiza pagos existentes con la categoría/subcategoría de sus CFDIs vinculados"
+          >
+            <RefreshCw size={14} className="mr-2" />
+            Sincronizar Categorías
+          </Button>
         </CardHeader>
         <CardContent>
           <Table className="data-table">
