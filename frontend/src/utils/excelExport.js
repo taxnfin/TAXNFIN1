@@ -139,7 +139,19 @@ export const exportCFDIs = (cfdis, categories) => {
   return exportToExcel(data, 'CFDIs', 'CFDIs');
 };
 
-export const exportPayments = (payments, fxRates = {}) => {
+export const exportPayments = (payments, fxRates = {}, categories = []) => {
+  // Build category/subcategory lookup maps
+  const categoryMap = {};
+  const subcategoryMap = {};
+  (categories || []).forEach(cat => {
+    categoryMap[cat.id] = cat.nombre || '';
+    if (cat.subcategorias) {
+      cat.subcategorias.forEach(sub => {
+        subcategoryMap[sub.id] = sub.nombre || '';
+      });
+    }
+  });
+  
   const data = payments.map(p => {
     const moneda = p.moneda || 'MXN';
     const monto = p.monto || 0;
@@ -147,12 +159,18 @@ export const exportPayments = (payments, fxRates = {}) => {
     const tcHistorico = p.tipo_cambio_historico || fxRates[moneda] || 1;
     const montoMXN = moneda === 'MXN' ? monto : monto * tcHistorico;
     
+    // Get category and subcategory names
+    const categoria = categoryMap[p.category_id] || '';
+    const subcategoria = subcategoryMap[p.subcategory_id] || '';
+    
     return {
       'Fecha Vencimiento': p.fecha_vencimiento ? format(new Date(p.fecha_vencimiento), 'dd/MM/yyyy') : '',
       'Fecha Pago': p.fecha_pago ? format(new Date(p.fecha_pago), 'dd/MM/yyyy') : '',
       'Tipo': p.tipo === 'cobro' ? 'Cobro' : 'Pago',
       'Concepto': p.concepto || '',
       'Beneficiario': p.beneficiario || '',
+      'Categoría': categoria,
+      'Subcategoría': subcategoria,
       'Monto Original': monto,
       'Moneda': moneda,
       'TC Histórico': moneda !== 'MXN' ? tcHistorico : '',
