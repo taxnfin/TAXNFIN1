@@ -310,7 +310,7 @@ const Reports = () => {
                         )}
                       </TableCell>
                       <TableCell className="mono text-right text-green-600 font-semibold">
-                        {week.cobrosReales > 0 ? `$${week.cobrosReales.toFixed(2)}` : '-'}
+                        {week.cobrosReales > 0 ? formatCurrency(week.cobrosReales) : '-'}
                       </TableCell>
                       <TableCell className="mono text-right text-red-600 font-semibold">
                         {week.pagosReales > 0 ? formatCurrency(week.pagosReales) : '-'}
