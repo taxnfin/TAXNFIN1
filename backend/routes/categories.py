@@ -52,9 +52,9 @@ async def list_categories(
             subcats_by_category[cat_id] = []
         subcats_by_category[cat_id].append(sc)
     
-    # Attach subcategories
+    # Attach subcategories (using 'subcategorias' for frontend consistency)
     for cat in categories:
-        cat['subcategories'] = subcats_by_category.get(cat['id'], [])
+        cat['subcategorias'] = subcats_by_category.get(cat['id'], [])
         if isinstance(cat.get('created_at'), str):
             cat['created_at'] = datetime.fromisoformat(cat['created_at'])
     
