@@ -977,6 +977,27 @@ const CashflowProjections = () => {
                         );
                       });
                     })()}
+                    
+                    {/* Depósitos/Otros Cobros - Shows real payments not matching CFDIs */}
+                    {weeklyTotals.some(w => w.ingresos.cobrosRealesSinCFDI > 0) && (
+                      <TableRow className="hover:bg-green-50/50 bg-yellow-50/30">
+                        <TableCell className="sticky left-0 bg-yellow-50/30 pl-8">
+                          <div className="flex items-center gap-1 text-amber-700">
+                            <span className="text-xs px-1.5 py-0.5 bg-amber-100 rounded">📥</span>
+                            Depósitos / Otros Cobros
+                            <span className="text-xs text-gray-500 ml-1">(sin CFDI)</span>
+                          </div>
+                        </TableCell>
+                        {weeklyTotals.map((week, idx) => (
+                          <TableCell key={idx} className="text-center text-amber-600">
+                            {week.ingresos.cobrosRealesSinCFDI > 0 ? formatCurrency(week.ingresos.cobrosRealesSinCFDI) : '-'}
+                          </TableCell>
+                        ))}
+                        <TableCell className="text-center bg-amber-50 text-amber-700">
+                          {formatCurrency(weeklyTotals.reduce((sum, w) => sum + (w.ingresos.cobrosRealesSinCFDI || 0), 0))}
+                        </TableCell>
+                      </TableRow>
+                    )}
 
                     {/* OPERATING DISBURSEMENTS / EGRESOS Section */}
                     <TableRow className="bg-red-50 font-bold">
