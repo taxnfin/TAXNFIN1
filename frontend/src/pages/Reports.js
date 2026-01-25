@@ -301,7 +301,7 @@ const Reports = () => {
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Calendar size={20} />
-            Flujo de Efectivo - 13 Semanas
+            Flujo de Efectivo - 18 Semanas (4 Real + 1 Actual + 13 Proy)
           </CardTitle>
           <CardDescription>
             <span className="inline-flex items-center gap-1 mr-4">
