@@ -1410,109 +1410,12 @@ async def delete_belvo_connection(
     
     return {'status': 'success', 'message': 'Conexión eliminada'}
 
-@api_router.post("/vendors", response_model=Vendor)
-async def create_vendor(vendor_data: VendorCreate, request: Request, current_user: Dict = Depends(get_current_user)):
-    company_id = await get_active_company_id(request, current_user)
-    vendor = Vendor(company_id=company_id, **vendor_data.model_dump())
-    doc = vendor.model_dump()
-    doc['created_at'] = doc['created_at'].isoformat()
-    await db.vendors.insert_one(doc)
-    await audit_log(vendor.company_id, 'Vendor', vendor.id, 'CREATE', current_user['id'])
-    return vendor
-
-@api_router.get("/vendors", response_model=List[Vendor])
-async def list_vendors(request: Request, current_user: Dict = Depends(get_current_user)):
-    company_id = await get_active_company_id(request, current_user)
-    vendors = await db.vendors.find({'company_id': company_id, 'activo': True}, {'_id': 0}).to_list(1000)
-    for v in vendors:
-        if isinstance(v.get('created_at'), str):
-            v['created_at'] = datetime.fromisoformat(v['created_at'])
-    return vendors
-
-@api_router.put("/vendors/{vendor_id}")
-async def update_vendor(vendor_id: str, vendor_data: VendorCreate, request: Request, current_user: Dict = Depends(get_current_user)):
-    company_id = await get_active_company_id(request, current_user)
-    existing = await db.vendors.find_one({'id': vendor_id, 'company_id': company_id}, {'_id': 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
-    
-    update_data = vendor_data.model_dump()
-    await db.vendors.update_one(
-        {'id': vendor_id, 'company_id': company_id},
-        {'$set': update_data}
-    )
-    await audit_log(company_id, 'Vendor', vendor_id, 'UPDATE', current_user['id'], existing, update_data)
-    
-    updated = await db.vendors.find_one({'id': vendor_id}, {'_id': 0})
-    if isinstance(updated.get('created_at'), str):
-        updated['created_at'] = datetime.fromisoformat(updated['created_at'])
-    return updated
-
-@api_router.delete("/vendors/{vendor_id}")
-async def delete_vendor(vendor_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
-    company_id = await get_active_company_id(request, current_user)
-    existing = await db.vendors.find_one({'id': vendor_id, 'company_id': company_id}, {'_id': 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
-    
-    await db.vendors.update_one(
-        {'id': vendor_id},
-        {'$set': {'activo': False}}
-    )
-    await audit_log(company_id, 'Vendor', vendor_id, 'DELETE', current_user['id'])
-    return {'status': 'success', 'message': 'Proveedor eliminado'}
-
-@api_router.post("/customers", response_model=Customer)
-async def create_customer(customer_data: CustomerCreate, request: Request, current_user: Dict = Depends(get_current_user)):
-    company_id = await get_active_company_id(request, current_user)
-    customer = Customer(company_id=company_id, **customer_data.model_dump())
-    doc = customer.model_dump()
-    doc['created_at'] = doc['created_at'].isoformat()
-    await db.customers.insert_one(doc)
-    await audit_log(customer.company_id, 'Customer', customer.id, 'CREATE', current_user['id'])
-    return customer
-
-@api_router.get("/customers", response_model=List[Customer])
-async def list_customers(request: Request, current_user: Dict = Depends(get_current_user)):
-    company_id = await get_active_company_id(request, current_user)
-    customers = await db.customers.find({'company_id': company_id, 'activo': True}, {'_id': 0}).to_list(1000)
-    for c in customers:
-        if isinstance(c.get('created_at'), str):
-            c['created_at'] = datetime.fromisoformat(c['created_at'])
-    return customers
-
-@api_router.put("/customers/{customer_id}")
-async def update_customer(customer_id: str, customer_data: CustomerCreate, request: Request, current_user: Dict = Depends(get_current_user)):
-    company_id = await get_active_company_id(request, current_user)
-    existing = await db.customers.find_one({'id': customer_id, 'company_id': company_id}, {'_id': 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Cliente no encontrado")
-    
-    update_data = customer_data.model_dump()
-    await db.customers.update_one(
-        {'id': customer_id, 'company_id': company_id},
-        {'$set': update_data}
-    )
-    await audit_log(company_id, 'Customer', customer_id, 'UPDATE', current_user['id'], existing, update_data)
-    
-    updated = await db.customers.find_one({'id': customer_id}, {'_id': 0})
-    if isinstance(updated.get('created_at'), str):
-        updated['created_at'] = datetime.fromisoformat(updated['created_at'])
-    return updated
-
-@api_router.delete("/customers/{customer_id}")
-async def delete_customer(customer_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
-    company_id = await get_active_company_id(request, current_user)
-    existing = await db.customers.find_one({'id': customer_id, 'company_id': company_id}, {'_id': 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Cliente no encontrado")
-    
-    await db.customers.update_one(
-        {'id': customer_id},
-        {'$set': {'activo': False}}
-    )
-    await audit_log(company_id, 'Customer', customer_id, 'DELETE', current_user['id'])
-    return {'status': 'success', 'message': 'Cliente eliminado'}
+# ==================== VENDORS/CUSTOMERS ENDPOINTS MOVED TO routes/vendors.py & routes/customers.py ====================
+# Basic CRUD endpoints are now handled by the modular routers:
+# Vendors: POST, GET, PUT /{id}, DELETE /{id}
+# Customers: POST, GET, PUT /{id}, DELETE /{id}
+# 
+# The import/template endpoints below remain here for now:
 
 # ===== PLANTILLAS E IMPORTACIÓN MASIVA =====
 
