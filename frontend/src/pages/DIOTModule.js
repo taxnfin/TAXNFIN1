@@ -349,7 +349,7 @@ const DIOTModule = () => {
       {/* SAT Format Info */}
       <Card>
         <CardHeader>
-          <CardTitle>Información del Formato</CardTitle>
+          <CardTitle>Información del Formato DIOT</CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-gray-600">
           <div className="grid grid-cols-2 gap-4">
@@ -369,6 +369,15 @@ const DIOTModule = () => {
                 <li><span className="font-mono">85</span> - Otros</li>
               </ul>
             </div>
+          </div>
+          <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded">
+            <h4 className="font-semibold text-orange-800 mb-2">Exclusiones Automáticas (Regla SAT):</h4>
+            <ul className="list-disc list-inside space-y-1 text-orange-700">
+              <li>Nómina (uso_cfdi: CN01)</li>
+              <li>Sueldos y salarios</li>
+              <li>Asimilados a salarios</li>
+              <li>CFDIs sin IVA acreditable (IVA = 0)</li>
+            </ul>
           </div>
           <p className="mt-4">
             <strong>Nota:</strong> El archivo TXT exportado está en formato compatible con el portal del SAT (campos separados por &quot;|&quot;).
