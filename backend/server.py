@@ -4797,82 +4797,15 @@ async def delete_all_reconciliations(request: Request, current_user: Dict = Depe
         'deleted_count': result.deleted_count
     }
 
-# ===== CATEGORÍAS =====
-@api_router.get("/categories")
-async def list_categories(request: Request, current_user: Dict = Depends(get_current_user), tipo: Optional[str] = None):
-    company_id = await get_active_company_id(request, current_user)
-    query = {'company_id': company_id, 'activo': True}
-    if tipo:
-        query['tipo'] = tipo
-    
-    categories = await db.categories.find(query, {'_id': 0}).sort('nombre', 1).to_list(1000)
-    
-    # Get subcategories for each category
-    for cat in categories:
-        subcats = await db.subcategories.find({'category_id': cat['id'], 'activo': True}, {'_id': 0}).to_list(100)
-        cat['subcategorias'] = subcats
-    
-    return categories
+# ==================== CATEGORIES/SUBCATEGORIES ENDPOINTS MOVED TO routes/categories.py ====================
+# The following endpoints are now handled by routes/categories.py:
+# - GET /categories
+# - POST /categories
+# - PUT /categories/{category_id}
+# - DELETE /categories/{category_id}
+# - POST /subcategories
+# - DELETE /subcategories/{subcategory_id}
 
-@api_router.post("/categories")
-async def create_category(category_data: CategoryCreate, request: Request, current_user: Dict = Depends(get_current_user)):
-    company_id = await get_active_company_id(request, current_user)
-    category = Category(company_id=company_id, **category_data.model_dump())
-    doc = category.model_dump()
-    doc['created_at'] = doc['created_at'].isoformat()
-    await db.categories.insert_one(doc)
-    await audit_log(company_id, 'Category', category.id, 'CREATE', current_user['id'])
-    return {'status': 'success', 'category_id': category.id, 'nombre': category.nombre}
-
-@api_router.put("/categories/{category_id}")
-async def update_category(category_id: str, category_data: CategoryCreate, request: Request, current_user: Dict = Depends(get_current_user)):
-    company_id = await get_active_company_id(request, current_user)
-    existing = await db.categories.find_one({'id': category_id, 'company_id': company_id}, {'_id': 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Categoría no encontrada")
-    
-    await db.categories.update_one({'id': category_id}, {'$set': category_data.model_dump()})
-    await audit_log(company_id, 'Category', category_id, 'UPDATE', current_user['id'])
-    return {'status': 'success', 'message': 'Categoría actualizada'}
-
-@api_router.delete("/categories/{category_id}")
-async def delete_category(category_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
-    company_id = await get_active_company_id(request, current_user)
-    existing = await db.categories.find_one({'id': category_id, 'company_id': company_id}, {'_id': 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Categoría no encontrada")
-    
-    await db.categories.update_one({'id': category_id}, {'$set': {'activo': False}})
-    await db.subcategories.update_many({'category_id': category_id}, {'$set': {'activo': False}})
-    await audit_log(company_id, 'Category', category_id, 'DELETE', current_user['id'])
-    return {'status': 'success', 'message': 'Categoría eliminada'}
-
-@api_router.post("/subcategories")
-async def create_subcategory(subcat_data: SubCategoryCreate, request: Request, current_user: Dict = Depends(get_current_user)):
-    company_id = await get_active_company_id(request, current_user)
-    
-    # Verify category exists
-    category = await db.categories.find_one({'id': subcat_data.category_id, 'company_id': company_id}, {'_id': 0})
-    if not category:
-        raise HTTPException(status_code=404, detail="Categoría no encontrada")
-    
-    subcat = SubCategory(company_id=company_id, **subcat_data.model_dump())
-    doc = subcat.model_dump()
-    doc['created_at'] = doc['created_at'].isoformat()
-    await db.subcategories.insert_one(doc)
-    await audit_log(company_id, 'SubCategory', subcat.id, 'CREATE', current_user['id'])
-    return {'status': 'success', 'subcategory_id': subcat.id, 'nombre': subcat.nombre}
-
-@api_router.delete("/subcategories/{subcat_id}")
-async def delete_subcategory(subcat_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
-    company_id = await get_active_company_id(request, current_user)
-    existing = await db.subcategories.find_one({'id': subcat_id, 'company_id': company_id}, {'_id': 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Subcategoría no encontrada")
-    
-    await db.subcategories.update_one({'id': subcat_id}, {'$set': {'activo': False}})
-    await audit_log(company_id, 'SubCategory', subcat_id, 'DELETE', current_user['id'])
-    return {'status': 'success', 'message': 'Subcategoría eliminada'}
 
 # ===== CATEGORIZACIÓN AUTOMÁTICA CON IA =====
 from ai_categorization_service import categorize_cfdi_with_ai, batch_categorize_cfdis
