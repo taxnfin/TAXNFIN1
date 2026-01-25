@@ -1040,6 +1040,68 @@ const CashflowProjections = () => {
                       });
                     })()}
 
+                    {/* COMPRA/VENTA DE DIVISAS Section - Separate from Income/Expenses */}
+                    {(grandTotalCompraUSD > 0 || grandTotalVentaUSD > 0) && (
+                      <>
+                        <TableRow className="bg-purple-50 font-bold border-t-2 border-purple-200">
+                          <TableCell className="sticky left-0 bg-purple-50">
+                            <div className="flex items-center gap-2">
+                              <span className="text-purple-600">💱</span>
+                              OPERACIONES CON DIVISAS
+                            </div>
+                          </TableCell>
+                          {weeklyTotals.map((week, idx) => (
+                            <TableCell key={idx} className={`text-center font-bold ${(week.flujoDivisas || 0) >= 0 ? 'text-purple-700' : 'text-purple-700'}`}>
+                              {formatCurrency(week.flujoDivisas || 0)}
+                            </TableCell>
+                          ))}
+                          <TableCell className="text-center bg-purple-100 text-purple-800 font-bold">
+                            {formatCurrency(grandTotalFlujoDivisas)}
+                          </TableCell>
+                        </TableRow>
+                        
+                        {/* Venta de USD row */}
+                        {grandTotalVentaUSD > 0 && (
+                          <TableRow className="hover:bg-purple-50/50">
+                            <TableCell className="sticky left-0 bg-white pl-8">
+                              <div className="flex items-center gap-1 text-green-600">
+                                <TrendingUp size={14} />
+                                Venta de USD
+                              </div>
+                            </TableCell>
+                            {weeklyTotals.map((week, idx) => (
+                              <TableCell key={idx} className="text-center text-green-600">
+                                {(week.ventaUSD || 0) > 0 ? formatCurrency(week.ventaUSD) : '-'}
+                              </TableCell>
+                            ))}
+                            <TableCell className="text-center bg-green-50 text-green-700">
+                              {formatCurrency(grandTotalVentaUSD)}
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        
+                        {/* Compra de USD row */}
+                        {grandTotalCompraUSD > 0 && (
+                          <TableRow className="hover:bg-purple-50/50">
+                            <TableCell className="sticky left-0 bg-white pl-8">
+                              <div className="flex items-center gap-1 text-red-600">
+                                <TrendingDown size={14} />
+                                Compra de USD
+                              </div>
+                            </TableCell>
+                            {weeklyTotals.map((week, idx) => (
+                              <TableCell key={idx} className="text-center text-red-600">
+                                {(week.compraUSD || 0) > 0 ? formatCurrency(week.compraUSD) : '-'}
+                              </TableCell>
+                            ))}
+                            <TableCell className="text-center bg-red-50 text-red-700">
+                              {formatCurrency(grandTotalCompraUSD)}
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </>
+                    )}
+
                     {/* NET CASH FLOW */}
                     <TableRow className="bg-blue-100 font-bold border-t-2 border-blue-300">
                       <TableCell className="sticky left-0 bg-blue-100">
