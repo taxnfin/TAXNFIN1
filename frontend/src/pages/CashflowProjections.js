@@ -221,6 +221,12 @@ const CashflowProjections = () => {
     // Track processed bank transactions to avoid duplicates
     const processedBankTxns = new Set();
     
+    // Find the category IDs for "Compra de USD" and "Venta de USD"
+    const compraUSDCategory = categoriesData.find(c => c.nombre?.toLowerCase().includes('compra de usd') || c.nombre?.toLowerCase().includes('compra usd'));
+    const ventaUSDCategory = categoriesData.find(c => c.nombre?.toLowerCase().includes('venta de usd') || c.nombre?.toLowerCase().includes('venta usd'));
+    const compraUSDId = compraUSDCategory?.id;
+    const ventaUSDId = ventaUSDCategory?.id;
+    
     // Process REAL payments for past/current weeks - FILTER DUPLICATES
     payments.forEach(payment => {
       if (!payment.fecha_pago && !payment.fecha_vencimiento) return;
@@ -248,7 +254,18 @@ const CashflowProjections = () => {
         // Only count completed/real payments
         if (payment.estatus === 'completado' || payment.es_real === true) {
           const montoMXN = convertToMXN(payment.monto, payment.moneda, effectiveRates);
-          if (payment.tipo === 'cobro') {
+          
+          // Check if this is a USD buy/sell operation based on category
+          const isCompraUSD = payment.category_id === compraUSDId;
+          const isVentaUSD = payment.category_id === ventaUSDId;
+          
+          if (isCompraUSD) {
+            // Compra de USD is an "ingreso" in the category but represents buying dollars
+            weeks[weekIdx].compraUSD += montoMXN;
+          } else if (isVentaUSD) {
+            // Venta de USD is an "egreso" in the category but represents selling dollars
+            weeks[weekIdx].ventaUSD += montoMXN;
+          } else if (payment.tipo === 'cobro') {
             weeks[weekIdx].ingresosReales += montoMXN;
           } else {
             weeks[weekIdx].egresosReales += montoMXN;
