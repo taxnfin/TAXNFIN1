@@ -82,42 +82,81 @@ const Reports = () => {
     return new Date(d.setDate(diff));
   };
 
-  // Generate TRUE ROLLING 13-week cash flow:
-  // - S1 = Current week (the week containing today)
-  // - S2-S13 = Future weeks (projected)
-  // - As calendar advances: old weeks drop off, new weeks are added
-  // - Past data shows as "Real", future as "Proyectado"
+  // ROLLING CASH FLOW MODEL:
+  // - S1-S4: 4 semanas históricas (Real)
+  // - S5: Semana actual (Actual)  
+  // - S6-S18: 13 semanas futuras proyectadas (Proy)
+  // TOTAL: 18 semanas visibles
+  const HISTORICAL_WEEKS = 4;
+  const FORECAST_WEEKS = 13;
+  const TOTAL_WEEKS = HISTORICAL_WEEKS + 1 + FORECAST_WEEKS; // 18
+  
   const weeksData = useMemo(() => {
     const today = new Date();
     const currentMonday = getMonday(today);
     
-    // ROLLING MODEL: Start from current week (S1 = this week)
-    // Always show 13 weeks forward from current week
-    const startMonday = currentMonday;
-    
-    // Generate 13 weeks starting from current week
     const weeks = [];
-    for (let i = 0; i < 13; i++) {
-      const weekStart = addWeeks(startMonday, i);
-      const weekEnd = addDays(weekStart, 6); // Sunday
-      const weekEndForComparison = addWeeks(weekStart, 1); // Next Monday
-      
-      // Week is past if its end date is before today
-      const isPast = weekEndForComparison <= today;
-      // Week is current if today falls within it
-      const isCurrent = weekStart <= today && today < weekEndForComparison;
-      // Week is future if it starts after today
-      const isFuture = weekStart > today;
+    
+    // S1-S4: Semanas históricas (Real)
+    for (let i = HISTORICAL_WEEKS; i >= 1; i--) {
+      const weekStart = addWeeks(currentMonday, -i);
+      const weekEnd = addDays(weekStart, 6);
+      const weekEndForComparison = addWeeks(weekStart, 1);
       
       weeks.push({
-        weekNum: i + 1, // S1, S2, S3...
-        label: `S${i + 1}`,
+        weekNum: HISTORICAL_WEEKS - i + 1,
+        label: `S${HISTORICAL_WEEKS - i + 1}`,
         weekStart,
         weekEnd,
         weekEndForComparison,
-        isPast,
-        isCurrent,
-        isFuture,
+        type: 'REAL',
+        isPast: true,
+        isCurrent: false,
+        isFuture: false,
+        dateRange: `${format(weekStart, 'dd/MM')} - ${format(weekEnd, 'dd/MM')}`,
+        cobrosReales: 0,
+        pagosReales: 0,
+        cobrosProyectados: 0,
+        pagosProyectados: 0
+      });
+    }
+    
+    // S5: Semana actual (Actual)
+    const currentWeekStart = currentMonday;
+    const currentWeekEnd = addDays(currentWeekStart, 6);
+    weeks.push({
+      weekNum: HISTORICAL_WEEKS + 1,
+      label: `S${HISTORICAL_WEEKS + 1}`,
+      weekStart: currentWeekStart,
+      weekEnd: currentWeekEnd,
+      weekEndForComparison: addWeeks(currentWeekStart, 1),
+      type: 'ACTUAL',
+      isPast: false,
+      isCurrent: true,
+      isFuture: false,
+      dateRange: `${format(currentWeekStart, 'dd/MM')} - ${format(currentWeekEnd, 'dd/MM')}`,
+      cobrosReales: 0,
+      pagosReales: 0,
+      cobrosProyectados: 0,
+      pagosProyectados: 0
+    });
+    
+    // S6-S18: 13 semanas futuras proyectadas (Proy)
+    for (let i = 1; i <= FORECAST_WEEKS; i++) {
+      const weekStart = addWeeks(currentMonday, i);
+      const weekEnd = addDays(weekStart, 6);
+      const weekEndForComparison = addWeeks(weekStart, 1);
+      
+      weeks.push({
+        weekNum: HISTORICAL_WEEKS + 1 + i,
+        label: `S${HISTORICAL_WEEKS + 1 + i}`,
+        weekStart,
+        weekEnd,
+        weekEndForComparison,
+        type: 'PROYECTADO',
+        isPast: false,
+        isCurrent: false,
+        isFuture: true,
         dateRange: `${format(weekStart, 'dd/MM')} - ${format(weekEnd, 'dd/MM')}`,
         cobrosReales: 0,
         pagosReales: 0,
@@ -129,7 +168,7 @@ const Reports = () => {
     // Track processed bank transactions to avoid duplicates
     const processedBankTxns = new Set();
     
-    // Process REAL payments (completed) - for current and past weeks
+    // Process REAL payments (completed) - for historical and current weeks
     payments.forEach(payment => {
       if (payment.estatus !== 'completado') return;
       
@@ -195,7 +234,7 @@ const Reports = () => {
       if (weekIdx === -1) return;
       
       // Only add projections to current and future weeks
-      if (weeks[weekIdx].isCurrent || weeks[weekIdx].isFuture) {
+      if (weeks[weekIdx].type === 'ACTUAL' || weeks[weekIdx].type === 'PROYECTADO') {
         if (cfdi.tipo_cfdi === 'ingreso') {
           weeks[weekIdx].cobrosProyectados += pendienteMXN;
         } else if (cfdi.tipo_cfdi === 'egreso') {
