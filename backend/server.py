@@ -2979,13 +2979,22 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
             tipo_pago = 'cobro' if cfdi.get('tipo_cfdi') == 'ingreso' else 'pago'
             moneda = bank_txn.get('moneda') or cfdi.get('moneda', 'MXN')
             
+            # For COBRO (income): beneficiary is the CUSTOMER (receptor_nombre from ingreso CFDI)
+            # For PAGO (expense): beneficiary is the VENDOR (emisor_nombre from egreso CFDI)
+            if tipo_pago == 'cobro':
+                # CFDI ingreso: we (emisor) issue invoice TO customer (receptor)
+                beneficiario_nombre = cfdi.get('receptor_nombre', '') or cfdi.get('emisor_nombre', '')
+            else:
+                # CFDI egreso: vendor (emisor) issues invoice TO us (receptor)
+                beneficiario_nombre = cfdi.get('emisor_nombre', '') or cfdi.get('receptor_nombre', '')
+            
             payment_doc = {
                 'id': str(uuid.uuid4()),
                 'company_id': company_id,
                 'bank_account_id': bank_txn.get('bank_account_id'),
                 'cfdi_id': reconciliation_data.cfdi_id,
                 'tipo': tipo_pago,
-                'concepto': f"Conciliación automática - {cfdi.get('emisor_nombre') or cfdi.get('receptor_nombre', '')}",
+                'concepto': f"Conciliación - {beneficiario_nombre}",
                 'monto': bank_txn.get('monto', 0),
                 'moneda': moneda,
                 'metodo_pago': 'transferencia',
@@ -2993,7 +3002,7 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
                 'fecha_pago': datetime.now(timezone.utc).isoformat(),
                 'estatus': 'completado',
                 'referencia': bank_txn.get('referencia', ''),
-                'beneficiario': cfdi.get('emisor_nombre') or cfdi.get('receptor_nombre', ''),
+                'beneficiario': beneficiario_nombre,
                 'es_real': True,
                 'bank_transaction_id': bank_txn.get('id'),
                 'created_at': datetime.now(timezone.utc).isoformat(),
