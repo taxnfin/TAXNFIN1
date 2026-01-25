@@ -25,7 +25,7 @@ const Reports = () => {
   const [cfdis, setCfdis] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCurrency, setSelectedCurrency] = useState('MXN');
-  const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.599, EUR: 20.4852, GBP: 22.00, JPY: 0.13, CHF: 20.00, CAD: 13.00, CNY: 2.40 });
+  const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.4545, EUR: 20.4852, GBP: 22.00, JPY: 0.13, CHF: 20.00, CAD: 13.00, CNY: 2.40 });
 
   useEffect(() => {
     loadData();
