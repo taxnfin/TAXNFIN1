@@ -224,7 +224,7 @@ const Reports = () => {
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{fontFamily: 'Manrope'}}>Reportes v2</h1>
+          <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{fontFamily: 'Manrope'}}>Reportes</h1>
           <p className="text-[#64748B]">12 Rolling Cash Flow - Real vs Proyectado (Lunes a Domingo)</p>
         </div>
         <div className="flex gap-2 items-center">
