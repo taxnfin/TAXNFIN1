@@ -1396,7 +1396,7 @@ const PaymentsModule = () => {
                       )}
                     </TableCell>
                   </TableRow>
-                ))
+                )})
               )}
             </TableBody>
           </Table>
