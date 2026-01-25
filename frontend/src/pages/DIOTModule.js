@@ -285,32 +285,35 @@ const DIOTModule = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>RFC</TableHead>
-                    <TableHead>Nombre/Razón Social</TableHead>
-                    <TableHead className="text-center">Moneda</TableHead>
-                    <TableHead className="text-right">TC Pago</TableHead>
-                    <TableHead className="text-right">Subtotal Orig.</TableHead>
-                    <TableHead className="text-right">Subtotal MXN</TableHead>
-                    <TableHead className="text-right">IVA MXN</TableHead>
-                    <TableHead className="text-right">Total MXN</TableHead>
-                    <TableHead>F. Pago</TableHead>
+                    <TableHead className="w-12">Tipo</TableHead>
+                    <TableHead className="w-28">RFC</TableHead>
+                    <TableHead className="min-w-[160px]">Nombre/Razón Social</TableHead>
+                    <TableHead className="w-24">Categoría</TableHead>
+                    <TableHead className="w-24">Subcategoría</TableHead>
+                    <TableHead className="text-center w-16">Moneda</TableHead>
+                    <TableHead className="text-right w-20">TC Pago</TableHead>
+                    <TableHead className="text-right w-28">Monto Orig.</TableHead>
+                    <TableHead className="text-right w-28">Monto MXN</TableHead>
+                    <TableHead className="text-right w-24">IVA MXN</TableHead>
+                    <TableHead className="w-24">F. Pago</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {diotData.map((row, idx) => (
-                    <TableRow key={idx} className="bg-green-50/30">
+                    <TableRow key={idx} className="hover:bg-green-50/50">
                       <TableCell>
-                        <span className="text-xs px-2 py-1 rounded bg-gray-100">{row.tipo_tercero}</span>
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100">{row.tipo_tercero}</span>
                       </TableCell>
-                      <TableCell className="font-mono text-sm">{row.rfc}</TableCell>
-                      <TableCell className="max-w-[180px] truncate" title={row.nombre}>{row.nombre}</TableCell>
+                      <TableCell className="font-mono text-xs">{row.rfc}</TableCell>
+                      <TableCell className="max-w-[160px] truncate text-sm" title={row.nombre}>{row.nombre}</TableCell>
+                      <TableCell className="text-xs text-gray-600">{row.categoria || '-'}</TableCell>
+                      <TableCell className="text-xs text-gray-500">{row.subcategoria || '-'}</TableCell>
                       <TableCell className="text-center">
-                        <span className={`text-xs px-2 py-1 rounded font-mono ${row.moneda === 'USD' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100'}`}>
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-mono ${row.moneda === 'USD' ? 'bg-blue-100 text-blue-700' : row.moneda === 'EUR' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100'}`}>
                           {row.moneda || 'MXN'}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
+                      <TableCell className="text-right font-mono text-xs">
                         {row.moneda !== 'MXN' ? (
                           <span className="text-blue-600">{row.tipo_cambio?.toFixed(4) || '-'}</span>
                         ) : (
@@ -318,25 +321,18 @@ const DIOTModule = () => {
                         )}
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm">
-                        {row.moneda !== 'MXN' ? (
-                          <span className="text-gray-600">
-                            ${(row.subtotal || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
-                            <span className="text-xs ml-1 text-gray-400">{row.moneda}</span>
-                          </span>
-                        ) : (
-                          formatCurrency(row.subtotal || row.valor_actos_16)
-                        )}
+                        <span className={row.moneda !== 'MXN' ? 'text-blue-700' : ''}>
+                          ${(row.valor_actos_pagados || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                          {row.moneda !== 'MXN' && <span className="text-xs ml-0.5 text-gray-400">{row.moneda}</span>}
+                        </span>
                       </TableCell>
-                      <TableCell className="text-right font-mono font-medium">
-                        {formatCurrency(row.subtotal_mxn || row.valor_actos_16)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-green-600">
-                        {formatCurrency(row.iva_acreditable)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono font-semibold">
+                      <TableCell className="text-right font-mono font-medium text-sm">
                         {formatCurrency(row.valor_actos_pagados_mxn || row.valor_actos_pagados)}
                       </TableCell>
-                      <TableCell className="text-sm font-medium text-green-700">{row.fecha_pago || '-'}</TableCell>
+                      <TableCell className="text-right font-mono text-green-600 text-sm">
+                        {formatCurrency(row.iva_acreditable)}
+                      </TableCell>
+                      <TableCell className="text-xs font-medium text-green-700">{row.fecha_pago || '-'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
