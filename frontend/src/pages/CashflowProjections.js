@@ -160,27 +160,49 @@ const CashflowProjections = () => {
 
   const processWeeklyData = (cfdisData, categoriesData, weekStartDay = 1, rates = {}, payments = []) => {
     // Merge rates
-    const effectiveRates = { MXN: 1, USD: 17.50, EUR: 19.00, ...fxRates, ...rates };
+    const effectiveRates = { MXN: 1, USD: 17.599, EUR: 20.4852, ...fxRates, ...rates };
     
-    // Generate 13 weeks - include current week and look back one week for recent CFDIs
-    const weeks = [];
+    // Helper to get Monday of a given date
+    const getMonday = (date) => {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      return new Date(d.setDate(diff));
+    };
+    
     const today = new Date();
-    const currentWeekStart = startOfWeek(today, { weekStartsOn: weekStartDay });
-    const startDate = addWeeks(currentWeekStart, -1); // Start one week before to capture recent CFDIs
+    const currentMonday = getMonday(today);
     
+    // Find the earliest payment date
+    let earliestDate = null;
+    payments.forEach(p => {
+      if (p.estatus !== 'completado') return;
+      const fecha = p.fecha_pago;
+      if (fecha) {
+        const d = new Date(fecha);
+        if (!earliestDate || d < earliestDate) earliestDate = d;
+      }
+    });
+    
+    // Start from earliest payment or 4 weeks ago
+    const fourWeeksAgo = addWeeks(currentMonday, -4);
+    const startMonday = earliestDate ? getMonday(earliestDate < fourWeeksAgo ? fourWeeksAgo : earliestDate) : fourWeeksAgo;
+    
+    // Generate 13 weeks: S1, S2, S3... starting from oldest
+    const weeks = [];
     console.log('Processing weekly data with', payments.length, 'payments');
     
-    for (let i = 0; i < 14; i++) { // 14 weeks to include past week + 13 future
-      const weekStart = addWeeks(startDate, i);
+    for (let i = 0; i < 13; i++) {
+      const weekStart = addWeeks(startMonday, i);
       const weekEnd = addWeeks(weekStart, 1);
       const isPast = weekEnd <= today;
       const isCurrent = weekStart <= today && today < weekEnd;
       
       weeks.push({
-        weekNum: i,
+        weekNum: i + 1,
         weekStart,
         weekEnd,
-        label: i === 0 ? 'Anterior' : `Sem ${i}`,
+        label: `S${i + 1}`,
         dateLabel: format(weekStart, 'dd MMM', { locale: es }),
         isPast,
         isCurrent,
