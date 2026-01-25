@@ -576,6 +576,32 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
+## Latest Updates (January 25, 2026)
+
+### Completed ✅
+
+**Feature: Separación de Compra/Venta de USD en Proyecciones**
+- Implementada nueva sección "OPERACIONES CON DIVISAS" en el módulo de Proyecciones
+- Las categorías "Compra de USD" y "Venta de USD" ahora aparecen separadas de INGRESOS y EGRESOS
+- Cálculo correcto del flujo neto incluyendo operaciones de divisas
+- UI con color púrpura distintivo para la sección de divisas
+- Solo se muestra si hay datos de compra/venta de USD
+
+**Archivos Modificados:**
+- `frontend/src/pages/CashflowProjections.js`: 
+  - Nuevo tracking para `compraUSD` y `ventaUSD` por semana
+  - Filtrado de categorías USD de las secciones de INGRESOS/EGRESOS
+  - Nueva sección visual "OPERACIONES CON DIVISAS"
+  - Cálculo de `flujoDivisas` = ventaUSD - compraUSD
+
+**Refactorización de server.py - Estado Actual:**
+- Archivo actual: 8,630 líneas
+- Estructura modular creada pero NO integrada
+- 8 archivos de rutas creados en `/app/backend/routes/`
+- Documentación de plan de migración en `/app/docs/REFACTORING_PLAN.md`
+
+---
+
 ## Backlog (P0 - P2)
 
 ### P0 - Critical (COMPLETED)
@@ -583,7 +609,7 @@ All P0 features implemented and tested:
 - ✅ P0 - Matching Automático de CFDIs (January 22, 2026)
 
 ### P1 - High Priority
-1. ✅ **Refactor `server.py`** (January 22, 2026) - COMPLETED
+1. 🔄 **Refactor `server.py`** - IN PROGRESS (structure created, integration pending)
    - Created modular structure:
      - `/app/backend/core/` - Database, Auth, Config modules
      - `/app/backend/models/` - Pydantic models (15 files)
