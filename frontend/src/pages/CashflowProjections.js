@@ -107,6 +107,7 @@ const CashflowProjections = () => {
       
       // Store payments for use in processing
       const payments = paymentsRes.data || [];
+      const categoriesLoaded = catRes.data || [];
       
       // Get company config for week start day
       const companyId = localStorage.getItem('company_id');
@@ -115,12 +116,12 @@ const CashflowProjections = () => {
           const compRes = await api.get(`/companies/${companyId}`);
           const weekStart = compRes.data?.inicio_semana ?? 1;
           setCompanyConfig({ ...compRes.data, inicio_semana: weekStart });
-          processWeeklyData(cfdiRes.data, catRes.data, weekStart, loadedRates, payments);
+          processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, payments);
         } catch {
-          processWeeklyData(cfdiRes.data, catRes.data, 1, loadedRates, payments);
+          processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, payments);
         }
       } else {
-        processWeeklyData(cfdiRes.data, catRes.data, 1, loadedRates, payments);
+        processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, payments);
       }
       
       processMonthlyData(cfdiRes.data, catRes.data);
