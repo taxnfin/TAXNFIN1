@@ -615,8 +615,13 @@ All P0 features implemented and tested:
      - `/app/backend/models/` - Pydantic models (15 files)
      - `/app/backend/services/` - Business logic (audit, fx, cfdi_parser, cashflow)
      - `/app/backend/routes/` - API endpoints by domain (8 files)
-   - Original server.py preserved for backwards compatibility
-   - Gradual migration path established
+   - **REFACTORING STATUS (January 25, 2026)**:
+     - 6 routers INTEGRATED: auth, companies, categories, vendors, customers, bank_accounts
+     - 2 routers NOT INTEGRATED: payments, reconciliations (complex CFDI logic)
+     - server.py reduced from 8,630 to 8,122 lines (~508 lines removed)
+     - 30 endpoints moved to modular routers
+     - See `/app/docs/REFACTORING_PLAN.md` for details
+
 2. **Notificaciones automáticas** - Alertas por email/SMS para vencimientos
 3. ✅ **Bug Fix: Conciliación sin Pago** - COMPLETED (January 22, 2026)
 
@@ -645,14 +650,46 @@ All P0 features implemented and tested:
 
 ## API Endpoints Reference
 
-### Authentication
+### Authentication (✅ Moved to routes/auth.py)
 - `POST /api/auth/login` - Login
 - `POST /api/auth/register` - Register new user
 - `GET /api/auth/me` - Get current user
+- `GET /api/auth/auth0/config` - Auth0 config
+- `GET /api/auth/auth0/login-url` - Auth0 login URL
+- `POST /api/auth/auth0/callback` - Auth0 callback
+- `POST /api/auth/auth0/verify` - Verify Auth0 token
 
-### Core Resources
+### Companies (✅ Moved to routes/companies.py)
 - `POST/GET /api/companies` - Companies CRUD
+- `GET /api/companies/{id}` - Get company
+- `PUT /api/companies/{id}` - Update company
+
+### Bank Accounts (✅ Moved to routes/bank_accounts.py)
 - `POST/GET /api/bank-accounts` - Bank accounts CRUD
+- `PUT /api/bank-accounts/{id}` - Update account
+- `DELETE /api/bank-accounts/{id}` - Delete account
+- `GET /api/bank-accounts/summary` - Summary with FX conversion
+
+### Categories (✅ Moved to routes/categories.py)
+- `GET /api/categories` - List categories (with subcategories)
+- `GET /api/categories?tipo=ingreso|egreso` - Filter by type
+- `POST /api/categories` - Create category
+- `PUT /api/categories/{id}` - Update category
+- `DELETE /api/categories/{id}` - Delete category (soft delete)
+- `POST /api/subcategories` - Create subcategory
+- `DELETE /api/subcategories/{id}` - Delete subcategory
+
+### Vendors (✅ Moved to routes/vendors.py)
+- `POST/GET /api/vendors` - Vendors CRUD
+- `PUT /api/vendors/{id}` - Update vendor
+- `DELETE /api/vendors/{id}` - Delete vendor
+
+### Customers (✅ Moved to routes/customers.py)
+- `POST/GET /api/customers` - Customers CRUD
+- `PUT /api/customers/{id}` - Update customer
+- `DELETE /api/customers/{id}` - Delete customer
+
+### Core Resources (Still in server.py)
 - `POST/GET /api/transactions` - Transactions CRUD
 - `GET /api/cashflow/weeks` - Get 13-week cashflow
 
@@ -664,15 +701,6 @@ All P0 features implemented and tested:
 - `PUT /api/cfdi/{id}/reconciliation-status` - Update reconciliation status
 - `POST /api/cfdi/{id}/ai-categorize` - AI suggestion for single CFDI
 - `POST /api/cfdi/ai-categorize-batch` - AI categorize all uncategorized CFDIs
-
-### Categories
-- `GET /api/categories` - List categories (with subcategories)
-- `GET /api/categories?tipo=ingreso|egreso` - Filter by type
-- `POST /api/categories` - Create category
-- `PUT /api/categories/{id}` - Update category
-- `DELETE /api/categories/{id}` - Delete category (soft delete)
-- `POST /api/subcategories` - Create subcategory
-- `DELETE /api/subcategories/{id}` - Delete subcategory
 
 ### Exports
 - `GET /api/export/diot` - Export DIOT CSV
