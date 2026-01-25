@@ -86,7 +86,13 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
                 'es_real': True,
                 'bank_transaction_id': bank_txn.get('id'),
                 'created_at': datetime.now(timezone.utc).isoformat(),
-                'auto_created_from_reconciliation': True
+                'auto_created_from_reconciliation': True,
+                # INHERIT CATEGORY AND SUBCATEGORY FROM CFDI
+                'category_id': cfdi.get('category_id'),
+                'subcategory_id': cfdi.get('subcategory_id'),
+                'cfdi_uuid': cfdi.get('uuid'),
+                'cfdi_emisor': cfdi.get('emisor_nombre'),
+                'cfdi_receptor': cfdi.get('receptor_nombre')
             }
             
             # Get historical FX rate for non-MXN currencies
