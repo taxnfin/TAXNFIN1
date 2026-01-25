@@ -163,9 +163,12 @@ async def delete_cfdi(cfdi_id: str, request: Request, current_user: Dict = Depen
 @router.put("/{cfdi_id}/categorize")
 async def categorize_cfdi(
     cfdi_id: str, 
-    data: dict, 
     request: Request, 
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(get_current_user),
+    category_id: Optional[str] = Query(None),
+    subcategory_id: Optional[str] = Query(None),
+    vendor_id: Optional[str] = Query(None),
+    customer_id: Optional[str] = Query(None)
 ):
     """Assign category and subcategory to a CFDI"""
     company_id = await get_active_company_id(request, current_user)
@@ -174,19 +177,19 @@ async def categorize_cfdi(
     if not cfdi:
         raise HTTPException(status_code=404, detail="CFDI no encontrado")
     
-    category_id = data.get('category_id')
-    subcategory_id = data.get('subcategory_id')
-    
     update_data = {}
     if category_id:
         update_data['category_id'] = category_id
     if subcategory_id:
         update_data['subcategory_id'] = subcategory_id
+    if vendor_id:
+        update_data['vendor_id'] = vendor_id
+    if customer_id:
+        update_data['customer_id'] = customer_id
     
     if update_data:
         await db.cfdis.update_one({'id': cfdi_id}, {'$set': update_data})
-        await audit_log(company_id, 'CFDI', cfdi_id, 'CATEGORIZE', current_user['id'], 
-                        {'category_id': category_id, 'subcategory_id': subcategory_id})
+        await audit_log(company_id, 'CFDI', cfdi_id, 'CATEGORIZE', current_user['id'], update_data)
     
     return {'status': 'success', 'message': 'CFDI categorizado correctamente'}
 
