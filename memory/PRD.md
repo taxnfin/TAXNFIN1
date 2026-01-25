@@ -798,6 +798,20 @@ All P0 features implemented and tested:
 - Fixed Virtual CFO genetic algorithm (timezone, numpy serialization)
 - Created Payments History module
 
+### January 25, 2026 (Latest)
+- **Bug Fix P0**: Corregido bug crítico de subcategorías no visibles
+  - Causa raíz: El backend devolvía `subcategories` pero el frontend esperaba `subcategorias`
+  - Solución: Actualizado `routes/categories.py` para usar `subcategorias` 
+  - Estado: Las 34 subcategorías ahora se muestran correctamente
+  - NOTA: Los datos NUNCA fueron eliminados, solo era un problema de visualización
+- **Refactoring Avance**: 11 routers modulares ahora integrados
+  - cfdi.py, fx_rates.py, bank_transactions.py creados con endpoints funcionales
+  - server.py reducido a 7,408 líneas
+- **Módulos Integrados y Funcionando**:
+  - auth, companies, categories, vendors, customers
+  - bank_accounts, payments, reconciliations
+  - cfdi, fx_rates, bank_transactions
+
 ---
 
 ## DB Schema Reference
