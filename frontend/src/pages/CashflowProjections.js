@@ -276,10 +276,11 @@ const CashflowProjections = () => {
     
     // Log for debugging
     weeks.filter(w => w.isPast || w.isCurrent).forEach(w => {
-      console.log(`${w.label}: Ingresos Reales=${w.ingresosReales.toFixed(2)}, Egresos Reales=${w.egresosReales.toFixed(2)}`);
+      console.log(`${w.label}: Ingresos Reales=${w.ingresosReales.toFixed(2)}, Egresos Reales=${w.egresosReales.toFixed(2)}, Compra USD=${w.compraUSD.toFixed(2)}, Venta USD=${w.ventaUSD.toFixed(2)}`);
     });
     
     // Classify CFDIs by week based on fecha_emision - CONVERTING TO MXN
+    // Also separate USD buy/sell CFDIs from regular income/expenses
     cfdisData.forEach(cfdi => {
       const cfdiDate = new Date(cfdi.fecha_emision);
       const weekIdx = weeks.findIndex(w => cfdiDate >= w.weekStart && cfdiDate < w.weekEnd);
@@ -287,7 +288,6 @@ const CashflowProjections = () => {
       if (weekIdx !== -1) {
         const week = weeks[weekIdx];
         const isIngreso = cfdi.tipo_cfdi === 'ingreso';
-        const section = isIngreso ? week.ingresos : week.egresos;
         
         // Convert CFDI amount to MXN for consistent calculations
         const cfdiMontoMXN = convertToMXN(cfdi.total, cfdi.moneda, effectiveRates);
@@ -296,6 +296,21 @@ const CashflowProjections = () => {
         const category = categoriesData.find(c => c.id === cfdi.category_id);
         const categoryName = category?.nombre || 'Sin categoría';
         
+        // Check if this CFDI belongs to USD buy/sell categories
+        const isCompraUSD = cfdi.category_id === compraUSDId;
+        const isVentaUSD = cfdi.category_id === ventaUSDId;
+        
+        // If it's a USD operation, add to the separate tracking (for projections)
+        // but still categorize it for display purposes
+        if (isCompraUSD && !week.isPast && !week.isCurrent) {
+          week.compraUSD += cfdiMontoMXN;
+        } else if (isVentaUSD && !week.isPast && !week.isCurrent) {
+          week.ventaUSD += cfdiMontoMXN;
+        }
+        
+        // Get section for regular tracking (still include in byCategory for display)
+        const section = isIngreso ? week.ingresos : week.egresos;
+        
         // Get subcategory if exists
         let subcategoryName = null;
         if (cfdi.subcategory_id && category?.subcategorias) {
@@ -303,9 +318,13 @@ const CashflowProjections = () => {
           subcategoryName = subcategory?.nombre || null;
         }
         
-        section.total += cfdiMontoMXN;
+        // Don't add to totals if it's a USD operation (we track those separately)
+        if (!isCompraUSD && !isVentaUSD) {
+          section.total += cfdiMontoMXN;
+        }
+        
         if (!section.byCategory[categoryName]) {
-          section.byCategory[categoryName] = { total: 0, cfdis: [], bySubcategory: {} };
+          section.byCategory[categoryName] = { total: 0, cfdis: [], bySubcategory: {}, isUSDOperation: isCompraUSD || isVentaUSD };
         }
         section.byCategory[categoryName].total += cfdiMontoMXN;
         section.byCategory[categoryName].cfdis.push({ ...cfdi, totalMXN: cfdiMontoMXN });
