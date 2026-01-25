@@ -56,7 +56,7 @@ const Reports = () => {
   const convertToMXN = (amount, currency) => {
     if (!amount) return 0;
     if (currency === 'MXN' || !currency) return amount;
-    const rate = fxRates[currency] || 17.599;
+    const rate = fxRates[currency] || 17.4545;  // Use current API rate as fallback
     return amount * rate;
   };
 
