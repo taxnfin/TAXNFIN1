@@ -1356,7 +1356,36 @@ const PaymentsModule = () => {
                           )}
                         </div>
                       ) : (
-                        <span className="text-xs text-amber-600">Sin categoría</span>
+                        <select
+                          className="text-xs border rounded px-1 py-0.5 bg-amber-50 text-amber-700 cursor-pointer"
+                          defaultValue=""
+                          onChange={async (e) => {
+                            const [catId, subcatId] = e.target.value.split('|');
+                            if (catId) {
+                              try {
+                                await api.put(`/payments/${payment.id}/categorize?category_id=${catId}${subcatId ? `&subcategory_id=${subcatId}` : ''}`);
+                                toast.success('Pago categorizado');
+                                loadData();
+                              } catch (error) {
+                                toast.error('Error categorizando');
+                              }
+                            }
+                          }}
+                        >
+                          <option value="">Sin categoría</option>
+                          {categories.filter(c => (payment.tipo === 'cobro' ? c.tipo === 'ingreso' : c.tipo === 'egreso')).map(cat => (
+                            <optgroup key={cat.id} label={cat.nombre}>
+                              {cat.subcategorias?.map(sub => (
+                                <option key={sub.id} value={`${cat.id}|${sub.id}`}>
+                                  {sub.nombre}
+                                </option>
+                              ))}
+                              {(!cat.subcategorias || cat.subcategorias.length === 0) && (
+                                <option value={`${cat.id}|`}>{cat.nombre}</option>
+                              )}
+                            </optgroup>
+                          ))}
+                        </select>
                       )}
                     </TableCell>
                     <TableCell className="max-w-[150px] truncate text-sm">{payment.concepto}</TableCell>
