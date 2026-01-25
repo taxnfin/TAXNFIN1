@@ -108,9 +108,19 @@ const Reports = () => {
       });
     }
     
-    // Process REAL payments (completed)
+    // Track processed bank transactions to avoid duplicates
+    const processedBankTxns = new Set();
+    
+    // Process REAL payments (completed) - FILTER DUPLICATES
     payments.forEach(payment => {
       if (payment.estatus !== 'completado') return;
+      
+      // Skip duplicates by bank_transaction_id
+      const bankTxnId = payment.bank_transaction_id;
+      if (bankTxnId) {
+        if (processedBankTxns.has(bankTxnId)) return; // Skip duplicate
+        processedBankTxns.add(bankTxnId);
+      }
       
       const fechaStr = payment.fecha_pago || payment.fecha_vencimiento;
       if (!fechaStr) return;
