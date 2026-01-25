@@ -36,9 +36,11 @@ async def create_payment(payment_data: PaymentCreate, request: Request, current_
             doc['tipo_cambio_historico'] = default_rates.get(doc['moneda'], 1)
     
     # If payment is "Real", automatically mark as completed
+    # Only set fecha_pago if not already provided (use fecha_vencimiento as fallback)
     if doc.get('es_real') == True:
         doc['estatus'] = 'completado'
-        doc['fecha_pago'] = datetime.now(timezone.utc).isoformat()
+        if not doc.get('fecha_pago'):
+            doc['fecha_pago'] = doc.get('fecha_vencimiento') or datetime.now(timezone.utc).isoformat()
     
     for field in ['fecha_vencimiento', 'created_at']:
         if doc.get(field):
