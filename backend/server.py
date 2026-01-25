@@ -3031,69 +3031,21 @@ async def delete_manual_projection(concept_id: str, request: Request, current_us
     await audit_log(company_id, 'ManualProjection', concept_id, 'DELETE', current_user['id'])
     return {"message": "Concepto eliminado exitosamente"}
 
-# ===== PAGOS =====
-@api_router.post("/payments", response_model=Payment)
-async def create_payment(payment_data: PaymentCreate, request: Request, current_user: Dict = Depends(get_current_user)):
-    company_id = await get_active_company_id(request, current_user)
-    payment = Payment(company_id=company_id, **payment_data.model_dump())
-    doc = payment.model_dump()
-    
-    # Automatically capture historical exchange rate for non-MXN currencies
-    if doc.get('moneda') and doc['moneda'] != 'MXN' and not doc.get('tipo_cambio_historico'):
-        # Get the latest rate for this currency
-        rate = await db.fx_rates.find_one(
-            {'company_id': company_id, '$or': [
-                {'moneda_cotizada': doc['moneda']},
-                {'moneda_origen': doc['moneda']}
-            ]},
-            {'_id': 0},
-            sort=[('fecha_vigencia', -1)]
-        )
-        if rate:
-            doc['tipo_cambio_historico'] = rate.get('tipo_cambio') or rate.get('tasa') or 1
-        else:
-            # Default rates if none found
-            default_rates = {'USD': 17.50, 'EUR': 19.00}
-            doc['tipo_cambio_historico'] = default_rates.get(doc['moneda'], 1)
-    
-    # If payment is "Real", automatically mark as completed
-    # Only set fecha_pago if not already provided (use fecha_vencimiento as fallback)
-    if doc.get('es_real') == True:
-        doc['estatus'] = 'completado'
-        if not doc.get('fecha_pago'):
-            doc['fecha_pago'] = doc.get('fecha_vencimiento') or datetime.now(timezone.utc).isoformat()
-    
-    for field in ['fecha_vencimiento', 'created_at']:
-        if doc.get(field):
-            doc[field] = doc[field].isoformat()
-    if doc.get('fecha_pago') and not isinstance(doc['fecha_pago'], str):
-        doc['fecha_pago'] = doc['fecha_pago'].isoformat()
-    
-    await db.payments.insert_one(doc)
-    
-    # If payment is real and linked to a CFDI, update the CFDI's collected/paid amount
-    if doc.get('es_real') == True and doc.get('cfdi_id'):
-        cfdi = await db.cfdis.find_one({'id': doc['cfdi_id']}, {'_id': 0})
-        if cfdi:
-            if doc['tipo'] == 'cobro':
-                current_cobrado = cfdi.get('monto_cobrado', 0) or 0
-                new_cobrado = current_cobrado + doc['monto']
-                await db.cfdis.update_one(
-                    {'id': doc['cfdi_id']},
-                    {'$set': {'monto_cobrado': new_cobrado}}
-                )
-                logger.info(f"Auto-completed payment: Updated CFDI {doc['cfdi_id']} monto_cobrado: {current_cobrado} -> {new_cobrado}")
-            else:
-                current_pagado = cfdi.get('monto_pagado', 0) or 0
-                new_pagado = current_pagado + doc['monto']
-                await db.cfdis.update_one(
-                    {'id': doc['cfdi_id']},
-                    {'$set': {'monto_pagado': new_pagado}}
-                )
-                logger.info(f"Auto-completed payment: Updated CFDI {doc['cfdi_id']} monto_pagado: {current_pagado} -> {new_pagado}")
-    
-    await audit_log(company_id, 'Payment', payment.id, 'CREATE', current_user['id'])
-    return payment
+# ==================== PAYMENTS ENDPOINTS PARTIALLY MOVED TO routes/payments.py ====================
+# Basic CRUD endpoints moved to routes/payments.py:
+# - POST /payments
+# - GET /payments
+# - GET /payments/summary
+# - POST /payments/{payment_id}/complete
+# - DELETE /payments/{payment_id}
+# - DELETE /payments/bulk/all
+#
+# Complex endpoints remain here:
+# - GET /payments/{payment_id}/match-candidates
+# - POST /payments/{payment_id}/auto-reconcile  
+# - POST /payments/from-bank-with-cfdi-match
+# - GET /payments/breakdown
+# - PUT /payments/{payment_id}
 
 
 @api_router.get("/payments/{payment_id}/match-candidates")
