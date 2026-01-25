@@ -804,6 +804,23 @@ All P0 features implemented and tested:
   - Solución: Actualizado `routes/categories.py` para usar `subcategorias` 
   - Estado: Las 34 subcategorías ahora se muestran correctamente
   - NOTA: Los datos NUNCA fueron eliminados, solo era un problema de visualización
+
+- **Feature: Rolling 18-Week Cash Flow Model**
+  - Implementado modelo rolling de 18 semanas en `/reports`:
+    - S1-S4: 4 semanas históricas (Real)
+    - S5: Semana actual (Actual)
+    - S6-S18: 13 semanas futuras proyectadas (Proy)
+  - El modelo se actualiza automáticamente cada semana
+  - Las semanas pasadas cambian de Proyectado → Real automáticamente
+
+- **Feature: DIOT Fiscal Compliance Fix**
+  - DIOT ahora excluye automáticamente según reglas SAT:
+    - Nómina (uso_cfdi = 'CN01')
+    - CFDIs sin IVA acreditable (IVA = 0)
+    - Sueldos, asimilados, cargas sociales
+  - Operaciones reducidas de 33 → 21 (solo proveedores con IVA)
+  - Agregado banner de advertencia en UI sobre exclusiones
+
 - **Refactoring Avance**: 11 routers modulares ahora integrados
   - cfdi.py, fx_rates.py, bank_transactions.py creados con endpoints funcionales
   - server.py reducido a 7,408 líneas
