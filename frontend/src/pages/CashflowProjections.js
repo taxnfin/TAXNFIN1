@@ -312,12 +312,6 @@ const CashflowProjections = () => {
       }
     });
     
-    // Remove the first "Anterior" week if it has no data
-    if (weeks[0].ingresos.total === 0 && weeks[0].egresos.total === 0 && 
-        weeks[0].ingresosReales === 0 && weeks[0].egresosReales === 0) {
-      weeks.shift();
-    }
-    
     // Keep only 13 weeks
     setWeeklyData(weeks.slice(0, 13));
   };
