@@ -643,6 +643,270 @@ const Dashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* ============ SECTION: DIAGNÓSTICO Y ACCIONES ============ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Cash Flow KPIs Clave */}
+        <Card className="shadow-sm border-t-4 border-t-blue-500">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Wallet size={16} className="text-blue-600" />
+              KPIs Clave de Liquidez
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {/* Runway - Semanas de operación */}
+              <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+                <div>
+                  <div className="text-xs text-blue-700 font-medium">RUNWAY</div>
+                  <div className="text-xs text-gray-500">Semanas de operación con saldo actual</div>
+                </div>
+                <div className="text-right">
+                  <span className={`text-2xl font-bold ${
+                    (trend.avg_flow_4w < 0 && saldoInicial > 0) 
+                      ? (Math.abs(saldoInicial / trend.avg_flow_4w) > 13 ? 'text-green-600' : 
+                         Math.abs(saldoInicial / trend.avg_flow_4w) > 6 ? 'text-amber-600' : 'text-red-600')
+                      : 'text-green-600'
+                  }`}>
+                    {trend.avg_flow_4w < 0 && saldoInicial > 0 
+                      ? Math.round(Math.abs(saldoInicial / trend.avg_flow_4w))
+                      : '∞'
+                    }
+                  </span>
+                  <span className="text-sm text-gray-500 ml-1">semanas</span>
+                </div>
+              </div>
+
+              {/* Burn Rate */}
+              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <div className="text-xs text-gray-700 font-medium">BURN RATE</div>
+                  <div className="text-xs text-gray-500">Promedio de egresos semanales</div>
+                </div>
+                <div className="text-right">
+                  <span className="text-lg font-bold text-red-600">
+                    {formatCurrency(chartData.reduce((sum, w) => sum + (w.egresos || 0), 0) / Math.max(chartData.length, 1))}
+                  </span>
+                  <span className="text-xs text-gray-500 ml-1">/sem</span>
+                </div>
+              </div>
+
+              {/* Cash Conversion */}
+              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <div className="text-xs text-gray-700 font-medium">COBRANZA VS PAGOS</div>
+                  <div className="text-xs text-gray-500">Ratio ingresos / egresos</div>
+                </div>
+                <div className="text-right">
+                  {(() => {
+                    const totalIng = chartData.reduce((sum, w) => sum + (w.ingresos || 0), 0);
+                    const totalEgr = chartData.reduce((sum, w) => sum + (w.egresos || 0), 0);
+                    const ratio = totalEgr > 0 ? (totalIng / totalEgr) : 1;
+                    return (
+                      <span className={`text-lg font-bold ${ratio >= 1 ? 'text-green-600' : 'text-red-600'}`}>
+                        {(ratio * 100).toFixed(0)}%
+                      </span>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Week with lowest balance */}
+              <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg">
+                <div>
+                  <div className="text-xs text-amber-700 font-medium">SEMANA CRÍTICA</div>
+                  <div className="text-xs text-gray-500">Menor saldo proyectado</div>
+                </div>
+                <div className="text-right">
+                  {(() => {
+                    const minWeek = chartData.reduce((min, w, i) => 
+                      (!min || w.saldo_final < min.saldo_final) ? {...w, idx: i} : min, null);
+                    return minWeek ? (
+                      <>
+                        <span className={`text-lg font-bold ${minWeek.saldo_final < 0 ? 'text-red-600' : 'text-amber-600'}`}>
+                          {minWeek.semana}
+                        </span>
+                        <div className="text-xs text-gray-500">{formatCurrency(minWeek.saldo_final)}</div>
+                      </>
+                    ) : '-';
+                  })()}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Acciones Recomendadas */}
+        <Card className="shadow-sm border-t-4 border-t-green-500">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-green-600" />
+              ¿Qué Hacer Ahora?
+            </CardTitle>
+            <CardDescription>Acciones recomendadas basadas en tu flujo</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {/* Dynamic recommendations based on data */}
+              {(() => {
+                const recommendations = [];
+                const totalIng = chartData.reduce((sum, w) => sum + (w.ingresos || 0), 0);
+                const totalEgr = chartData.reduce((sum, w) => sum + (w.egresos || 0), 0);
+                const minWeek = chartData.reduce((min, w) => 
+                  (!min || w.saldo_final < min.saldo_final) ? w : min, null);
+                const weeksWithDeficit = chartData.filter(w => w.saldo_final < 0).length;
+
+                // Liquidez crítica
+                if (risks.liquidez_critica || (minWeek && minWeek.saldo_final < 0)) {
+                  recommendations.push({
+                    priority: 'alta',
+                    icon: '🚨',
+                    text: 'Acelerar cobranza o buscar línea de crédito',
+                    detail: `Semana ${minWeek?.semana} proyecta déficit de ${formatCurrency(Math.abs(minWeek?.saldo_final || 0))}`
+                  });
+                }
+
+                // Cobranza baja
+                if (totalIng < totalEgr * 0.8) {
+                  recommendations.push({
+                    priority: 'alta',
+                    icon: '📞',
+                    text: 'Intensificar gestión de cobranza',
+                    detail: `Los ingresos cubren solo ${((totalIng/totalEgr)*100).toFixed(0)}% de los egresos`
+                  });
+                }
+
+                // Saldos ociosos
+                if (risks.saldos_ociosos > 0) {
+                  recommendations.push({
+                    priority: 'media',
+                    icon: '💰',
+                    text: 'Invertir saldos excedentes',
+                    detail: `${risks.saldos_ociosos} cuenta(s) con más de $500K sin rendimiento`
+                  });
+                }
+
+                // Tendencia positiva
+                if (trend.direction === 'up' && trend.avg_flow_4w > 0) {
+                  recommendations.push({
+                    priority: 'baja',
+                    icon: '📈',
+                    text: 'Aprovechar tendencia positiva',
+                    detail: `Flujo promedio +${formatCurrency(trend.avg_flow_4w)}/semana`
+                  });
+                }
+
+                // CFDIs sin conciliar
+                if (kpis.total_cfdis > kpis.total_reconciliations) {
+                  recommendations.push({
+                    priority: 'media',
+                    icon: '📋',
+                    text: 'Conciliar CFDIs pendientes',
+                    detail: `${kpis.total_cfdis - kpis.total_reconciliations} facturas sin conciliar`
+                  });
+                }
+
+                // Default if no issues
+                if (recommendations.length === 0) {
+                  recommendations.push({
+                    priority: 'baja',
+                    icon: '✅',
+                    text: 'Flujo de efectivo saludable',
+                    detail: 'Continuar con el monitoreo semanal'
+                  });
+                }
+
+                return recommendations.map((rec, idx) => (
+                  <div key={idx} className={`flex items-start gap-3 p-3 rounded-lg ${
+                    rec.priority === 'alta' ? 'bg-red-50 border border-red-200' :
+                    rec.priority === 'media' ? 'bg-amber-50 border border-amber-200' :
+                    'bg-green-50 border border-green-200'
+                  }`}>
+                    <span className="text-xl">{rec.icon}</span>
+                    <div>
+                      <div className={`font-medium text-sm ${
+                        rec.priority === 'alta' ? 'text-red-800' :
+                        rec.priority === 'media' ? 'text-amber-800' :
+                        'text-green-800'
+                      }`}>{rec.text}</div>
+                      <div className="text-xs text-gray-600">{rec.detail}</div>
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Escenarios de Liquidez */}
+      <Card className="shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <AlertTriangle size={16} className="text-amber-600" />
+            Análisis de Escenarios
+          </CardTitle>
+          <CardDescription>Proyección de liquidez bajo diferentes condiciones</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Escenario Pesimista */}
+            <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingDown size={16} className="text-red-600" />
+                <span className="font-medium text-red-800">Escenario Pesimista</span>
+              </div>
+              <p className="text-xs text-gray-600 mb-3">Cobranza baja 30%, gastos suben 15%</p>
+              {(() => {
+                const avgIng = chartData.reduce((sum, w) => sum + (w.ingresos || 0), 0) / Math.max(chartData.length, 1);
+                const avgEgr = chartData.reduce((sum, w) => sum + (w.egresos || 0), 0) / Math.max(chartData.length, 1);
+                const pesimista = saldoInicial + ((avgIng * 0.7) - (avgEgr * 1.15)) * 13;
+                return (
+                  <div className={`text-xl font-bold ${pesimista < 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                    {formatCurrency(pesimista)}
+                    {pesimista < 0 && <span className="text-xs ml-2 text-red-500">⚠️ Déficit</span>}
+                  </div>
+                );
+              })()}
+              <p className="text-xs text-gray-500 mt-1">Saldo al final de S13</p>
+            </div>
+
+            {/* Escenario Base */}
+            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Minus size={16} className="text-blue-600" />
+                <span className="font-medium text-blue-800">Escenario Base</span>
+              </div>
+              <p className="text-xs text-gray-600 mb-3">Tendencia actual continúa</p>
+              <div className={`text-xl font-bold ${saldoFinalProyectado < 0 ? 'text-red-600' : 'text-blue-800'}`}>
+                {formatCurrency(saldoFinalProyectado)}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Saldo al final de S13</p>
+            </div>
+
+            {/* Escenario Optimista */}
+            <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingUp size={16} className="text-green-600" />
+                <span className="font-medium text-green-800">Escenario Optimista</span>
+              </div>
+              <p className="text-xs text-gray-600 mb-3">Cobranza mejora 20%, gastos bajan 10%</p>
+              {(() => {
+                const avgIng = chartData.reduce((sum, w) => sum + (w.ingresos || 0), 0) / Math.max(chartData.length, 1);
+                const avgEgr = chartData.reduce((sum, w) => sum + (w.egresos || 0), 0) / Math.max(chartData.length, 1);
+                const optimista = saldoInicial + ((avgIng * 1.2) - (avgEgr * 0.9)) * 13;
+                return (
+                  <div className="text-xl font-bold text-green-800">
+                    {formatCurrency(optimista)}
+                  </div>
+                );
+              })()}
+              <p className="text-xs text-gray-500 mt-1">Saldo al final de S13</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
