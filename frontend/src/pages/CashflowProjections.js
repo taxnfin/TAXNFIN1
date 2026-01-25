@@ -412,13 +412,6 @@ const CashflowProjections = () => {
     
     return weeks;
   };
-        }
-      }
-    });
-    
-    // Set the 13 weeks
-    setWeeklyData(weeks);
-  };
 
   const processMonthlyData = (cfdisData, categoriesData) => {
     // Generate 6 months
