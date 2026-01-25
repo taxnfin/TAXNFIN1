@@ -154,7 +154,7 @@ const CashflowProjections = () => {
     if (!amount) return 0;
     if (currency === 'MXN' || !currency) return amount;
     // Try rates passed in, then fxRates state, then default
-    const rate = rates[currency] || fxRates[currency] || 17.50;
+    const rate = rates[currency] || fxRates[currency] || 17.4545;
     return amount * rate;
   };
 
