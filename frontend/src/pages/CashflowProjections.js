@@ -116,12 +116,15 @@ const CashflowProjections = () => {
           const compRes = await api.get(`/companies/${companyId}`);
           const weekStart = compRes.data?.inicio_semana ?? 1;
           setCompanyConfig({ ...compRes.data, inicio_semana: weekStart });
-          processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, payments);
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, payments);
+          setWeeklyData(weeks);
         } catch {
-          processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, payments);
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, payments);
+          setWeeklyData(weeks);
         }
       } else {
-        processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, payments);
+        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, payments);
+        setWeeklyData(weeks);
       }
       
       processMonthlyData(cfdiRes.data, catRes.data);
