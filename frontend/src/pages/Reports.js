@@ -342,10 +342,13 @@ const Reports = () => {
                       <TableCell className="mono font-bold">{week.label}</TableCell>
                       <TableCell className="text-xs">{week.dateRange}</TableCell>
                       <TableCell className="text-center">
-                        {week.isCurrent && (
+                        {week.type === 'REAL' && (
+                          <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-800 font-medium">Real</span>
+                        )}
+                        {week.type === 'ACTUAL' && (
                           <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 text-blue-800 font-semibold">Actual</span>
                         )}
-                        {week.isFuture && (
+                        {week.type === 'PROYECTADO' && (
                           <span className="px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-600">Proy</span>
                         )}
                       </TableCell>
