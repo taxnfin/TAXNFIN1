@@ -1261,10 +1261,10 @@ const PaymentsModule = () => {
                 <TableHead>Fecha Venc.</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Real/Proy.</TableHead>
+                <TableHead>UUID CFDI</TableHead>
+                <TableHead>Categoría</TableHead>
                 <TableHead>Concepto</TableHead>
                 <TableHead>Beneficiario</TableHead>
-                <TableHead>Referencia</TableHead>
-                <TableHead>Método</TableHead>
                 <TableHead>Monto</TableHead>
                 <TableHead>Estatus</TableHead>
                 <TableHead className="text-center">Acciones</TableHead>
