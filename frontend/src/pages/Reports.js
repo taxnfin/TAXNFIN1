@@ -82,34 +82,32 @@ const Reports = () => {
     return new Date(d.setDate(diff));
   };
 
-  // Generate 13 weeks: weeks are numbered S1, S2, S3... starting from earliest data
+  // Generate TRUE ROLLING 13-week cash flow:
+  // - S1 = Current week (the week containing today)
+  // - S2-S13 = Future weeks (projected)
+  // - As calendar advances: old weeks drop off, new weeks are added
+  // - Past data shows as "Real", future as "Proyectado"
   const weeksData = useMemo(() => {
     const today = new Date();
     const currentMonday = getMonday(today);
     
-    // Find the earliest payment date
-    let earliestDate = null;
-    payments.forEach(p => {
-      if (p.estatus !== 'completado') return;
-      const fecha = p.fecha_pago;
-      if (fecha) {
-        const d = new Date(fecha);
-        if (!earliestDate || d < earliestDate) earliestDate = d;
-      }
-    });
+    // ROLLING MODEL: Start from current week (S1 = this week)
+    // Always show 13 weeks forward from current week
+    const startMonday = currentMonday;
     
-    // Start from earliest payment or 4 weeks ago
-    const fourWeeksAgo = addWeeks(currentMonday, -4);
-    const startMonday = earliestDate ? getMonday(earliestDate < fourWeeksAgo ? fourWeeksAgo : earliestDate) : fourWeeksAgo;
-    
-    // Generate 13 weeks starting from S1 (oldest)
+    // Generate 13 weeks starting from current week
     const weeks = [];
     for (let i = 0; i < 13; i++) {
       const weekStart = addWeeks(startMonday, i);
       const weekEnd = addDays(weekStart, 6); // Sunday
       const weekEndForComparison = addWeeks(weekStart, 1); // Next Monday
+      
+      // Week is past if its end date is before today
       const isPast = weekEndForComparison <= today;
+      // Week is current if today falls within it
       const isCurrent = weekStart <= today && today < weekEndForComparison;
+      // Week is future if it starts after today
+      const isFuture = weekStart > today;
       
       weeks.push({
         weekNum: i + 1, // S1, S2, S3...
@@ -119,6 +117,7 @@ const Reports = () => {
         weekEndForComparison,
         isPast,
         isCurrent,
+        isFuture,
         dateRange: `${format(weekStart, 'dd/MM')} - ${format(weekEnd, 'dd/MM')}`,
         cobrosReales: 0,
         pagosReales: 0,
@@ -130,7 +129,7 @@ const Reports = () => {
     // Track processed bank transactions to avoid duplicates
     const processedBankTxns = new Set();
     
-    // Process REAL payments (completed)
+    // Process REAL payments (completed) - for current and past weeks
     payments.forEach(payment => {
       if (payment.estatus !== 'completado') return;
       
@@ -164,7 +163,7 @@ const Reports = () => {
       }
     });
     
-    // Process PROJECTED data from pending CFDIs (for future weeks)
+    // Process PROJECTED data from pending CFDIs (for current and future weeks only)
     cfdis.forEach(cfdi => {
       const total = cfdi.total || 0;
       const pagado = cfdi.monto_pagado || 0;
@@ -194,12 +193,14 @@ const Reports = () => {
       );
       
       if (weekIdx === -1) return;
-      if (weeks[weekIdx].isPast && !weeks[weekIdx].isCurrent) return;
       
-      if (cfdi.tipo_cfdi === 'ingreso') {
-        weeks[weekIdx].cobrosProyectados += pendienteMXN;
-      } else if (cfdi.tipo_cfdi === 'egreso') {
-        weeks[weekIdx].pagosProyectados += pendienteMXN;
+      // Only add projections to current and future weeks
+      if (weeks[weekIdx].isCurrent || weeks[weekIdx].isFuture) {
+        if (cfdi.tipo_cfdi === 'ingreso') {
+          weeks[weekIdx].cobrosProyectados += pendienteMXN;
+        } else if (cfdi.tipo_cfdi === 'egreso') {
+          weeks[weekIdx].pagosProyectados += pendienteMXN;
+        }
       }
     });
     
