@@ -157,20 +157,12 @@ const Reports = () => {
       
       const montoMXN = convertToMXN(payment.monto, payment.moneda);
       
-      // Debug log for S3 (index 2 = third week)
-      if (weekIdx === 2 && payment.tipo === 'cobro') {
-        console.log(`S3 COBRO: ${payment.monto} ${payment.moneda} = ${montoMXN} MXN | BankTxn: ${bankTxnId?.substring(0,15) || 'N/A'}`);
-      }
-      
       if (payment.tipo === 'cobro') {
         weeks[weekIdx].cobrosReales += montoMXN;
       } else {
         weeks[weekIdx].pagosReales += montoMXN;
       }
     });
-    
-    // Log S3 total
-    console.log('S3 Total Cobros:', weeks[2]?.cobrosReales);
     
     // Process PROJECTED data from pending CFDIs (for future weeks)
     cfdis.forEach(cfdi => {
