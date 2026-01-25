@@ -226,7 +226,10 @@ const Reports = () => {
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{fontFamily: 'Manrope'}}>Reportes</h1>
-          <p className="text-[#64748B]">12 Rolling Cash Flow - Real vs Proyectado (Lunes a Domingo)</p>
+          <p className="text-[#64748B]">13-Week Rolling Cash Flow - Real vs Proyectado</p>
+          <p className="text-xs text-[#94A3B8] mt-1">
+            S1 = Semana actual • Las semanas pasadas cambian automáticamente de Proyectado → Real
+          </p>
         </div>
         <div className="flex gap-2 items-center">
           <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
