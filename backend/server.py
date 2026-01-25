@@ -36,6 +36,9 @@ from routes.customers import router as customers_router
 from routes.bank_accounts import router as bank_accounts_router
 from routes.payments import router as payments_router
 from routes.reconciliations import router as reconciliations_router
+from routes.cfdi import router as cfdi_router
+from routes.fx_rates import router as fx_rates_router
+from routes.bank_transactions import router as bank_transactions_router
 
 # Include modular routers in api_router
 api_router.include_router(auth_router)
@@ -46,6 +49,9 @@ api_router.include_router(customers_router)
 api_router.include_router(bank_accounts_router)
 api_router.include_router(payments_router)
 api_router.include_router(reconciliations_router)
+api_router.include_router(cfdi_router)
+api_router.include_router(fx_rates_router)
+api_router.include_router(bank_transactions_router)
 
 JWT_SECRET = os.environ.get('JWT_SECRET', 'taxnfin-secret-key-change-in-production')
 JWT_ALGORITHM = 'HS256'
