@@ -289,3 +289,59 @@ async def delete_all_payments(request: Request, current_user: Dict = Depends(get
         'message': f'Se eliminaron {result.deleted_count} pagos/cobranzas',
         'deleted_count': result.deleted_count
     }
+
+
+@router.post("/backfill-categories")
+async def backfill_payment_categories(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Backfill category/subcategory from linked CFDIs to existing payments.
+    This updates payments that have cfdi_id but are missing category_id/subcategory_id.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Find all payments with cfdi_id but missing category
+    payments_to_update = await db.payments.find({
+        'company_id': company_id,
+        'cfdi_id': {'$ne': None, '$exists': True},
+        '$or': [
+            {'category_id': None},
+            {'category_id': {'$exists': False}}
+        ]
+    }, {'_id': 0, 'id': 1, 'cfdi_id': 1}).to_list(10000)
+    
+    updated_count = 0
+    errors = []
+    
+    for payment in payments_to_update:
+        cfdi = await db.cfdis.find_one({'id': payment['cfdi_id']}, {'_id': 0, 'category_id': 1, 'subcategory_id': 1, 'uuid': 1, 'emisor_nombre': 1, 'receptor_nombre': 1})
+        if cfdi and cfdi.get('category_id'):
+            update_data = {
+                'category_id': cfdi.get('category_id'),
+                'subcategory_id': cfdi.get('subcategory_id'),
+                'cfdi_uuid': cfdi.get('uuid'),
+                'cfdi_emisor': cfdi.get('emisor_nombre'),
+                'cfdi_receptor': cfdi.get('receptor_nombre')
+            }
+            # Remove None values
+            update_data = {k: v for k, v in update_data.items() if v is not None}
+            
+            if update_data:
+                result = await db.payments.update_one(
+                    {'id': payment['id']},
+                    {'$set': update_data}
+                )
+                if result.modified_count > 0:
+                    updated_count += 1
+        else:
+            errors.append(f"Payment {payment['id']}: CFDI {payment['cfdi_id']} not found or has no category")
+    
+    await audit_log(company_id, 'Payment', 'BACKFILL', 'UPDATE', current_user['id'],
+                    {'updated_count': updated_count, 'total_checked': len(payments_to_update)})
+    
+    return {
+        'status': 'success',
+        'message': f'Se actualizaron {updated_count} de {len(payments_to_update)} pagos',
+        'updated_count': updated_count,
+        'total_checked': len(payments_to_update),
+        'errors': errors[:10] if errors else []  # Return first 10 errors
+    }
