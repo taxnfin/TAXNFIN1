@@ -7528,6 +7528,52 @@ async def get_week_transactions_detail(
         }
     }
 
+# ===== SUBCATEGORIES ENDPOINTS (for frontend compatibility) =====
+@api_router.post("/subcategories")
+async def create_subcategory_direct(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Create a new subcategory"""
+    company_id = await get_active_company_id(request, current_user)
+    data = await request.json()
+    
+    # Validate category exists
+    category = await db.categories.find_one({'id': data.get('category_id'), 'company_id': company_id}, {'_id': 0})
+    if not category:
+        raise HTTPException(status_code=404, detail="Categoría no encontrada")
+    
+    subcategory_doc = {
+        'id': str(uuid.uuid4()),
+        'company_id': company_id,
+        'category_id': data.get('category_id'),
+        'nombre': data.get('nombre'),
+        'descripcion': data.get('descripcion', ''),
+        'activo': True,
+        'created_at': datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.subcategories.insert_one(subcategory_doc)
+    
+    return {
+        'id': subcategory_doc['id'],
+        'nombre': subcategory_doc['nombre'],
+        'category_id': subcategory_doc['category_id'],
+        'activo': True
+    }
+
+@api_router.delete("/subcategories/{subcategory_id}")
+async def delete_subcategory_direct(subcategory_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
+    """Delete a subcategory (soft delete)"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    result = await db.subcategories.update_one(
+        {'id': subcategory_id, 'company_id': company_id},
+        {'$set': {'activo': False}}
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Subcategoría no encontrada")
+    
+    return {'status': 'success', 'message': 'Subcategoría eliminada'}
+
 app.include_router(api_router)
 
 app.add_middleware(
