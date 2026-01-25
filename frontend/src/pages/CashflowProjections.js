@@ -868,11 +868,17 @@ const CashflowProjections = () => {
                     </TableRow>
                     
                     {/* Ingresos by Category - Show "Cobranza" or category name, also show "Sin categoría" */}
+                    {/* Exclude "Compra de USD" category as it's shown separately */}
                     {(() => {
                       // Collect all unique category names from ingresos including "Sin categoría"
                       const allIngresoCategories = new Set();
                       weeklyData.forEach(w => {
-                        Object.keys(w.ingresos.byCategory).forEach(cat => allIngresoCategories.add(cat));
+                        Object.keys(w.ingresos.byCategory).forEach(cat => {
+                          // Exclude USD operations from INGRESOS section
+                          if (!cat.toLowerCase().includes('compra de usd') && !cat.toLowerCase().includes('compra usd')) {
+                            allIngresoCategories.add(cat);
+                          }
+                        });
                       });
                       
                       return Array.from(allIngresoCategories).map(categoryName => {
