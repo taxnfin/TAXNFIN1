@@ -33,6 +33,7 @@ from routes.companies import router as companies_router
 from routes.categories import router as categories_router
 from routes.vendors import router as vendors_router
 from routes.customers import router as customers_router
+from routes.bank_accounts import router as bank_accounts_router
 
 # Include modular routers in api_router
 api_router.include_router(auth_router)
@@ -40,6 +41,7 @@ api_router.include_router(companies_router)
 api_router.include_router(categories_router)
 api_router.include_router(vendors_router)
 api_router.include_router(customers_router)
+api_router.include_router(bank_accounts_router)
 
 JWT_SECRET = os.environ.get('JWT_SECRET', 'taxnfin-secret-key-change-in-production')
 JWT_ALGORITHM = 'HS256'
