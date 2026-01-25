@@ -525,31 +525,54 @@ const CashflowProjections = () => {
         .filter(c => c.tipo === 'egreso' && (c.semana === idx + 1 || c.recurrente))
         .reduce((sum, c) => sum + c.monto, 0);
       
-      // For past/current weeks with real payment data, use real data
-      // Otherwise use CFDI-based projections
-      let totalIngresos, totalEgresos;
-      let isRealData = false;
-      
       // Get USD operations for this week
       const compraUSD = week.compraUSD || 0;
       const ventaUSD = week.ventaUSD || 0;
       
-      if ((week.isPast || week.isCurrent) && (week.ingresosReales > 0 || week.egresosReales > 0 || compraUSD > 0 || ventaUSD > 0)) {
-        // Use REAL payment data for past weeks
-        totalIngresos = week.ingresosReales + customIngresos;
-        totalEgresos = week.egresosReales + customEgresos;
-        isRealData = true;
+      // Calculate CFDI-based projections
+      const ingresosCFDI = week.ingresos.total || 0;
+      const egresosCFDI = week.egresos.total || 0;
+      
+      // Get real payment data for past/current weeks
+      const ingresosReales = week.ingresosReales || 0;
+      const egresosReales = week.egresosReales || 0;
+      
+      // For display and drill-down, we need to show breakdown:
+      // Past weeks: Real + CFDI (if different)
+      // Future weeks: Only CFDI projections
+      let totalIngresos, totalEgresos;
+      let isRealData = false;
+      let cobrosRealesSinCFDI = 0;
+      let pagosRealesSinCFDI = 0;
+      
+      if (week.isPast || week.isCurrent) {
+        // For past weeks, use REAL data as the main source
+        // But identify what's "extra" (cobros sin CFDI asociado)
+        if (ingresosReales > 0 || egresosReales > 0 || compraUSD > 0 || ventaUSD > 0) {
+          isRealData = true;
+          // Calculate difference between real and CFDI
+          cobrosRealesSinCFDI = Math.max(0, ingresosReales - ingresosCFDI);
+          pagosRealesSinCFDI = Math.max(0, egresosReales - egresosCFDI);
+          
+          // INGRESOS = MAX of (real, cfdi projections) to ensure we don't double count
+          // If real > cfdi: use real (which includes additional deposits)
+          // If cfdi > real: use cfdi (which includes pending invoices)
+          totalIngresos = Math.max(ingresosReales, ingresosCFDI) + customIngresos;
+          totalEgresos = Math.max(egresosReales, egresosCFDI) + customEgresos;
+        } else {
+          // No real data, fall back to CFDI
+          totalIngresos = ingresosCFDI + customIngresos;
+          totalEgresos = egresosCFDI + customEgresos;
+        }
       } else {
-        // Use CFDI projections for future weeks or weeks without real data
-        totalIngresos = week.ingresos.total + customIngresos;
-        totalEgresos = week.egresos.total + customEgresos;
+        // Future weeks: use CFDI projections
+        totalIngresos = ingresosCFDI + customIngresos;
+        totalEgresos = egresosCFDI + customEgresos;
       }
       
       // Net cash flow from operations (excluding USD conversions)
-      // Compra USD: Money out (egreso) -> reduces cash
-      // Venta USD: Money in (ingreso) -> increases cash
       const flujoNetoOperativo = totalIngresos - totalEgresos;
-      const flujoDivisas = ventaUSD - compraUSD; // Net effect of USD operations
+      const flujoDivisas = ventaUSD - compraUSD;
       const flujoNeto = flujoNetoOperativo + flujoDivisas;
       const saldoFinal = saldoInicial + flujoNeto;
       
@@ -558,13 +581,19 @@ const CashflowProjections = () => {
         ingresos: { 
           ...week.ingresos, 
           total: totalIngresos, 
+          cfdi: ingresosCFDI,
+          real: ingresosReales,
           custom: customIngresos,
+          cobrosRealesSinCFDI,
           isReal: isRealData 
         },
         egresos: { 
           ...week.egresos, 
           total: totalEgresos, 
+          cfdi: egresosCFDI,
+          real: egresosReales,
           custom: customEgresos,
+          pagosRealesSinCFDI,
           isReal: isRealData 
         },
         compraUSD,
