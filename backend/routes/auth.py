@@ -104,3 +104,108 @@ async def get_auth0_login_url_endpoint(redirect_uri: str = Query(...)):
         'login_url': login_url,
         'state': state
     }
+
+
+@router.post("/auth0/callback")
+async def auth0_callback(code: str = Form(...), redirect_uri: str = Form(...)):
+    """Exchange Auth0 authorization code for tokens and create/update local user"""
+    from auth0_service import exchange_code_for_tokens, get_auth0_service
+    import uuid
+    import jwt
+    from datetime import timedelta
+    
+    # Get JWT config from environment
+    import os
+    JWT_SECRET = os.environ.get('JWT_SECRET', 'taxnfin-secret-key-change-in-production')
+    
+    service = get_auth0_service()
+    if not service.is_configured():
+        raise HTTPException(status_code=400, detail="Auth0 no está configurado")
+    
+    try:
+        # Exchange code for tokens
+        tokens = await exchange_code_for_tokens(code, redirect_uri)
+        access_token = tokens.get('access_token')
+        id_token = tokens.get('id_token')
+        
+        # Get user info
+        user_info = await service.get_user_info(access_token)
+        auth0_id = user_info.get('sub')
+        email = user_info.get('email')
+        name = user_info.get('name', email.split('@')[0] if email else 'Usuario')
+        
+        # Look for existing user
+        existing_user = await db.users.find_one(
+            {'$or': [{'auth0_id': auth0_id}, {'email': email}]},
+            {'_id': 0}
+        )
+        
+        if existing_user:
+            # Update existing user with Auth0 info
+            await db.users.update_one(
+                {'id': existing_user['id']},
+                {'$set': {
+                    'auth0_id': auth0_id,
+                    'auth0_last_login': datetime.now(timezone.utc).isoformat()
+                }}
+            )
+            user = existing_user
+        else:
+            # Create new user
+            user_id = str(uuid.uuid4())
+            new_user = {
+                'id': user_id,
+                'email': email,
+                'nombre': name,
+                'password_hash': '',  # No password for Auth0 users
+                'rol': 'user',
+                'activo': True,
+                'auth0_id': auth0_id,
+                'auth0_last_login': datetime.now(timezone.utc).isoformat(),
+                'created_at': datetime.now(timezone.utc).isoformat()
+            }
+            await db.users.insert_one(new_user)
+            user = new_user
+        
+        # Generate internal JWT token
+        internal_token = jwt.encode(
+            {
+                'user_id': user['id'],
+                'email': user['email'],
+                'auth_method': 'auth0',
+                'exp': datetime.now(timezone.utc) + timedelta(days=7)
+            },
+            JWT_SECRET,
+            algorithm='HS256'
+        )
+        
+        return {
+            'access_token': internal_token,
+            'auth0_token': access_token,
+            'user': {
+                'id': user['id'],
+                'email': user['email'],
+                'nombre': user.get('nombre', name),
+                'rol': user.get('rol', 'user')
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error en autenticación Auth0: {str(e)}")
+
+
+@router.post("/auth0/verify")
+async def verify_auth0_token(token: str = Form(...)):
+    """Verify an Auth0 token"""
+    from auth0_service import get_auth0_service
+    
+    service = get_auth0_service()
+    if not service.is_configured():
+        raise HTTPException(status_code=400, detail="Auth0 no está configurado")
+    
+    result = await service.verify_token(token)
+    
+    if not result.get('valid'):
+        raise HTTPException(status_code=401, detail=result.get('error', 'Token inválido'))
+    
+    return result
