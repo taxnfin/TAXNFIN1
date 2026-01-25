@@ -15,10 +15,29 @@ logger = logging.getLogger(__name__)
 
 @router.post("", response_model=Payment)
 async def create_payment(payment_data: PaymentCreate, request: Request, current_user: Dict = Depends(get_current_user)):
-    """Create a new payment with automatic CFDI amount updates"""
+    """Create a new payment with automatic CFDI amount updates and category inheritance"""
     company_id = await get_active_company_id(request, current_user)
     payment = Payment(company_id=company_id, **payment_data.model_dump())
     doc = payment.model_dump()
+    
+    # If linked to a CFDI, INHERIT category, subcategory, and UUID from the CFDI
+    if doc.get('cfdi_id'):
+        cfdi = await db.cfdis.find_one({'id': doc['cfdi_id']}, {'_id': 0})
+        if cfdi:
+            # Inherit category and subcategory from CFDI if not already set
+            if not doc.get('category_id') and cfdi.get('category_id'):
+                doc['category_id'] = cfdi['category_id']
+            if not doc.get('subcategory_id') and cfdi.get('subcategory_id'):
+                doc['subcategory_id'] = cfdi['subcategory_id']
+            # Store CFDI UUID for reference
+            if cfdi.get('uuid'):
+                doc['cfdi_uuid'] = cfdi['uuid']
+            # Set emisor/receptor info
+            if cfdi.get('emisor_nombre'):
+                doc['cfdi_emisor'] = cfdi['emisor_nombre']
+            if cfdi.get('receptor_nombre'):
+                doc['cfdi_receptor'] = cfdi['receptor_nombre']
+            logger.info(f"Payment inheriting from CFDI {doc['cfdi_id']}: cat={doc.get('category_id')}, subcat={doc.get('subcategory_id')}")
     
     # Automatically capture historical exchange rate for non-MXN currencies
     if doc.get('moneda') and doc['moneda'] != 'MXN' and not doc.get('tipo_cambio_historico'):
