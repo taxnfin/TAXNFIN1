@@ -589,7 +589,10 @@ const CashflowProjections = () => {
   const customConceptsEgresos = customConcepts.filter(c => c.tipo === 'egreso');
   const grandTotalIngresos = weeklyTotals.reduce((sum, w) => sum + w.ingresos.total, 0);
   const grandTotalEgresos = weeklyTotals.reduce((sum, w) => sum + w.egresos.total, 0);
-  const grandTotalFlujo = grandTotalIngresos - grandTotalEgresos;
+  const grandTotalCompraUSD = weeklyTotals.reduce((sum, w) => sum + (w.compraUSD || 0), 0);
+  const grandTotalVentaUSD = weeklyTotals.reduce((sum, w) => sum + (w.ventaUSD || 0), 0);
+  const grandTotalFlujoDivisas = grandTotalVentaUSD - grandTotalCompraUSD;
+  const grandTotalFlujo = grandTotalIngresos - grandTotalEgresos + grandTotalFlujoDivisas;
 
   return (
     <div className="p-6 space-y-6 bg-[#F8FAFC] min-h-screen" data-testid="cashflow-projections-page">
