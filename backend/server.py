@@ -4072,21 +4072,35 @@ async def update_cfdi_notes(cfdi_id: str, request: Request, current_user: Dict =
 @api_router.get("/diot/preview")
 async def get_diot_preview(request: Request, current_user: Dict = Depends(get_current_user), fecha_desde: str = None, fecha_hasta: str = None):
     """
-    Get DIOT data preview - ONLY PAID EGRESO CFDIs
+    Get DIOT data preview - ONLY PAID EGRESO CFDIs WITH IVA ACREDITABLE
     
-    IMPORTANT: DIOT only includes CFDIs that have been PAID (pagados).
-    A CFDI is considered paid when:
-    1. It has a payment record with estatus='completado', OR
-    2. It has been reconciled with a bank transaction (conciliado)
+    IMPORTANT: DIOT only includes CFDIs that:
+    1. Are type 'egreso' (expenses)
+    2. Have been PAID (pagados) - via payment record or bank reconciliation
+    3. Generate IVA acreditable (IVA > 0)
+    
+    EXCLUSIONS (per SAT rules):
+    - Nómina (uso_cfdi = 'CN01' or tipo_comprobante = 'N')
+    - CFDIs with no IVA (no IVA acreditable to report)
+    - Sueldos y salarios
+    - Asimilados a salarios
     
     The date filter is based on PAYMENT DATE, not emission date.
     """
     company_id = await get_active_company_id(request, current_user)
     
-    # Get all EGRESO CFDIs (we'll filter by payment date later)
+    # Get all EGRESO CFDIs EXCLUDING NOMINA and non-IVA items
+    # DIOT exclusions: CN01 (sin efectos fiscales/nómina), tipo_comprobante='N' (nómina)
     cfdi_query = {
         'company_id': company_id,
-        'tipo_cfdi': 'egreso'
+        'tipo_cfdi': 'egreso',
+        # Exclude nómina and non-deductible items
+        'uso_cfdi': {'$nin': ['CN01', 'CP01', 'D01', 'D02', 'D03', 'D04', 'D05', 'D06', 'D07', 'D08', 'D09', 'D10']},
+        # Must have IVA acreditable
+        '$or': [
+            {'impuestos': {'$gt': 0}},
+            {'iva_trasladado': {'$gt': 0}}
+        ]
     }
     cfdis = await db.cfdis.find(cfdi_query, {'_id': 0}).to_list(10000)
     
