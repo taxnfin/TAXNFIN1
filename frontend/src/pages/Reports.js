@@ -303,13 +303,10 @@ const Reports = () => {
                       <TableCell className="mono font-bold">{week.label}</TableCell>
                       <TableCell className="text-xs">{week.dateRange}</TableCell>
                       <TableCell className="text-center">
-                        {week.isPast && !week.isCurrent && (
-                          <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-800">Real</span>
-                        )}
                         {week.isCurrent && (
-                          <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 text-blue-800">Actual</span>
+                          <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 text-blue-800 font-semibold">Actual</span>
                         )}
-                        {!week.isPast && !week.isCurrent && (
+                        {week.isFuture && (
                           <span className="px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-600">Proy</span>
                         )}
                       </TableCell>
