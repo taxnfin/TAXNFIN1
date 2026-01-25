@@ -65,6 +65,7 @@ const PaymentsModule = () => {
   // States for clients/vendors and invoices
   const [customers, setCustomers] = useState([]);
   const [vendors, setVendors] = useState([]);
+  const [categories, setCategories] = useState([]); // For export with category names
   const [pendingCfdis, setPendingCfdis] = useState([]);
   const [selectedParty, setSelectedParty] = useState('');
   const [selectedCfdis, setSelectedCfdis] = useState([]); // Multiple selection
