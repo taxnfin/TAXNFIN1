@@ -558,7 +558,7 @@ const PaymentsModule = () => {
       ...p,
       bank_account_name: bankAccounts.find(b => b.id === p.bank_account_id)?.nombre || ''
     }));
-    const success = exportPayments(enrichedPayments, fxRates);
+    const success = exportPayments(enrichedPayments, fxRates, categories);
     if (success) {
       toast.success(`${payments.length} pagos exportados a Excel`);
     } else {
