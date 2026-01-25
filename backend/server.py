@@ -3343,7 +3343,7 @@ async def mark_reconciliation_without_uuid(
         'moneda': moneda,
         'metodo_pago': 'transferencia',
         'fecha_vencimiento': txn.get('fecha_movimiento'),
-        'fecha_pago': datetime.now(timezone.utc).isoformat(),
+        'fecha_pago': txn.get('fecha_movimiento'),  # Use bank transaction date, NOT current date
         'estatus': 'completado',
         'referencia': txn.get('referencia', ''),
         'beneficiario': txn.get('merchant_name') or '',
