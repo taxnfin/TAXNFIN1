@@ -210,7 +210,10 @@ const CashflowProjections = () => {
         egresos: { total: 0, byCategory: {}, byCfdi: [] },
         // Track real payments separately
         ingresosReales: 0,
-        egresosReales: 0
+        egresosReales: 0,
+        // Separate tracking for USD buy/sell operations
+        compraUSD: 0,
+        ventaUSD: 0
       });
     }
     
