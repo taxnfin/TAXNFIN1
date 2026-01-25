@@ -3935,6 +3935,15 @@ async def create_payment_from_bank_with_cfdi_match(
     if txn.get('conciliado'):
         raise HTTPException(status_code=400, detail="Este movimiento ya está conciliado")
     
+    # Check if payment already exists for this bank transaction (prevent duplicates)
+    existing_payment = await db.payments.find_one({
+        'company_id': company_id,
+        'bank_transaction_id': bank_transaction_id
+    }, {'_id': 0, 'id': 1})
+    
+    if existing_payment:
+        raise HTTPException(status_code=400, detail="Ya existe un pago para este movimiento bancario")
+    
     # Get bank account info
     bank_account = await db.bank_accounts.find_one({'id': txn.get('bank_account_id')}, {'_id': 0})
     moneda = txn.get('moneda') or (bank_account.get('moneda') if bank_account else 'MXN')
