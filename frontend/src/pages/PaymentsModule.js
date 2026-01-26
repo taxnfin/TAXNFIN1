@@ -141,18 +141,56 @@ const PaymentsModule = () => {
 
   const loadData = async () => {
     try {
-      let url = '/payments?limit=100';
+      // Use the new endpoint that includes real reconciliation status
+      let url = '/payments/with-reconciliation-status?limit=100';
       if (filterTipo !== 'all') url += `&tipo=${filterTipo}`;
-      if (filterEstatus !== 'all') url += `&estatus=${filterEstatus}`;
-      if (filterFechaDesde) url += `&fecha_desde=${filterFechaDesde}`;
-      if (filterFechaHasta) url += `&fecha_hasta=${filterFechaHasta}`;
       
-      const [paymentsRes, summaryRes, breakdownRes] = await Promise.all([
+      const [paymentsRes, summaryRes, breakdownRes, bankTxnsRes] = await Promise.all([
         api.get(url),
         api.get('/payments/summary'),
-        api.get('/payments/breakdown')
+        api.get('/payments/breakdown'),
+        api.get('/bank-transactions?limit=500')
       ]);
-      setPayments(paymentsRes.data);
+      
+      // Build set of reconciled bank transaction IDs
+      const bankTxns = bankTxnsRes.data || [];
+      const reconciledTxnIds = new Set(bankTxns.filter(t => t.conciliado === true).map(t => t.id));
+      
+      // Filter payments based on actual reconciliation status
+      let filteredPayments = paymentsRes.data;
+      
+      // Apply status filter based on REAL status (estado_real), not stored estatus
+      if (filterEstatus !== 'all') {
+        filteredPayments = filteredPayments.filter(p => {
+          const realStatus = p.estado_real || p.estatus;
+          return realStatus === filterEstatus;
+        });
+      }
+      
+      // Apply es_real filter
+      if (filterEsReal !== 'all') {
+        filteredPayments = filteredPayments.filter(p => {
+          if (filterEsReal === 'real') return p.es_real === true;
+          if (filterEsReal === 'proyeccion') return p.es_real === false;
+          return true;
+        });
+      }
+      
+      // Apply date filters
+      if (filterFechaDesde) {
+        filteredPayments = filteredPayments.filter(p => {
+          const fecha = p.fecha_vencimiento || p.fecha_pago;
+          return fecha && new Date(fecha) >= new Date(filterFechaDesde);
+        });
+      }
+      if (filterFechaHasta) {
+        filteredPayments = filteredPayments.filter(p => {
+          const fecha = p.fecha_vencimiento || p.fecha_pago;
+          return fecha && new Date(fecha) <= new Date(filterFechaHasta);
+        });
+      }
+      
+      setPayments(filteredPayments);
       setSummary(summaryRes.data);
       setBreakdown(breakdownRes.data);
     } catch (error) {
