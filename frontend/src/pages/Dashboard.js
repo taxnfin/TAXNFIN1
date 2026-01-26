@@ -193,6 +193,8 @@ const Dashboard = () => {
   const burnRate = dashboardData?.burn_rate || 0;
   const runwayWeeks = dashboardData?.runway_weeks;
   const criticalWeek = dashboardData?.critical_week;
+  const filteredAccount = dashboardData?.filtered_account;
+  const displayCurrency = dashboardData?.moneda_vista || viewCurrency;
   const cobranzaVsPagos = dashboardData?.cobranza_vs_pagos || 100;
   const totalIngresos = dashboardData?.total_ingresos || 0;
   const totalEgresos = dashboardData?.total_egresos || 0;
