@@ -478,3 +478,48 @@ async def get_payments_with_reconciliation_status(
                 p[field] = datetime.fromisoformat(p[field])
     
     return payments
+
+
+@router.post("/cleanup-duplicates")
+async def cleanup_duplicate_payments(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Remove duplicate payments that reference the same bank_transaction_id.
+    Keeps only the first (oldest) payment for each bank transaction.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get all payments with bank_transaction_id
+    payments = await db.payments.find(
+        {'company_id': company_id, 'bank_transaction_id': {'$ne': None}},
+        {'_id': 0}
+    ).sort('created_at', 1).to_list(10000)  # Sort by created_at to keep oldest
+    
+    # Group by bank_transaction_id
+    from collections import defaultdict
+    grouped = defaultdict(list)
+    for p in payments:
+        bank_txn_id = p.get('bank_transaction_id')
+        if bank_txn_id:
+            grouped[bank_txn_id].append(p)
+    
+    # Find and delete duplicates (keep first, delete rest)
+    deleted_count = 0
+    deleted_ids = []
+    
+    for bank_txn_id, payment_list in grouped.items():
+        if len(payment_list) > 1:
+            # Keep the first one (oldest by created_at), delete the rest
+            to_delete = payment_list[1:]  # All except first
+            for p in to_delete:
+                await db.payments.delete_one({'id': p['id']})
+                deleted_ids.append(p['id'])
+                deleted_count += 1
+                logger.info(f"Deleted duplicate payment {p['id']} for bank_txn {bank_txn_id}")
+    
+    return {
+        'status': 'success',
+        'message': f'Limpieza completada. {deleted_count} pagos duplicados eliminados.',
+        'deleted_count': deleted_count,
+        'deleted_ids': deleted_ids[:20]  # Show first 20 for reference
+    }
+
