@@ -7070,22 +7070,53 @@ async def get_dashboard_from_payments(
         cash_pool[moneda]['total'] += saldo
         cash_pool[moneda]['cuentas'] += 1
     
-    # Build bank accounts detail
+    # Calculate movements per account for current month
+    # Group payments by bank account to calculate saldo_final
+    account_movements = {}
+    for p in payments:
+        bank_txn_id = p.get('bank_transaction_id')
+        if bank_txn_id:
+            acc_id = bank_txn_to_account.get(bank_txn_id)
+            if acc_id:
+                if acc_id not in account_movements:
+                    account_movements[acc_id] = {'ingresos': 0, 'egresos': 0, 'count': 0}
+                if p.get('tipo') == 'cobro':
+                    account_movements[acc_id]['ingresos'] += p.get('monto', 0)
+                else:
+                    account_movements[acc_id]['egresos'] += p.get('monto', 0)
+                account_movements[acc_id]['count'] += 1
+    
+    # Build bank accounts detail with calculated saldo_final
     bank_accounts_detail = []
     for acc in accounts:
-        saldo = acc.get('saldo_inicial', 0) or 0
+        saldo_inicial = acc.get('saldo_inicial', 0) or 0
         moneda = acc.get('moneda', 'MXN')
-        saldo_mxn = convert_to_mxn(saldo, moneda)
+        acc_id = acc.get('id')
+        
+        # Get movements for this account
+        movements = account_movements.get(acc_id, {'ingresos': 0, 'egresos': 0, 'count': 0})
+        
+        # Calculate saldo_final = saldo_inicial + ingresos - egresos
+        saldo_final = saldo_inicial + movements['ingresos'] - movements['egresos']
+        
+        saldo_inicial_mxn = convert_to_mxn(saldo_inicial, moneda)
+        saldo_final_mxn = convert_to_mxn(saldo_final, moneda)
+        
         bank_accounts_detail.append({
-            'id': acc.get('id'),
+            'id': acc_id,
             'nombre': acc.get('nombre'),
             'banco': acc.get('banco'),
             'numero_cuenta': acc.get('numero_cuenta'),
             'moneda': moneda,
-            'saldo': saldo,
-            'saldo_mxn': saldo_mxn,
-            'saldo_display': round(to_display_currency(saldo_mxn), 2),
-            'riesgo': 'bajo' if saldo_mxn > 50000 else 'medio' if saldo_mxn > 10000 else 'alto'
+            'saldo_inicial': saldo_inicial,
+            'saldo_final': round(saldo_final, 2),
+            'saldo_inicial_mxn': saldo_inicial_mxn,
+            'saldo_final_mxn': saldo_final_mxn,
+            'saldo_display': round(to_display_currency(saldo_final_mxn), 2),
+            'ingresos': round(movements['ingresos'], 2),
+            'egresos': round(movements['egresos'], 2),
+            'num_movimientos': movements['count'],
+            'riesgo': 'bajo' if saldo_final_mxn > 50000 else 'medio' if saldo_final_mxn > 10000 else 'alto'
         })
     
     # Convert weeks data to display currency
