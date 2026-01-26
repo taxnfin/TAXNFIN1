@@ -351,6 +351,9 @@ const PaymentsModule = () => {
     try {
       let createdPaymentId = null;
       
+      // Determine the exchange rate to use
+      const tcToUse = (useCustomTc && customTc) ? parseFloat(customTc) : (fxRates[formData.moneda] || 1);
+      
       // Create payment for each selected CFDI or single payment
       if (selectedCfdis.length > 0 && !useCustomAmount) {
         // Create individual payments for each CFDI
@@ -359,6 +362,8 @@ const PaymentsModule = () => {
             ...formData,
             cfdi_id: cfdi.id,
             monto: cfdi.saldo_pendiente,
+            tipo_cambio_historico: formData.moneda !== 'MXN' ? tcToUse : null,
+            monto_mxn: formData.moneda !== 'MXN' ? cfdi.saldo_pendiente * tcToUse : cfdi.saldo_pendiente,
             concepto: `Pago factura ${cfdi.uuid?.substring(0, 8)}...`,
             referencia: cfdi.uuid
           });
@@ -367,14 +372,21 @@ const PaymentsModule = () => {
         toast.success(`${selectedCfdis.length} pago(s) registrado(s)`);
       } else {
         // Single payment with custom or total amount
+        const monto = parseFloat(formData.monto);
         const res = await api.post('/payments', {
           ...formData,
           cfdi_id: selectedCfdis.length === 1 ? selectedCfdis[0].id : null,
-          monto: parseFloat(formData.monto)
+          monto: monto,
+          tipo_cambio_historico: formData.moneda !== 'MXN' ? tcToUse : null,
+          monto_mxn: formData.moneda !== 'MXN' ? monto * tcToUse : monto
         });
         createdPaymentId = res.data.id;
         toast.success('Pago registrado');
       }
+      
+      // Reset custom TC after creating payment
+      setUseCustomTc(false);
+      setCustomTc('');
       
       setDialogOpen(false);
       loadData();
