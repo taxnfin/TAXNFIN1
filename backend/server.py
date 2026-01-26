@@ -6927,21 +6927,42 @@ async def get_dashboard_from_payments(
         return convert_from_mxn(amount_mxn, moneda_vista)
     
     # Get bank account balances - use saldo_inicial like bank-accounts/summary does
-    accounts = await db.bank_accounts.find({'company_id': company_id}, {'_id': 0}).to_list(50)
+    accounts_query = {'company_id': company_id}
+    if bank_account_id:
+        accounts_query['id'] = bank_account_id
+    
+    accounts = await db.bank_accounts.find(accounts_query, {'_id': 0}).to_list(50)
+    
+    # Calculate initial balance
     saldo_bancos_mxn = 0
+    selected_account_moneda = 'MXN'
+    selected_account_saldo = 0
+    
     for acc in accounts:
         saldo = acc.get('saldo_inicial', 0) or 0
         moneda = acc.get('moneda', 'MXN')
         saldo_bancos_mxn += convert_to_mxn(saldo, moneda)
+        if bank_account_id and acc.get('id') == bank_account_id:
+            selected_account_moneda = moneda
+            selected_account_saldo = saldo
     
-    # Get all completed payments with reconciled bank transactions
-    bank_txns = await db.bank_transactions.find({'company_id': company_id}, {'_id': 0}).to_list(5000)
+    # Get all bank transactions
+    bank_txns_query = {'company_id': company_id}
+    if bank_account_id:
+        bank_txns_query['bank_account_id'] = bank_account_id
+    
+    bank_txns = await db.bank_transactions.find(bank_txns_query, {'_id': 0}).to_list(5000)
     reconciled_ids = set(t['id'] for t in bank_txns if t.get('conciliado') == True)
+    bank_txn_to_account = {t['id']: t.get('bank_account_id') for t in bank_txns}
     
     all_payments = await db.payments.find({'company_id': company_id, 'estatus': 'completado'}, {'_id': 0}).to_list(5000)
     
     # Filter to valid payments (reconciled or without bank_transaction_id)
     payments = [p for p in all_payments if not p.get('bank_transaction_id') or p.get('bank_transaction_id') in reconciled_ids]
+    
+    # If filtering by bank account, only include payments for that account
+    if bank_account_id:
+        payments = [p for p in payments if p.get('bank_transaction_id') and bank_txn_to_account.get(p['bank_transaction_id']) == bank_account_id]
     
     # Get categories for USD operations
     categories = await db.categories.find({'company_id': company_id}, {'_id': 0}).to_list(100)
