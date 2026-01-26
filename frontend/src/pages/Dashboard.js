@@ -181,7 +181,7 @@ const Dashboard = () => {
   const totalEgresos = dashboardData?.total_egresos || 0;
   
   // Calculate trend from weekly data
-  const recentWeeks = weeklyData.filter(w => w.is_past || w.is_current).slice(-4);
+  const recentWeeks = chartData.filter(w => w.is_past || w.is_current).slice(-4);
   const trend = recentWeeks.length >= 2 ? {
     direction: recentWeeks[recentWeeks.length - 1].flujo_neto > recentWeeks[0].flujo_neto ? 'up' : 
                recentWeeks[recentWeeks.length - 1].flujo_neto < recentWeeks[0].flujo_neto ? 'down' : 'stable',
@@ -191,7 +191,7 @@ const Dashboard = () => {
   const risks = {
     liquidez_critica: saldoFinalProyectado < 50000,
     tendencia_negativa: trend.direction === 'down' && trend.avg_flow_4w < 0,
-    semanas_con_deficit: weeklyData.filter(w => w.saldo_final < 0).length
+    semanas_con_deficit: chartData.filter(w => w.saldo_final < 0).length
   };
   const accounts = dashboardData?.bank_accounts || [];
 
