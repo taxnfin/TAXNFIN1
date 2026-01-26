@@ -7027,6 +7027,33 @@ async def get_dashboard_from_payments(
             critical_week = w['week_label']
             break
     
+    # Build cash pool by currency
+    cash_pool = {}
+    for acc in accounts:
+        moneda = acc.get('moneda', 'MXN')
+        saldo = acc.get('saldo_inicial', 0) or 0
+        if moneda not in cash_pool:
+            cash_pool[moneda] = {'total': 0, 'cuentas': 0}
+        cash_pool[moneda]['total'] += saldo
+        cash_pool[moneda]['cuentas'] += 1
+    
+    # Build bank accounts detail
+    bank_accounts_detail = []
+    for acc in accounts:
+        saldo = acc.get('saldo_inicial', 0) or 0
+        moneda = acc.get('moneda', 'MXN')
+        saldo_mxn = convert_to_mxn(saldo, moneda)
+        bank_accounts_detail.append({
+            'id': acc.get('id'),
+            'nombre': acc.get('nombre'),
+            'banco': acc.get('banco'),
+            'numero_cuenta': acc.get('numero_cuenta'),
+            'moneda': moneda,
+            'saldo': saldo,
+            'saldo_mxn': saldo_mxn,
+            'riesgo': 'bajo' if saldo_mxn > 50000 else 'medio' if saldo_mxn > 10000 else 'alto'
+        })
+    
     return {
         'moneda_vista': moneda_vista,
         'saldo_bancos': round(saldo_bancos_mxn, 2),
@@ -7038,6 +7065,8 @@ async def get_dashboard_from_payments(
         'critical_week': critical_week,
         'cobranza_vs_pagos': round((total_ingresos / total_egresos * 100), 1) if total_egresos > 0 else 100,
         'weeks': weeks_data,
+        'cash_pool': cash_pool,
+        'bank_accounts': bank_accounts_detail,
         'kpis': {
             'total_payments': len(payments),
             'total_cfdis': await db.cfdis.count_documents({'company_id': company_id}),
