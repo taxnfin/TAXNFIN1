@@ -1434,9 +1434,19 @@ const PaymentsModule = () => {
                       {payment.tipo === 'cobro' ? '+' : '-'}${payment.monto.toLocaleString('es-MX', {minimumFractionDigits: 2})} {payment.moneda}
                     </TableCell>
                     <TableCell>
-                      <span className={`text-xs px-2 py-1 rounded ${PAYMENT_STATUS[payment.estatus]?.color || 'bg-gray-100'}`}>
-                        {PAYMENT_STATUS[payment.estatus]?.label || payment.estatus}
-                      </span>
+                      {/* Use estado_real (computed from bank transaction) if available */}
+                      {(() => {
+                        const realStatus = payment.estado_real || payment.estatus;
+                        const statusConfig = PAYMENT_STATUS[realStatus] || PAYMENT_STATUS.pendiente;
+                        return (
+                          <span className={`text-xs px-2 py-1 rounded ${statusConfig.color}`}>
+                            {statusConfig.label}
+                            {payment.conciliacion_real === false && payment.bank_transaction_id && (
+                              <span className="ml-1 text-orange-600" title="Transacción bancaria pendiente de conciliar">⚠</span>
+                            )}
+                          </span>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -1458,7 +1468,7 @@ const PaymentsModule = () => {
                         >
                           <Edit size={16} />
                         </Button>
-                        {payment.estatus === 'pendiente' && (
+                        {(payment.estado_real || payment.estatus) === 'pendiente' && (
                           <Button
                             variant="ghost"
                             size="sm"
