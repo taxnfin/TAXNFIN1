@@ -379,3 +379,102 @@ async def categorize_payment_direct(
         await audit_log(company_id, 'Payment', payment_id, 'CATEGORIZE', current_user['id'], update_data)
     
     return {'status': 'success', 'message': 'Pago categorizado correctamente'}
+
+
+
+@router.post("/sync-reconciliation-status")
+async def sync_reconciliation_status(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Synchronize payment status with bank transaction reconciliation status.
+    If a payment has a bank_transaction_id pointing to a non-reconciled transaction,
+    the payment status should be 'pendiente', not 'completado'.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get all bank transactions and build a set of truly reconciled IDs
+    bank_txns = await db.bank_transactions.find({'company_id': company_id}, {'_id': 0}).to_list(5000)
+    reconciled_txn_ids = set(t['id'] for t in bank_txns if t.get('conciliado') == True)
+    
+    # Find all payments with bank_transaction_id
+    payments = await db.payments.find({'company_id': company_id, 'bank_transaction_id': {'$ne': None}}, {'_id': 0}).to_list(5000)
+    
+    updated_count = 0
+    for payment in payments:
+        bank_txn_id = payment.get('bank_transaction_id')
+        current_status = payment.get('estatus')
+        
+        # If the bank transaction is NOT reconciled, payment should be 'pendiente'
+        if bank_txn_id and bank_txn_id not in reconciled_txn_ids:
+            if current_status == 'completado':
+                await db.payments.update_one(
+                    {'id': payment['id']},
+                    {'$set': {'estatus': 'pendiente'}}
+                )
+                updated_count += 1
+                logger.info(f"Payment {payment['id']} status changed from 'completado' to 'pendiente' (bank txn not reconciled)")
+        
+        # If the bank transaction IS reconciled, payment should be 'completado'
+        elif bank_txn_id and bank_txn_id in reconciled_txn_ids:
+            if current_status == 'pendiente':
+                await db.payments.update_one(
+                    {'id': payment['id']},
+                    {'$set': {'estatus': 'completado'}}
+                )
+                updated_count += 1
+                logger.info(f"Payment {payment['id']} status changed from 'pendiente' to 'completado' (bank txn reconciled)")
+    
+    return {
+        'status': 'success',
+        'message': f'Sincronización completada. {updated_count} pagos actualizados.',
+        'updated_count': updated_count
+    }
+
+
+@router.get("/with-reconciliation-status")
+async def get_payments_with_reconciliation_status(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    tipo: Optional[str] = Query(None),
+    limit: int = Query(100, le=1000)
+):
+    """
+    Get payments with their TRUE reconciliation status from bank transactions.
+    This includes a computed 'estado_real' field that reflects whether the
+    associated bank transaction is actually reconciled.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get all bank transactions for this company
+    bank_txns = await db.bank_transactions.find({'company_id': company_id}, {'_id': 0}).to_list(5000)
+    bank_txn_map = {t['id']: t for t in bank_txns}
+    
+    # Build query
+    query = {'company_id': company_id}
+    if tipo:
+        query['tipo'] = tipo
+    
+    payments = await db.payments.find(query, {'_id': 0}).sort('fecha_vencimiento', -1).limit(limit).to_list(limit)
+    
+    # Add computed 'estado_real' based on bank transaction status
+    for p in payments:
+        bank_txn_id = p.get('bank_transaction_id')
+        if bank_txn_id:
+            bank_txn = bank_txn_map.get(bank_txn_id)
+            if bank_txn:
+                p['estado_real'] = 'completado' if bank_txn.get('conciliado') == True else 'pendiente'
+                p['conciliacion_real'] = bank_txn.get('conciliado', False)
+            else:
+                # Bank transaction not found, mark as unknown
+                p['estado_real'] = 'desconocido'
+                p['conciliacion_real'] = False
+        else:
+            # No bank transaction linked, use payment's own status
+            p['estado_real'] = p.get('estatus', 'pendiente')
+            p['conciliacion_real'] = None  # Not applicable
+        
+        # Convert datetime fields
+        for field in ['fecha_vencimiento', 'fecha_pago', 'created_at']:
+            if isinstance(p.get(field), str):
+                p[field] = datetime.fromisoformat(p[field])
+    
+    return payments
