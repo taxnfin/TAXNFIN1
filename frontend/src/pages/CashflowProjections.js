@@ -364,6 +364,17 @@ const CashflowProjections = () => {
       // For past weeks, we already have real payment data
       if (week.isPast || week.isCurrent) return;
       
+      // Check if USD operation - SKIP projecting currency operations
+      // Currency operations (buy/sell USD) are spot transactions that settle immediately
+      // They should only appear when the bank transaction is reconciled (from payments data)
+      const isCompraUSD = cfdi.category_id === compraUSDId;
+      const isVentaUSD = cfdi.category_id === ventaUSDId;
+      
+      if (isCompraUSD || isVentaUSD) {
+        // Skip - currency operations should not be projected, only show when reconciled
+        return;
+      }
+      
       // Calculate pending amount
       const total = cfdi.total || 0;
       const pagado = cfdi.monto_pagado || 0;
@@ -384,19 +395,6 @@ const CashflowProjections = () => {
       const categoryName = category?.nombre || 'Sin categoría';
       const subcategoryInfo = subcategoryMap[cfdi.subcategory_id];
       const subcategoryName = subcategoryInfo?.nombre || null;
-      
-      // Check if USD operation
-      const isCompraUSD = cfdi.category_id === compraUSDId;
-      const isVentaUSD = cfdi.category_id === ventaUSDId;
-      
-      if (isCompraUSD) {
-        week.compraUSD += montoMXN;
-        return;
-      }
-      if (isVentaUSD) {
-        week.ventaUSD += montoMXN;
-        return;
-      }
       
       // Determine section
       const section = cfdi.tipo_cfdi === 'ingreso' ? week.ingresos : week.egresos;
