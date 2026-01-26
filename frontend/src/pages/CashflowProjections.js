@@ -78,7 +78,7 @@ const CashflowProjections = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes, fxRes, paymentsRes] = await Promise.all([
+      const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes, fxRes, paymentsRes, bankTxnsRes] = await Promise.all([
         api.get('/cfdi?limit=500'),
         api.get('/categories'),
         api.get('/customers'),
@@ -86,7 +86,8 @@ const CashflowProjections = () => {
         api.get('/bank-accounts/summary'),
         api.get('/manual-projections'),
         api.get('/fx-rates/latest'),
-        api.get('/payments')
+        api.get('/payments'),
+        api.get('/bank-transactions?limit=500')
       ]);
       
       setCfdis(cfdiRes.data);
@@ -105,8 +106,27 @@ const CashflowProjections = () => {
       // Load custom concepts from backend
       setCustomConcepts(conceptsRes.data || []);
       
-      // Store payments for use in processing
-      const payments = paymentsRes.data || [];
+      // Build set of truly conciliated bank transaction IDs
+      const bankTxns = bankTxnsRes.data || [];
+      const conciliatedBankTxnIds = new Set(
+        bankTxns.filter(t => t.conciliado === true).map(t => t.id)
+      );
+      
+      // Filter payments: only include those with TRULY conciliated bank transactions
+      // A payment is valid if:
+      // 1. It has no bank_transaction_id (manual payment without reconciliation)
+      // 2. OR its bank_transaction_id is in the set of conciliated transactions
+      const allPayments = paymentsRes.data || [];
+      const validPayments = allPayments.filter(p => {
+        if (!p.bank_transaction_id) return true; // Manual payment, include
+        return conciliatedBankTxnIds.has(p.bank_transaction_id); // Only if truly conciliated
+      });
+      
+      console.log(`=== FILTRO DE PAGOS ===`);
+      console.log(`Total pagos: ${allPayments.length}`);
+      console.log(`Pagos válidos (conciliados): ${validPayments.length}`);
+      console.log(`Pagos excluidos (txn pendiente): ${allPayments.length - validPayments.length}`);
+      
       const categoriesLoaded = catRes.data || [];
       
       // Get company config for week start day
@@ -116,14 +136,14 @@ const CashflowProjections = () => {
           const compRes = await api.get(`/companies/${companyId}`);
           const weekStart = compRes.data?.inicio_semana ?? 1;
           setCompanyConfig({ ...compRes.data, inicio_semana: weekStart });
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, payments);
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, validPayments);
           setWeeklyData(weeks);
         } catch {
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, payments);
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments);
           setWeeklyData(weeks);
         }
       } else {
-        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, payments);
+        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments);
         setWeeklyData(weeks);
       }
       
