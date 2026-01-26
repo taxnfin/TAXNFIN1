@@ -7062,16 +7062,30 @@ async def get_dashboard_from_payments(
             'moneda': moneda,
             'saldo': saldo,
             'saldo_mxn': saldo_mxn,
+            'saldo_display': round(to_display_currency(saldo_mxn), 2),
             'riesgo': 'bajo' if saldo_mxn > 50000 else 'medio' if saldo_mxn > 10000 else 'alto'
         })
     
+    # Convert weeks data to display currency
+    for week in weeks_data:
+        week['ingresos_display'] = round(to_display_currency(week['ingresos']), 2)
+        week['egresos_display'] = round(to_display_currency(week['egresos']), 2)
+        week['flujo_neto_display'] = round(to_display_currency(week['flujo_neto']), 2)
+        week['saldo_inicial_display'] = round(to_display_currency(week['saldo_inicial']), 2)
+        week['saldo_final_display'] = round(to_display_currency(week['saldo_final']), 2)
+        week['varianza_display'] = round(to_display_currency(week.get('varianza', 0)), 2)
+    
+    # Get FX rate for display
+    fx_rate_display = fx_map.get(moneda_vista, 1) if moneda_vista != 'MXN' else 1
+    
     return {
         'moneda_vista': moneda_vista,
-        'saldo_bancos': round(saldo_bancos_mxn, 2),
-        'saldo_proyectado': round(running_balance, 2),
-        'total_ingresos': round(total_ingresos, 2),
-        'total_egresos': round(total_egresos, 2),
-        'burn_rate': round(burn_rate, 2),
+        'fx_rate': fx_rate_display,
+        'saldo_bancos': round(to_display_currency(saldo_bancos_mxn), 2),
+        'saldo_proyectado': round(to_display_currency(running_balance), 2),
+        'total_ingresos': round(to_display_currency(total_ingresos), 2),
+        'total_egresos': round(to_display_currency(total_egresos), 2),
+        'burn_rate': round(to_display_currency(burn_rate), 2),
         'runway_weeks': round(runway_weeks, 1) if runway_weeks != float('inf') else None,
         'critical_week': critical_week,
         'cobranza_vs_pagos': round((total_ingresos / total_egresos * 100), 1) if total_egresos > 0 else 100,
