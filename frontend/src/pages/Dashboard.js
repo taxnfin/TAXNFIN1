@@ -104,16 +104,8 @@ const Dashboard = () => {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      let url = `/reports/dashboard?moneda_vista=${viewCurrency}`;
-      if (selectedAccount && selectedAccount !== 'all') {
-        url += `&bank_account_id=${selectedAccount}`;
-      }
-      if (dateFrom) {
-        url += `&fecha_desde=${dateFrom}`;
-      }
-      if (dateTo) {
-        url += `&fecha_hasta=${dateTo}`;
-      }
+      // Use the new endpoint that generates data from payments
+      let url = `/reports/dashboard-from-payments?moneda_vista=${viewCurrency}`;
       const response = await api.get(url);
       setDashboardData(response.data);
     } catch (error) {
