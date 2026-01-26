@@ -6894,7 +6894,8 @@ async def get_dashboard_report(
 async def get_dashboard_from_payments(
     request: Request, 
     current_user: Dict = Depends(get_current_user),
-    moneda_vista: str = Query('MXN', description='Moneda para mostrar datos')
+    moneda_vista: str = Query('MXN', description='Moneda para mostrar datos'),
+    bank_account_id: Optional[str] = Query(None, description='Filtrar por cuenta bancaria específica')
 ):
     """
     Dashboard alternativo que genera datos directamente desde pagos reales.
