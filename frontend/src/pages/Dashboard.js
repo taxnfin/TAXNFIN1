@@ -157,20 +157,38 @@ const Dashboard = () => {
   const chartData = dashboardData?.cashflow_weeks?.slice(0, 13).map((week, idx) => ({
     semana: `S${week.numero_semana || idx + 1}`,
     ingresos: week.total_ingresos || 0,
-    egresos: week.total_egresos || 0,
+    egresos: week.egresos || 0,
     flujo_neto: week.flujo_neto || 0,
     saldo_inicial: week.saldo_inicial || 0,
     saldo_final: week.saldo_final || 0,
-    varianza: week.varianza_flujo || 0,
-    varianza_pct: week.varianza_pct || 0
+    venta_usd: week.venta_usd || 0,
+    compra_usd: week.compra_usd || 0,
+    num_payments: week.num_payments || 0
   })) || [];
 
   const kpis = dashboardData?.kpis || {};
-  const saldoInicial = dashboardData?.saldo_inicial_bancos || 0;
-  const saldoFinalProyectado = dashboardData?.saldo_final_proyectado || 0;
-  const trend = dashboardData?.trend || { direction: 'stable', avg_flow_4w: 0 };
-  const risks = dashboardData?.risk_indicators || {};
-  const cashPool = dashboardData?.cash_pool || {};
+  const saldoInicial = dashboardData?.saldo_bancos || 0;
+  const saldoFinalProyectado = dashboardData?.saldo_proyectado || 0;
+  const burnRate = dashboardData?.burn_rate || 0;
+  const runwayWeeks = dashboardData?.runway_weeks;
+  const criticalWeek = dashboardData?.critical_week;
+  const cobranzaVsPagos = dashboardData?.cobranza_vs_pagos || 100;
+  const totalIngresos = dashboardData?.total_ingresos || 0;
+  const totalEgresos = dashboardData?.total_egresos || 0;
+  
+  // Calculate trend from weekly data
+  const recentWeeks = weeklyData.filter(w => w.is_past || w.is_current).slice(-4);
+  const trend = recentWeeks.length >= 2 ? {
+    direction: recentWeeks[recentWeeks.length - 1].flujo_neto > recentWeeks[0].flujo_neto ? 'up' : 
+               recentWeeks[recentWeeks.length - 1].flujo_neto < recentWeeks[0].flujo_neto ? 'down' : 'stable',
+    avg_flow_4w: recentWeeks.reduce((sum, w) => sum + w.flujo_neto, 0) / recentWeeks.length
+  } : { direction: 'stable', avg_flow_4w: 0 };
+  
+  const risks = {
+    liquidez_critica: saldoFinalProyectado < 50000,
+    tendencia_negativa: trend.direction === 'down' && trend.avg_flow_4w < 0,
+    semanas_con_deficit: weeklyData.filter(w => w.saldo_final < 0).length
+  };
   const accounts = dashboardData?.bank_accounts || [];
 
   const TrendIcon = trend.direction === 'up' ? ArrowUpRight : trend.direction === 'down' ? ArrowDownRight : Minus;
