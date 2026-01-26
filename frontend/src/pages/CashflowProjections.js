@@ -263,6 +263,52 @@ const CashflowProjections = () => {
     const processedBankTxns = new Set();
     
     // =====================================================================
+    // PASO 0: Pre-procesar operaciones de divisas para calcular TC implícito
+    // El TC implícito = MXN recibidos (Venta USD) / USD pagados (Compra USD)
+    // Esto hace que el efecto neto de las operaciones de cambio sea 0
+    // =====================================================================
+    const weekCurrencyOps = {}; // { weekIdx: { ventaMXN: 0, compraUSD: 0 } }
+    
+    payments.forEach(payment => {
+      if (payment.estatus !== 'completado') return;
+      if (!payment.fecha_pago) return;
+      
+      const paymentDate = new Date(payment.fecha_pago);
+      if (isNaN(paymentDate.getTime())) return;
+      
+      const weekIdx = weeks.findIndex(w => paymentDate >= w.weekStart && paymentDate < w.weekEnd);
+      if (weekIdx === -1) return;
+      
+      const week = weeks[weekIdx];
+      if (!week.isPast && !week.isCurrent) return;
+      
+      const isCompraUSD = payment.category_id === compraUSDId;
+      const isVentaUSD = payment.category_id === ventaUSDId;
+      
+      if (!weekCurrencyOps[weekIdx]) {
+        weekCurrencyOps[weekIdx] = { ventaMXN: 0, compraUSD: 0 };
+      }
+      
+      if (isVentaUSD) {
+        // Venta de USD: el monto es en MXN (entrada de pesos)
+        weekCurrencyOps[weekIdx].ventaMXN += payment.monto;
+      }
+      if (isCompraUSD && payment.moneda === 'USD') {
+        // Compra de USD: el monto es en USD (dólares que compramos)
+        weekCurrencyOps[weekIdx].compraUSD += payment.monto;
+      }
+    });
+    
+    // Calcular TC implícito por semana
+    const weekImplicitTC = {};
+    Object.entries(weekCurrencyOps).forEach(([weekIdx, ops]) => {
+      if (ops.compraUSD > 0 && ops.ventaMXN > 0) {
+        // TC implícito = MXN recibidos / USD pagados
+        weekImplicitTC[weekIdx] = ops.ventaMXN / ops.compraUSD;
+      }
+    });
+    
+    // =====================================================================
     // PASO 1: Procesar Cobranza y Pagos (DATOS REALES para semanas pasadas)
     // =====================================================================
     payments.forEach(payment => {
@@ -287,8 +333,6 @@ const CashflowProjections = () => {
       
       week.hasRealData = true;
       
-      const montoMXN = convertToMXN(payment.monto, payment.moneda, effectiveRates);
-      
       // Get category and subcategory names from payment's inherited data
       const category = categoryMap[payment.category_id];
       const categoryName = category?.nombre || 'Sin categoría';
@@ -299,14 +343,34 @@ const CashflowProjections = () => {
       const isCompraUSD = payment.category_id === compraUSDId;
       const isVentaUSD = payment.category_id === ventaUSDId;
       
+      if (isVentaUSD) {
+        // Venta de USD: el monto ya está en MXN
+        week.ventaUSD += payment.monto;
+        return; // Don't add to regular ingresos/egresos
+      }
+      
       if (isCompraUSD) {
+        // Compra de USD: usar TC implícito para que el efecto neto sea 0
+        // Si hay TC implícito, usarlo; si no, usar el TC del pago o el estándar
+        const implicitTC = weekImplicitTC[weekIdx];
+        let montoMXN;
+        
+        if (implicitTC && payment.moneda === 'USD') {
+          // Usar TC implícito para efecto neto = 0
+          montoMXN = payment.monto * implicitTC;
+        } else if (payment.moneda === 'USD') {
+          // Usar TC histórico del pago o el estándar
+          const tc = payment.tipo_cambio_historico || effectiveRates.USD || 17.5;
+          montoMXN = payment.monto * tc;
+        } else {
+          montoMXN = payment.monto;
+        }
+        
         week.compraUSD += montoMXN;
         return; // Don't add to regular ingresos/egresos
       }
-      if (isVentaUSD) {
-        week.ventaUSD += montoMXN;
-        return; // Don't add to regular ingresos/egresos
-      }
+      
+      const montoMXN = convertToMXN(payment.monto, payment.moneda, effectiveRates);
       
       // Determine section (ingresos or egresos)
       const section = payment.tipo === 'cobro' ? week.ingresos : week.egresos;
