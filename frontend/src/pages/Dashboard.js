@@ -333,34 +333,23 @@ const Dashboard = () => {
             </Select>
           </div>
 
-          {/* Date Range Filter */}
+          {/* Date Range Display - shows actual 13-week range */}
           <div className="flex items-center gap-2 bg-[#F8FAFC] rounded-md px-3 py-1.5 border">
             <Calendar size={14} className="text-[#64748B]" />
-            <Input 
-              type="date" 
-              value={dateFrom} 
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="w-32 h-7 border-0 bg-transparent p-0 text-sm"
-              data-testid="date-from"
-            />
-            <span className="text-[#64748B] text-sm">-</span>
-            <Input 
-              type="date" 
-              value={dateTo} 
-              onChange={(e) => setDateTo(e.target.value)}
-              className="w-32 h-7 border-0 bg-transparent p-0 text-sm"
-              data-testid="date-to"
-            />
+            <span className="text-sm text-[#64748B]">
+              {chartData.length > 0 ? (
+                <>
+                  {new Date(dashboardData?.weeks?.[0]?.fecha_inicio).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })}
+                  {' - '}
+                  {new Date(dashboardData?.weeks?.[dashboardData.weeks.length - 1]?.fecha_fin).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </>
+              ) : 'Cargando...'}
+            </span>
           </div>
 
-          {/* Quick Date Buttons */}
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" onClick={() => setQuickDateRange('1w')} className="h-7 px-2 text-xs">1S</Button>
-            <Button variant="ghost" size="sm" onClick={() => setQuickDateRange('1m')} className="h-7 px-2 text-xs">1M</Button>
-            <Button variant="ghost" size="sm" onClick={() => setQuickDateRange('3m')} className="h-7 px-2 text-xs">3M</Button>
-            <Button variant="ghost" size="sm" onClick={() => setQuickDateRange('6m')} className="h-7 px-2 text-xs">6M</Button>
-            <Button variant="ghost" size="sm" onClick={() => setQuickDateRange('1y')} className="h-7 px-2 text-xs">1A</Button>
-            <Button variant="ghost" size="sm" onClick={() => setQuickDateRange('13w')} className="h-7 px-2 text-xs bg-[#E0F2FE]">13S</Button>
+          {/* 13-Week Rolling indicator */}
+          <div className="flex items-center gap-1 bg-[#E0F2FE] rounded-md px-3 py-1.5">
+            <span className="text-xs text-blue-700 font-medium">13 Semanas Rolling</span>
           </div>
         </div>
       </div>
