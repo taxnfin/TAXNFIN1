@@ -6890,6 +6890,146 @@ async def get_dashboard_report(
     }
 
 
+@api_router.get("/reports/dashboard-from-payments")
+async def get_dashboard_from_payments(
+    request: Request, 
+    current_user: Dict = Depends(get_current_user),
+    moneda_vista: str = Query('MXN', description='Moneda para mostrar datos')
+):
+    """
+    Dashboard alternativo que genera datos directamente desde pagos reales.
+    Usa la misma lógica que CashflowProjections para consistencia.
+    """
+    from datetime import datetime, timedelta
+    
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get FX rates
+    fx_rates = await db.fx_rates.find({'company_id': company_id}, {'_id': 0}).to_list(100)
+    fx_map = {'MXN': 1.0, 'USD': 17.5, 'EUR': 20.0}
+    for rate in fx_rates:
+        if rate.get('moneda_destino') == 'MXN' and rate.get('tasa'):
+            fx_map[rate['moneda_origen']] = rate['tasa']
+    
+    def convert_to_mxn(amount, currency):
+        return amount * fx_map.get(currency, 1)
+    
+    # Get bank account balances
+    accounts = await db.bank_accounts.find({'company_id': company_id}, {'_id': 0}).to_list(50)
+    saldo_bancos_mxn = sum(convert_to_mxn(acc.get('saldo_actual', 0), acc.get('moneda', 'MXN')) for acc in accounts)
+    
+    # Get all completed payments with reconciled bank transactions
+    bank_txns = await db.bank_transactions.find({'company_id': company_id}, {'_id': 0}).to_list(5000)
+    reconciled_ids = set(t['id'] for t in bank_txns if t.get('conciliado') == True)
+    
+    all_payments = await db.payments.find({'company_id': company_id, 'estatus': 'completado'}, {'_id': 0}).to_list(5000)
+    
+    # Filter to valid payments (reconciled or without bank_transaction_id)
+    payments = [p for p in all_payments if not p.get('bank_transaction_id') or p.get('bank_transaction_id') in reconciled_ids]
+    
+    # Get categories for USD operations
+    categories = await db.categories.find({'company_id': company_id}, {'_id': 0}).to_list(100)
+    compra_usd_id = next((c['id'] for c in categories if 'compra' in c.get('nombre', '').lower() and 'usd' in c.get('nombre', '').lower()), None)
+    venta_usd_id = next((c['id'] for c in categories if 'venta' in c.get('nombre', '').lower() and 'usd' in c.get('nombre', '').lower()), None)
+    
+    # Generate 13 weeks (4 past, current, 8 future)
+    today = datetime.now()
+    # Find Monday of current week
+    days_since_monday = today.weekday()
+    current_monday = today - timedelta(days=days_since_monday)
+    start_monday = current_monday - timedelta(weeks=4)
+    
+    weeks_data = []
+    running_balance = saldo_bancos_mxn
+    
+    for i in range(13):
+        week_start = start_monday + timedelta(weeks=i)
+        week_end = week_start + timedelta(days=7)
+        is_past = week_end <= today
+        is_current = week_start <= today < week_end
+        
+        # Filter payments for this week
+        week_payments = [p for p in payments if p.get('fecha_pago')]
+        week_payments = [p for p in week_payments if week_start <= datetime.fromisoformat(p['fecha_pago'].replace('Z', '+00:00').split('+')[0]) < week_end]
+        
+        # Calculate totals excluding USD operations
+        ingresos = 0
+        egresos = 0
+        venta_usd = 0
+        compra_usd = 0
+        
+        for p in week_payments:
+            monto_mxn = convert_to_mxn(p.get('monto', 0), p.get('moneda', 'MXN'))
+            cat_id = p.get('category_id')
+            
+            if cat_id == venta_usd_id:
+                venta_usd += monto_mxn
+            elif cat_id == compra_usd_id:
+                compra_usd += monto_mxn
+            elif p.get('tipo') == 'cobro':
+                ingresos += monto_mxn
+            else:
+                egresos += monto_mxn
+        
+        flujo_neto = ingresos - egresos + venta_usd - compra_usd
+        saldo_final = running_balance + flujo_neto if is_past or is_current else running_balance
+        
+        weeks_data.append({
+            'week_num': i + 1,
+            'week_label': f"S{i + 1}",
+            'date_label': week_start.strftime('%d %b'),
+            'fecha_inicio': week_start.isoformat(),
+            'fecha_fin': week_end.isoformat(),
+            'is_past': is_past,
+            'is_current': is_current,
+            'ingresos': round(ingresos, 2),
+            'egresos': round(egresos, 2),
+            'venta_usd': round(venta_usd, 2),
+            'compra_usd': round(compra_usd, 2),
+            'flujo_neto': round(flujo_neto, 2),
+            'saldo_inicial': round(running_balance, 2),
+            'saldo_final': round(saldo_final, 2),
+            'num_payments': len(week_payments)
+        })
+        
+        if is_past or is_current:
+            running_balance = saldo_final
+    
+    # Calculate KPIs
+    past_weeks = [w for w in weeks_data if w['is_past'] or w['is_current']]
+    total_ingresos = sum(w['ingresos'] + w['venta_usd'] for w in past_weeks)
+    total_egresos = sum(w['egresos'] + w['compra_usd'] for w in past_weeks)
+    
+    burn_rate = total_egresos / len(past_weeks) if past_weeks else 0
+    runway_weeks = running_balance / burn_rate if burn_rate > 0 else float('inf')
+    
+    # Find critical week (first week with negative balance)
+    critical_week = None
+    for w in weeks_data:
+        if w['saldo_final'] < 0:
+            critical_week = w['week_label']
+            break
+    
+    return {
+        'moneda_vista': moneda_vista,
+        'saldo_bancos': round(saldo_bancos_mxn, 2),
+        'saldo_proyectado': round(running_balance, 2),
+        'total_ingresos': round(total_ingresos, 2),
+        'total_egresos': round(total_egresos, 2),
+        'burn_rate': round(burn_rate, 2),
+        'runway_weeks': round(runway_weeks, 1) if runway_weeks != float('inf') else None,
+        'critical_week': critical_week,
+        'cobranza_vs_pagos': round((total_ingresos / total_egresos * 100), 1) if total_egresos > 0 else 100,
+        'weeks': weeks_data,
+        'kpis': {
+            'total_payments': len(payments),
+            'total_cfdis': await db.cfdis.count_documents({'company_id': company_id}),
+            'total_customers': await db.customers.count_documents({'company_id': company_id}),
+            'total_vendors': await db.vendors.count_documents({'company_id': company_id})
+        }
+    }
+
+
 # ================== ENDPOINTS AVANZADOS - FASE 2 ==================
 
 # Importar servicios avanzados
