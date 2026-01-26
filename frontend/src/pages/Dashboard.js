@@ -197,8 +197,8 @@ const Dashboard = () => {
   };
   const accounts = dashboardData?.bank_accounts || [];
   
-  // Build cashPool from kpis or empty object
-  const cashPool = {}; // Will be populated from accounts if needed
+  // Build cashPool from endpoint data
+  const cashPool = dashboardData?.cash_pool || {};
 
   const TrendIcon = trend.direction === 'up' ? ArrowUpRight : trend.direction === 'down' ? ArrowDownRight : Minus;
   const trendColor = trend.direction === 'up' ? 'text-green-600' : trend.direction === 'down' ? 'text-red-600' : 'text-gray-500';
