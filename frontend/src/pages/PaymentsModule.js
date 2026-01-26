@@ -49,6 +49,8 @@ const PaymentsModule = () => {
   const [bankTransactions, setBankTransactions] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [fxRates, setFxRates] = useState({ USD: 17.5, EUR: 19.0 });
+  const [customTc, setCustomTc] = useState(''); // Custom exchange rate for current transaction
+  const [useCustomTc, setUseCustomTc] = useState(false);
   const [activeTab, setActiveTab] = useState('real'); // 'real', 'proyeccion', 'breakdown'
   
   // Import from bank movements dialog
