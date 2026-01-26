@@ -154,17 +154,21 @@ const Dashboard = () => {
     return <div className="p-8">Cargando dashboard...</div>;
   }
 
-  const chartData = dashboardData?.cashflow_weeks?.slice(0, 13).map((week, idx) => ({
-    semana: `S${week.numero_semana || idx + 1}`,
-    ingresos: week.total_ingresos || 0,
+  // Map weeks data from new endpoint
+  const chartData = (dashboardData?.weeks || []).map((week, idx) => ({
+    semana: week.week_label || `S${idx + 1}`,
+    date_label: week.date_label || '',
+    ingresos: week.ingresos || 0,
     egresos: week.egresos || 0,
     flujo_neto: week.flujo_neto || 0,
     saldo_inicial: week.saldo_inicial || 0,
     saldo_final: week.saldo_final || 0,
     venta_usd: week.venta_usd || 0,
     compra_usd: week.compra_usd || 0,
-    num_payments: week.num_payments || 0
-  })) || [];
+    num_payments: week.num_payments || 0,
+    is_past: week.is_past,
+    is_current: week.is_current
+  }));
 
   const kpis = dashboardData?.kpis || {};
   const saldoInicial = dashboardData?.saldo_bancos || 0;
