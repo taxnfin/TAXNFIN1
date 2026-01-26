@@ -238,3 +238,64 @@ async def update_cfdi_notes(
     await audit_log(company_id, 'CFDI', cfdi_id, 'UPDATE_NOTES', current_user['id'])
     
     return {'status': 'success', 'message': 'Notas actualizadas'}
+
+
+
+@router.post("/sync-payment-amounts")
+async def sync_cfdi_payment_amounts(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Synchronize CFDI monto_pagado/monto_cobrado with actual payment records.
+    This fixes inconsistencies where CFDIs show paid amounts but have no associated payments,
+    or vice versa.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get all CFDIs
+    cfdis = await db.cfdis.find({'company_id': company_id}, {'_id': 0}).to_list(5000)
+    
+    # Get all completed payments (only those with truly reconciled bank transactions)
+    bank_txns = await db.bank_transactions.find({'company_id': company_id}, {'_id': 0}).to_list(5000)
+    reconciled_txn_ids = set(t['id'] for t in bank_txns if t.get('conciliado') == True)
+    
+    all_payments = await db.payments.find({'company_id': company_id, 'estatus': 'completado'}, {'_id': 0}).to_list(5000)
+    
+    # Filter to only include payments with truly reconciled bank transactions
+    valid_payments = [p for p in all_payments if not p.get('bank_transaction_id') or p.get('bank_transaction_id') in reconciled_txn_ids]
+    
+    # Build a map of cfdi_id -> total paid/collected from valid payments
+    cfdi_payment_totals = {}
+    for payment in valid_payments:
+        cfdi_id = payment.get('cfdi_id')
+        if cfdi_id:
+            if cfdi_id not in cfdi_payment_totals:
+                cfdi_payment_totals[cfdi_id] = {'cobrado': 0, 'pagado': 0}
+            if payment.get('tipo') == 'cobro':
+                cfdi_payment_totals[cfdi_id]['cobrado'] += payment.get('monto', 0)
+            else:
+                cfdi_payment_totals[cfdi_id]['pagado'] += payment.get('monto', 0)
+    
+    updated_count = 0
+    for cfdi in cfdis:
+        cfdi_id = cfdi.get('id')
+        current_cobrado = cfdi.get('monto_cobrado', 0) or 0
+        current_pagado = cfdi.get('monto_pagado', 0) or 0
+        
+        # Get actual totals from valid payments
+        actual = cfdi_payment_totals.get(cfdi_id, {'cobrado': 0, 'pagado': 0})
+        actual_cobrado = actual['cobrado']
+        actual_pagado = actual['pagado']
+        
+        # Check if update needed
+        if current_cobrado != actual_cobrado or current_pagado != actual_pagado:
+            await db.cfdis.update_one(
+                {'id': cfdi_id},
+                {'$set': {'monto_cobrado': actual_cobrado, 'monto_pagado': actual_pagado}}
+            )
+            updated_count += 1
+            logger.info(f"CFDI {cfdi_id}: cobrado {current_cobrado} -> {actual_cobrado}, pagado {current_pagado} -> {actual_pagado}")
+    
+    return {
+        'status': 'success',
+        'message': f'Sincronización completada. {updated_count} CFDIs actualizados.',
+        'updated_count': updated_count
+    }
