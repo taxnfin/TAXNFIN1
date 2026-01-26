@@ -618,36 +618,36 @@ const Dashboard = () => {
                 }`}>
                   <div className="flex items-center gap-3">
                     <div className={`w-2 h-8 rounded-full ${
-                      acc.riesgo_ocioso ? 'bg-amber-400' : 
-                      acc.riesgo_bajo_saldo ? 'bg-red-400' : 
+                      acc.riesgo === 'alto' ? 'bg-red-400' : 
+                      acc.riesgo === 'medio' ? 'bg-amber-400' : 
                       'bg-green-400'
                     }`} />
                     <div>
                       <div className="font-medium text-[#0F172A]">{acc.nombre}</div>
-                      <div className="text-xs text-[#64748B]">{acc.banco} • {acc.moneda}</div>
+                      <div className="text-xs text-[#64748B]">{acc.banco} · {acc.moneda}</div>
+                      {acc.num_movimientos > 0 && (
+                        <div className="text-xs text-blue-600">{acc.num_movimientos} movimientos</div>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-bold mono">
-                      ${acc.saldo?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {acc.moneda}
+                    <div className="text-xs text-[#64748B]">Saldo Final</div>
+                    <div className="font-bold mono text-lg">
+                      ${acc.saldo_final?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {acc.moneda}
                     </div>
                     {acc.moneda !== 'MXN' && (
                       <div className="text-xs text-[#64748B]">
-                        ≈ ${acc.saldo_mxn?.toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+                        ≈ ${acc.saldo_final_mxn?.toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
                       </div>
                     )}
-                    {(acc.riesgo_ocioso || acc.riesgo_bajo_saldo) && (
-                      <div className="flex items-center justify-end gap-1 mt-1">
-                        {acc.riesgo_ocioso && (
-                          <span className="text-xs text-amber-700 flex items-center gap-0.5">
-                            <PiggyBank size={12} /> Ocioso
-                          </span>
-                        )}
-                        {acc.riesgo_bajo_saldo && (
-                          <span className="text-xs text-red-700 flex items-center gap-0.5">
-                            <AlertTriangle size={12} /> Bajo
-                          </span>
-                        )}
+                    {acc.saldo_inicial !== acc.saldo_final && (
+                      <div className="text-xs mt-1">
+                        <span className="text-[#64748B]">Inicial: </span>
+                        <span className="mono">${acc.saldo_inicial?.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+                        <span className={`ml-1 ${(acc.saldo_final - acc.saldo_inicial) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {(acc.saldo_final - acc.saldo_inicial) >= 0 ? '+' : ''}
+                          ${(acc.saldo_final - acc.saldo_inicial)?.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                        </span>
                       </div>
                     )}
                   </div>
