@@ -166,6 +166,8 @@ const Dashboard = () => {
     venta_usd: week.venta_usd || 0,
     compra_usd: week.compra_usd || 0,
     num_payments: week.num_payments || 0,
+    varianza: week.varianza || 0,
+    varianza_pct: week.varianza_pct || 0,
     is_past: week.is_past,
     is_current: week.is_current
   }));
