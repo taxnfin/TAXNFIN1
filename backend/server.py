@@ -6914,6 +6914,17 @@ async def get_dashboard_from_payments(
     def convert_to_mxn(amount, currency):
         return amount * fx_map.get(currency, 1)
     
+    def convert_from_mxn(amount_mxn, target_currency):
+        """Convert MXN to target currency"""
+        if target_currency == 'MXN':
+            return amount_mxn
+        rate = fx_map.get(target_currency, 1)
+        return amount_mxn / rate if rate else amount_mxn
+    
+    def to_display_currency(amount_mxn):
+        """Convert MXN amount to display currency"""
+        return convert_from_mxn(amount_mxn, moneda_vista)
+    
     # Get bank account balances - use saldo_inicial like bank-accounts/summary does
     accounts = await db.bank_accounts.find({'company_id': company_id}, {'_id': 0}).to_list(50)
     saldo_bancos_mxn = 0
