@@ -1546,9 +1546,18 @@ const PaymentsModule = () => {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Estatus</p>
-                  <p className={`font-medium ${PAYMENT_STATUS[selectedPayment.estatus]?.color?.includes('green') ? 'text-green-600' : ''}`}>
-                    {PAYMENT_STATUS[selectedPayment.estatus]?.label || selectedPayment.estatus}
-                  </p>
+                  {(() => {
+                    const realStatus = selectedPayment.estado_real || selectedPayment.estatus;
+                    const statusConfig = PAYMENT_STATUS[realStatus] || PAYMENT_STATUS.pendiente;
+                    return (
+                      <p className={`font-medium ${statusConfig.color?.includes('green') ? 'text-green-600' : ''}`}>
+                        {statusConfig.label}
+                        {selectedPayment.conciliacion_real === false && selectedPayment.bank_transaction_id && (
+                          <span className="ml-2 text-xs text-orange-600">(Pendiente conciliar)</span>
+                        )}
+                      </p>
+                    );
+                  })()}
                 </div>
               </div>
               <div>
