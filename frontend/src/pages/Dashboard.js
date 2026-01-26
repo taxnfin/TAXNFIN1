@@ -194,11 +194,14 @@ const Dashboard = () => {
     semanas_con_deficit: chartData.filter(w => w.saldo_final < 0).length
   };
   const accounts = dashboardData?.bank_accounts || [];
+  
+  // Build cashPool from kpis or empty object
+  const cashPool = {}; // Will be populated from accounts if needed
 
   const TrendIcon = trend.direction === 'up' ? ArrowUpRight : trend.direction === 'down' ? ArrowDownRight : Minus;
   const trendColor = trend.direction === 'up' ? 'text-green-600' : trend.direction === 'down' ? 'text-red-600' : 'text-gray-500';
 
-  const hasRiskAlerts = risks.liquidez_critica || risks.tendencia_negativa || risks.saldos_ociosos > 0 || risks.cuentas_bajo_saldo > 0;
+  const hasRiskAlerts = risks.liquidez_critica || risks.tendencia_negativa || risks.semanas_con_deficit > 0;
   const hasFxAlerts = fxAlerts?.has_alerts;
 
   return (
