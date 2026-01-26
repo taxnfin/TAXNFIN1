@@ -7100,7 +7100,8 @@ async def get_dashboard_from_payments(
     # Get FX rate for display
     fx_rate_display = fx_map.get(moneda_vista, 1) if moneda_vista != 'MXN' else 1
     
-    return {
+    # Build response with account filter info
+    response = {
         'moneda_vista': moneda_vista,
         'fx_rate': fx_rate_display,
         'saldo_bancos': round(to_display_currency(saldo_bancos_mxn), 2),
@@ -7121,6 +7122,21 @@ async def get_dashboard_from_payments(
             'total_vendors': await db.vendors.count_documents({'company_id': company_id})
         }
     }
+    
+    # Add filtered account info if filtering by specific account
+    if bank_account_id and len(accounts) > 0:
+        acc = accounts[0]
+        response['filtered_account'] = {
+            'id': acc.get('id'),
+            'nombre': acc.get('nombre'),
+            'banco': acc.get('banco'),
+            'moneda': acc.get('moneda'),
+            'saldo_inicial': acc.get('saldo_inicial', 0) or 0,
+            'saldo_inicial_display': round(to_display_currency(convert_to_mxn(acc.get('saldo_inicial', 0) or 0, acc.get('moneda', 'MXN'))), 2),
+            'num_movements': len(payments)
+        }
+    
+    return response
 
 
 # ================== ENDPOINTS AVANZADOS - FASE 2 ==================
