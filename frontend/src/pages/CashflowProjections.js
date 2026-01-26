@@ -1114,45 +1114,41 @@ const CashflowProjections = () => {
                           </TableCell>
                         </TableRow>
                         
-                        {/* Venta de USD row */}
-                        {grandTotalVentaUSD > 0 && (
-                          <TableRow className="hover:bg-purple-50/50">
-                            <TableCell className="sticky left-0 bg-white pl-8">
-                              <div className="flex items-center gap-1 text-green-600">
-                                <TrendingUp size={14} />
-                                Venta de USD
-                              </div>
+                        {/* Venta de USD row - SIEMPRE MOSTRAR */}
+                        <TableRow className="hover:bg-purple-50/50">
+                          <TableCell className="sticky left-0 bg-white pl-8">
+                            <div className="flex items-center gap-1 text-green-600">
+                              <TrendingUp size={14} />
+                              Venta de USD (entrada MXN)
+                            </div>
+                          </TableCell>
+                          {weeklyTotals.map((week, idx) => (
+                            <TableCell key={idx} className="text-center text-green-600">
+                              {(week.ventaUSD || 0) > 0 ? formatCurrency(week.ventaUSD) : '-'}
                             </TableCell>
-                            {weeklyTotals.map((week, idx) => (
-                              <TableCell key={idx} className="text-center text-green-600">
-                                {(week.ventaUSD || 0) > 0 ? formatCurrency(week.ventaUSD) : '-'}
-                              </TableCell>
-                            ))}
-                            <TableCell className="text-center bg-green-50 text-green-700">
-                              {formatCurrency(grandTotalVentaUSD)}
-                            </TableCell>
-                          </TableRow>
-                        )}
+                          ))}
+                          <TableCell className="text-center bg-green-50 text-green-700">
+                            {formatCurrency(grandTotalVentaUSD)}
+                          </TableCell>
+                        </TableRow>
                         
-                        {/* Compra de USD row */}
-                        {grandTotalCompraUSD > 0 && (
-                          <TableRow className="hover:bg-purple-50/50">
-                            <TableCell className="sticky left-0 bg-white pl-8">
-                              <div className="flex items-center gap-1 text-red-600">
-                                <TrendingDown size={14} />
-                                Compra de USD
-                              </div>
+                        {/* Compra de USD row - SIEMPRE MOSTRAR */}
+                        <TableRow className="hover:bg-purple-50/50">
+                          <TableCell className="sticky left-0 bg-white pl-8">
+                            <div className="flex items-center gap-1 text-red-600">
+                              <TrendingDown size={14} />
+                              Compra de USD (salida MXN)
+                            </div>
+                          </TableCell>
+                          {weeklyTotals.map((week, idx) => (
+                            <TableCell key={idx} className="text-center text-red-600">
+                              {(week.compraUSD || 0) > 0 ? `(${formatCurrency(week.compraUSD)})` : '-'}
                             </TableCell>
-                            {weeklyTotals.map((week, idx) => (
-                              <TableCell key={idx} className="text-center text-red-600">
-                                {(week.compraUSD || 0) > 0 ? formatCurrency(week.compraUSD) : '-'}
-                              </TableCell>
-                            ))}
-                            <TableCell className="text-center bg-red-50 text-red-700">
-                              {formatCurrency(grandTotalCompraUSD)}
-                            </TableCell>
-                          </TableRow>
-                        )}
+                          ))}
+                          <TableCell className="text-center bg-red-50 text-red-700">
+                            {grandTotalCompraUSD > 0 ? `(${formatCurrency(grandTotalCompraUSD)})` : '$0.00'}
+                          </TableCell>
+                        </TableRow>
                       </>
                     )}
 
