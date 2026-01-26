@@ -889,12 +889,20 @@ const PaymentsModule = () => {
                             <TableHead className="text-right">Total</TableHead>
                             <TableHead className="text-right">Pagado</TableHead>
                             <TableHead className="text-right">Pendiente</TableHead>
+                            <TableHead className="text-right bg-green-50">Saldo Acumulado</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {pendingCfdis.map(cfdi => {
+                          {(() => {
+                            let runningTotal = 0;
+                            return pendingCfdis.map(cfdi => {
                             const isSelected = selectedCfdis.some(c => c.id === cfdi.id);
                             const pagado = formData.tipo === 'cobro' ? (cfdi.monto_cobrado || 0) : (cfdi.monto_pagado || 0);
+                            
+                            // Calculate running total only for selected items up to this point
+                            if (isSelected) {
+                              runningTotal += cfdi.saldo_pendiente;
+                            }
                             
                             return (
                               <TableRow 
@@ -926,9 +934,17 @@ const PaymentsModule = () => {
                                 <TableCell className="text-right font-mono font-bold text-orange-600">
                                   ${cfdi.saldo_pendiente.toLocaleString('es-MX', {minimumFractionDigits: 2})}
                                 </TableCell>
+                                <TableCell className="text-right font-mono font-bold bg-green-50">
+                                  {isSelected ? (
+                                    <span className="text-green-700">
+                                      ${runningTotal.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                                    </span>
+                                  ) : '-'}
+                                </TableCell>
                               </TableRow>
                             );
-                          })}
+                          });
+                          })()}
                         </TableBody>
                       </Table>
                     </div>
