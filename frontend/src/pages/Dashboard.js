@@ -157,19 +157,19 @@ const Dashboard = () => {
     return <div className="p-8">Cargando dashboard...</div>;
   }
 
-  // Map weeks data from new endpoint
+  // Map weeks data from new endpoint - use display values for selected currency
   const chartData = (dashboardData?.weeks || []).map((week, idx) => ({
     semana: week.week_label || `S${idx + 1}`,
     date_label: week.date_label || '',
-    ingresos: week.ingresos || 0,
-    egresos: week.egresos || 0,
-    flujo_neto: week.flujo_neto || 0,
-    saldo_inicial: week.saldo_inicial || 0,
-    saldo_final: week.saldo_final || 0,
+    ingresos: week.ingresos_display ?? week.ingresos ?? 0,
+    egresos: week.egresos_display ?? week.egresos ?? 0,
+    flujo_neto: week.flujo_neto_display ?? week.flujo_neto ?? 0,
+    saldo_inicial: week.saldo_inicial_display ?? week.saldo_inicial ?? 0,
+    saldo_final: week.saldo_final_display ?? week.saldo_final ?? 0,
     venta_usd: week.venta_usd || 0,
     compra_usd: week.compra_usd || 0,
     num_payments: week.num_payments || 0,
-    varianza: week.varianza || 0,
+    varianza: week.varianza_display ?? week.varianza ?? 0,
     varianza_pct: week.varianza_pct || 0,
     is_past: week.is_past,
     is_current: week.is_current
