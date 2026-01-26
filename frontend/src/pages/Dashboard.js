@@ -43,12 +43,24 @@ const Dashboard = () => {
     loadBankAccounts();
     loadSchedulerStatus();
     loadFxAlerts();
-    // Set default date range (last 13 weeks)
+    // Set default date range (4 weeks back, 9 weeks forward = 13 weeks rolling)
     const today = new Date();
-    const thirteenWeeksAgo = new Date(today);
-    thirteenWeeksAgo.setDate(today.getDate() - 91);
-    setDateFrom(thirteenWeeksAgo.toISOString().split('T')[0]);
-    setDateTo(today.toISOString().split('T')[0]);
+    // Find Monday of current week
+    const dayOfWeek = today.getDay();
+    const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const currentMonday = new Date(today);
+    currentMonday.setDate(today.getDate() - daysToMonday);
+    
+    // Start from 4 weeks ago (Monday)
+    const startDate = new Date(currentMonday);
+    startDate.setDate(currentMonday.getDate() - 28); // 4 weeks back
+    
+    // End 9 weeks from current Monday
+    const endDate = new Date(currentMonday);
+    endDate.setDate(currentMonday.getDate() + 63); // 9 weeks forward
+    
+    setDateFrom(startDate.toISOString().split('T')[0]);
+    setDateTo(endDate.toISOString().split('T')[0]);
   }, []);
 
   useEffect(() => {
