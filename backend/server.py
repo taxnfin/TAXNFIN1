@@ -6999,6 +6999,19 @@ async def get_dashboard_from_payments(
         if is_past or is_current:
             running_balance = saldo_final
     
+    # Calculate varianza (change vs previous week) for each week
+    for i, week in enumerate(weeks_data):
+        if i == 0:
+            week['varianza'] = 0
+            week['varianza_pct'] = 0
+        else:
+            prev_week = weeks_data[i - 1]
+            week['varianza'] = round(week['flujo_neto'] - prev_week['flujo_neto'], 2)
+            if prev_week['flujo_neto'] != 0:
+                week['varianza_pct'] = round((week['varianza'] / abs(prev_week['flujo_neto'])) * 100, 1)
+            else:
+                week['varianza_pct'] = 0
+    
     # Calculate KPIs
     past_weeks = [w for w in weeks_data if w['is_past'] or w['is_current']]
     total_ingresos = sum(w['ingresos'] + w['venta_usd'] for w in past_weeks)
