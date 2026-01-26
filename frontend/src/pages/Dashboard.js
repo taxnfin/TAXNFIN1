@@ -417,6 +417,38 @@ const Dashboard = () => {
         </Card>
       )}
 
+      {/* Account Filter Info - Show when filtering by specific account */}
+      {filteredAccount && (
+        <Card className="border-l-4 border-l-purple-500 shadow-sm bg-purple-50/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-purple-700 flex items-center gap-2">
+              <Building2 size={16} />
+              Cuenta Seleccionada: {filteredAccount.nombre}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <p className="text-xs text-purple-600">Banco</p>
+                <p className="font-medium">{filteredAccount.banco || '-'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-purple-600">Moneda</p>
+                <p className="font-medium">{filteredAccount.moneda}</p>
+              </div>
+              <div>
+                <p className="text-xs text-purple-600">Saldo Inicial ({filteredAccount.moneda})</p>
+                <p className="font-bold mono text-lg">${filteredAccount.saldo_inicial?.toLocaleString('es-MX', {minimumFractionDigits: 2})}</p>
+              </div>
+              <div>
+                <p className="text-xs text-purple-600">Movimientos</p>
+                <p className="font-medium">{filteredAccount.num_movements} pagos</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Main KPIs - Saldos */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="border-l-4 border-l-green-500 shadow-sm">
@@ -430,7 +462,9 @@ const Dashboard = () => {
             <div className="text-2xl font-bold mono text-[#0F172A]">
               {formatCurrency(saldoInicial)}
             </div>
-            <p className="text-xs text-[#94A3B8] mt-1">Consolidado en {viewCurrency}</p>
+            <p className="text-xs text-[#94A3B8] mt-1">
+              {filteredAccount ? `${filteredAccount.nombre}` : `Consolidado en ${displayCurrency}`}
+            </p>
           </CardContent>
         </Card>
 
