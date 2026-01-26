@@ -661,59 +661,6 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      {/* Secondary KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Card className="shadow-sm">
-          <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <ArrowRightLeft className="h-5 w-5 text-[#64748B]" />
-              <span className="text-2xl font-bold mono">{kpis.total_transactions || 0}</span>
-            </div>
-            <p className="text-xs text-[#64748B] mt-1">Transacciones</p>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm">
-          <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <FileText className="h-5 w-5 text-[#64748B]" />
-              <span className="text-2xl font-bold mono">{kpis.total_cfdis || 0}</span>
-            </div>
-            <p className="text-xs text-[#64748B] mt-1">CFDIs</p>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm">
-          <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <CheckCircle2 className="h-5 w-5 text-[#64748B]" />
-              <span className="text-2xl font-bold mono">{kpis.total_reconciliations || 0}</span>
-            </div>
-            <p className="text-xs text-[#64748B] mt-1">Conciliaciones</p>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm">
-          <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <span className="text-blue-600">👤</span>
-              <span className="text-2xl font-bold mono">{kpis.total_customers || 0}</span>
-            </div>
-            <p className="text-xs text-[#64748B] mt-1">Clientes</p>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm">
-          <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <span className="text-orange-600">🏢</span>
-              <span className="text-2xl font-bold mono">{kpis.total_vendors || 0}</span>
-            </div>
-            <p className="text-xs text-[#64748B] mt-1">Proveedores</p>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* ============ SECTION: DIAGNÓSTICO Y ACCIONES ============ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Cash Flow KPIs Clave */}
