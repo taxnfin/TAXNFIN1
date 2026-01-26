@@ -106,6 +106,9 @@ const Dashboard = () => {
     try {
       // Use the new endpoint that generates data from payments
       let url = `/reports/dashboard-from-payments?moneda_vista=${viewCurrency}`;
+      if (selectedAccount && selectedAccount !== 'all') {
+        url += `&bank_account_id=${selectedAccount}`;
+      }
       const response = await api.get(url);
       setDashboardData(response.data);
     } catch (error) {
