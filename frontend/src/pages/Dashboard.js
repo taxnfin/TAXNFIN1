@@ -593,7 +593,7 @@ const Dashboard = () => {
                   </div>
                   <div className="text-right">
                     <div className="font-bold mono">
-                      ${acc.saldo_inicial?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {acc.moneda}
+                      ${acc.saldo?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {acc.moneda}
                     </div>
                     {acc.moneda !== 'MXN' && (
                       <div className="text-xs text-[#64748B]">
