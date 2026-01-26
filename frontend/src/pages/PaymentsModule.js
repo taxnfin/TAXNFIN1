@@ -1036,6 +1036,50 @@ const PaymentsModule = () => {
                     El monto excede el total pendiente (${totalSelectedAmount.toFixed(2)})
                   </p>
                 )}
+                
+                {/* Panel de conversión TC para monedas extranjeras */}
+                {formData.moneda !== 'MXN' && formData.monto && parseFloat(formData.monto) > 0 && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg mt-2">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm text-blue-700">Equivalente en MXN:</span>
+                      <span className="font-mono font-bold text-blue-800">
+                        ${((parseFloat(formData.monto) || 0) * (useCustomTc && customTc ? parseFloat(customTc) : (fxRates[formData.moneda] || 1))).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <label className="flex items-center gap-1 text-xs text-blue-600 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={useCustomTc}
+                          onChange={(e) => {
+                            setUseCustomTc(e.target.checked);
+                            if (!e.target.checked) setCustomTc('');
+                          }}
+                          className="w-3 h-3"
+                        />
+                        TC Personalizado
+                      </label>
+                      {useCustomTc ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-blue-600">1 {formData.moneda} =</span>
+                          <input
+                            type="number"
+                            step="0.0001"
+                            value={customTc}
+                            onChange={(e) => setCustomTc(e.target.value)}
+                            placeholder={fxRates[formData.moneda]?.toString() || '17.5'}
+                            className="w-20 px-1 py-0.5 text-xs border rounded text-right"
+                          />
+                          <span className="text-xs text-blue-600">MXN</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-blue-600">
+                          TC Actual: 1 {formData.moneda} = {fxRates[formData.moneda] || 1} MXN
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Concepto */}
