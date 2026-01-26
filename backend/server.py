@@ -6914,30 +6914,13 @@ async def get_dashboard_from_payments(
     def convert_to_mxn(amount, currency):
         return amount * fx_map.get(currency, 1)
     
-    # Get bank account balances using the same logic as bank-accounts/summary
-    # The saldo is stored in the cashflow_weeks collection or needs to be calculated
+    # Get bank account balances - use saldo_inicial like bank-accounts/summary does
     accounts = await db.bank_accounts.find({'company_id': company_id}, {'_id': 0}).to_list(50)
-    
-    # Calculate saldo from bank_transactions if saldo_actual is not set
     saldo_bancos_mxn = 0
     for acc in accounts:
-        saldo = acc.get('saldo_actual') or acc.get('saldo')
-        if saldo is None:
-            # Calculate from cashflow_weeks or use a default
-            weeks = await db.cashflow_weeks.find({'company_id': company_id, 'bank_account_id': acc['id']}).sort('fecha_inicio', -1).limit(1).to_list(1)
-            if weeks:
-                saldo = weeks[0].get('saldo_final', 0)
-            else:
-                saldo = 0
-        saldo_bancos_mxn += convert_to_mxn(saldo, acc.get('moneda', 'MXN'))
-    
-    # If still 0, try to get from bank-accounts summary endpoint logic
-    if saldo_bancos_mxn == 0:
-        # Alternative: sum from last recorded transaction balances
-        for acc in accounts:
-            last_txn = await db.bank_transactions.find({'bank_account_id': acc['id']}).sort('fecha', -1).limit(1).to_list(1)
-            if last_txn:
-                saldo_bancos_mxn += convert_to_mxn(last_txn[0].get('saldo_despues', 0), acc.get('moneda', 'MXN'))
+        saldo = acc.get('saldo_inicial', 0) or 0
+        moneda = acc.get('moneda', 'MXN')
+        saldo_bancos_mxn += convert_to_mxn(saldo, moneda)
     
     # Get all completed payments with reconciled bank transactions
     bank_txns = await db.bank_transactions.find({'company_id': company_id}, {'_id': 0}).to_list(5000)
