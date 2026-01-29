@@ -1058,7 +1058,7 @@ const CashflowProjections = () => {
         <TabsList>
           <TabsTrigger value="weekly" className="gap-2">
             <Calendar size={16} />
-            Vista Semanal (13 semanas)
+            Vista Semanal (18 semanas)
           </TabsTrigger>
           <TabsTrigger value="monthly" className="gap-2">
             <Calendar size={16} />
@@ -1071,11 +1071,172 @@ const CashflowProjections = () => {
         </TabsList>
 
         {/* WEEKLY VIEW */}
-        <TabsContent value="weekly" className="mt-4">
+        <TabsContent value="weekly" className="mt-4 space-y-4">
+          
+          {/* ===== CFO KPIs DASHBOARD ===== */}
+          {cfoKPIs && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="cfo-kpis-section">
+              {/* Net Burn Rate */}
+              <Card className="border-l-4 border-l-blue-500">
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+                    <Activity size={14} />
+                    Net Burn Rate
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs text-gray-400">Real (S1-S4):</span>
+                      <span className={`text-lg font-bold ${cfoKPIs.burnRateReal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatCurrency(cfoKPIs.burnRateReal)}/sem
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs text-gray-400">Proy (S6-S18):</span>
+                      <span className={`text-lg font-bold ${cfoKPIs.burnRateProyectado >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatCurrency(cfoKPIs.burnRateProyectado)}/sem
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Cash Gap Analysis */}
+              <Card className={`border-l-4 ${cfoKPIs.semanasEnRiesgo.length > 0 ? 'border-l-red-500' : 'border-l-green-500'}`}>
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+                    <AlertTriangle size={14} />
+                    Cash Gap Analysis
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs text-gray-400">Umbral mínimo:</span>
+                      <span className="text-sm font-medium">{formatCurrency(umbralMinimoCaja)}</span>
+                    </div>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs text-gray-400">Semanas en riesgo:</span>
+                      <span className={`text-lg font-bold ${cfoKPIs.semanasEnRiesgo.length > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        {cfoKPIs.semanasEnRiesgo.length} de 18
+                      </span>
+                    </div>
+                    {cfoKPIs.semanaCritica && (
+                      <div className="flex justify-between items-baseline">
+                        <span className="text-xs text-gray-400">Semana crítica:</span>
+                        <span className="text-sm font-medium text-red-500">
+                          {cfoKPIs.semanaCritica.semana} ({formatCurrency(cfoKPIs.semanaCritica.saldoFinal)})
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Volatilidad del Flujo */}
+              <Card className="border-l-4 border-l-purple-500">
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+                    <BarChart3 size={14} />
+                    Volatilidad del Flujo
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs text-gray-400">Desv. Estándar:</span>
+                      <span className="text-lg font-bold text-purple-600">
+                        {formatCurrency(cfoKPIs.volatilidad)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs text-gray-400">Coef. Variación:</span>
+                      <span className={`text-sm font-medium ${cfoKPIs.coeficienteVariacion > 50 ? 'text-red-500' : cfoKPIs.coeficienteVariacion > 25 ? 'text-amber-500' : 'text-green-500'}`}>
+                        {cfoKPIs.coeficienteVariacion.toFixed(1)}%
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {cfoKPIs.coeficienteVariacion > 50 ? '⚠️ Alta volatilidad' : cfoKPIs.coeficienteVariacion > 25 ? '⚡ Volatilidad moderada' : '✅ Flujo estable'}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Runway & Ratio */}
+              <Card className="border-l-4 border-l-amber-500">
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+                    <Target size={14} />
+                    Indicadores Operativos
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs text-gray-400">Runway:</span>
+                      <span className={`text-lg font-bold ${cfoKPIs.runway < 8 ? 'text-red-600' : cfoKPIs.runway < 16 ? 'text-amber-600' : 'text-green-600'}`}>
+                        {cfoKPIs.runway > 100 ? '100+' : cfoKPIs.runway} semanas
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs text-gray-400">Ratio Cobranza/Pagos:</span>
+                      <span className={`text-lg font-bold ${cfoKPIs.ratioCobranzaPagos >= 1 ? 'text-green-600' : 'text-red-600'}`}>
+                        {cfoKPIs.ratioCobranzaPagos > 10 ? '>10' : cfoKPIs.ratioCobranzaPagos.toFixed(2)}x
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {cfoKPIs.ratioCobranzaPagos >= 1 ? '✅ Cobranza > Pagos' : '⚠️ Pagos > Cobranza'}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* ===== FLUJO ACUMULADO RESUMEN ===== */}
+          {cfoKPIs && (
+            <Card className="bg-gradient-to-r from-slate-50 to-blue-50" data-testid="flujo-acumulado-section">
+              <CardHeader className="py-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendingUp size={18} />
+                  Flujo de Caja Acumulado: Real vs Proyectado
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="py-2">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                    <div className="text-xs text-gray-500 mb-1">Ingresos Reales (S1-S5)</div>
+                    <div className="text-xl font-bold text-green-600">{formatCurrency(cfoKPIs.totalIngresosReales)}</div>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                    <div className="text-xs text-gray-500 mb-1">Egresos Reales (S1-S5)</div>
+                    <div className="text-xl font-bold text-red-600">{formatCurrency(cfoKPIs.totalEgresosReales)}</div>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                    <div className="text-xs text-gray-500 mb-1">Ingresos Proyectados (S6-S18)</div>
+                    <div className="text-xl font-bold text-green-500">{formatCurrency(cfoKPIs.totalIngresosProyectados)}</div>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                    <div className="text-xs text-gray-500 mb-1">Egresos Proyectados (S6-S18)</div>
+                    <div className="text-xl font-bold text-red-500">{formatCurrency(cfoKPIs.totalEgresosProyectados)}</div>
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  <div className="text-center p-4 bg-blue-100 rounded-lg">
+                    <div className="text-sm text-blue-700 mb-1">Flujo Neto Real Acumulado</div>
+                    <div className={`text-2xl font-bold ${cfoKPIs.totalFlujoNetoReal >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                      {formatCurrency(cfoKPIs.totalFlujoNetoReal)}
+                    </div>
+                  </div>
+                  <div className="text-center p-4 bg-indigo-100 rounded-lg">
+                    <div className="text-sm text-indigo-700 mb-1">Flujo Neto Proyectado Total</div>
+                    <div className={`text-2xl font-bold ${cfoKPIs.acumuladoProyectadoFinal >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                      {formatCurrency(cfoKPIs.acumuladoProyectadoFinal)}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ===== MAIN CASH FLOW TABLE ===== */}
           <Card>
             <CardHeader className="bg-[#0F172A] text-white rounded-t-lg">
               <CardTitle className="flex items-center justify-between">
-                <span>Modelo de Flujo de Efectivo - 13 Semanas</span>
+                <span>Modelo de Flujo de Efectivo - 18 Semanas</span>
                 <span className="text-sm font-normal">
                   {format(new Date(), 'MMMM yyyy', { locale: es })}
                 </span>
@@ -1088,28 +1249,34 @@ const CashflowProjections = () => {
                     <TableRow className="bg-gray-100">
                       <TableHead className="sticky left-0 bg-gray-100 min-w-[200px] font-bold">CONCEPTO</TableHead>
                       {weeklyTotals.map((week, idx) => (
-                        <TableHead key={idx} className={`text-center min-w-[100px] ${week.hasRealData ? 'bg-yellow-50' : ''}`}>
+                        <TableHead key={idx} className={`text-center min-w-[90px] ${
+                          week.dataType === 'real' ? 'bg-yellow-50' : 
+                          week.dataType === 'actual' ? 'bg-blue-50' : 'bg-gray-50'
+                        }`}>
                           <div className="font-bold">{week.label}</div>
                           <div className="text-xs text-gray-500">{week.dateLabel}</div>
-                          {week.hasRealData && (
-                            <div className="text-xs text-yellow-600 font-semibold">Real</div>
-                          )}
+                          <div className={`text-xs font-semibold ${
+                            week.dataType === 'real' ? 'text-yellow-600' : 
+                            week.dataType === 'actual' ? 'text-blue-600' : 'text-gray-400'
+                          }`}>
+                            {week.dataType === 'real' ? 'Real' : week.dataType === 'actual' ? 'Actual' : 'Proy'}
+                          </div>
                         </TableHead>
                       ))}
                       <TableHead className="text-center min-w-[120px] bg-blue-50 font-bold">TOTAL</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {/* SALDO INICIAL DE BANCOS Row */}
+                    {/* SALDO INICIAL POR SEMANA Row */}
                     <TableRow className="bg-blue-100 font-bold border-b-2 border-blue-300">
                       <TableCell className="sticky left-0 bg-blue-100">
                         <div className="flex items-center gap-2">
                           <Building2 className="text-blue-600" size={16} />
-                          SALDO INICIAL BANCOS
+                          SALDO INICIAL SEMANA
                         </div>
                       </TableCell>
                       {weeklyTotals.map((week, idx) => (
-                        <TableCell key={idx} className="text-center text-blue-700 font-bold">
+                        <TableCell key={idx} className="text-center text-blue-700 font-bold text-sm">
                           {formatCurrency(week.saldoInicial)}
                         </TableCell>
                       ))}
