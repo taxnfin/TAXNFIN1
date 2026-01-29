@@ -863,7 +863,7 @@ const CashflowProjections = () => {
             Proyección de Flujo de Efectivo
           </h1>
           <p className="text-[#64748B]">
-            Modelo de 13 semanas | Inicio: {DIAS_SEMANA.find(d => d.value === companyConfig.inicio_semana)?.label || 'Lunes'}
+            Modelo Rolling 18 semanas (4 Real + 1 Actual + 13 Proyectado) | Inicio: {DIAS_SEMANA.find(d => d.value === companyConfig.inicio_semana)?.label || 'Lunes'}
             {selectedCurrency !== 'MXN' && (
               <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-sm">
                 TC: 1 {selectedCurrency} = ${fxRates[selectedCurrency]?.toFixed(4) || '?'} MXN
@@ -904,6 +904,18 @@ const CashflowProjections = () => {
                   </Select>
                   <p className="text-sm text-gray-500">
                     Este ajuste afecta cómo se agrupan las semanas en las proyecciones de flujo de efectivo.
+                  </p>
+                </div>
+                <div className="space-y-2 mt-4 pt-4 border-t">
+                  <Label>Umbral Mínimo de Caja (Cash Gap Analysis)</Label>
+                  <Input 
+                    type="number"
+                    value={umbralMinimoCaja}
+                    onChange={(e) => setUmbralMinimoCaja(parseFloat(e.target.value) || 0)}
+                    placeholder="Ej: 500000"
+                  />
+                  <p className="text-sm text-gray-500">
+                    Monto mínimo de efectivo requerido. Se usará para calcular el Cash Gap.
                   </p>
                 </div>
               </div>
