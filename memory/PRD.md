@@ -576,7 +576,57 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
-## Latest Updates (January 25, 2026)
+## Latest Updates (January 29, 2026)
+
+### Completed ✅
+
+**Feature P0: KPIs "Grado CFO" en Proyección de Flujo de Efectivo**
+
+Implementación completa de KPIs ejecutivos para transformar el reporte de 13 semanas en un modelo rolling de 18 semanas tipo CFO:
+
+**Cambios estructurales:**
+- Modelo expandido de 13 → 18 semanas (4 Real + 1 Actual + 13 Proyectado)
+- Nueva propiedad `dataType` por semana: 'real' | 'actual' | 'proyectado'
+- Etiquetas visuales diferenciadas por tipo de dato (amarillo=Real, azul=Actual, gris=Proy)
+
+**Nuevos KPIs CFO (4 tarjetas):**
+1. **Net Burn Rate**: Promedio semanal de flujo neto Real (S1-S4) vs Proyectado (S6-S18)
+2. **Cash Gap Analysis**: 
+   - Umbral mínimo de caja configurable (default $500,000)
+   - Semanas en riesgo (saldo < umbral)
+   - Semana crítica identificada
+3. **Volatilidad del Flujo**:
+   - Desviación estándar del flujo neto real
+   - Coeficiente de variación con indicador de estabilidad
+4. **Indicadores Operativos**:
+   - Runway (semanas de operación con saldo actual)
+   - Ratio Cobranza vs Pagos
+
+**Sección de Flujo Acumulado:**
+- Ingresos Reales (S1-S5) vs Ingresos Proyectados (S6-S18)
+- Egresos Reales (S1-S5) vs Egresos Proyectados (S6-S18)
+- Flujo Neto Real Acumulado
+- Flujo Neto Proyectado Total
+
+**Nuevas filas en tabla:**
+- SALDO INICIAL SEMANA (al inicio)
+- SALDO FINAL SEMANA (antes del resumen)
+- CASH GAP (diferencia vs umbral mínimo configurable)
+
+**Archivos Modificados:**
+- `frontend/src/pages/CashflowProjections.js`:
+  - Líneas 218-260: Generación de 18 semanas con dataType
+  - Líneas 770-842: Nueva función `calculateCFOKPIs()`
+  - Líneas 1080-1250: Panel de KPIs CFO y Flujo Acumulado
+  - Líneas 1570-1620: Filas SALDO FINAL SEMANA y CASH GAP
+
+**Testing:** 
+- 9/9 funcionalidades verificadas por testing agent
+- 100% pass rate en frontend
+
+---
+
+## Previous Updates (January 25, 2026)
 
 ### Completed ✅
 
