@@ -844,6 +844,7 @@ const CashflowProjections = () => {
   if (loading) return <div className="p-8">Cargando proyecciones...</div>;
 
   const weeklyTotals = calculateRunningTotals();
+  const cfoKPIs = calculateCFOKPIs(weeklyTotals);
   const customConceptsIngresos = customConcepts.filter(c => c.tipo === 'ingreso');
   const customConceptsEgresos = customConcepts.filter(c => c.tipo === 'egreso');
   const grandTotalIngresos = weeklyTotals.reduce((sum, w) => sum + w.ingresos.total, 0);
