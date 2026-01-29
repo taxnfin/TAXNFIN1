@@ -1397,13 +1397,16 @@ const CashflowProjections = () => {
                         <div className="flex items-center gap-2">
                           <TrendingDown className="text-red-600" size={16} />
                           EGRESOS
-                          {weeklyTotals.some(w => w.hasRealData) && (
-                            <span className="text-xs px-2 py-0.5 bg-red-200 text-red-800 rounded">Incluye Datos Reales</span>
+                          {weeklyTotals.some(w => w.dataType === 'real' || w.dataType === 'actual') && (
+                            <span className="text-xs px-2 py-0.5 bg-red-200 text-red-800 rounded">S1-S5 Real</span>
                           )}
                         </div>
                       </TableCell>
                       {weeklyTotals.map((week, idx) => (
-                        <TableCell key={idx} className={`text-center font-bold ${week.hasRealData ? 'text-red-800 bg-red-100' : 'text-red-700'}`}>
+                        <TableCell key={idx} className={`text-center font-bold text-sm ${
+                          week.dataType === 'real' ? 'text-red-800 bg-red-100' : 
+                          week.dataType === 'actual' ? 'text-red-700 bg-red-50' : 'text-red-600'
+                        }`}>
                           {formatCurrency(week.egresos.total)}
                         </TableCell>
                       ))}
