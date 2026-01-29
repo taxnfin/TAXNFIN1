@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { TrendingUp, TrendingDown, Calendar, Building2, User, FileText, ChevronDown, ChevronRight, Download, Plus, Trash2, Settings } from 'lucide-react';
+import { TrendingUp, TrendingDown, Calendar, Building2, User, FileText, ChevronDown, ChevronRight, Download, Plus, Trash2, Settings, AlertTriangle, BarChart3, Target, Activity } from 'lucide-react';
 import { format, addWeeks, startOfWeek, addMonths, startOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { exportProjections } from '@/utils/excelExport';
@@ -215,13 +215,20 @@ const CashflowProjections = () => {
     const fourWeeksAgo = addWeeks(currentMonday, -4);
     const startMonday = earliestDate ? getMonday(earliestDate < fourWeeksAgo ? fourWeeksAgo : earliestDate) : fourWeeksAgo;
     
-    // Generate 13 weeks
+    // Generate 18 weeks: 4 historical (S1-S4) + 1 current (S5) + 13 projected (S6-S18)
+    // Rolling model: as weeks pass, historical weeks become fixed "Real" data
     const weeks = [];
-    for (let i = 0; i < 13; i++) {
+    for (let i = 0; i < 18; i++) {
       const weekStart = addWeeks(startMonday, i);
       const weekEnd = addWeeks(weekStart, 1);
       const isPast = weekEnd <= today;
       const isCurrent = weekStart <= today && today < weekEnd;
+      
+      // Determine data source type for CFO KPIs
+      // S1-S4: Historical (Real), S5: Current (Actual), S6-S18: Projected (Proyectado)
+      let dataType = 'proyectado';
+      if (isPast) dataType = 'real';
+      else if (isCurrent) dataType = 'actual';
       
       weeks.push({
         weekNum: i + 1,
@@ -231,6 +238,7 @@ const CashflowProjections = () => {
         dateLabel: format(weekStart, 'dd MMM', { locale: es }),
         isPast,
         isCurrent,
+        dataType, // 'real' | 'actual' | 'proyectado'
         // INGRESOS structure by category/subcategory
         ingresos: { total: 0, byCategory: {} },
         // EGRESOS structure by category/subcategory
