@@ -58,6 +58,9 @@ const CashflowProjections = () => {
     mes: 1,
     recurrente: false
   });
+  
+  // CFO KPIs configuration
+  const [umbralMinimoCaja, setUmbralMinimoCaja] = useState(500000); // Default 500K MXN
 
   // Currency list - All available currencies
   const CURRENCIES = [
