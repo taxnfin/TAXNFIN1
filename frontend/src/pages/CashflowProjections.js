@@ -1567,21 +1567,49 @@ const CashflowProjections = () => {
                       </TableCell>
                     </TableRow>
 
-                    {/* ENDING CASH BALANCE */}
+                    {/* SALDO FINAL POR SEMANA */}
                     <TableRow className="bg-[#0F172A] text-white font-bold">
                       <TableCell className="sticky left-0 bg-[#0F172A]">
-                        SALDO FINAL
+                        SALDO FINAL SEMANA
                       </TableCell>
                       {weeklyTotals.map((week, idx) => (
                         <TableCell 
                           key={idx} 
-                          className={`text-center font-bold ${week.saldoFinal >= 0 ? 'text-green-400' : 'text-red-400'}`}
+                          className={`text-center font-bold text-sm ${week.saldoFinal >= 0 ? 'text-green-400' : 'text-red-400'}`}
                         >
                           {formatCurrency(week.saldoFinal)}
                         </TableCell>
                       ))}
                       <TableCell className="text-center font-bold">
                         {formatCurrency(weeklyTotals[weeklyTotals.length - 1]?.saldoFinal || 0)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* CASH GAP - Diferencia vs Umbral Mínimo */}
+                    <TableRow className="bg-amber-50 font-medium">
+                      <TableCell className="sticky left-0 bg-amber-50">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="text-amber-600" size={14} />
+                          CASH GAP (vs {formatCurrency(umbralMinimoCaja)})
+                        </div>
+                      </TableCell>
+                      {weeklyTotals.map((week, idx) => {
+                        const gap = week.saldoFinal - umbralMinimoCaja;
+                        const isNegative = gap < 0;
+                        return (
+                          <TableCell 
+                            key={idx} 
+                            className={`text-center text-sm ${isNegative ? 'text-red-600 bg-red-50 font-bold' : 'text-green-600'}`}
+                          >
+                            {isNegative ? `(${formatCurrency(Math.abs(gap))})` : formatCurrency(gap)}
+                          </TableCell>
+                        );
+                      })}
+                      <TableCell className="text-center bg-amber-100 text-amber-800 font-bold">
+                        {(() => {
+                          const finalGap = (weeklyTotals[weeklyTotals.length - 1]?.saldoFinal || 0) - umbralMinimoCaja;
+                          return finalGap < 0 ? `(${formatCurrency(Math.abs(finalGap))})` : formatCurrency(finalGap);
+                        })()}
                       </TableCell>
                     </TableRow>
                   </TableBody>
