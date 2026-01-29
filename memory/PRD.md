@@ -665,6 +665,7 @@ Implementación completa de KPIs ejecutivos para transformar el reporte de 13 se
 ### P0 - Critical (COMPLETED)
 All P0 features implemented and tested:
 - ✅ P0 - Matching Automático de CFDIs (January 22, 2026)
+- ✅ P0 - KPIs "Grado CFO" en Proyecciones de Flujo de Efectivo (January 29, 2026)
 
 ### P1 - High Priority
 1. ✅ **Refactor `server.py` - PHASE 2 COMPLETE** (January 25, 2026)
@@ -674,6 +675,7 @@ All P0 features implemented and tested:
 
 2. **Notificaciones automáticas** - Alertas por email/SMS para vencimientos
 3. ✅ **Bug Fix: Conciliación sin Pago** - COMPLETED (January 22, 2026)
+4. **Completar refactorización de server.py** - Eliminar código duplicado, mover dashboard endpoint a routes/reports.py
 
 ### P2 - Medium Priority
 1. **Restaurar datos de Ortech** - Si el usuario tiene XMLs
