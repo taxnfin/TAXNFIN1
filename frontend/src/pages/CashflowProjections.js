@@ -717,6 +717,130 @@ const CashflowProjections = () => {
     return totals;
   };
 
+  // =====================================================================
+  // CÁLCULO DE KPIs "GRADO CFO"
+  // =====================================================================
+  const calculateCFOKPIs = (totals) => {
+    if (!totals || totals.length === 0) return null;
+    
+    // Separar semanas por tipo de dato
+    const semanasReales = totals.filter(w => w.dataType === 'real' || w.dataType === 'actual');
+    const semanasProyectadas = totals.filter(w => w.dataType === 'proyectado');
+    
+    // 1. NET BURN RATE - Promedio semanal de flujo neto
+    const burnRateReal = semanasReales.length > 0 
+      ? semanasReales.reduce((sum, w) => sum + w.flujoNeto, 0) / semanasReales.length 
+      : 0;
+    const burnRateProyectado = semanasProyectadas.length > 0 
+      ? semanasProyectadas.reduce((sum, w) => sum + w.flujoNeto, 0) / semanasProyectadas.length 
+      : 0;
+    
+    // 2. FORECAST ACCURACY - Variación % Real vs Proyectado (solo para semanas que tienen ambos)
+    // Para calcular accuracy, comparamos ingresos/egresos reales vs lo que se había proyectado
+    // Aquí usamos las semanas reales como proxy, dado que no tenemos los datos originales proyectados
+    const totalIngresosReales = semanasReales.reduce((sum, w) => sum + w.ingresos.total, 0);
+    const totalEgresosReales = semanasReales.reduce((sum, w) => sum + w.egresos.total, 0);
+    const totalFlujoNetoReal = semanasReales.reduce((sum, w) => sum + w.flujoNeto, 0);
+    
+    const totalIngresosProyectados = semanasProyectadas.reduce((sum, w) => sum + w.ingresos.total, 0);
+    const totalEgresosProyectados = semanasProyectadas.reduce((sum, w) => sum + w.egresos.total, 0);
+    const totalFlujoNetoProyectado = semanasProyectadas.reduce((sum, w) => sum + w.flujoNeto, 0);
+    
+    // Accuracy: qué tan cerca están los ingresos reales del promedio proyectado (escalado)
+    // Si no hay proyecciones previas, mostrar N/A
+    const promedioIngresosSemanal = totalIngresosProyectados / Math.max(semanasProyectadas.length, 1);
+    const promedioEgresosSemanal = totalEgresosProyectados / Math.max(semanasProyectadas.length, 1);
+    
+    // 3. CASH GAP ANALYSIS - Diferencia vs umbral mínimo por semana
+    const cashGapByWeek = totals.map(w => ({
+      semana: w.label,
+      saldoFinal: w.saldoFinal,
+      gap: w.saldoFinal - umbralMinimoCaja,
+      enRiesgo: w.saldoFinal < umbralMinimoCaja
+    }));
+    
+    const semanasEnRiesgo = cashGapByWeek.filter(w => w.enRiesgo);
+    const semanaCritica = cashGapByWeek.reduce((min, w) => 
+      w.saldoFinal < min.saldoFinal ? w : min, 
+      cashGapByWeek[0] || { saldoFinal: 0, semana: 'N/A' }
+    );
+    
+    // 4. FLUJO DE CAJA ACUMULADO - Real vs Proyectado
+    let acumuladoReal = 0;
+    let acumuladoProyectado = 0;
+    const flujoAcumulado = totals.map(w => {
+      if (w.dataType === 'real' || w.dataType === 'actual') {
+        acumuladoReal += w.flujoNeto;
+        return { ...w, acumuladoReal, acumuladoProyectado };
+      } else {
+        acumuladoProyectado += w.flujoNeto;
+        return { ...w, acumuladoReal, acumuladoProyectado: acumuladoReal + acumuladoProyectado };
+      }
+    });
+    
+    // 5. VOLATILIDAD - Desviación estándar del flujo neto real
+    let volatilidad = 0;
+    if (semanasReales.length > 1) {
+      const mediaFlujo = totalFlujoNetoReal / semanasReales.length;
+      const sumaCuadrados = semanasReales.reduce((sum, w) => sum + Math.pow(w.flujoNeto - mediaFlujo, 2), 0);
+      volatilidad = Math.sqrt(sumaCuadrados / semanasReales.length);
+    }
+    
+    // Coeficiente de variación (volatilidad relativa)
+    const coeficienteVariacion = burnRateReal !== 0 ? (volatilidad / Math.abs(burnRateReal)) * 100 : 0;
+    
+    // 6. RUNWAY - Semanas de operación con saldo actual
+    const saldoActual = totals.find(w => w.dataType === 'actual')?.saldoFinal || totals[0]?.saldoFinal || 0;
+    const egresoPromedio = (totalEgresosReales + totalEgresosProyectados) / totals.length;
+    const runway = egresoPromedio > 0 ? Math.floor(saldoActual / egresoPromedio) : 999;
+    
+    // 7. RATIO COBRANZA VS PAGOS
+    const ratioCobranzaPagos = totalEgresosReales > 0 
+      ? (totalIngresosReales / totalEgresosReales) 
+      : totalIngresosReales > 0 ? 999 : 1;
+    
+    return {
+      // Net Burn Rate
+      burnRateReal,
+      burnRateProyectado,
+      burnRateDelta: burnRateProyectado - burnRateReal,
+      
+      // Totales
+      totalIngresosReales,
+      totalEgresosReales,
+      totalFlujoNetoReal,
+      totalIngresosProyectados,
+      totalEgresosProyectados,
+      totalFlujoNetoProyectado,
+      
+      // Promedios
+      promedioIngresosSemanal,
+      promedioEgresosSemanal,
+      
+      // Cash Gap
+      cashGapByWeek,
+      semanasEnRiesgo,
+      semanaCritica,
+      
+      // Flujo Acumulado
+      flujoAcumulado,
+      acumuladoRealFinal: acumuladoReal,
+      acumuladoProyectadoFinal: acumuladoReal + acumuladoProyectado,
+      
+      // Volatilidad
+      volatilidad,
+      coeficienteVariacion,
+      
+      // Operacionales
+      runway,
+      ratioCobranzaPagos,
+      
+      // Metadata
+      semanasRealesCount: semanasReales.length,
+      semanasProyectadasCount: semanasProyectadas.length
+    };
+  };
+
   if (loading) return <div className="p-8">Cargando proyecciones...</div>;
 
   const weeklyTotals = calculateRunningTotals();
