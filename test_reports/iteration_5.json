@@ -1,0 +1,87 @@
+{
+  "summary": "CFO-grade 18-week cashflow projection features tested successfully. All 9 features verified and working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "features_tested": {
+    "feature_1_18_weeks": {
+      "status": "PASSED",
+      "description": "Page /projections shows 18 weeks (S1-S18) instead of 13",
+      "frontend_verified": true,
+      "notes": "Table header shows S1-S18 with dates and data type labels"
+    },
+    "feature_2_cfo_kpis": {
+      "status": "PASSED",
+      "description": "CFO KPIs cards displayed: Net Burn Rate, Cash Gap Analysis, Volatilidad del Flujo, Indicadores Operativos",
+      "frontend_verified": true,
+      "notes": "All 4 KPI cards visible with correct data: Net Burn Rate (Real S1-S4 and Proy S6-S18), Cash Gap Analysis (Umbral mínimo, Semanas en riesgo, Semana crítica), Volatilidad (Desv. Estándar, Coef. Variación), Indicadores Operativos (Runway, Ratio Cobranza/Pagos)"
+    },
+    "feature_3_flujo_acumulado": {
+      "status": "PASSED",
+      "description": "Section 'Flujo de Caja Acumulado: Real vs Proyectado' shows totals correctly",
+      "frontend_verified": true,
+      "notes": "Shows Ingresos Reales (S1-S5), Egresos Reales (S1-S5), Ingresos Proyectados (S6-S18), Egresos Proyectados (S6-S18), Flujo Neto Real Acumulado, Flujo Neto Proyectado Total"
+    },
+    "feature_4_week_labels": {
+      "status": "PASSED",
+      "description": "Weeks S1-S4 marked as 'Real', S5 as 'Actual', S6-S18 as 'Proy'",
+      "frontend_verified": true,
+      "notes": "Each week column has colored label: Real (yellow), Actual (blue), Proy (gray)"
+    },
+    "feature_5_saldo_inicial": {
+      "status": "PASSED",
+      "description": "Table has 'SALDO INICIAL SEMANA' row with values per week",
+      "frontend_verified": true,
+      "notes": "Blue row at top of table showing initial balance for each week"
+    },
+    "feature_6_saldo_final": {
+      "status": "PASSED",
+      "description": "Table has 'SALDO FINAL SEMANA' row at the end",
+      "frontend_verified": true,
+      "notes": "Dark row at bottom showing final balance per week with color coding (green positive, red negative)"
+    },
+    "feature_7_cash_gap_row": {
+      "status": "PASSED",
+      "description": "Table has 'CASH GAP' row showing difference vs configurable threshold",
+      "frontend_verified": true,
+      "notes": "Amber row showing gap vs umbral mínimo, negative values in red with parentheses"
+    },
+    "feature_8_config_umbral": {
+      "status": "PASSED",
+      "description": "Configurar button allows modifying 'Umbral Mínimo de Caja'",
+      "frontend_verified": true,
+      "notes": "Config dialog has input field for Umbral Mínimo de Caja (Cash Gap Analysis) with default 500000"
+    },
+    "feature_9_currency_selector": {
+      "status": "PASSED",
+      "description": "Currency selector (MXN, USD, EUR) works and converts values",
+      "frontend_verified": true,
+      "notes": "Dropdown shows 8 currencies (MXN, USD, EUR, GBP, JPY, CHF, CAD, CNY). When non-MXN selected, shows exchange rate badge 'TC: 1 USD = $17.4545 MXN' and all values converted"
+    }
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend only testing)",
+    "frontend": "100% (9/9 features passed)"
+  },
+  "test_credentials": {
+    "email": "admin@demo.com",
+    "password": "admin123"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "CFO-grade 18-week cashflow projection features fully implemented and working. The /projections page shows: (1) 18 weeks with S1-S4 Real, S5 Actual, S6-S18 Proyectado labels, (2) CFO KPIs dashboard with Net Burn Rate, Cash Gap Analysis, Volatilidad del Flujo, Indicadores Operativos, (3) Flujo Acumulado Real vs Proyectado section, (4) SALDO INICIAL SEMANA and SALDO FINAL SEMANA rows, (5) CASH GAP row with configurable threshold via Configurar button, (6) Multi-currency support (MXN, USD, EUR, etc.) with live conversion.",
+  "mocked_apis": {
+    "Belvo Open Banking": "MOCKED - Belvo integration is scaffolded but not connected (needs user credentials)"
+  }
+}
