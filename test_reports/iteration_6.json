@@ -1,0 +1,81 @@
+{
+  "summary": "Frontend testing completed for charts and PDF export features on /projections page. All 8 features verified and working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "features_tested": {
+    "feature_1_four_charts": {
+      "status": "PASSED",
+      "description": "Page /projections shows 4 charts: Flujo Acumulado Real vs Proyectado, Ingresos vs Egresos Semanal, Saldo Final vs Umbral Mínimo (Cash Gap), Flujo Neto Semanal",
+      "frontend_verified": true,
+      "notes": "All 4 charts visible in a 2x2 grid layout between KPIs section and the 18-week table"
+    },
+    "feature_2_flujo_acumulado_chart": {
+      "status": "PASSED",
+      "description": "Flujo Acumulado chart shows green line (Real Acumulado) and blue dashed line (Proyectado Total)",
+      "frontend_verified": true,
+      "notes": "Green area fill with stroke #16a34a for Real Acumulado, blue dashed line #6366f1 for Proyectado Total. Legend shows both labels correctly."
+    },
+    "feature_3_ingresos_egresos_chart": {
+      "status": "PASSED",
+      "description": "Ingresos vs Egresos chart shows green bars (Ingresos) and red bars (Egresos) per week",
+      "frontend_verified": true,
+      "notes": "Bar chart with green (#22c55e) for Ingresos and red (#ef4444) for Egresos. Shows S1-S18 weeks on X-axis."
+    },
+    "feature_4_cash_gap_chart": {
+      "status": "PASSED",
+      "description": "Cash Gap chart shows blue area (Saldo Final) and red dashed reference line (Umbral Mínimo)",
+      "frontend_verified": true,
+      "notes": "Area chart with blue fill (#3b82f6) for Saldo Final. ReferenceLine for Umbral Mínimo in red (#ef4444) dashed."
+    },
+    "feature_5_flujo_neto_chart": {
+      "status": "PASSED",
+      "description": "Flujo Neto Semanal chart shows green bars (positive) and red bars (negative)",
+      "frontend_verified": true,
+      "notes": "Stacked bar chart with Flujo Positivo (green #22c55e) and Flujo Negativo (red #ef4444). Reference line at y=0."
+    },
+    "feature_6_export_pdf_button": {
+      "status": "PASSED",
+      "description": "Export PDF button exists next to Export Excel button",
+      "frontend_verified": true,
+      "notes": "Red-styled button with FileDown icon, data-testid='export-pdf-btn'. Located in header next to 'Exportar Excel' button."
+    },
+    "feature_7_pdf_export_toasts": {
+      "status": "PASSED",
+      "description": "Clicking Export PDF shows 'Generando PDF...' toast then 'PDF exportado exitosamente' toast",
+      "frontend_verified": true,
+      "notes": "Toast messages appear correctly: info toast 'Generando PDF, por favor espere...' followed by success toast 'PDF exportado exitosamente'"
+    },
+    "feature_8_chart_tooltips": {
+      "status": "PASSED",
+      "description": "Charts have interactive tooltips on mouse hover",
+      "frontend_verified": true,
+      "notes": "Tooltip shows 'Semana S9' and 'Proyectado Total: $1,776,189.13' format when hovering over chart data points"
+    }
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend only testing)",
+    "frontend": "100% (8/8 features passed)"
+  },
+  "test_credentials": {
+    "email": "admin@demo.com",
+    "password": "admin123"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Charts and PDF export features fully implemented and working on /projections page. The 4 Recharts-based charts are: (1) Flujo Acumulado with ComposedChart showing Area for Real and Line for Proyectado, (2) Ingresos vs Egresos with BarChart, (3) Cash Gap with ComposedChart showing Area and ReferenceLine, (4) Flujo Neto with stacked BarChart. PDF export uses html2canvas + jsPDF to capture the reportRef div content. All charts have interactive tooltips.",
+  "mocked_apis": {
+    "Belvo Open Banking": "MOCKED - Belvo integration is scaffolded but not connected (needs user credentials)"
+  }
+}
