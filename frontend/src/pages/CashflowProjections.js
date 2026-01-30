@@ -1076,6 +1076,17 @@ const CashflowProjections = () => {
             Exportar Excel
           </Button>
           
+          <Button 
+            variant="outline" 
+            className="gap-2 border-red-200 text-red-700 hover:bg-red-50"
+            onClick={exportToPDF}
+            disabled={exportingPdf}
+            data-testid="export-pdf-btn"
+          >
+            <FileDown size={16} />
+            {exportingPdf ? 'Generando...' : 'Exportar PDF'}
+          </Button>
+          
           <Dialog open={conceptDialogOpen} onOpenChange={setConceptDialogOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2 bg-[#0F172A]" data-testid="add-concept-btn">
