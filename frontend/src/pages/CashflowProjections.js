@@ -53,6 +53,10 @@ const CashflowProjections = () => {
   const [customConcepts, setCustomConcepts] = useState([]);
   const [conceptDialogOpen, setConceptDialogOpen] = useState(false);
   const [saldoInicialBancos, setSaldoInicialBancos] = useState(0);
+  
+  // PDF export state
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const reportRef = useRef(null);
   const [newConcept, setNewConcept] = useState({
     nombre: '',
     tipo: 'egreso',
