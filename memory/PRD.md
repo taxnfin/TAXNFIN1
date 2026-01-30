@@ -576,7 +576,47 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
-## Latest Updates (January 29, 2026)
+## Latest Updates (January 30, 2026)
+
+### Completed ✅
+
+**Feature: Gráficos Comparativos y Exportación a PDF**
+
+Se agregaron 4 gráficos interactivos con Recharts y funcionalidad de exportar a PDF:
+
+**Gráficos implementados:**
+1. **Flujo Acumulado: Real vs Proyectado** - Área verde para Real Acumulado (S1-S5), línea punteada azul para Proyectado Total
+2. **Ingresos vs Egresos Semanal** - Barras verdes (Ingresos) y rojas (Egresos) por cada semana S1-S18
+3. **Saldo Final vs Umbral Mínimo (Cash Gap)** - Área azul de saldo final con línea roja de referencia del umbral
+4. **Flujo Neto Semanal** - Barras verdes (flujo positivo) y rojas (flujo negativo) con línea de referencia en 0
+
+**Exportación a PDF:**
+- Botón "Exportar PDF" en rojo junto al botón de Excel
+- Usa html2canvas + jsPDF para capturar todo el contenido
+- Genera PDF en orientación landscape A4
+- Incluye: KPIs, Gráficos, Sección de Flujo Acumulado, Tabla completa de 18 semanas
+- Nombre: `Proyeccion_Flujo_Efectivo_YYYYMMDD_HHmm.pdf`
+- Pie de página con fecha de generación y número de página
+
+**Dependencias agregadas:**
+- `html2canvas: ^1.4.1`
+- `jspdf: ^4.0.0`
+
+**Archivos Modificados:**
+- `frontend/src/pages/CashflowProjections.js`:
+  - Importaciones de Recharts (LineChart, BarChart, ComposedChart, Area, etc.)
+  - Nueva función `prepareChartData()` para transformar datos
+  - Nueva función `exportToPDF()` con html2canvas + jsPDF
+  - Sección de 4 gráficos en grid 2x2
+  - Ref `reportRef` para captura de PDF
+
+**Testing:** 
+- 8/8 funcionalidades verificadas por testing agent
+- 100% pass rate en frontend
+
+---
+
+## Previous Updates (January 29, 2026)
 
 ### Completed ✅
 
