@@ -848,10 +848,133 @@ const CashflowProjections = () => {
     };
   };
 
+  // =====================================================================
+  // PREPARAR DATOS PARA GRÁFICOS
+  // =====================================================================
+  const prepareChartData = (totals) => {
+    if (!totals || totals.length === 0) return [];
+    
+    let acumuladoReal = 0;
+    let acumuladoProyectado = 0;
+    
+    return totals.map((week, idx) => {
+      const ingresosMXN = convertToCurrency(week.ingresos.total || 0);
+      const egresosMXN = convertToCurrency(week.egresos.total || 0);
+      const flujoNeto = convertToCurrency(week.flujoNeto || 0);
+      const saldoFinal = convertToCurrency(week.saldoFinal || 0);
+      const umbral = convertToCurrency(umbralMinimoCaja);
+      
+      // Calcular acumulados
+      if (week.dataType === 'real' || week.dataType === 'actual') {
+        acumuladoReal += flujoNeto;
+      } else {
+        acumuladoProyectado += flujoNeto;
+      }
+      
+      return {
+        semana: week.label,
+        fecha: week.dateLabel,
+        tipo: week.dataType,
+        ingresos: ingresosMXN,
+        egresos: egresosMXN,
+        flujoNeto: flujoNeto,
+        saldoFinal: saldoFinal,
+        umbralMinimo: umbral,
+        cashGap: saldoFinal - umbral,
+        acumuladoReal: week.dataType === 'real' || week.dataType === 'actual' ? acumuladoReal : null,
+        acumuladoProyectado: acumuladoReal + acumuladoProyectado,
+        // For area chart fill
+        flujoNetoPositivo: flujoNeto >= 0 ? flujoNeto : 0,
+        flujoNetoNegativo: flujoNeto < 0 ? flujoNeto : 0
+      };
+    });
+  };
+
+  // =====================================================================
+  // EXPORTAR A PDF
+  // =====================================================================
+  const exportToPDF = async () => {
+    if (!reportRef.current) {
+      toast.error('No se pudo encontrar el contenido para exportar');
+      return;
+    }
+    
+    setExportingPdf(true);
+    toast.info('Generando PDF, por favor espere...');
+    
+    try {
+      // Capturar el contenido como imagen
+      const canvas = await html2canvas(reportRef.current, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#F8FAFC'
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      
+      // Crear PDF en formato landscape para mejor visualización de la tabla
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+      
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      
+      // Calcular dimensiones manteniendo proporción
+      const imgWidth = pageWidth - 20; // Margen de 10mm a cada lado
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      
+      // Si la imagen es más alta que la página, dividir en múltiples páginas
+      let heightLeft = imgHeight;
+      let position = 10;
+      
+      // Primera página
+      pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+      heightLeft -= (pageHeight - 20);
+      
+      // Páginas adicionales si es necesario
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight + 10;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+        heightLeft -= (pageHeight - 20);
+      }
+      
+      // Agregar pie de página con fecha
+      const totalPages = pdf.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        pdf.setPage(i);
+        pdf.setFontSize(8);
+        pdf.setTextColor(128);
+        pdf.text(
+          `Generado: ${format(new Date(), 'dd/MM/yyyy HH:mm')} | Página ${i} de ${totalPages}`,
+          pageWidth / 2,
+          pageHeight - 5,
+          { align: 'center' }
+        );
+      }
+      
+      // Descargar el PDF
+      const fileName = `Proyeccion_Flujo_Efectivo_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
+      pdf.save(fileName);
+      
+      toast.success('PDF exportado exitosamente');
+    } catch (error) {
+      console.error('Error exportando PDF:', error);
+      toast.error('Error al exportar PDF: ' + error.message);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   if (loading) return <div className="p-8">Cargando proyecciones...</div>;
 
   const weeklyTotals = calculateRunningTotals();
   const cfoKPIs = calculateCFOKPIs(weeklyTotals);
+  const chartData = prepareChartData(weeklyTotals);
   const customConceptsIngresos = customConcepts.filter(c => c.tipo === 'ingreso');
   const customConceptsEgresos = customConcepts.filter(c => c.tipo === 'egreso');
   const grandTotalIngresos = weeklyTotals.reduce((sum, w) => sum + w.ingresos.total, 0);
