@@ -1374,6 +1374,177 @@ const CashflowProjections = () => {
             </Card>
           )}
 
+          {/* ===== GRÁFICOS COMPARATIVOS ===== */}
+          {chartData.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-testid="charts-section">
+              {/* Gráfico 1: Flujo Acumulado Real vs Proyectado */}
+              <Card>
+                <CardHeader className="py-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <TrendingUp size={18} className="text-blue-600" />
+                    Flujo Acumulado: Real vs Proyectado
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <ComposedChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                      <XAxis dataKey="semana" tick={{ fontSize: 11 }} />
+                      <YAxis 
+                        tick={{ fontSize: 10 }} 
+                        tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
+                      />
+                      <Tooltip 
+                        formatter={(value, name) => [
+                          `$${value?.toLocaleString('es-MX', { minimumFractionDigits: 0 })}`,
+                          name === 'acumuladoReal' ? 'Real Acumulado' : 
+                          name === 'acumuladoProyectado' ? 'Proyectado Total' : name
+                        ]}
+                        labelFormatter={(label) => `Semana ${label}`}
+                      />
+                      <Legend />
+                      <Area 
+                        type="monotone" 
+                        dataKey="acumuladoReal" 
+                        fill="#22c55e" 
+                        fillOpacity={0.3}
+                        stroke="#16a34a" 
+                        strokeWidth={2}
+                        name="Real Acumulado"
+                        connectNulls={false}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="acumuladoProyectado" 
+                        stroke="#6366f1" 
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        name="Proyectado Total"
+                        dot={{ fill: '#6366f1', r: 3 }}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Gráfico 2: Ingresos vs Egresos por Semana */}
+              <Card>
+                <CardHeader className="py-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <BarChart3 size={18} className="text-purple-600" />
+                    Ingresos vs Egresos Semanal
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                      <XAxis dataKey="semana" tick={{ fontSize: 11 }} />
+                      <YAxis 
+                        tick={{ fontSize: 10 }} 
+                        tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
+                      />
+                      <Tooltip 
+                        formatter={(value) => [`$${value?.toLocaleString('es-MX', { minimumFractionDigits: 0 })}`]}
+                        labelFormatter={(label) => `Semana ${label}`}
+                      />
+                      <Legend />
+                      <Bar dataKey="ingresos" fill="#22c55e" name="Ingresos" radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="egresos" fill="#ef4444" name="Egresos" radius={[2, 2, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Gráfico 3: Saldo Final vs Umbral Mínimo (Cash Gap) */}
+              <Card>
+                <CardHeader className="py-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <AlertTriangle size={18} className="text-amber-600" />
+                    Saldo Final vs Umbral Mínimo (Cash Gap)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <ComposedChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                      <XAxis dataKey="semana" tick={{ fontSize: 11 }} />
+                      <YAxis 
+                        tick={{ fontSize: 10 }} 
+                        tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
+                      />
+                      <Tooltip 
+                        formatter={(value, name) => [
+                          `$${value?.toLocaleString('es-MX', { minimumFractionDigits: 0 })}`,
+                          name === 'saldoFinal' ? 'Saldo Final' : 
+                          name === 'umbralMinimo' ? 'Umbral Mínimo' : name
+                        ]}
+                        labelFormatter={(label) => `Semana ${label}`}
+                      />
+                      <Legend />
+                      <Area 
+                        type="monotone" 
+                        dataKey="saldoFinal" 
+                        fill="#3b82f6" 
+                        fillOpacity={0.3}
+                        stroke="#2563eb" 
+                        strokeWidth={2}
+                        name="Saldo Final"
+                      />
+                      <ReferenceLine 
+                        y={chartData[0]?.umbralMinimo || 0} 
+                        stroke="#ef4444" 
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        label={{ value: 'Umbral Mínimo', fill: '#ef4444', fontSize: 10 }}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Gráfico 4: Flujo Neto Semanal */}
+              <Card>
+                <CardHeader className="py-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Activity size={18} className="text-indigo-600" />
+                    Flujo Neto Semanal
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                      <XAxis dataKey="semana" tick={{ fontSize: 11 }} />
+                      <YAxis 
+                        tick={{ fontSize: 10 }} 
+                        tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
+                      />
+                      <Tooltip 
+                        formatter={(value) => [`$${value?.toLocaleString('es-MX', { minimumFractionDigits: 0 })}`]}
+                        labelFormatter={(label) => `Semana ${label}`}
+                      />
+                      <Legend />
+                      <ReferenceLine y={0} stroke="#666" strokeWidth={1} />
+                      <Bar 
+                        dataKey="flujoNeto" 
+                        name="Flujo Neto"
+                        radius={[2, 2, 0, 0]}
+                      >
+                        {chartData.map((entry, index) => (
+                          <rect 
+                            key={`bar-${index}`}
+                            fill={entry.flujoNeto >= 0 ? '#22c55e' : '#ef4444'}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {/* ===== MAIN CASH FLOW TABLE ===== */}
           <Card>
             <CardHeader className="bg-[#0F172A] text-white rounded-t-lg">
