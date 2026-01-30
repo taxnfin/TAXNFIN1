@@ -1936,6 +1936,7 @@ const CashflowProjections = () => {
               </div>
             </CardContent>
           </Card>
+          </div> {/* End of reportRef div for PDF export */}
         </TabsContent>
 
         {/* MONTHLY VIEW */}
