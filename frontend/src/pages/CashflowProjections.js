@@ -1513,7 +1513,7 @@ const CashflowProjections = () => {
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={chartData}>
+                    <ComposedChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
                       <XAxis dataKey="semana" tick={{ fontSize: 11 }} />
                       <YAxis 
@@ -1527,18 +1527,20 @@ const CashflowProjections = () => {
                       <Legend />
                       <ReferenceLine y={0} stroke="#666" strokeWidth={1} />
                       <Bar 
-                        dataKey="flujoNeto" 
-                        name="Flujo Neto"
+                        dataKey="flujoNetoPositivo" 
+                        fill="#22c55e"
+                        name="Flujo Positivo"
+                        stackId="flujo"
                         radius={[2, 2, 0, 0]}
-                      >
-                        {chartData.map((entry, index) => (
-                          <rect 
-                            key={`bar-${index}`}
-                            fill={entry.flujoNeto >= 0 ? '#22c55e' : '#ef4444'}
-                          />
-                        ))}
-                      </Bar>
-                    </BarChart>
+                      />
+                      <Bar 
+                        dataKey="flujoNetoNegativo" 
+                        fill="#ef4444"
+                        name="Flujo Negativo"
+                        stackId="flujo"
+                        radius={[2, 2, 0, 0]}
+                      />
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
