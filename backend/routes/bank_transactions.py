@@ -13,6 +13,104 @@ router = APIRouter(prefix="/bank-transactions")
 logger = logging.getLogger(__name__)
 
 
+@router.get("/template")
+async def download_bank_statement_template():
+    """Download Excel template for importing bank statements (NO AUTH REQUIRED)"""
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from fastapi.responses import StreamingResponse
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Estado de Cuenta"
+    
+    headers = [
+        'fecha_movimiento', 'fecha_valor', 'descripcion', 'referencia',
+        'monto', 'tipo_movimiento', 'saldo', 'categoria', 'notas'
+    ]
+    
+    header_fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = thin_border
+    
+    example_data = [
+        ['2026-01-15', '2026-01-15', 'TRANSFERENCIA SPEI CLIENTE ABC', 'REF123456', 50000.00, 'credito', 150000.00, 'Ventas', 'Pago factura 001'],
+        ['2026-01-16', '2026-01-16', 'PAGO NOMINA ENERO', 'NOM202601', -25000.00, 'debito', 125000.00, 'Nómina', 'Quincena 1'],
+        ['2026-01-17', '2026-01-17', 'COMISION BANCARIA', 'COM0117', -150.00, 'debito', 124850.00, 'Comisiones Bancarias', ''],
+    ]
+    
+    for row_idx, row_data in enumerate(example_data, 2):
+        for col_idx, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.border = thin_border
+    
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column_letter
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        ws.column_dimensions[column].width = max_length + 2
+    
+    ws_inst = wb.create_sheet("Instrucciones")
+    instructions = [
+        ["PLANTILLA PARA IMPORTAR ESTADO DE CUENTA"],
+        [""],
+        ["Campos requeridos:"],
+        ["- fecha_movimiento: Fecha del movimiento (formato: YYYY-MM-DD)"],
+        ["- descripcion: Descripción del movimiento"],
+        ["- monto: Monto del movimiento (positivo=abono, negativo=cargo)"],
+        ["- tipo_movimiento: 'credito' para depósitos, 'debito' para retiros"],
+        [""],
+        ["Campos opcionales:"],
+        ["- fecha_valor: Fecha valor (por defecto igual a fecha_movimiento)"],
+        ["- referencia: Número de referencia bancaria"],
+        ["- saldo: Saldo después del movimiento"],
+        ["- categoria: Categoría del movimiento"],
+        ["- notas: Notas adicionales"],
+        [""],
+        ["IMPORTANTE:"],
+        ["1. No modifique los nombres de las columnas"],
+        ["2. Los montos negativos se consideran retiros"],
+        ["3. Seleccione la cuenta bancaria al importar"],
+    ]
+    
+    for row_idx, row_data in enumerate(instructions, 1):
+        cell = ws_inst.cell(row=row_idx, column=1, value=row_data[0])
+        if row_idx == 1:
+            cell.font = Font(bold=True, size=14)
+        elif "Campos" in str(row_data[0]) or "IMPORTANTE" in str(row_data[0]):
+            cell.font = Font(bold=True)
+    
+    ws_inst.column_dimensions['A'].width = 60
+    
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=plantilla_estado_cuenta.xlsx"}
+    )
+
+
 @router.post("", response_model=BankTransaction)
 async def create_bank_transaction(
     transaction_data: BankTransactionCreate, 
