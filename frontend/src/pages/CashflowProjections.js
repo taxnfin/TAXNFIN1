@@ -1213,10 +1213,11 @@ const CashflowProjections = () => {
 
         {/* WEEKLY VIEW */}
         <TabsContent value="weekly" className="mt-4 space-y-4">
+          <div ref={reportRef}>
           
           {/* ===== CFO KPIs DASHBOARD ===== */}
           {cfoKPIs && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="cfo-kpis-section">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4" data-testid="cfo-kpis-section">
               {/* Net Burn Rate */}
               <Card className="border-l-4 border-l-blue-500">
                 <CardContent className="pt-4">
