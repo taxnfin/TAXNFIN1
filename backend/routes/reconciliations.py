@@ -207,6 +207,7 @@ async def delete_reconciliation(
     
     bank_txn_id = recon.get('bank_transaction_id')
     cfdi_id = recon.get('cfdi_id')
+    monto_aplicado = recon.get('monto_aplicado', 0)  # Get the amount that was applied
     
     # Check if there are other reconciliations for this CFDI
     other_recons = await db.reconciliations.count_documents({
@@ -230,12 +231,53 @@ async def delete_reconciliation(
                 {'$set': {'conciliado': False, 'payment_id': None, 'fecha_conciliacion': None}}
             )
     
-    # Reset CFDI estado_conciliacion to 'pendiente' if no other reconciliations exist
-    if cfdi_id and other_recons == 0:
-        await db.cfdis.update_one(
-            {'id': cfdi_id},
-            {'$set': {'estado_conciliacion': 'pendiente'}}
-        )
+    # Update CFDI - restore the paid/collected amount
+    if cfdi_id:
+        cfdi = await db.cfdis.find_one({'id': cfdi_id}, {'_id': 0})
+        if cfdi:
+            tipo_cfdi = cfdi.get('tipo_cfdi', '')
+            
+            # Determine which field to update based on CFDI type
+            if tipo_cfdi in ['ingreso', 'I']:
+                # For income CFDIs, we reduce monto_cobrado
+                current_cobrado = float(cfdi.get('monto_cobrado', 0) or 0)
+                new_cobrado = max(0, current_cobrado - float(monto_aplicado or 0))
+                
+                # Determine new status
+                if other_recons == 0:
+                    new_estado = 'pendiente'
+                elif new_cobrado > 0:
+                    new_estado = 'parcial'
+                else:
+                    new_estado = 'pendiente'
+                
+                await db.cfdis.update_one(
+                    {'id': cfdi_id},
+                    {'$set': {
+                        'monto_cobrado': new_cobrado,
+                        'estado_conciliacion': new_estado
+                    }}
+                )
+            else:
+                # For expense CFDIs, we reduce monto_pagado
+                current_pagado = float(cfdi.get('monto_pagado', 0) or 0)
+                new_pagado = max(0, current_pagado - float(monto_aplicado or 0))
+                
+                # Determine new status
+                if other_recons == 0:
+                    new_estado = 'pendiente'
+                elif new_pagado > 0:
+                    new_estado = 'parcial'
+                else:
+                    new_estado = 'pendiente'
+                
+                await db.cfdis.update_one(
+                    {'id': cfdi_id},
+                    {'$set': {
+                        'monto_pagado': new_pagado,
+                        'estado_conciliacion': new_estado
+                    }}
+                )
     
     # Delete auto-created payment if exists
     auto_payment = await db.payments.find_one({
