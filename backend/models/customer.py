@@ -14,7 +14,7 @@ class Customer(BaseModel):
     email: Optional[str] = None
     telefono: Optional[str] = None
     direccion: Optional[str] = None
-    plazo_cobranza: int = 30  # Días para calcular aging de cuentas por cobrar
+    plazo_cobranza: Optional[int] = None  # Días para calcular aging de cuentas por cobrar (0 = contado)
     activo: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -25,4 +25,4 @@ class CustomerCreate(BaseModel):
     email: Optional[str] = None
     telefono: Optional[str] = None
     direccion: Optional[str] = None
-    plazo_cobranza: int = 30
+    plazo_cobranza: Optional[int] = None
