@@ -239,8 +239,8 @@ class SATWebService:
     
     async def solicitar_descarga_emitidos(
         self,
-        fecha_inicio: datetime,
-        fecha_fin: datetime,
+        fecha_inicio,
+        fecha_fin,
         rfc_receptor: str = None,
         tipo_comprobante: str = None
     ) -> Dict:
@@ -254,8 +254,16 @@ class SATWebService:
         try:
             descarga = SolicitaDescargaEmitidos(self.fiel)
             
-            fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%dT00:00:00')
-            fecha_fin_str = fecha_fin.strftime('%Y-%m-%dT23:59:59')
+            # Format dates - handle both datetime and string
+            if isinstance(fecha_inicio, str):
+                fecha_inicio_str = fecha_inicio.split('T')[0] + 'T00:00:00'
+            else:
+                fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%dT00:00:00')
+            
+            if isinstance(fecha_fin, str):
+                fecha_fin_str = fecha_fin.split('T')[0] + 'T23:59:59'
+            else:
+                fecha_fin_str = fecha_fin.strftime('%Y-%m-%dT23:59:59')
             
             if rfc_receptor:
                 result = descarga.solicitar_descarga(
