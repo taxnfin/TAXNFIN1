@@ -126,9 +126,11 @@ const Catalogs = () => {
       await api.put(`/companies/${editingCompany.id}`, companyForm);
       toast.success('Empresa actualizada');
       setDialogs({ ...dialogs, editCompany: false });
-      loadData();
       setEditingCompany(null);
       setCompanyForm({ nombre: '', rfc: '', moneda_base: 'MXN', pais: 'México' });
+      // Refresh data
+      const companiesRes = await api.get('/companies');
+      setCompanies(companiesRes.data);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error actualizando empresa');
     }
