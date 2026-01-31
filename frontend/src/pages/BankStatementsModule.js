@@ -1389,8 +1389,35 @@ const BankStatementsModule = () => {
     if (filterStatus === 'pendiente' && txn.conciliado) return false;
     if (searchTerm && !txn.descripcion?.toLowerCase().includes(searchTerm.toLowerCase()) &&
         !txn.referencia?.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+    // Filter by Emisor (from description - typically contains the counterparty name)
+    if (filterEmisor !== 'all') {
+      const emisorNormalizado = filterEmisor.toLowerCase();
+      if (!txn.descripcion?.toLowerCase().includes(emisorNormalizado)) return false;
+    }
+    // Filter by Categoria
+    if (filterCategoria !== 'all' && txn.categoria !== filterCategoria) return false;
     return true;
   });
+  
+  // Get unique Emisores from transaction descriptions (for dropdown)
+  const uniqueEmisores = [...new Set(
+    bankTransactions
+      .map(txn => {
+        // Extract counterparty name from description (before common prefixes like "TRANSFERENCIA", "PAGO", etc.)
+        const desc = txn.descripcion || '';
+        // Try to extract the main name - take first meaningful part
+        const parts = desc.split(/[,-]/).map(p => p.trim());
+        return parts[0]?.substring(0, 30) || desc.substring(0, 30);
+      })
+      .filter(e => e && e.length > 3)
+  )].sort();
+  
+  // Get unique Categorias from transactions
+  const uniqueCategorias = [...new Set(
+    bankTransactions
+      .map(txn => txn.categoria)
+      .filter(c => c && c.length > 0)
+  )].sort();
 
   // Stats
   const totalDepositos = filteredTransactions
