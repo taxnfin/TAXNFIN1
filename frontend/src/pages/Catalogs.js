@@ -477,7 +477,7 @@ const Catalogs = () => {
               </Dialog>
             </CardHeader>
             <CardContent>
-              <Table className="data-table">
+              <Table className="data-table" key={`companies-table-${companies.length}-${companies[0]?.nombre || ''}`}>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nombre</TableHead>
@@ -489,7 +489,7 @@ const Catalogs = () => {
                 </TableHeader>
                 <TableBody>
                   {companies.map((company) => (
-                    <TableRow key={company.id}>
+                    <TableRow key={`${company.id}-${company.nombre}`}>
                       <TableCell className="font-medium">{company.nombre}</TableCell>
                       <TableCell className="mono">{company.rfc}</TableCell>
                       <TableCell>{company.moneda_base}</TableCell>
