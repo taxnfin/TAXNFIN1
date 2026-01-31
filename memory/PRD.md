@@ -217,13 +217,13 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 ├── backend/
 │   ├── server.py               # Main FastAPI app (7000+ lines)
 │   │
-│   ├── core/                   # NEW - Core utilities (Jan 22, 2026)
+│   ├── core/                   # Core utilities (Jan 22, 2026)
 │   │   ├── __init__.py
 │   │   ├── config.py          # Settings from environment
 │   │   ├── database.py        # MongoDB connection
 │   │   └── auth.py            # JWT authentication
 │   │
-│   ├── models/                 # NEW - Pydantic models (Jan 22, 2026)
+│   ├── models/                 # Pydantic models (Jan 22, 2026)
 │   │   ├── __init__.py
 │   │   ├── enums.py           # UserRole, CFDIType, PaymentStatus
 │   │   ├── auth.py, company.py, bank.py, cfdi.py
@@ -231,20 +231,25 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 │   │   ├── transaction.py, fx.py, projection.py, audit.py
 │   │   └── base.py
 │   │
-│   ├── services/               # NEW - Business logic (Jan 22, 2026)
+│   ├── services/               # Business logic (Jan 22, 2026)
 │   │   ├── audit.py           # Audit logging
 │   │   ├── fx.py              # FX rate utilities
 │   │   ├── cashflow.py        # Cash flow initialization
 │   │   └── cfdi_parser.py     # CFDI XML parsing
 │   │
-│   ├── routes/                 # NEW - API endpoints (Jan 22, 2026)
+│   ├── routes/                 # API endpoints (Jan 22, 2026)
 │   │   ├── auth.py, companies.py, bank_accounts.py
 │   │   ├── vendors.py, customers.py, categories.py
-│   │   ├── payments.py, reconciliations.py
+│   │   ├── payments.py, reconciliations.py, cfdi.py
+│   │   ├── fx_rates.py, bank_transactions.py
+│   │   ├── sat.py             # NEW - SAT integration (Jan 31, 2026)
 │   │   └── __init__.py
 │   │
+│   ├── modules/                # NEW - Feature modules (Jan 31, 2026)
+│   │   └── cfdi_sat.py        # SAT portal integration (Selenium)
+│   │
 │   ├── advanced_services.py    # Predictive analysis, alerts
-│   ├── integration_services.py # SAT scraping (mocked)
+│   ├── integration_services.py # SAT scraping (legacy)
 │   ├── scenario_service.py     # What-if analysis
 │   ├── export_service.py       # Accounting format exports
 │   ├── genetic_optimizer.py    # Genetic algorithm optimization
@@ -260,7 +265,7 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 │       │   ├── Login.js
 │       │   ├── Dashboard.js
 │       │   ├── Transactions.js
-│       │   ├── CFDIModule.js       # With categorization & filters
+│       │   ├── CFDIModule.js       # With categorization & SAT integration
 │       │   ├── BankStatementsModule.js # Reconciliations, Belvo
 │       │   ├── PaymentsModule.js   # CFDI auto-matching
 │       │   ├── FXRatesModule.js
@@ -268,6 +273,9 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 │       │   ├── DIOTModule.js
 │       │   ├── AdvancedFeatures.js
 │       │   └── ...
+│       └── components/
+│           ├── Layout.js           # Navigation
+│           └── SATIntegration.js   # NEW - SAT integration UI (Jan 31, 2026)
 │       └── components/
 │           └── Layout.js       # Navigation
 └── tests/
