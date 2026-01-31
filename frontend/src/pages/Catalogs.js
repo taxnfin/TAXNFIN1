@@ -942,6 +942,89 @@ const Catalogs = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Edit Vendor Dialog - Inside vendors TabsContent */}
+          <Dialog open={dialogs.editVendor} onOpenChange={(open) => {
+            setDialogs({...dialogs, editVendor: open});
+            if (!open) {
+              setEditingVendor(null);
+              setVendorForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: 30 });
+            }
+          }}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Editar Proveedor</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleUpdateVendor} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Nombre</Label>
+                    <Input value={vendorForm.nombre} onChange={(e) => setVendorForm({...vendorForm, nombre: e.target.value})} required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>RFC</Label>
+                    <Input value={vendorForm.rfc} onChange={(e) => setVendorForm({...vendorForm, rfc: e.target.value.toUpperCase()})} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Dirección</Label>
+                  <Input value={vendorForm.direccion} onChange={(e) => setVendorForm({...vendorForm, direccion: e.target.value})} placeholder="Calle, número, colonia, ciudad, estado, CP" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Email</Label>
+                    <Input type="email" value={vendorForm.email} onChange={(e) => setVendorForm({...vendorForm, email: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Teléfono</Label>
+                    <Input value={vendorForm.telefono} onChange={(e) => setVendorForm({...vendorForm, telefono: e.target.value})} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Plazo de Pago (días)</Label>
+                  <Input 
+                    type="number" 
+                    min="0" 
+                    value={vendorForm.plazo_pago} 
+                    onChange={(e) => setVendorForm({...vendorForm, plazo_pago: parseInt(e.target.value) || 0})} 
+                    placeholder="30"
+                  />
+                  <p className="text-xs text-muted-foreground">Días para calcular el aging de cuentas por pagar</p>
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setDialogs({...dialogs, editVendor: false})}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" className="bg-[#0F172A]">Guardar Cambios</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          {/* Delete Vendor Confirmation - Inside vendors TabsContent */}
+          <AlertDialog open={deleteConfirm.open && deleteConfirm.type === 'vendor'} onOpenChange={(open) => !open && setDeleteConfirm({ open: false, type: null, item: null })}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                  ¿Eliminar proveedor?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta acción no se puede deshacer. Se eliminará permanentemente el proveedor 
+                  <strong> "{deleteConfirm.item?.nombre}"</strong>.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={handleDeleteVendor}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </TabsContent>
 
         <TabsContent value="customers">
