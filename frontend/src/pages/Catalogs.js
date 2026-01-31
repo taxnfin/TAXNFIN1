@@ -1154,35 +1154,54 @@ const Catalogs = () => {
             setDialogs({...dialogs, editVendor: open});
             if (!open) {
               setEditingVendor(null);
-              setVendorForm({ nombre: '', rfc: '', email: '', telefono: '' });
+              setVendorForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: 30 });
             }
           }}>
-            <DialogContent>
+            <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>Editar Proveedor</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleUpdateVendor} className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Nombre</Label>
-                  <Input value={vendorForm.nombre} onChange={(e) => setVendorForm({...vendorForm, nombre: e.target.value})} required />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Nombre</Label>
+                    <Input value={vendorForm.nombre} onChange={(e) => setVendorForm({...vendorForm, nombre: e.target.value})} required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>RFC</Label>
+                    <Input value={vendorForm.rfc} onChange={(e) => setVendorForm({...vendorForm, rfc: e.target.value.toUpperCase()})} />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>RFC</Label>
-                  <Input value={vendorForm.rfc} onChange={(e) => setVendorForm({...vendorForm, rfc: e.target.value})} />
+                  <Label>Dirección</Label>
+                  <Input value={vendorForm.direccion} onChange={(e) => setVendorForm({...vendorForm, direccion: e.target.value})} placeholder="Calle, número, colonia, ciudad, estado, CP" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Email</Label>
+                    <Input type="email" value={vendorForm.email} onChange={(e) => setVendorForm({...vendorForm, email: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Teléfono</Label>
+                    <Input value={vendorForm.telefono} onChange={(e) => setVendorForm({...vendorForm, telefono: e.target.value})} />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input type="email" value={vendorForm.email} onChange={(e) => setVendorForm({...vendorForm, email: e.target.value})} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Teléfono</Label>
-                  <Input value={vendorForm.telefono} onChange={(e) => setVendorForm({...vendorForm, telefono: e.target.value})} />
+                  <Label>Plazo de Pago (días)</Label>
+                  <Input 
+                    type="number" 
+                    min="0" 
+                    value={vendorForm.plazo_pago} 
+                    onChange={(e) => setVendorForm({...vendorForm, plazo_pago: parseInt(e.target.value) || 0})} 
+                    placeholder="30"
+                  />
+                  <p className="text-xs text-muted-foreground">Días para calcular el aging de cuentas por pagar</p>
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setDialogs({...dialogs, editVendor: false})}>
                     Cancelar
                   </Button>
-                  <Button type="submit">Guardar Cambios</Button>
+                  <Button type="submit" className="bg-[#0F172A]">Guardar Cambios</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -1193,35 +1212,54 @@ const Catalogs = () => {
             setDialogs({...dialogs, editCustomer: open});
             if (!open) {
               setEditingCustomer(null);
-              setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '' });
+              setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_cobranza: 30 });
             }
           }}>
-            <DialogContent>
+            <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>Editar Cliente</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleUpdateCustomer} className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Nombre</Label>
-                  <Input value={customerForm.nombre} onChange={(e) => setCustomerForm({...customerForm, nombre: e.target.value})} required />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Nombre</Label>
+                    <Input value={customerForm.nombre} onChange={(e) => setCustomerForm({...customerForm, nombre: e.target.value})} required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>RFC</Label>
+                    <Input value={customerForm.rfc} onChange={(e) => setCustomerForm({...customerForm, rfc: e.target.value.toUpperCase()})} />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>RFC</Label>
-                  <Input value={customerForm.rfc} onChange={(e) => setCustomerForm({...customerForm, rfc: e.target.value})} />
+                  <Label>Dirección</Label>
+                  <Input value={customerForm.direccion} onChange={(e) => setCustomerForm({...customerForm, direccion: e.target.value})} placeholder="Calle, número, colonia, ciudad, estado, CP" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Email</Label>
+                    <Input type="email" value={customerForm.email} onChange={(e) => setCustomerForm({...customerForm, email: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Teléfono</Label>
+                    <Input value={customerForm.telefono} onChange={(e) => setCustomerForm({...customerForm, telefono: e.target.value})} />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input type="email" value={customerForm.email} onChange={(e) => setCustomerForm({...customerForm, email: e.target.value})} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Teléfono</Label>
-                  <Input value={customerForm.telefono} onChange={(e) => setCustomerForm({...customerForm, telefono: e.target.value})} />
+                  <Label>Plazo de Cobranza (días)</Label>
+                  <Input 
+                    type="number" 
+                    min="0" 
+                    value={customerForm.plazo_cobranza} 
+                    onChange={(e) => setCustomerForm({...customerForm, plazo_cobranza: parseInt(e.target.value) || 0})} 
+                    placeholder="30"
+                  />
+                  <p className="text-xs text-muted-foreground">Días para calcular el aging de cuentas por cobrar</p>
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setDialogs({...dialogs, editCustomer: false})}>
                     Cancelar
                   </Button>
-                  <Button type="submit">Guardar Cambios</Button>
+                  <Button type="submit" className="bg-[#0F172A]">Guardar Cambios</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
