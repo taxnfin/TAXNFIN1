@@ -584,11 +584,40 @@ const BankStatementsModule = () => {
     setSelectedCfdis(prev => {
       const exists = prev.find(c => c.id === cfdi.id);
       if (exists) {
+        // Remove CFDI and its partial amount
+        setMontosParciales(prevMontos => {
+          const newMontos = {...prevMontos};
+          delete newMontos[cfdi.id];
+          return newMontos;
+        });
         return prev.filter(c => c.id !== cfdi.id);
       } else {
+        // Add CFDI and initialize with saldo_pendiente or total
+        const saldoPendiente = cfdi.saldo_pendiente ?? (cfdi.total - (cfdi.monto_pagado || 0));
+        setMontosParciales(prevMontos => ({
+          ...prevMontos,
+          [cfdi.id]: Math.max(0, saldoPendiente)
+        }));
         return [...prev, cfdi];
       }
     });
+  };
+  
+  // Update partial amount for a CFDI
+  const updateMontoParcial = (cfdiId, monto) => {
+    setMontosParciales(prev => ({
+      ...prev,
+      [cfdiId]: parseFloat(monto) || 0
+    }));
+  };
+  
+  // Get monto to apply for a CFDI (partial or full)
+  const getMontoAplicar = (cfdi) => {
+    if (montosParciales.hasOwnProperty(cfdi.id)) {
+      return montosParciales[cfdi.id];
+    }
+    // Default to saldo pendiente
+    return cfdi.saldo_pendiente ?? (cfdi.total - (cfdi.monto_pagado || 0));
   };
 
   // Calculate totals for reconciliation - handles currency conversion using HISTORICAL rate
