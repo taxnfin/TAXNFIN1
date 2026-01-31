@@ -240,10 +240,8 @@ const SATIntegration = ({ onSyncComplete }) => {
     const end = new Date(syncConfig.fecha_fin);
     const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
     
-    if (syncConfig.tipo_solicitud === 'CFDI') {
-      return diffDays <= 1;
-    }
-    return diffDays <= 7;
+    // SAT allows up to 30 days
+    return diffDays >= 0 && diffDays <= 30;
   };
 
   if (loading) {
