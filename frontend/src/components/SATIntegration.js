@@ -55,7 +55,7 @@ const SATIntegration = ({ onSyncComplete }) => {
   const [checkingStatus, setCheckingStatus] = useState(null);
 
   const tiposComprobante = [
-    { value: '', label: 'Todos los tipos' },
+    { value: 'todos', label: 'Todos los tipos' },
     { value: 'I', label: 'Ingreso (I)' },
     { value: 'E', label: 'Egreso (E)' },
     { value: 'P', label: 'Pago (P)' },
