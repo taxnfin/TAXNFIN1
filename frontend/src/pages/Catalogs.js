@@ -852,29 +852,48 @@ const Catalogs = () => {
                       <Plus size={16} /> Nuevo Proveedor
                     </Button>
                   </DialogTrigger>
-                  <DialogContent>
+                  <DialogContent className="max-w-lg">
                     <DialogHeader>
                       <DialogTitle>Nuevo Proveedor</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={handleCreateVendor} className="space-y-4">
-                      <div className="space-y-2">
-                        <Label>Nombre</Label>
-                        <Input data-testid="vendor-nombre-input" value={vendorForm.nombre} onChange={(e) => setVendorForm({...vendorForm, nombre: e.target.value})} required />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Nombre</Label>
+                          <Input data-testid="vendor-nombre-input" value={vendorForm.nombre} onChange={(e) => setVendorForm({...vendorForm, nombre: e.target.value})} required />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>RFC</Label>
+                          <Input data-testid="vendor-rfc-input" value={vendorForm.rfc} onChange={(e) => setVendorForm({...vendorForm, rfc: e.target.value.toUpperCase()})} />
+                        </div>
                       </div>
                       <div className="space-y-2">
-                        <Label>RFC</Label>
-                        <Input data-testid="vendor-rfc-input" value={vendorForm.rfc} onChange={(e) => setVendorForm({...vendorForm, rfc: e.target.value})} />
+                        <Label>Dirección</Label>
+                        <Input value={vendorForm.direccion} onChange={(e) => setVendorForm({...vendorForm, direccion: e.target.value})} placeholder="Calle, número, colonia, ciudad, estado, CP" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Email</Label>
+                          <Input type="email" value={vendorForm.email} onChange={(e) => setVendorForm({...vendorForm, email: e.target.value})} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Teléfono</Label>
+                          <Input value={vendorForm.telefono} onChange={(e) => setVendorForm({...vendorForm, telefono: e.target.value})} />
+                        </div>
                       </div>
                       <div className="space-y-2">
-                        <Label>Email</Label>
-                        <Input type="email" value={vendorForm.email} onChange={(e) => setVendorForm({...vendorForm, email: e.target.value})} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Teléfono</Label>
-                        <Input value={vendorForm.telefono} onChange={(e) => setVendorForm({...vendorForm, telefono: e.target.value})} />
+                        <Label>Plazo de Pago (días)</Label>
+                        <Input 
+                          type="number" 
+                          min="0" 
+                          value={vendorForm.plazo_pago} 
+                          onChange={(e) => setVendorForm({...vendorForm, plazo_pago: parseInt(e.target.value) || 0})} 
+                          placeholder="30"
+                        />
+                        <p className="text-xs text-muted-foreground">Días para calcular el aging de cuentas por pagar</p>
                       </div>
                       <DialogFooter>
-                        <Button type="submit" data-testid="vendor-submit-button">Crear Proveedor</Button>
+                        <Button type="submit" data-testid="vendor-submit-button" className="bg-[#0F172A]">Crear Proveedor</Button>
                       </DialogFooter>
                     </form>
                   </DialogContent>
@@ -901,6 +920,7 @@ const Catalogs = () => {
                     <TableRow>
                       <TableHead>Nombre</TableHead>
                       <TableHead>RFC</TableHead>
+                      <TableHead>Plazo Pago</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Teléfono</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
