@@ -38,18 +38,22 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
         if not cfdi:
             raise HTTPException(status_code=404, detail="CFDI no encontrado")
         
-        # Check if CFDI is already reconciled with ANOTHER transaction
-        existing_cfdi_recon = await db.reconciliations.find_one({
-            'company_id': company_id,
-            'cfdi_id': reconciliation_data.cfdi_id,
-            'bank_transaction_id': {'$ne': reconciliation_data.bank_transaction_id}
-        }, {'_id': 0, 'bank_transaction_id': 1})
-        if existing_cfdi_recon:
-            other_txn = await db.bank_transactions.find_one({'id': existing_cfdi_recon['bank_transaction_id']}, {'_id': 0, 'descripcion': 1})
-            other_desc = other_txn.get('descripcion', 'otro movimiento')[:30] if other_txn else 'otro movimiento'
-            raise HTTPException(status_code=400, detail=f"Este CFDI ya está conciliado con: {other_desc}...")
+        # For partial payments: Check if CFDI still has saldo_pendiente
+        # If CFDI is already fully paid (no saldo_pendiente), don't allow more reconciliations
+        cfdi_total = cfdi.get('total', 0)
+        if cfdi.get('tipo_cfdi') == 'ingreso':
+            monto_cubierto = cfdi.get('monto_cobrado', 0) or 0
+        else:
+            monto_cubierto = cfdi.get('monto_pagado', 0) or 0
+        saldo_pendiente = cfdi_total - monto_cubierto
         
-        # Check if payment exists - prevent duplicates
+        if saldo_pendiente < 0.01:
+            raise HTTPException(status_code=400, detail="Este CFDI ya está completamente pagado. No hay saldo pendiente.")
+        
+        # Check if this exact bank transaction is already linked to this CFDI (duplicate prevention)
+        # But allow same CFDI with DIFFERENT transactions for partial payments
+        
+        # Check if payment exists - prevent duplicates for same txn+cfdi combination
         payment_exists = await db.payments.find_one({
             'company_id': company_id,
             'bank_transaction_id': reconciliation_data.bank_transaction_id,
