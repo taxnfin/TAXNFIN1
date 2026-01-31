@@ -47,7 +47,7 @@ const SATIntegration = ({ onSyncComplete }) => {
   const [syncConfig, setSyncConfig] = useState({
     fecha_inicio: format(new Date(), 'yyyy-MM-dd'),
     fecha_fin: format(new Date(), 'yyyy-MM-dd'),
-    tipo_comprobante: '',
+    tipo_comprobante: 'todos',
     tipo_solicitud: 'CFDI'
   });
   const [syncing, setSyncing] = useState(false);
