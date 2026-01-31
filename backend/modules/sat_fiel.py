@@ -1,158 +1,85 @@
 """
-SAT FIEL Integration Module - Proper XML Signature Implementation
+SAT FIEL Integration Module - Using cfdiclient library
 Handles authentication with SAT Web Services using FIEL (e.firma)
 """
 
 import asyncio
 import base64
-import hashlib
 import logging
 import os
-import tempfile
 import uuid as uuid_module
 import zipfile
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List
 from io import BytesIO
-from xml.etree import ElementTree as ET
-import re
 
 from cryptography import x509
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.backends import default_backend
-from cryptography.x509.oid import NameOID
-import requests
-from lxml import etree
+from cryptography.hazmat.primitives import serialization
+
+# Import cfdiclient library (official SAT CFDI client)
+from cfdiclient import Fiel, Autenticacion, SolicitaDescargaRecibidos, SolicitaDescargaEmitidos, VerificaSolicitudDescarga, DescargaMasiva
 
 logger = logging.getLogger(__name__)
 
-# SAT Web Service URLs (Production - Official 2024/2025)
-SAT_AUTH_URL = "https://cfdidescargamasivasolicitud.clouda.sat.gob.mx/Autenticacion/Autenticacion.svc"
-SAT_SOLICITUD_URL = "https://cfdidescargamasivasolicitud.clouda.sat.gob.mx/SolicitaDescargaMasivaTercerosCFDI.svc"
-SAT_VERIFICA_URL = "https://cfdidescargamasivasolicitud.clouda.sat.gob.mx/VerificaSolicitudDescargaService.svc"
-SAT_DESCARGA_URL = "https://cfdidescargamasivasolicitud.clouda.sat.gob.mx/DescargaMasivaService.svc"
-
-# Alternative URLs (backup)
-SAT_AUTH_URL_ALT = "https://cfdidescargamasiva.sat.gob.mx/nidp/app/login"
-SAT_SOLICITUD_URL_ALT = "https://cfdidescargamasiva.sat.gob.mx/solicitud/"
-SAT_DESCARGA_URL_ALT = "https://cfdidescargamasiva.sat.gob.mx/descarga/"
-
-# Namespaces
-NSMAP = {
-    's': 'http://schemas.xmlsoap.org/soap/envelope/',
-    'u': 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd',
-    'o': 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd',
-    'des': 'http://DescargaMasivaTerceros.sat.gob.mx',
-    'ds': 'http://www.w3.org/2000/09/xmldsig#',
-}
-
 
 class FIELManager:
-    """Manages FIEL (e.firma) certificates and signing operations"""
+    """Manages FIEL (e.firma) certificates using cfdiclient"""
     
     def __init__(self, cer_content: bytes, key_content: bytes, password: str):
-        self.certificate = None
-        self.private_key = None
+        self.cer_content = cer_content
+        self.key_content = key_content
+        self.password = password
         self.rfc = None
         self.serial_number = None
         self.not_before = None
         self.not_after = None
-        self.cer_content = cer_content
+        self.fiel = None  # cfdiclient Fiel object
         
-        self._load_certificate(cer_content)
-        self._load_private_key(key_content, password)
+        self._load_certificate()
+        self._create_fiel()
     
-    def _load_certificate(self, cer_content: bytes):
-        """Load and parse the .cer certificate file"""
+    def _load_certificate(self):
+        """Load and parse the .cer certificate"""
         try:
-            self.certificate = x509.load_der_x509_certificate(cer_content, default_backend())
+            cert = x509.load_der_x509_certificate(self.cer_content, default_backend())
             
-            # Extract RFC from certificate
-            subject = self.certificate.subject
-            for attr in subject:
-                # Try different OIDs where RFC might be stored
-                if attr.oid.dotted_string == '2.5.4.45':  # x500UniqueIdentifier
-                    value = attr.value
-                    # RFC is usually before the first space or /
-                    match = re.match(r'^([A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{3})', value.upper())
-                    if match:
-                        self.rfc = match.group(1)
-                        break
-                elif attr.oid == NameOID.SERIAL_NUMBER:
-                    value = attr.value
-                    if '/' in value:
-                        self.rfc = value.split('/')[0].strip().upper()
-                    else:
-                        self.rfc = value.strip().upper()
-                    break
+            # Extract RFC from subject
+            import re
+            subject_str = str(cert.subject)
+            match = re.search(r'([A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{3})', subject_str.upper())
+            if match:
+                self.rfc = match.group(1)
             
-            # Fallback: extract from subject string
+            # Also try from serialNumber attribute
             if not self.rfc:
-                subject_str = str(subject)
-                match = re.search(r'([A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{3})', subject_str.upper())
-                if match:
-                    self.rfc = match.group(1)
+                for attr in cert.subject:
+                    if attr.oid.dotted_string == '2.5.4.5':  # serialNumber
+                        value = attr.value
+                        if '/' in value:
+                            self.rfc = value.split('/')[0].strip().upper()
+                        else:
+                            self.rfc = value.strip().upper()[:13]
+                        break
             
-            # Get serial number in hex
-            self.serial_number = format(self.certificate.serial_number, 'X')
+            self.serial_number = format(cert.serial_number, 'X')
+            self.not_before = cert.not_valid_before_utc
+            self.not_after = cert.not_valid_after_utc
             
-            # Get validity dates
-            self.not_before = self.certificate.not_valid_before_utc
-            self.not_after = self.certificate.not_valid_after_utc
-            
-            logger.info(f"Certificate loaded: RFC={self.rfc}, Serial={self.serial_number[:20]}...")
+            logger.info(f"Certificate loaded: RFC={self.rfc}, Serial={self.serial_number[:16]}...")
             
         except Exception as e:
             logger.error(f"Error loading certificate: {e}")
             raise ValueError(f"Error al cargar el certificado .cer: {str(e)}")
     
-    def _load_private_key(self, key_content: bytes, password: str):
-        """Load and decrypt the .key private key file"""
+    def _create_fiel(self):
+        """Create cfdiclient Fiel object"""
         try:
-            self.private_key = serialization.load_der_private_key(
-                key_content,
-                password=password.encode('utf-8'),
-                backend=default_backend()
-            )
-            logger.info("Private key loaded successfully")
+            self.fiel = Fiel(self.cer_content, self.key_content, self.password)
+            logger.info("FIEL object created successfully")
         except Exception as e:
-            logger.error(f"Error loading private key: {e}")
-            raise ValueError(f"Error al cargar la llave privada .key: Contraseña incorrecta o archivo inválido")
-    
-    def get_certificate_base64(self) -> str:
-        """Get certificate in base64 format"""
-        return base64.b64encode(self.cer_content).decode('utf-8')
-    
-    def get_certificate_pem(self) -> bytes:
-        """Get certificate in PEM format"""
-        return self.certificate.public_bytes(serialization.Encoding.PEM)
-    
-    def get_private_key_pem(self) -> bytes:
-        """Get private key in PEM format (unencrypted)"""
-        return self.private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
-        )
-    
-    def sign_sha1(self, data: bytes) -> bytes:
-        """Sign data using SHA1 (required by SAT)"""
-        signature = self.private_key.sign(
-            data,
-            padding.PKCS1v15(),
-            hashes.SHA1()
-        )
-        return signature
-    
-    def sign_sha256(self, data: bytes) -> bytes:
-        """Sign data using SHA256"""
-        signature = self.private_key.sign(
-            data,
-            padding.PKCS1v15(),
-            hashes.SHA256()
-        )
-        return signature
+            logger.error(f"Error creating FIEL: {e}")
+            raise ValueError(f"Error al crear FIEL: {str(e)} - Verifique que la contraseña sea correcta")
     
     def is_valid(self) -> bool:
         """Check if the certificate is currently valid"""
@@ -170,525 +97,303 @@ class FIELManager:
         }
 
 
-def canonicalize(element):
-    """Canonicalize XML element using Exclusive C14N"""
-    return etree.tostring(element, method='c14n', exclusive=True, with_comments=False)
-
-
 class SATWebService:
-    """SAT SOAP Web Service client using proper XML Signature"""
+    """SAT SOAP Web Service client using cfdiclient"""
     
-    def __init__(self, fiel: FIELManager):
-        self.fiel = fiel
+    def __init__(self, fiel_manager: FIELManager):
+        self.fiel_manager = fiel_manager
+        self.fiel = fiel_manager.fiel
         self.token = None
-        self.token_expires = None
-    
-    def _build_auth_soap(self) -> bytes:
-        """Build SOAP authentication request with proper XML Signature"""
-        now = datetime.now(timezone.utc)
-        created = now.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
-        expires = (now + timedelta(minutes=5)).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
-        
-        uuid_token = f"uuid-{uuid_module.uuid4()}-1"
-        
-        # Build the SOAP envelope
-        envelope = etree.Element('{http://schemas.xmlsoap.org/soap/envelope/}Envelope', nsmap={
-            's': 'http://schemas.xmlsoap.org/soap/envelope/',
-            'u': 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd',
-        })
-        
-        # Header
-        header = etree.SubElement(envelope, '{http://schemas.xmlsoap.org/soap/envelope/}Header')
-        
-        # Security
-        security = etree.SubElement(header, '{http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd}Security', 
-            nsmap={'o': 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd'})
-        security.set('{http://schemas.xmlsoap.org/soap/envelope/}mustUnderstand', '1')
-        
-        # Timestamp
-        timestamp = etree.SubElement(security, '{http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd}Timestamp')
-        timestamp.set('{http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd}Id', '_0')
-        
-        created_elem = etree.SubElement(timestamp, '{http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd}Created')
-        created_elem.text = created
-        
-        expires_elem = etree.SubElement(timestamp, '{http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd}Expires')
-        expires_elem.text = expires
-        
-        # BinarySecurityToken
-        bst = etree.SubElement(security, '{http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd}BinarySecurityToken')
-        bst.set('{http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd}Id', uuid_token)
-        bst.set('ValueType', 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3')
-        bst.set('EncodingType', 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary')
-        bst.text = self.fiel.get_certificate_base64()
-        
-        # Signature
-        sig_ns = 'http://www.w3.org/2000/09/xmldsig#'
-        signature = etree.SubElement(security, '{%s}Signature' % sig_ns, nsmap={None: sig_ns})
-        
-        # SignedInfo
-        signed_info = etree.SubElement(signature, '{%s}SignedInfo' % sig_ns)
-        
-        canon_method = etree.SubElement(signed_info, '{%s}CanonicalizationMethod' % sig_ns)
-        canon_method.set('Algorithm', 'http://www.w3.org/2001/10/xml-exc-c14n#')
-        
-        sig_method = etree.SubElement(signed_info, '{%s}SignatureMethod' % sig_ns)
-        sig_method.set('Algorithm', 'http://www.w3.org/2000/09/xmldsig#rsa-sha1')
-        
-        # Reference to Timestamp
-        reference = etree.SubElement(signed_info, '{%s}Reference' % sig_ns)
-        reference.set('URI', '#_0')
-        
-        transforms = etree.SubElement(reference, '{%s}Transforms' % sig_ns)
-        transform = etree.SubElement(transforms, '{%s}Transform' % sig_ns)
-        transform.set('Algorithm', 'http://www.w3.org/2001/10/xml-exc-c14n#')
-        
-        digest_method = etree.SubElement(reference, '{%s}DigestMethod' % sig_ns)
-        digest_method.set('Algorithm', 'http://www.w3.org/2000/09/xmldsig#sha1')
-        
-        # Calculate digest of timestamp
-        timestamp_c14n = canonicalize(timestamp)
-        digest_value_elem = etree.SubElement(reference, '{%s}DigestValue' % sig_ns)
-        digest_value_elem.text = base64.b64encode(hashlib.sha1(timestamp_c14n).digest()).decode()
-        
-        # Calculate signature
-        signed_info_c14n = canonicalize(signed_info)
-        signature_bytes = self.fiel.sign_sha1(signed_info_c14n)
-        
-        sig_value = etree.SubElement(signature, '{%s}SignatureValue' % sig_ns)
-        sig_value.text = base64.b64encode(signature_bytes).decode()
-        
-        # KeyInfo
-        key_info = etree.SubElement(signature, '{%s}KeyInfo' % sig_ns)
-        sec_token_ref = etree.SubElement(key_info, '{http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd}SecurityTokenReference')
-        ref = etree.SubElement(sec_token_ref, '{http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd}Reference')
-        ref.set('URI', '#' + uuid_token)
-        ref.set('ValueType', 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3')
-        
-        # Body
-        body = etree.SubElement(envelope, '{http://schemas.xmlsoap.org/soap/envelope/}Body')
-        autentica = etree.SubElement(body, '{http://DescargaMasivaTerceros.gob.mx}Autentica')
-        
-        return etree.tostring(envelope, xml_declaration=True, encoding='UTF-8')
+        self.token_created = None
     
     async def authenticate(self) -> Dict:
         """Authenticate with SAT using FIEL"""
         try:
-            soap_request = self._build_auth_soap()
+            auth = Autenticacion(self.fiel)
+            token = auth.obtener_token()
             
-            headers = {
-                'Content-Type': 'text/xml; charset=utf-8',
-                'SOAPAction': 'http://DescargaMasivaTerceros.gob.mx/IAutenticacion/Autentica',
-            }
-            
-            logger.info(f"Sending auth request to SAT for RFC: {self.fiel.rfc}")
-            
-            response = requests.post(
-                SAT_AUTH_URL, 
-                data=soap_request, 
-                headers=headers, 
-                timeout=30,
-                verify=True
-            )
-            
-            logger.info(f"Auth response status: {response.status_code}")
-            
-            if response.status_code == 200:
-                # Parse response
-                root = etree.fromstring(response.content)
-                
-                # Find token
-                token_elem = root.find('.//{http://DescargaMasivaTerceros.gob.mx}AutenticaResult')
-                if token_elem is not None and token_elem.text:
-                    self.token = token_elem.text
-                    self.token_expires = datetime.now(timezone.utc) + timedelta(minutes=5)
-                    logger.info("Authentication successful!")
-                    return {
-                        'success': True,
-                        'message': '¡Autenticación exitosa con el SAT!',
-                        'rfc': self.fiel.rfc,
-                        'expires': self.token_expires.isoformat()
-                    }
-                
-                # Check for fault
-                fault = root.find('.//{http://schemas.xmlsoap.org/soap/envelope/}Fault')
-                if fault is not None:
-                    faultstring = fault.find('.//faultstring')
-                    error_msg = faultstring.text if faultstring is not None else 'Error desconocido'
-                    logger.error(f"SOAP Fault: {error_msg}")
-                    return {'success': False, 'error': f'Error SAT: {error_msg}'}
-                
-                return {'success': False, 'error': 'No se recibió token de autenticación'}
-            
+            if token:
+                self.token = token
+                self.token_created = datetime.now(timezone.utc)
+                logger.info("SAT Authentication successful!")
+                return {
+                    'success': True,
+                    'message': '¡Autenticación exitosa con el SAT!',
+                    'rfc': self.fiel_manager.rfc,
+                    'token_preview': token[:50] + '...' if len(token) > 50 else token
+                }
             else:
-                error_text = response.text[:500] if response.text else 'Sin mensaje'
-                logger.error(f"HTTP Error {response.status_code}: {error_text}")
-                return {'success': False, 'error': f'Error HTTP {response.status_code}: {error_text}'}
+                return {
+                    'success': False,
+                    'error': 'No se recibió token de autenticación del SAT'
+                }
                 
-        except requests.exceptions.Timeout:
-            return {'success': False, 'error': 'Tiempo de espera agotado al conectar con SAT'}
-        except requests.exceptions.ConnectionError as e:
-            logger.error(f"Connection error: {e}")
-            return {'success': False, 'error': 'No se pudo conectar con el servidor del SAT'}
         except Exception as e:
-            logger.error(f"Authentication error: {e}", exc_info=True)
-            return {'success': False, 'error': f'Error de autenticación: {str(e)}'}
+            error_msg = str(e)
+            logger.error(f"SAT Authentication error: {error_msg}")
+            
+            # Parse common errors
+            if '401' in error_msg or 'Unauthorized' in error_msg:
+                return {'success': False, 'error': 'Credenciales FIEL inválidas o expiradas'}
+            elif '300' in error_msg:
+                return {'success': False, 'error': 'Usuario no válido en el SAT'}
+            elif '301' in error_msg:
+                return {'success': False, 'error': 'XML mal formado en la solicitud'}
+            elif '302' in error_msg:
+                return {'success': False, 'error': 'Sello mal formado'}
+            elif '303' in error_msg:
+                return {'success': False, 'error': 'Sello no corresponde al RFC'}
+            elif '304' in error_msg:
+                return {'success': False, 'error': 'Certificado revocado o inválido'}
+            elif '305' in error_msg:
+                return {'success': False, 'error': 'Certificado expirado'}
+            elif 'timeout' in error_msg.lower():
+                return {'success': False, 'error': 'Tiempo de espera agotado al conectar con SAT'}
+            elif 'connection' in error_msg.lower():
+                return {'success': False, 'error': 'Error de conexión con el servidor SAT'}
+            else:
+                return {'success': False, 'error': f'Error de autenticación: {error_msg}'}
     
-    def _build_solicitud_soap(
-        self,
-        fecha_inicio: datetime,
-        fecha_fin: datetime,
-        tipo_solicitud: str,
-        rfc_emisor: str = None,
-        rfc_receptor: str = None,
-        tipo_comprobante: str = None,
-        estado_comprobante: str = '1'
-    ) -> bytes:
-        """Build SOAP request for download solicitud"""
-        
-        # Build envelope
-        envelope = etree.Element('{http://schemas.xmlsoap.org/soap/envelope/}Envelope', nsmap={
-            's': 'http://schemas.xmlsoap.org/soap/envelope/',
-            'des': 'http://DescargaMasivaTerceros.sat.gob.mx',
-            'xd': 'http://www.w3.org/2000/09/xmldsig#',
-        })
-        
-        # Header with token
-        header = etree.SubElement(envelope, '{http://schemas.xmlsoap.org/soap/envelope/}Header')
-        
-        # Body
-        body = etree.SubElement(envelope, '{http://schemas.xmlsoap.org/soap/envelope/}Body')
-        
-        solicita = etree.SubElement(body, '{http://DescargaMasivaTerceros.sat.gob.mx}SolicitaDescarga')
-        solicitud = etree.SubElement(solicita, '{http://DescargaMasivaTerceros.sat.gob.mx}solicitud')
-        
-        solicitud.set('RfcSolicitante', self.fiel.rfc)
-        solicitud.set('FechaInicial', fecha_inicio.strftime('%Y-%m-%dT00:00:00'))
-        solicitud.set('FechaFinal', fecha_fin.strftime('%Y-%m-%dT23:59:59'))
-        solicitud.set('TipoSolicitud', tipo_solicitud)
-        
-        if rfc_emisor:
-            emisores = etree.SubElement(solicitud, '{http://DescargaMasivaTerceros.sat.gob.mx}RfcEmisor')
-            emisores.text = rfc_emisor
-        
-        if rfc_receptor:
-            solicitud.set('RfcReceptores', rfc_receptor)
-        
-        if tipo_comprobante:
-            solicitud.set('TipoComprobante', tipo_comprobante)
-        
-        solicitud.set('EstadoComprobante', estado_comprobante)
-        
-        # Sign the solicitud element
-        sig_ns = 'http://www.w3.org/2000/09/xmldsig#'
-        signature = etree.SubElement(solicitud, '{%s}Signature' % sig_ns, nsmap={None: sig_ns})
-        
-        signed_info = etree.SubElement(signature, '{%s}SignedInfo' % sig_ns)
-        
-        canon = etree.SubElement(signed_info, '{%s}CanonicalizationMethod' % sig_ns)
-        canon.set('Algorithm', 'http://www.w3.org/2001/10/xml-exc-c14n#')
-        
-        sig_method = etree.SubElement(signed_info, '{%s}SignatureMethod' % sig_ns)
-        sig_method.set('Algorithm', 'http://www.w3.org/2000/09/xmldsig#rsa-sha1')
-        
-        reference = etree.SubElement(signed_info, '{%s}Reference' % sig_ns)
-        reference.set('URI', '')
-        
-        transforms = etree.SubElement(reference, '{%s}Transforms' % sig_ns)
-        transform = etree.SubElement(transforms, '{%s}Transform' % sig_ns)
-        transform.set('Algorithm', 'http://www.w3.org/2000/09/xmldsig#enveloped-signature')
-        
-        digest_method = etree.SubElement(reference, '{%s}DigestMethod' % sig_ns)
-        digest_method.set('Algorithm', 'http://www.w3.org/2000/09/xmldsig#sha1')
-        
-        # Calculate digest
-        solicitud_copy = etree.Element(solicitud.tag, solicitud.attrib, nsmap=solicitud.nsmap)
-        for child in solicitud:
-            if not child.tag.endswith('Signature'):
-                solicitud_copy.append(child)
-        
-        digest_value = etree.SubElement(reference, '{%s}DigestValue' % sig_ns)
-        digest_value.text = base64.b64encode(hashlib.sha1(canonicalize(solicitud_copy)).digest()).decode()
-        
-        # Sign
-        sig_value = etree.SubElement(signature, '{%s}SignatureValue' % sig_ns)
-        sig_value.text = base64.b64encode(self.fiel.sign_sha1(canonicalize(signed_info))).decode()
-        
-        # KeyInfo
-        key_info = etree.SubElement(signature, '{%s}KeyInfo' % sig_ns)
-        x509_data = etree.SubElement(key_info, '{%s}X509Data' % sig_ns)
-        x509_issuer = etree.SubElement(x509_data, '{%s}X509IssuerSerial' % sig_ns)
-        
-        issuer_name = etree.SubElement(x509_issuer, '{%s}X509IssuerName' % sig_ns)
-        issuer = self.fiel.certificate.issuer
-        issuer_parts = []
-        for attr in reversed(list(issuer)):
-            oid_name = attr.oid._name
-            issuer_parts.append(f"{oid_name}={attr.value}")
-        issuer_name.text = ','.join(issuer_parts)
-        
-        serial = etree.SubElement(x509_issuer, '{%s}X509SerialNumber' % sig_ns)
-        serial.text = str(self.fiel.certificate.serial_number)
-        
-        return etree.tostring(envelope, xml_declaration=True, encoding='UTF-8')
-    
-    async def solicitar_descarga(
-        self,
-        fecha_inicio: datetime,
-        fecha_fin: datetime,
-        tipo_solicitud: str = 'CFDI',
-        tipo_comprobante: str = None,
-        rfc_emisor: str = None,
-        rfc_receptor: str = None,
-        estado_comprobante: str = '1'
-    ) -> Dict:
-        """Request CFDI download from SAT"""
-        
+    def _ensure_token(self) -> bool:
+        """Ensure we have a valid token"""
         if not self.token:
+            return False
+        
+        # Token is valid for ~5 minutes
+        if self.token_created:
+            elapsed = (datetime.now(timezone.utc) - self.token_created).total_seconds()
+            if elapsed > 240:  # 4 minutes
+                self.token = None
+                return False
+        
+        return True
+    
+    async def solicitar_descarga_recibidos(
+        self,
+        fecha_inicio: datetime,
+        fecha_fin: datetime,
+        rfc_emisor: str = None,
+        tipo_comprobante: str = None
+    ) -> Dict:
+        """Request download of received CFDIs"""
+        
+        if not self._ensure_token():
             auth_result = await self.authenticate()
             if not auth_result.get('success'):
                 return auth_result
         
         try:
-            # Use FIEL RFC as receptor if not specified
-            if not rfc_emisor and not rfc_receptor:
-                rfc_receptor = self.fiel.rfc
+            descarga = SolicitaDescargaRecibidos(self.fiel)
             
-            soap_request = self._build_solicitud_soap(
-                fecha_inicio, fecha_fin, tipo_solicitud,
-                rfc_emisor, rfc_receptor, tipo_comprobante, estado_comprobante
-            )
+            # Format dates
+            fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%dT00:00:00')
+            fecha_fin_str = fecha_fin.strftime('%Y-%m-%dT23:59:59')
             
-            headers = {
-                'Content-Type': 'text/xml; charset=utf-8',
-                'SOAPAction': 'http://DescargaMasivaTerceros.sat.gob.mx/ISolicitaDescargaService/SolicitaDescarga',
-                'Authorization': f'WRAP access_token="{self.token}"'
-            }
-            
-            response = requests.post(SAT_SOLICITUD_URL, data=soap_request, headers=headers, timeout=30)
-            
-            if response.status_code == 200:
-                root = etree.fromstring(response.content)
-                
-                result = root.find('.//{http://DescargaMasivaTerceros.sat.gob.mx}SolicitaDescargaResult')
-                if result is not None:
-                    id_solicitud = result.get('IdSolicitud')
-                    cod_estatus = result.get('CodEstatus')
-                    mensaje = result.get('Mensaje')
-                    
-                    success = cod_estatus == '5000'
-                    
-                    return {
-                        'success': success,
-                        'id_solicitud': id_solicitud,
-                        'codigo': cod_estatus,
-                        'mensaje': mensaje or ('Solicitud creada exitosamente' if success else 'Error en solicitud')
-                    }
-                
-                return {'success': False, 'error': 'Respuesta inesperada del SAT'}
+            # Make request
+            if rfc_emisor:
+                result = descarga.solicitar_descarga(
+                    self.token,
+                    self.fiel_manager.rfc,
+                    fecha_inicio_str,
+                    fecha_fin_str,
+                    rfc_emisor=rfc_emisor,
+                    tipo_comprobante=tipo_comprobante
+                )
             else:
-                return {'success': False, 'error': f'Error HTTP {response.status_code}'}
+                result = descarga.solicitar_descarga(
+                    self.token,
+                    self.fiel_manager.rfc,
+                    fecha_inicio_str,
+                    fecha_fin_str,
+                    tipo_comprobante=tipo_comprobante
+                )
+            
+            # Parse result
+            if result:
+                cod_estatus = result.get('cod_estatus', '')
+                mensaje = result.get('mensaje', '')
+                id_solicitud = result.get('id_solicitud', '')
                 
+                success = cod_estatus == '5000'
+                
+                return {
+                    'success': success,
+                    'id_solicitud': id_solicitud,
+                    'codigo': cod_estatus,
+                    'mensaje': mensaje or ('Solicitud creada exitosamente' if success else self._parse_error_code(cod_estatus)),
+                    'tipo': 'recibidos'
+                }
+            
+            return {'success': False, 'error': 'Sin respuesta del SAT'}
+            
         except Exception as e:
             logger.error(f"Error requesting download: {e}")
-            return {'success': False, 'error': str(e)}
+            return {'success': False, 'error': f'Error solicitando descarga: {str(e)}'}
+    
+    async def solicitar_descarga_emitidos(
+        self,
+        fecha_inicio: datetime,
+        fecha_fin: datetime,
+        rfc_receptor: str = None,
+        tipo_comprobante: str = None
+    ) -> Dict:
+        """Request download of emitted CFDIs"""
+        
+        if not self._ensure_token():
+            auth_result = await self.authenticate()
+            if not auth_result.get('success'):
+                return auth_result
+        
+        try:
+            descarga = SolicitaDescargaEmitidos(self.fiel)
+            
+            fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%dT00:00:00')
+            fecha_fin_str = fecha_fin.strftime('%Y-%m-%dT23:59:59')
+            
+            if rfc_receptor:
+                result = descarga.solicitar_descarga(
+                    self.token,
+                    self.fiel_manager.rfc,
+                    fecha_inicio_str,
+                    fecha_fin_str,
+                    rfc_receptor=rfc_receptor,
+                    tipo_comprobante=tipo_comprobante
+                )
+            else:
+                result = descarga.solicitar_descarga(
+                    self.token,
+                    self.fiel_manager.rfc,
+                    fecha_inicio_str,
+                    fecha_fin_str,
+                    tipo_comprobante=tipo_comprobante
+                )
+            
+            if result:
+                cod_estatus = result.get('cod_estatus', '')
+                mensaje = result.get('mensaje', '')
+                id_solicitud = result.get('id_solicitud', '')
+                
+                success = cod_estatus == '5000'
+                
+                return {
+                    'success': success,
+                    'id_solicitud': id_solicitud,
+                    'codigo': cod_estatus,
+                    'mensaje': mensaje or ('Solicitud creada exitosamente' if success else self._parse_error_code(cod_estatus)),
+                    'tipo': 'emitidos'
+                }
+            
+            return {'success': False, 'error': 'Sin respuesta del SAT'}
+            
+        except Exception as e:
+            logger.error(f"Error requesting download: {e}")
+            return {'success': False, 'error': f'Error solicitando descarga: {str(e)}'}
     
     async def verificar_solicitud(self, id_solicitud: str) -> Dict:
         """Check status of a download request"""
         
-        if not self.token:
+        if not self._ensure_token():
             auth_result = await self.authenticate()
             if not auth_result.get('success'):
                 return auth_result
         
         try:
-            # Build verification SOAP
-            envelope = etree.Element('{http://schemas.xmlsoap.org/soap/envelope/}Envelope', nsmap={
-                's': 'http://schemas.xmlsoap.org/soap/envelope/',
-                'des': 'http://DescargaMasivaTerceros.sat.gob.mx',
-            })
+            verifica = VerificaSolicitudDescarga(self.fiel)
+            result = verifica.verificar_descarga(
+                self.token,
+                self.fiel_manager.rfc,
+                id_solicitud
+            )
             
-            header = etree.SubElement(envelope, '{http://schemas.xmlsoap.org/soap/envelope/}Header')
-            body = etree.SubElement(envelope, '{http://schemas.xmlsoap.org/soap/envelope/}Body')
-            
-            verifica = etree.SubElement(body, '{http://DescargaMasivaTerceros.sat.gob.mx}VerificaSolicitudDescarga')
-            solicitud = etree.SubElement(verifica, '{http://DescargaMasivaTerceros.sat.gob.mx}solicitud')
-            solicitud.set('IdSolicitud', id_solicitud)
-            solicitud.set('RfcSolicitante', self.fiel.rfc)
-            
-            # Add signature to solicitud
-            self._sign_element(solicitud)
-            
-            soap_request = etree.tostring(envelope, xml_declaration=True, encoding='UTF-8')
-            
-            headers = {
-                'Content-Type': 'text/xml; charset=utf-8',
-                'SOAPAction': 'http://DescargaMasivaTerceros.sat.gob.mx/IVerificaSolicitudDescargaService/VerificaSolicitudDescarga',
-                'Authorization': f'WRAP access_token="{self.token}"'
-            }
-            
-            response = requests.post(SAT_VERIFICA_URL, data=soap_request, headers=headers, timeout=30)
-            
-            if response.status_code == 200:
-                root = etree.fromstring(response.content)
+            if result:
+                cod_estatus = result.get('cod_estatus', '')
+                estado_solicitud = result.get('estado_solicitud', '')
+                mensaje = result.get('mensaje', '')
+                numero_cfdis = result.get('numero_cfdis', '0')
+                paquetes = result.get('paquetes', [])
                 
-                result = root.find('.//{http://DescargaMasivaTerceros.sat.gob.mx}VerificaSolicitudDescargaResult')
-                if result is not None:
-                    estado = result.get('EstadoSolicitud')
-                    cod_estatus = result.get('CodEstatus')
-                    mensaje = result.get('Mensaje')
-                    numero_cfdis = result.get('NumeroCFDIs', '0')
-                    
-                    # Get package IDs
-                    paquetes = []
-                    for paquete in result.findall('.//{http://DescargaMasivaTerceros.sat.gob.mx}IdsPaquetes'):
-                        if paquete.text:
-                            paquetes.append(paquete.text)
-                    
-                    estado_map = {
-                        '1': 'Aceptada',
-                        '2': 'En proceso',
-                        '3': 'Terminada',
-                        '4': 'Error',
-                        '5': 'Rechazada',
-                        '6': 'Vencida'
-                    }
-                    
-                    return {
-                        'success': True,
-                        'estado': estado,
-                        'estado_texto': estado_map.get(estado, 'Desconocido'),
-                        'codigo': cod_estatus,
-                        'mensaje': mensaje,
-                        'numero_cfdis': int(numero_cfdis) if numero_cfdis else 0,
-                        'paquetes': paquetes
-                    }
+                estado_map = {
+                    '1': 'Aceptada',
+                    '2': 'En proceso', 
+                    '3': 'Terminada',
+                    '4': 'Error',
+                    '5': 'Rechazada',
+                    '6': 'Vencida'
+                }
                 
-                return {'success': False, 'error': 'Respuesta inesperada'}
-            else:
-                return {'success': False, 'error': f'Error HTTP {response.status_code}'}
-                
+                return {
+                    'success': True,
+                    'estado': estado_solicitud,
+                    'estado_texto': estado_map.get(str(estado_solicitud), 'Desconocido'),
+                    'codigo': cod_estatus,
+                    'mensaje': mensaje,
+                    'numero_cfdis': int(numero_cfdis) if numero_cfdis else 0,
+                    'paquetes': paquetes if isinstance(paquetes, list) else [paquetes] if paquetes else []
+                }
+            
+            return {'success': False, 'error': 'Sin respuesta del SAT'}
+            
         except Exception as e:
             logger.error(f"Error verifying request: {e}")
-            return {'success': False, 'error': str(e)}
-    
-    def _sign_element(self, element):
-        """Add XML Signature to an element"""
-        sig_ns = 'http://www.w3.org/2000/09/xmldsig#'
-        signature = etree.SubElement(element, '{%s}Signature' % sig_ns, nsmap={None: sig_ns})
-        
-        signed_info = etree.SubElement(signature, '{%s}SignedInfo' % sig_ns)
-        
-        canon = etree.SubElement(signed_info, '{%s}CanonicalizationMethod' % sig_ns)
-        canon.set('Algorithm', 'http://www.w3.org/2001/10/xml-exc-c14n#')
-        
-        sig_method = etree.SubElement(signed_info, '{%s}SignatureMethod' % sig_ns)
-        sig_method.set('Algorithm', 'http://www.w3.org/2000/09/xmldsig#rsa-sha1')
-        
-        reference = etree.SubElement(signed_info, '{%s}Reference' % sig_ns)
-        reference.set('URI', '')
-        
-        transforms = etree.SubElement(reference, '{%s}Transforms' % sig_ns)
-        transform = etree.SubElement(transforms, '{%s}Transform' % sig_ns)
-        transform.set('Algorithm', 'http://www.w3.org/2000/09/xmldsig#enveloped-signature')
-        
-        digest_method = etree.SubElement(reference, '{%s}DigestMethod' % sig_ns)
-        digest_method.set('Algorithm', 'http://www.w3.org/2000/09/xmldsig#sha1')
-        
-        # Calculate digest without signature
-        element_copy = etree.Element(element.tag, element.attrib, nsmap=element.nsmap)
-        for child in element:
-            if not child.tag.endswith('Signature'):
-                element_copy.append(child)
-        
-        digest_value = etree.SubElement(reference, '{%s}DigestValue' % sig_ns)
-        digest_value.text = base64.b64encode(hashlib.sha1(canonicalize(element_copy)).digest()).decode()
-        
-        # Sign
-        sig_value = etree.SubElement(signature, '{%s}SignatureValue' % sig_ns)
-        sig_value.text = base64.b64encode(self.fiel.sign_sha1(canonicalize(signed_info))).decode()
-        
-        # KeyInfo
-        key_info = etree.SubElement(signature, '{%s}KeyInfo' % sig_ns)
-        x509_data = etree.SubElement(key_info, '{%s}X509Data' % sig_ns)
-        x509_issuer = etree.SubElement(x509_data, '{%s}X509IssuerSerial' % sig_ns)
-        
-        issuer_name = etree.SubElement(x509_issuer, '{%s}X509IssuerName' % sig_ns)
-        issuer = self.fiel.certificate.issuer
-        issuer_parts = []
-        for attr in reversed(list(issuer)):
-            issuer_parts.append(f"{attr.oid._name}={attr.value}")
-        issuer_name.text = ','.join(issuer_parts)
-        
-        serial = etree.SubElement(x509_issuer, '{%s}X509SerialNumber' % sig_ns)
-        serial.text = str(self.fiel.certificate.serial_number)
+            return {'success': False, 'error': f'Error verificando solicitud: {str(e)}'}
     
     async def descargar_paquete(self, id_paquete: str) -> Dict:
         """Download a package of CFDIs"""
         
-        if not self.token:
+        if not self._ensure_token():
             auth_result = await self.authenticate()
             if not auth_result.get('success'):
                 return auth_result
         
         try:
-            # Build download SOAP
-            envelope = etree.Element('{http://schemas.xmlsoap.org/soap/envelope/}Envelope', nsmap={
-                's': 'http://schemas.xmlsoap.org/soap/envelope/',
-                'des': 'http://DescargaMasivaTerceros.sat.gob.mx',
-            })
+            descarga = DescargaMasiva(self.fiel)
+            result = descarga.descargar_paquete(
+                self.token,
+                self.fiel_manager.rfc,
+                id_paquete
+            )
             
-            header = etree.SubElement(envelope, '{http://schemas.xmlsoap.org/soap/envelope/}Header')
-            body = etree.SubElement(envelope, '{http://schemas.xmlsoap.org/soap/envelope/}Body')
-            
-            peticion = etree.SubElement(body, '{http://DescargaMasivaTerceros.sat.gob.mx}PeticionDescargaMasivaTercerosEntrada')
-            pet_descarga = etree.SubElement(peticion, '{http://DescargaMasivaTerceros.sat.gob.mx}peticionDescarga')
-            pet_descarga.set('IdPaquete', id_paquete)
-            pet_descarga.set('RfcSolicitante', self.fiel.rfc)
-            
-            # Add signature
-            self._sign_element(pet_descarga)
-            
-            soap_request = etree.tostring(envelope, xml_declaration=True, encoding='UTF-8')
-            
-            headers = {
-                'Content-Type': 'text/xml; charset=utf-8',
-                'SOAPAction': 'http://DescargaMasivaTerceros.sat.gob.mx/IDescargaMasivaTercerosService/Descargar',
-                'Authorization': f'WRAP access_token="{self.token}"'
-            }
-            
-            response = requests.post(SAT_DESCARGA_URL, data=soap_request, headers=headers, timeout=120)
-            
-            if response.status_code == 200:
-                root = etree.fromstring(response.content)
+            if result:
+                cod_estatus = result.get('cod_estatus', '')
+                paquete_b64 = result.get('paquete_b64', '')
                 
-                result = root.find('.//{http://DescargaMasivaTerceros.sat.gob.mx}RespuestaDescargaMasivaTercerosSalida')
-                if result is not None:
-                    cod_estatus = result.get('CodEstatus')
-                    paquete_b64 = result.get('Paquete')
-                    
-                    if cod_estatus == '5000' and paquete_b64:
-                        zip_content = base64.b64decode(paquete_b64)
-                        return {
-                            'success': True,
-                            'codigo': cod_estatus,
-                            'zip_content': zip_content,
-                            'size_bytes': len(zip_content)
-                        }
-                    else:
-                        return {
-                            'success': False,
-                            'codigo': cod_estatus,
-                            'error': 'No se pudo obtener el paquete'
-                        }
-                
-                return {'success': False, 'error': 'Respuesta inesperada'}
-            else:
-                return {'success': False, 'error': f'Error HTTP {response.status_code}'}
-                
+                if cod_estatus == '5000' and paquete_b64:
+                    zip_content = base64.b64decode(paquete_b64)
+                    return {
+                        'success': True,
+                        'codigo': cod_estatus,
+                        'zip_content': zip_content,
+                        'size_bytes': len(zip_content)
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'codigo': cod_estatus,
+                        'error': self._parse_error_code(cod_estatus)
+                    }
+            
+            return {'success': False, 'error': 'Sin respuesta del SAT'}
+            
         except Exception as e:
             logger.error(f"Error downloading package: {e}")
-            return {'success': False, 'error': str(e)}
+            return {'success': False, 'error': f'Error descargando paquete: {str(e)}'}
+    
+    def _parse_error_code(self, code: str) -> str:
+        """Parse SAT error codes to human readable messages"""
+        error_codes = {
+            '300': 'Usuario no válido',
+            '301': 'XML mal formado',
+            '302': 'Sello mal formado',
+            '303': 'Sello no corresponde al RFC solicitante',
+            '304': 'Certificado revocado o caduco',
+            '305': 'Certificado expirado',
+            '5000': 'Solicitud recibida con éxito',
+            '5002': 'No se encontraron CFDIs',
+            '5003': 'Error al procesar la solicitud',
+            '5004': 'Solicitud duplicada',
+            '5005': 'Solicitud no existe',
+        }
+        return error_codes.get(str(code), f'Código de error: {code}')
 
 
 class SATFIELCredentialManager:
@@ -707,12 +412,12 @@ class SATFIELCredentialManager:
         """Validate and save FIEL credentials"""
         try:
             # Validate FIEL
-            fiel = FIELManager(cer_content, key_content, password)
+            fiel_manager = FIELManager(cer_content, key_content, password)
             
-            if not fiel.is_valid():
+            if not fiel_manager.is_valid():
                 return {
                     'success': False,
-                    'error': f'El certificado FIEL ha expirado. Válido hasta: {fiel.not_after}'
+                    'error': f'El certificado FIEL ha expirado. Válido hasta: {fiel_manager.not_after}'
                 }
             
             # Encrypt and store
@@ -727,13 +432,13 @@ class SATFIELCredentialManager:
             credential_doc = {
                 'id': str(uuid_module.uuid4()),
                 'company_id': company_id,
-                'rfc': fiel.rfc,
-                'serial_number': fiel.serial_number,
+                'rfc': fiel_manager.rfc,
+                'serial_number': fiel_manager.serial_number,
                 'cer_encrypted': fernet.encrypt(cer_content).decode(),
                 'key_encrypted': fernet.encrypt(key_content).decode(),
                 'password_encrypted': fernet.encrypt(password.encode()).decode(),
-                'valid_from': fiel.not_before.isoformat(),
-                'valid_to': fiel.not_after.isoformat(),
+                'valid_from': fiel_manager.not_before.isoformat(),
+                'valid_to': fiel_manager.not_after.isoformat(),
                 'auth_type': 'fiel',
                 'created_at': datetime.now(timezone.utc).isoformat(),
                 'updated_at': datetime.now(timezone.utc).isoformat(),
@@ -750,9 +455,9 @@ class SATFIELCredentialManager:
             
             return {
                 'success': True,
-                'rfc': fiel.rfc,
-                'serial_number': fiel.serial_number,
-                'valid_to': fiel.not_after.isoformat(),
+                'rfc': fiel_manager.rfc,
+                'serial_number': fiel_manager.serial_number,
+                'valid_to': fiel_manager.not_after.isoformat(),
                 'message': 'FIEL guardada correctamente'
             }
             
@@ -814,14 +519,14 @@ class SATFIELSyncService:
     
     async def test_connection(self, company_id: str) -> Dict:
         """Test SAT connection"""
-        fiel = await self.credential_manager.get_fiel(company_id)
-        if not fiel:
+        fiel_manager = await self.credential_manager.get_fiel(company_id)
+        if not fiel_manager:
             return {'success': False, 'error': 'No hay FIEL configurada para esta empresa'}
         
-        if not fiel.is_valid():
+        if not fiel_manager.is_valid():
             return {'success': False, 'error': 'El certificado FIEL ha expirado'}
         
-        ws = SATWebService(fiel)
+        ws = SATWebService(fiel_manager)
         result = await ws.authenticate()
         
         if result.get('success'):
@@ -830,6 +535,14 @@ class SATFIELSyncService:
                 {'$set': {
                     'last_test': datetime.now(timezone.utc).isoformat(),
                     'last_test_result': 'success'
+                }}
+            )
+        else:
+            await self.db.sat_credentials.update_one(
+                {'company_id': company_id},
+                {'$set': {
+                    'last_test': datetime.now(timezone.utc).isoformat(),
+                    'last_test_result': result.get('error', 'error')
                 }}
             )
         
@@ -841,22 +554,28 @@ class SATFIELSyncService:
         fecha_inicio: datetime,
         fecha_fin: datetime,
         tipo_comprobante: str = None,
-        tipo_solicitud: str = 'CFDI'
+        tipo_solicitud: str = 'recibidos'  # 'recibidos' or 'emitidos'
     ) -> Dict:
         """Request CFDI download"""
-        fiel = await self.credential_manager.get_fiel(company_id)
-        if not fiel:
+        fiel_manager = await self.credential_manager.get_fiel(company_id)
+        if not fiel_manager:
             return {'success': False, 'error': 'No hay FIEL configurada'}
         
-        ws = SATWebService(fiel)
+        ws = SATWebService(fiel_manager)
         
-        result = await ws.solicitar_descarga(
-            fecha_inicio=fecha_inicio,
-            fecha_fin=fecha_fin,
-            tipo_solicitud=tipo_solicitud,
-            tipo_comprobante=tipo_comprobante,
-            rfc_receptor=fiel.rfc
-        )
+        # Request based on type
+        if tipo_solicitud == 'emitidos':
+            result = await ws.solicitar_descarga_emitidos(
+                fecha_inicio=fecha_inicio,
+                fecha_fin=fecha_fin,
+                tipo_comprobante=tipo_comprobante if tipo_comprobante and tipo_comprobante != 'todos' else None
+            )
+        else:
+            result = await ws.solicitar_descarga_recibidos(
+                fecha_inicio=fecha_inicio,
+                fecha_fin=fecha_fin,
+                tipo_comprobante=tipo_comprobante if tipo_comprobante and tipo_comprobante != 'todos' else None
+            )
         
         if result.get('success') and result.get('id_solicitud'):
             await self.db.sat_download_requests.insert_one({
@@ -875,11 +594,11 @@ class SATFIELSyncService:
     
     async def check_request_status(self, company_id: str, id_solicitud: str) -> Dict:
         """Check download request status"""
-        fiel = await self.credential_manager.get_fiel(company_id)
-        if not fiel:
+        fiel_manager = await self.credential_manager.get_fiel(company_id)
+        if not fiel_manager:
             return {'success': False, 'error': 'No hay FIEL configurada'}
         
-        ws = SATWebService(fiel)
+        ws = SATWebService(fiel_manager)
         result = await ws.verificar_solicitud(id_solicitud)
         
         if result.get('success'):
@@ -897,11 +616,11 @@ class SATFIELSyncService:
     
     async def download_and_process_package(self, company_id: str, id_paquete: str) -> Dict:
         """Download and process CFDI package"""
-        fiel = await self.credential_manager.get_fiel(company_id)
-        if not fiel:
+        fiel_manager = await self.credential_manager.get_fiel(company_id)
+        if not fiel_manager:
             return {'success': False, 'error': 'No hay FIEL configurada'}
         
-        ws = SATWebService(fiel)
+        ws = SATWebService(fiel_manager)
         result = await ws.descargar_paquete(id_paquete)
         
         if result.get('success') and result.get('zip_content'):
