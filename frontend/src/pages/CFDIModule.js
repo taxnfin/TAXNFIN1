@@ -825,7 +825,7 @@ const CFDIModule = () => {
             <TableBody>
               {filteredCfdis.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-[#94A3B8] py-8">
+                  <TableCell colSpan={9} className="text-center text-[#94A3B8] py-8">
                     No hay CFDIs que coincidan con los filtros.
                   </TableCell>
                 </TableRow>
@@ -849,8 +849,12 @@ const CFDIModule = () => {
                         </span>
                       </TableCell>
                       <TableCell className="text-sm">
-                        <div>{cfdi.emisor_nombre || cfdi.emisor_rfc}</div>
+                        <div className="font-medium">{cfdi.emisor_nombre || cfdi.emisor_rfc}</div>
                         <div className="text-xs text-[#94A3B8] mono">{cfdi.emisor_rfc}</div>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        <div className="font-medium">{cfdi.receptor_nombre || cfdi.receptor_rfc}</div>
+                        <div className="text-xs text-[#94A3B8] mono">{cfdi.receptor_rfc}</div>
                       </TableCell>
                       <TableCell className="mono text-sm">{format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy')}</TableCell>
                       <TableCell className={`mono font-semibold ${
