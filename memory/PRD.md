@@ -576,7 +576,47 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
-## Latest Updates (January 30, 2026)
+## Latest Updates (January 31, 2026)
+
+### Completed ✅
+
+**Feature: Conciliación con Pagos Parciales**
+
+Implementación completa de funcionalidad para conciliar movimientos bancarios con CFDIs de forma parcial:
+
+**Frontend (BankStatementsModule.js):**
+- Estado `montosParciales` para mantener los montos a aplicar por cada CFDI
+- Campo editable "Monto a aplicar ahora" para cada CFDI seleccionado
+- Muestra "Total CFDI", "Ya pagado anteriormente", "Saldo pendiente"
+- Mensaje informativo: "Después de este pago quedará pendiente: $X"
+- Cálculo dinámico de totales usando montos parciales
+- UI actualizada en la sección "CFDIs seleccionados (Pagos Parciales Permitidos)"
+
+**Backend (routes/reconciliations.py & models/bank.py):**
+- Campo `monto_aplicado` opcional en `BankReconciliationCreate`
+- Validación de saldo pendiente antes de conciliar
+- Actualización de `monto_cobrado` / `monto_pagado` en el CFDI
+- Estado del CFDI: 'conciliado' si totalmente pagado, 'parcial' si queda saldo
+- Permite múltiples conciliaciones del mismo CFDI con diferentes transacciones
+
+**Backend (server.py):**
+- Endpoint `/cfdi` ahora incluye `saldo_pendiente` calculado automáticamente
+
+**Flujo de uso:**
+1. Usuario abre diálogo de conciliación para un movimiento
+2. Selecciona un CFDI (aunque tenga monto mayor)
+3. Edita el "Monto a aplicar ahora" al monto real del movimiento
+4. Sistema muestra cuánto quedará pendiente
+5. Confirma conciliación → CFDI queda con saldo pendiente para futuros pagos
+
+**Testing:** 
+- Verificado manualmente con screenshot
+- Conciliación parcial de LULO GELATO ($126,580.00) con pago de $21,096.67
+- CFDI quedó con saldo pendiente de $105,483.33
+
+---
+
+## Previous Updates (January 30, 2026)
 
 ### Completed ✅
 
