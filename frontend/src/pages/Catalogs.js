@@ -259,8 +259,10 @@ const Catalogs = () => {
       toast.success('Cliente actualizado');
       setDialogs({ ...dialogs, editCustomer: false });
       setEditingCustomer(null);
-      loadData();
       setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '' });
+      // Refresh data
+      const customersRes = await api.get('/customers');
+      setCustomers(customersRes.data);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error actualizando cliente');
     }
