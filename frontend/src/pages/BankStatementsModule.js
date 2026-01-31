@@ -3213,6 +3213,139 @@ const BankStatementsModule = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Payment History Dialog */}
+      <Dialog open={paymentHistoryDialogOpen} onOpenChange={setPaymentHistoryDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History size={20} className="text-blue-600" />
+              Historial de Pagos - CFDI
+            </DialogTitle>
+          </DialogHeader>
+          
+          {loadingHistory ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="animate-spin text-blue-500 mr-2" size={24} />
+              <span>Cargando historial...</span>
+            </div>
+          ) : paymentHistory ? (
+            <div className="space-y-4">
+              {/* CFDI Summary */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-500">CFDI</p>
+                    <p className="font-semibold text-sm">{paymentHistory.emisor_nombre || paymentHistory.receptor_nombre}</p>
+                    <p className="text-xs text-gray-400">UUID: {paymentHistory.cfdi_uuid?.substring(0, 8)}...</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">Monto Total</p>
+                    <p className="font-bold text-lg">${paymentHistory.cfdi_total?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {paymentHistory.cfdi_moneda}</p>
+                  </div>
+                </div>
+                
+                {/* Progress Bar */}
+                <div className="mt-4">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-green-600">Pagado: ${paymentHistory.total_pagado?.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+                    <span className={paymentHistory.saldo_pendiente > 0 ? 'text-amber-600' : 'text-green-600'}>
+                      Pendiente: ${paymentHistory.saldo_pendiente?.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div 
+                      className={`h-3 rounded-full ${paymentHistory.porcentaje_pagado >= 100 ? 'bg-green-500' : 'bg-blue-500'}`}
+                      style={{ width: `${Math.min(100, paymentHistory.porcentaje_pagado || 0)}%` }}
+                    />
+                  </div>
+                  <p className="text-center text-xs text-gray-500 mt-1">
+                    {paymentHistory.porcentaje_pagado?.toFixed(1)}% pagado
+                  </p>
+                </div>
+              </div>
+              
+              {/* Payment List */}
+              <div>
+                <h4 className="font-semibold text-sm text-gray-700 mb-2 flex items-center gap-2">
+                  <FileText size={16} />
+                  Detalle de Pagos ({paymentHistory.total_pagos})
+                </h4>
+                
+                {paymentHistory.pagos?.length > 0 ? (
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                    {paymentHistory.pagos.map((pago, idx) => (
+                      <div key={pago.id || idx} className="bg-white border rounded-lg p-3 hover:shadow-sm transition-shadow">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                pago.tipo === 'cobro' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                              }`}>
+                                {pago.tipo === 'cobro' ? 'Cobro' : 'Pago'}
+                              </span>
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                pago.estatus === 'completado' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                              }`}>
+                                {pago.estatus}
+                              </span>
+                            </div>
+                            <p className="font-medium mt-1">${pago.monto?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {pago.moneda}</p>
+                            {pago.concepto && <p className="text-xs text-gray-500">{pago.concepto}</p>}
+                          </div>
+                          <div className="text-right text-xs text-gray-500">
+                            {pago.fecha && (
+                              <p>{format(new Date(pago.fecha), 'dd/MM/yyyy', { locale: es })}</p>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* Bank Transaction Details */}
+                        {(pago.descripcion_bancaria || pago.referencia_bancaria || pago.banco) && (
+                          <div className="mt-2 pt-2 border-t border-dashed text-xs text-gray-600">
+                            <div className="flex items-center gap-1 text-blue-600 mb-1">
+                              <Building2 size={12} />
+                              <span>Referencia Bancaria</span>
+                            </div>
+                            {pago.banco && (
+                              <p><strong>Banco:</strong> {pago.banco} - {pago.cuenta}</p>
+                            )}
+                            {pago.descripcion_bancaria && (
+                              <p><strong>Descripción:</strong> {pago.descripcion_bancaria}</p>
+                            )}
+                            {pago.referencia_bancaria && (
+                              <p><strong>Referencia:</strong> {pago.referencia_bancaria}</p>
+                            )}
+                            {pago.fecha_movimiento_banco && (
+                              <p><strong>Fecha Mov:</strong> {format(new Date(pago.fecha_movimiento_banco), 'dd/MM/yyyy', { locale: es })}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-gray-500">
+                    <Clock size={32} className="mx-auto mb-2 opacity-50" />
+                    <p>No hay pagos registrados para este CFDI</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <AlertCircle size={32} className="mx-auto mb-2" />
+              <p>Error al cargar el historial de pagos</p>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPaymentHistoryDialogOpen(false)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
