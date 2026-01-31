@@ -163,7 +163,7 @@ const SATIntegration = ({ onSyncComplete }) => {
       const response = await api.post('/sat/request-download', {
         fecha_inicio: syncConfig.fecha_inicio,
         fecha_fin: syncConfig.fecha_fin,
-        tipo_comprobante: syncConfig.tipo_comprobante || null,
+        tipo_comprobante: syncConfig.tipo_comprobante === 'todos' ? null : syncConfig.tipo_comprobante,
         tipo_solicitud: syncConfig.tipo_solicitud
       });
 
