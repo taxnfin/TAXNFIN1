@@ -123,14 +123,16 @@ const Catalogs = () => {
   const handleUpdateCompany = async (e) => {
     e.preventDefault();
     try {
-      await api.put(`/companies/${editingCompany.id}`, companyForm);
+      const response = await api.put(`/companies/${editingCompany.id}`, companyForm);
+      console.log('Company updated:', response.data);
       toast.success('Empresa actualizada');
       setDialogs({ ...dialogs, editCompany: false });
       setEditingCompany(null);
       setCompanyForm({ nombre: '', rfc: '', moneda_base: 'MXN', pais: 'México' });
-      // Refresh data
+      // Refresh data immediately
       const companiesRes = await api.get('/companies');
-      setCompanies(companiesRes.data);
+      console.log('Companies refreshed:', companiesRes.data);
+      setCompanies([...companiesRes.data]); // Force new array reference
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error actualizando empresa');
     }
