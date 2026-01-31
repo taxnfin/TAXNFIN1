@@ -138,6 +138,21 @@ class SATPortalClient:
         self.driver = None
         self.logged_in = False
         self.download_dir = None
+        self._chrome_available = None
+    
+    def _check_chrome_available(self):
+        """Check if Chrome/Chromium is available"""
+        if self._chrome_available is not None:
+            return self._chrome_available
+        
+        import shutil
+        chrome_paths = ['google-chrome', 'chromium', 'chromium-browser', 'chrome']
+        for chrome in chrome_paths:
+            if shutil.which(chrome):
+                self._chrome_available = True
+                return True
+        self._chrome_available = False
+        return False
     
     def _get_chrome_options(self):
         """Configure Chrome options for headless scraping"""
@@ -168,6 +183,11 @@ class SATPortalClient:
         from selenium import webdriver
         from selenium.webdriver.chrome.service import Service
         from webdriver_manager.chrome import ChromeDriverManager
+        
+        # Check if Chrome is available
+        if not self._check_chrome_available():
+            logger.warning("Chrome/Chromium not found on system")
+            return False
         
         try:
             options = self._get_chrome_options()
