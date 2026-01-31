@@ -593,12 +593,16 @@ class SATFIELSyncService:
             )
         
         if result.get('success') and result.get('id_solicitud'):
+            # Handle both datetime and string for fecha_inicio/fecha_fin
+            fecha_inicio_str = fecha_inicio.isoformat() if hasattr(fecha_inicio, 'isoformat') else str(fecha_inicio)
+            fecha_fin_str = fecha_fin.isoformat() if hasattr(fecha_fin, 'isoformat') else str(fecha_fin)
+            
             await self.db.sat_download_requests.insert_one({
                 'id': str(uuid_module.uuid4()),
                 'company_id': company_id,
                 'id_solicitud': result['id_solicitud'],
-                'fecha_inicio': fecha_inicio.isoformat(),
-                'fecha_fin': fecha_fin.isoformat(),
+                'fecha_inicio': fecha_inicio_str,
+                'fecha_fin': fecha_fin_str,
                 'tipo_comprobante': tipo_comprobante,
                 'tipo_solicitud': tipo_solicitud,
                 'estado': 'solicitada',
