@@ -277,7 +277,9 @@ const Catalogs = () => {
       await api.delete(`/customers/${deleteConfirm.item.id}`);
       toast.success('Cliente eliminado');
       setDeleteConfirm({ open: false, type: null, item: null });
-      loadData();
+      // Refresh data
+      const customersRes = await api.get('/customers');
+      setCustomers(customersRes.data);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error eliminando cliente');
     }
@@ -290,7 +292,9 @@ const Catalogs = () => {
       await api.delete(`/companies/${deleteConfirm.item.id}`);
       toast.success('Empresa eliminada');
       setDeleteConfirm({ open: false, type: null, item: null });
-      loadData();
+      // Refresh data
+      const companiesRes = await api.get('/companies');
+      setCompanies(companiesRes.data);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error eliminando empresa');
     }
