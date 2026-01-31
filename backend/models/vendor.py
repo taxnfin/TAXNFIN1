@@ -13,6 +13,8 @@ class Vendor(BaseModel):
     rfc: Optional[str] = None
     email: Optional[str] = None
     telefono: Optional[str] = None
+    direccion: Optional[str] = None
+    plazo_pago: int = 30  # Días para calcular aging de cuentas por pagar
     activo: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -22,3 +24,5 @@ class VendorCreate(BaseModel):
     rfc: Optional[str] = None
     email: Optional[str] = None
     telefono: Optional[str] = None
+    direccion: Optional[str] = None
+    plazo_pago: int = 30
