@@ -39,6 +39,7 @@ from routes.reconciliations import router as reconciliations_router
 from routes.cfdi import router as cfdi_router
 from routes.fx_rates import router as fx_rates_router
 from routes.bank_transactions import router as bank_transactions_router
+from routes.sat import router as sat_router
 
 # Include modular routers in api_router
 api_router.include_router(auth_router)
