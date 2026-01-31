@@ -887,7 +887,7 @@ const Catalogs = () => {
                           type="number" 
                           min="0" 
                           value={vendorForm.plazo_pago} 
-                          onChange={(e) => setVendorForm({...vendorForm, plazo_pago: parseInt(e.target.value) || 0})} 
+                          onChange={(e) => setVendorForm({...vendorForm, plazo_pago: e.target.value === '' ? '' : parseInt(e.target.value)})} 
                           placeholder="30"
                         />
                         <p className="text-xs text-muted-foreground">Días para calcular el aging de cuentas por pagar</p>
@@ -1114,7 +1114,7 @@ const Catalogs = () => {
                           type="number" 
                           min="0" 
                           value={customerForm.plazo_cobranza} 
-                          onChange={(e) => setCustomerForm({...customerForm, plazo_cobranza: parseInt(e.target.value) || 0})} 
+                          onChange={(e) => setCustomerForm({...customerForm, plazo_cobranza: e.target.value === '' ? '' : parseInt(e.target.value)})} 
                           placeholder="30"
                         />
                         <p className="text-xs text-muted-foreground">Días para calcular el aging de cuentas por cobrar</p>
