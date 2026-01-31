@@ -295,7 +295,7 @@ async def get_download_requests(
 async def get_comprobante_types():
     """Get list of CFDI comprobante types for filtering"""
     return [
-        {'value': '', 'label': 'Todos los tipos'},
+        {'value': 'todos', 'label': 'Todos los tipos'},
         {'value': 'I', 'label': 'Ingreso (I)'},
         {'value': 'E', 'label': 'Egreso (E)'},
         {'value': 'P', 'label': 'Pago (P)'},
