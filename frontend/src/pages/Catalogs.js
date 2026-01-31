@@ -1158,6 +1158,7 @@ const Catalogs = () => {
                       <TableRow key={customer.id}>
                         <TableCell className="font-medium">{customer.nombre}</TableCell>
                         <TableCell className="mono">{customer.rfc || '-'}</TableCell>
+                        <TableCell>{customer.plazo_cobranza || 30} días</TableCell>
                         <TableCell>{customer.email || '-'}</TableCell>
                         <TableCell>{customer.telefono || '-'}</TableCell>
                         <TableCell className="text-right">
