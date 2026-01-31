@@ -627,6 +627,23 @@ const BankStatementsModule = () => {
     // Default to saldo pendiente
     return cfdi.saldo_pendiente ?? (cfdi.total - (cfdi.monto_pagado || 0));
   };
+  
+  // Load payment history for a CFDI
+  const loadPaymentHistory = async (cfdi) => {
+    setSelectedCfdiForHistory(cfdi);
+    setPaymentHistoryDialogOpen(true);
+    setLoadingHistory(true);
+    try {
+      const response = await api.get(`/cfdi/${cfdi.id}/payment-history`);
+      setPaymentHistory(response.data);
+    } catch (error) {
+      console.error('Error loading payment history:', error);
+      toast.error('Error al cargar historial de pagos');
+      setPaymentHistory(null);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   // Calculate totals for reconciliation - handles currency conversion using HISTORICAL rate
   // Can be overridden with customFxRate if user wants to edit it
