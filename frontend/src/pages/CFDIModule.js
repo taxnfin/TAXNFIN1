@@ -73,7 +73,7 @@ const CFDIModule = () => {
   const loadData = async () => {
     try {
       const [cfdisRes, ratesRes, categoriesRes, customersRes, vendorsRes] = await Promise.all([
-        api.get('/cfdi?limit=100'),
+        api.get('/cfdi?limit=1000'),
         api.get('/fx-rates/latest'),
         api.get('/categories'),
         api.get('/customers'),
