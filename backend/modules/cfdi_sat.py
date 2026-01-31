@@ -182,7 +182,7 @@ class SATPortalClient:
         """Initialize Selenium WebDriver"""
         from selenium import webdriver
         from selenium.webdriver.chrome.service import Service
-        from webdriver_manager.chrome import ChromeDriverManager
+        import shutil
         
         # Check if Chrome is available
         if not self._check_chrome_available():
@@ -191,7 +191,23 @@ class SATPortalClient:
         
         try:
             options = self._get_chrome_options()
-            service = Service(ChromeDriverManager().install())
+            
+            # Find chromium binary
+            chromium_path = shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome')
+            if chromium_path:
+                options.binary_location = chromium_path
+            
+            # Try to use system chromium-driver first
+            chromedriver_path = shutil.which('chromedriver') or shutil.which('chromium-driver')
+            
+            if chromedriver_path:
+                service = Service(chromedriver_path)
+            else:
+                # Fall back to webdriver-manager
+                from webdriver_manager.chrome import ChromeDriverManager
+                from webdriver_manager.core.os_manager import ChromeType
+                service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
+            
             self.driver = webdriver.Chrome(service=service, options=options)
             self.driver.implicitly_wait(10)
             return True
