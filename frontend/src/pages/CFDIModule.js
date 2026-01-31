@@ -12,6 +12,7 @@ import { Upload, FileText, Trash2, TrendingUp, TrendingDown, RefreshCw, Tag, Che
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { exportCFDIs } from '@/utils/excelExport';
+import SATIntegration from '@/components/SATIntegration';
 import {
   AlertDialog,
   AlertDialogAction,
