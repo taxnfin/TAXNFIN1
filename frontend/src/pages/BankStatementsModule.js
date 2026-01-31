@@ -622,6 +622,7 @@ const BankStatementsModule = () => {
 
   // Calculate totals for reconciliation - handles currency conversion using HISTORICAL rate
   // Can be overridden with customFxRate if user wants to edit it
+  // NOW USES PARTIAL AMOUNTS (montosParciales) instead of full CFDI totals
   const getReconciliationTotals = () => {
     const movimientoMonto = selectedTransaction?.monto || 0;
     
@@ -636,12 +637,13 @@ const BankStatementsModule = () => {
     const movimientoMontoMXN = convertToMXNHistorical(movimientoMonto, movimientoMoneda, tcHistorico);
     
     // Sum CFDIs - track both original currency and MXN totals
+    // USE PARTIAL AMOUNTS (getMontoAplicar) instead of cfdi.total
     let cfdiTotalMXN = 0;
     let cfdiTotalOriginal = 0; // Total in original currency (same as movement)
     
     selectedCfdis.forEach(cfdi => {
       const cfdiMoneda = cfdi.moneda || 'MXN';
-      const cfdiMonto = cfdi.total || 0;
+      const cfdiMonto = getMontoAplicar(cfdi); // USE PARTIAL AMOUNT!
       
       // Track total in original currency (for USD difference)
       if (cfdiMoneda === movimientoMoneda) {
@@ -665,8 +667,8 @@ const BankStatementsModule = () => {
     // Calculate difference in original currency (USD)
     const diferenciaOriginal = movimientoMonto - cfdiTotalOriginal;
     
-    // Also return original values for display
-    const cfdiTotal = selectedCfdis.reduce((sum, cfdi) => sum + (cfdi.total || 0), 0);
+    // Also return original values for display (now using partial amounts)
+    const cfdiTotal = selectedCfdis.reduce((sum, cfdi) => sum + getMontoAplicar(cfdi), 0);
     
     // Get transaction date for display
     const fechaMovimiento = selectedTransaction?.fecha_movimiento || null;
