@@ -550,7 +550,7 @@ const SATIntegration = ({ onSyncComplete }) => {
 
             {!isValidDate() && (
               <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
-                ⚠️ El rango de fechas excede el límite permitido para este tipo de solicitud.
+                ⚠️ El rango de fechas no es válido. Máximo 30 días y la fecha final debe ser posterior a la inicial.
               </div>
             )}
 
