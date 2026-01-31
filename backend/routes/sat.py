@@ -307,6 +307,6 @@ async def get_comprobante_types():
 async def get_solicitud_types():
     """Get list of download request types"""
     return [
-        {'value': 'CFDI', 'label': 'XML Completos (máx. 1 día)'},
-        {'value': 'Metadata', 'label': 'Solo Metadatos (máx. 7 días)'}
+        {'value': 'recibidos', 'label': 'CFDIs Recibidos (compras)'},
+        {'value': 'emitidos', 'label': 'CFDIs Emitidos (ventas)'}
     ]
