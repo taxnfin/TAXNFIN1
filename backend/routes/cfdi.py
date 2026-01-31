@@ -141,6 +141,91 @@ async def get_cfdi(cfdi_id: str, request: Request, current_user: Dict = Depends(
     return cfdi
 
 
+@router.get("/{cfdi_id}/payment-history")
+async def get_cfdi_payment_history(cfdi_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
+    """Get payment history for a CFDI including all partial payments with bank transaction details"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get the CFDI first
+    cfdi = await db.cfdis.find_one({'id': cfdi_id, 'company_id': company_id}, {'_id': 0})
+    if not cfdi:
+        raise HTTPException(status_code=404, detail="CFDI no encontrado")
+    
+    # Get all reconciliations for this CFDI
+    reconciliations = await db.reconciliations.find(
+        {'cfdi_id': cfdi_id, 'company_id': company_id},
+        {'_id': 0}
+    ).to_list(100)
+    
+    # Get all payments for this CFDI
+    payments = await db.payments.find(
+        {'cfdi_id': cfdi_id, 'company_id': company_id},
+        {'_id': 0}
+    ).to_list(100)
+    
+    # Build payment history with bank transaction details
+    payment_history = []
+    
+    for payment in payments:
+        # Get the associated bank transaction
+        bank_txn = None
+        if payment.get('bank_transaction_id'):
+            bank_txn = await db.bank_transactions.find_one(
+                {'id': payment['bank_transaction_id'], 'company_id': company_id},
+                {'_id': 0, 'descripcion': 1, 'referencia': 1, 'fecha_movimiento': 1, 'fecha_valor': 1, 'monto': 1, 'moneda': 1}
+            )
+        
+        # Get the bank account info
+        bank_account = None
+        if payment.get('bank_account_id'):
+            bank_account = await db.bank_accounts.find_one(
+                {'id': payment['bank_account_id'], 'company_id': company_id},
+                {'_id': 0, 'banco': 1, 'nombre': 1, 'moneda': 1}
+            )
+        
+        history_entry = {
+            'id': payment['id'],
+            'fecha': payment.get('fecha_pago') or payment.get('created_at'),
+            'monto': payment.get('monto', 0),
+            'moneda': payment.get('moneda', 'MXN'),
+            'concepto': payment.get('concepto', ''),
+            'tipo': payment.get('tipo', 'pago'),
+            'estatus': payment.get('estatus', 'completado'),
+            'referencia_bancaria': bank_txn.get('referencia') if bank_txn else None,
+            'descripcion_bancaria': bank_txn.get('descripcion') if bank_txn else None,
+            'fecha_movimiento_banco': bank_txn.get('fecha_movimiento') if bank_txn else None,
+            'banco': bank_account.get('banco') if bank_account else None,
+            'cuenta': bank_account.get('nombre') if bank_account else None,
+            'bank_transaction_id': payment.get('bank_transaction_id')
+        }
+        payment_history.append(history_entry)
+    
+    # Sort by date descending
+    payment_history.sort(key=lambda x: x['fecha'] if x['fecha'] else '', reverse=True)
+    
+    # Calculate summary
+    total_pagado = sum(p['monto'] for p in payment_history if p['estatus'] == 'completado')
+    cfdi_total = cfdi.get('total', 0)
+    saldo_pendiente = max(0, cfdi_total - total_pagado)
+    
+    return {
+        'cfdi_id': cfdi_id,
+        'cfdi_uuid': cfdi.get('uuid'),
+        'cfdi_total': cfdi_total,
+        'cfdi_moneda': cfdi.get('moneda', 'MXN'),
+        'emisor_nombre': cfdi.get('emisor_nombre'),
+        'receptor_nombre': cfdi.get('receptor_nombre'),
+        'tipo_cfdi': cfdi.get('tipo_cfdi'),
+        'fecha_emision': cfdi.get('fecha_emision'),
+        'total_pagado': total_pagado,
+        'saldo_pendiente': saldo_pendiente,
+        'porcentaje_pagado': (total_pagado / cfdi_total * 100) if cfdi_total > 0 else 0,
+        'estado_pago': 'pagado' if saldo_pendiente < 0.01 else ('parcial' if total_pagado > 0 else 'pendiente'),
+        'pagos': payment_history,
+        'total_pagos': len(payment_history)
+    }
+
+
 @router.delete("/{cfdi_id}")
 async def delete_cfdi(cfdi_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
     """Delete a CFDI"""
