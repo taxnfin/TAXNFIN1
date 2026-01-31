@@ -2147,6 +2147,7 @@ async def list_cfdis(
                 c[field] = datetime.fromisoformat(c[field])
         
         # Calculate saldo_pendiente for partial payments support
+        # Use monto_cobrado for ingresos (sales), monto_pagado for egresos (expenses)
         cfdi_total = c.get('total', 0)
         if c.get('tipo_cfdi') == 'ingreso':
             monto_cubierto = c.get('monto_cobrado', 0) or 0
