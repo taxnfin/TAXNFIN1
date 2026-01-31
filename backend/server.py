@@ -53,6 +53,7 @@ api_router.include_router(reconciliations_router)
 api_router.include_router(cfdi_router)
 api_router.include_router(fx_rates_router)
 api_router.include_router(bank_transactions_router)
+api_router.include_router(sat_router)
 
 JWT_SECRET = os.environ.get('JWT_SECRET', 'taxnfin-secret-key-change-in-production')
 JWT_ALGORITHM = 'HS256'
