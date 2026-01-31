@@ -206,7 +206,9 @@ const Catalogs = () => {
       nombre: vendor.nombre,
       rfc: vendor.rfc || '',
       email: vendor.email || '',
-      telefono: vendor.telefono || ''
+      telefono: vendor.telefono || '',
+      direccion: vendor.direccion || '',
+      plazo_pago: vendor.plazo_pago || 30
     });
     setDialogs({ ...dialogs, editVendor: true });
   };
@@ -220,7 +222,7 @@ const Catalogs = () => {
       toast.success('Proveedor actualizado');
       setDialogs({ ...dialogs, editVendor: false });
       setEditingVendor(null);
-      setVendorForm({ nombre: '', rfc: '', email: '', telefono: '' });
+      setVendorForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: 30 });
       // Refresh data
       const vendorsRes = await api.get('/vendors');
       setVendors(vendorsRes.data);
@@ -251,7 +253,9 @@ const Catalogs = () => {
       nombre: customer.nombre,
       rfc: customer.rfc || '',
       email: customer.email || '',
-      telefono: customer.telefono || ''
+      telefono: customer.telefono || '',
+      direccion: customer.direccion || '',
+      plazo_cobranza: customer.plazo_cobranza || 30
     });
     setDialogs({ ...dialogs, editCustomer: true });
   };
@@ -265,7 +269,7 @@ const Catalogs = () => {
       toast.success('Cliente actualizado');
       setDialogs({ ...dialogs, editCustomer: false });
       setEditingCustomer(null);
-      setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '' });
+      setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_cobranza: 30 });
       // Refresh data
       const customersRes = await api.get('/customers');
       setCustomers(customersRes.data);
@@ -311,7 +315,7 @@ const Catalogs = () => {
       toast.success('Proveedor creado');
       setDialogs({ ...dialogs, vendor: false });
       loadData();
-      setVendorForm({ nombre: '', rfc: '', email: '', telefono: '' });
+      setVendorForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: 30 });
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error creando proveedor');
     }
@@ -324,7 +328,7 @@ const Catalogs = () => {
       toast.success('Cliente creado');
       setDialogs({ ...dialogs, customer: false });
       loadData();
-      setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '' });
+      setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_cobranza: 30 });
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error creando cliente');
     }
