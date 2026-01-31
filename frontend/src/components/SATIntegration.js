@@ -64,8 +64,8 @@ const SATIntegration = ({ onSyncComplete }) => {
   ];
 
   const tiposSolicitud = [
-    { value: 'CFDI', label: 'XML Completos (máx. 1 día)' },
-    { value: 'Metadata', label: 'Solo Metadatos (máx. 7 días)' }
+    { value: 'recibidos', label: 'CFDIs Recibidos (compras)' },
+    { value: 'emitidos', label: 'CFDIs Emitidos (ventas)' }
   ];
 
   useEffect(() => {
