@@ -68,6 +68,9 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
             else:
                 beneficiario_nombre = cfdi.get('emisor_nombre', '') or cfdi.get('receptor_nombre', '')
             
+            # Use monto_aplicado for partial payments, otherwise use bank transaction amount
+            monto_payment = reconciliation_data.monto_aplicado if reconciliation_data.monto_aplicado is not None else bank_txn.get('monto', 0)
+            
             payment_doc = {
                 'id': str(uuid.uuid4()),
                 'company_id': company_id,
@@ -75,7 +78,7 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
                 'cfdi_id': reconciliation_data.cfdi_id,
                 'tipo': tipo_pago,
                 'concepto': f"Conciliación - {beneficiario_nombre}",
-                'monto': bank_txn.get('monto', 0),
+                'monto': monto_payment,  # Use partial or full amount
                 'moneda': moneda,
                 'metodo_pago': 'transferencia',
                 'fecha_vencimiento': bank_txn.get('fecha_movimiento'),
