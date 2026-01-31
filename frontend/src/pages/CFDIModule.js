@@ -674,6 +674,9 @@ const CFDIModule = () => {
         </Card>
       </div>
 
+      {/* SAT Integration */}
+      <SATIntegration onSyncComplete={loadData} />
+
       {/* Exchange Rates Info */}
       {Object.keys(fxRates).length > 1 && (
         <Card className="border-[#E2E8F0] bg-[#F8FAFC]">
