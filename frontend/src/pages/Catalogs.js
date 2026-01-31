@@ -455,6 +455,7 @@ const Catalogs = () => {
                     <TableHead>RFC</TableHead>
                     <TableHead>Moneda</TableHead>
                     <TableHead>País</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -464,6 +465,26 @@ const Catalogs = () => {
                       <TableCell className="mono">{company.rfc}</TableCell>
                       <TableCell>{company.moneda_base}</TableCell>
                       <TableCell>{company.pais}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            onClick={() => handleEditCompany(company)}
+                            data-testid={`edit-company-${company.id}`}
+                          >
+                            <Pencil size={16} className="text-blue-600" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            onClick={() => setDeleteConfirm({ open: true, type: 'company', item: company })}
+                            data-testid={`delete-company-${company.id}`}
+                          >
+                            <Trash2 size={16} className="text-red-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
