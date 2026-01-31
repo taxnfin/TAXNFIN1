@@ -515,9 +515,9 @@ const SATIntegration = ({ onSyncComplete }) => {
                 </SelectContent>
               </Select>
               <p className="text-xs text-[#64748B]">
-                {syncConfig.tipo_solicitud === 'CFDI' 
-                  ? 'Descarga XML completos. Máximo 1 día por solicitud.'
-                  : 'Descarga solo metadatos (sin XML). Máximo 7 días por solicitud.'}
+                {syncConfig.tipo_solicitud === 'recibidos' 
+                  ? 'CFDIs que recibiste de tus proveedores (compras/gastos).'
+                  : 'CFDIs que emitiste a tus clientes (ventas/ingresos).'}
               </p>
             </div>
 
