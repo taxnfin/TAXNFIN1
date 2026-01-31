@@ -87,6 +87,7 @@ class BankReconciliationCreate(BaseModel):
     tipo_conciliacion: str = "con_uuid"
     porcentaje_match: float = 100.0
     notas: Optional[str] = None
+    monto_aplicado: Optional[float] = None  # For partial payments
 
 
 class BankConnection(BaseModel):
