@@ -206,25 +206,24 @@ async def request_cfdi_download(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Formato de fecha inválido: {str(e)}")
     
-    # Validate date range (SAT allows max 1 day for XML, more for metadata)
-    if data.tipo_solicitud == 'CFDI' and (fecha_fin - fecha_inicio).days > 1:
+    # SAT allows different date ranges depending on request type
+    days_diff = (fecha_fin - fecha_inicio).days
+    
+    if days_diff > 30:
         raise HTTPException(
             status_code=400,
-            detail="Para descarga de XML, el rango máximo es 1 día. Use tipo 'Metadata' para rangos mayores."
+            detail="El rango máximo de fechas es 30 días. Divida la solicitud en períodos más cortos."
         )
     
-    if (fecha_fin - fecha_inicio).days > 7:
-        raise HTTPException(
-            status_code=400,
-            detail="El rango máximo de fechas es 7 días. Divida la solicitud en períodos más cortos."
-        )
+    if days_diff < 0:
+        raise HTTPException(status_code=400, detail="La fecha final debe ser posterior a la fecha inicial")
     
     sync_service = SATFIELSyncService(db)
     result = await sync_service.request_download(
         company_id=company_id,
         fecha_inicio=fecha_inicio,
         fecha_fin=fecha_fin,
-        tipo_comprobante=data.tipo_comprobante,
+        tipo_comprobante=data.tipo_comprobante if data.tipo_comprobante != 'todos' else None,
         tipo_solicitud=data.tipo_solicitud
     )
     
