@@ -232,7 +232,9 @@ const Catalogs = () => {
       await api.delete(`/vendors/${deleteConfirm.item.id}`);
       toast.success('Proveedor eliminado');
       setDeleteConfirm({ open: false, type: null, item: null });
-      loadData();
+      // Refresh data
+      const vendorsRes = await api.get('/vendors');
+      setVendors(vendorsRes.data);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error eliminando proveedor');
     }
