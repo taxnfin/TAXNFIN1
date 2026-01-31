@@ -1898,11 +1898,45 @@ const BankStatementsModule = () => {
                 </SelectContent>
               </Select>
             </div>
-            {(searchTerm || filterAccount !== 'all' || filterStatus !== 'all') && (
+            <div className="w-48">
+              <Label className="text-xs text-gray-500">Emisor/Cliente</Label>
+              <Select value={filterEmisor} onValueChange={setFilterEmisor}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {uniqueEmisores.slice(0, 50).map(emisor => (
+                    <SelectItem key={emisor} value={emisor}>
+                      {emisor.length > 25 ? emisor.substring(0, 25) + '...' : emisor}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-48">
+              <Label className="text-xs text-gray-500">Categoría</Label>
+              <Select value={filterCategoria} onValueChange={setFilterCategoria}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {uniqueCategorias.map(cat => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {(searchTerm || filterAccount !== 'all' || filterStatus !== 'all' || filterEmisor !== 'all' || filterCategoria !== 'all') && (
               <Button variant="ghost" size="sm" onClick={() => {
                 setSearchTerm('');
                 setFilterAccount('all');
                 setFilterStatus('all');
+                setFilterEmisor('all');
+                setFilterCategoria('all');
               }}>
                 <X size={16} className="mr-1" /> Limpiar
               </Button>
