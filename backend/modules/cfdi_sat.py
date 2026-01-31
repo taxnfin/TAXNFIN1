@@ -219,8 +219,16 @@ class SATPortalClient:
         from selenium.webdriver.support import expected_conditions as EC
         
         try:
+            # Check Chrome availability first
+            if not self._check_chrome_available():
+                return {
+                    'success': False, 
+                    'error': 'El servidor no tiene Chrome/Chromium instalado. Las credenciales se guardaron correctamente, pero la conexión con SAT requiere un navegador. Contacte al administrador del sistema.',
+                    'chrome_missing': True
+                }
+            
             if not self._init_driver():
-                return {'success': False, 'error': 'No se pudo inicializar el navegador'}
+                return {'success': False, 'error': 'No se pudo inicializar el navegador. Verifique la configuración del servidor.'}
             
             logger.info(f"Attempting SAT login for RFC: {rfc}")
             
