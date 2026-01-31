@@ -522,6 +522,96 @@ const Catalogs = () => {
               </Table>
             </CardContent>
           </Card>
+
+          {/* Edit Company Dialog - Must be inside companies TabsContent */}
+          <Dialog open={dialogs.editCompany} onOpenChange={(open) => {
+            setDialogs({...dialogs, editCompany: open});
+            if (!open) {
+              setEditingCompany(null);
+              setCompanyForm({ nombre: '', rfc: '', moneda_base: 'MXN', pais: 'México' });
+            }
+          }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Editar Empresa</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleUpdateCompany} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Nombre de la Empresa</Label>
+                  <Input 
+                    value={companyForm.nombre} 
+                    onChange={(e) => setCompanyForm({...companyForm, nombre: e.target.value})} 
+                    placeholder="Ej: Mi Empresa S.A. de C.V."
+                    required 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>RFC</Label>
+                  <Input 
+                    value={companyForm.rfc} 
+                    onChange={(e) => setCompanyForm({...companyForm, rfc: e.target.value.toUpperCase()})} 
+                    placeholder="Ej: ABC123456XYZ"
+                    maxLength={13}
+                    required 
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Moneda Base</Label>
+                    <Select value={companyForm.moneda_base} onValueChange={(v) => setCompanyForm({...companyForm, moneda_base: v})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar moneda" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MONEDAS.map(moneda => (
+                          <SelectItem key={moneda} value={moneda}>{moneda}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>País</Label>
+                    <Input 
+                      value={companyForm.pais} 
+                      onChange={(e) => setCompanyForm({...companyForm, pais: e.target.value})} 
+                      placeholder="México"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setDialogs({...dialogs, editCompany: false})}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" className="bg-[#0F172A]">Guardar Cambios</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          {/* Delete Company Confirmation Dialog */}
+          <AlertDialog open={deleteConfirm.open && deleteConfirm.type === 'company'} onOpenChange={(open) => !open && setDeleteConfirm({ open: false, type: null, item: null })}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                  ¿Eliminar empresa?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta acción no se puede deshacer. Se eliminará permanentemente la empresa 
+                  <strong> "{deleteConfirm.item?.nombre}"</strong> con RFC {deleteConfirm.item?.rfc}.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={handleDeleteCompany}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </TabsContent>
 
         <TabsContent value="accounts">
