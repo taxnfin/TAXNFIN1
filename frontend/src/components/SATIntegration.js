@@ -122,10 +122,25 @@ const SATIntegration = ({ onSyncComplete }) => {
         toast.success('¡Conexión exitosa con el SAT!');
         loadSATStatus();
       } else {
-        toast.error(response.data.error || 'Error de conexión con SAT');
+        // Check if it's a Chrome missing error
+        if (response.data.chrome_missing) {
+          toast.warning('Credenciales guardadas. La prueba de conexión requiere Chrome en el servidor.', {
+            duration: 5000
+          });
+        } else {
+          toast.error(response.data.error || 'Error de conexión con SAT');
+        }
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error probando conexión');
+      const errorMsg = error.response?.data?.detail || 'Error probando conexión';
+      // Check for Chrome/browser related errors
+      if (errorMsg.toLowerCase().includes('chrome') || errorMsg.toLowerCase().includes('navegador')) {
+        toast.warning('Credenciales guardadas. La conexión al SAT no está disponible en este servidor.', {
+          duration: 5000
+        });
+      } else {
+        toast.error(errorMsg);
+      }
     } finally {
       setTestingConnection(false);
     }
