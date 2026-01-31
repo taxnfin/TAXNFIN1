@@ -580,7 +580,38 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ### Completed ✅
 
-**Feature: Conciliación con Pagos Parciales**
+**Feature 1: Historial de Pagos por CFDI**
+
+Nuevo endpoint y UI para visualizar el historial completo de pagos aplicados a un CFDI:
+
+**Backend (routes/cfdi.py):**
+- Nuevo endpoint `GET /cfdi/{cfdi_id}/payment-history`
+- Retorna: CFDI info, total pagado, saldo pendiente, % pagado, estado
+- Detalle de cada pago: monto, fecha, tipo, estatus
+- Referencia bancaria: banco, cuenta, descripción, referencia
+
+**Frontend (BankStatementsModule.js):**
+- Dialog "Historial de Pagos - CFDI" con barra de progreso visual
+- Botón "Ver historial" en CFDIs con pagos previos
+- Lista detallada de pagos con info bancaria
+
+**Feature 2: Filtros Adicionales en Conciliaciones Bancarias**
+
+Nuevos filtros para mejor gestión de movimientos bancarios:
+
+**Frontend (BankStatementsModule.js):**
+- Filtro **Emisor/Cliente**: Extrae nombres de descripciones de transacciones
+- Filtro **Categoría**: Lista todas las categorías asignadas
+- Ambos filtros integrados con el botón "Limpiar"
+- Se combinan con los filtros existentes (Cuenta, Estado, Buscar)
+
+**Testing:**
+- Endpoint `/cfdi/{id}/payment-history` verificado con curl
+- Filtros visibles en la UI
+
+---
+
+**Feature: Conciliación con Pagos Parciales** (Previous)
 
 Implementación completa de funcionalidad para conciliar movimientos bancarios con CFDIs de forma parcial:
 
