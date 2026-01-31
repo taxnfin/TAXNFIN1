@@ -208,7 +208,7 @@ const Catalogs = () => {
       email: vendor.email || '',
       telefono: vendor.telefono || '',
       direccion: vendor.direccion || '',
-      plazo_pago: vendor.plazo_pago || 30
+      plazo_pago: vendor.plazo_pago ?? 0
     });
     setDialogs({ ...dialogs, editVendor: true });
   };
@@ -255,7 +255,7 @@ const Catalogs = () => {
       email: customer.email || '',
       telefono: customer.telefono || '',
       direccion: customer.direccion || '',
-      plazo_cobranza: customer.plazo_cobranza || 30
+      plazo_cobranza: customer.plazo_cobranza ?? 0
     });
     setDialogs({ ...dialogs, editCustomer: true });
   };
@@ -931,7 +931,7 @@ const Catalogs = () => {
                       <TableRow key={vendor.id}>
                         <TableCell className="font-medium">{vendor.nombre}</TableCell>
                         <TableCell className="mono">{vendor.rfc || '-'}</TableCell>
-                        <TableCell>{vendor.plazo_pago || 30} días</TableCell>
+                        <TableCell>{vendor.plazo_pago ?? 0} días</TableCell>
                         <TableCell>{vendor.email || '-'}</TableCell>
                         <TableCell>{vendor.telefono || '-'}</TableCell>
                         <TableCell className="text-right">
@@ -1158,7 +1158,7 @@ const Catalogs = () => {
                       <TableRow key={customer.id}>
                         <TableCell className="font-medium">{customer.nombre}</TableCell>
                         <TableCell className="mono">{customer.rfc || '-'}</TableCell>
-                        <TableCell>{customer.plazo_cobranza || 30} días</TableCell>
+                        <TableCell>{customer.plazo_cobranza ?? 0} días</TableCell>
                         <TableCell>{customer.email || '-'}</TableCell>
                         <TableCell>{customer.telefono || '-'}</TableCell>
                         <TableCell className="text-right">
