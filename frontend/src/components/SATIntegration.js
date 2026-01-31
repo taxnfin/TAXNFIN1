@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '@/api/axios';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,10 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Cloud, Key, RefreshCw, CheckCircle2, XCircle, Clock, Loader2, Download, Calendar, Trash2, History, AlertCircle, Shield } from 'lucide-react';
+import { Cloud, Key, RefreshCw, CheckCircle2, XCircle, Loader2, Download, Calendar, Trash2, History, AlertCircle, Shield, FileKey, Upload, Clock, Package } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +20,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 
 const SATIntegration = ({ onSyncComplete }) => {
   const [satStatus, setSatStatus] = useState(null);
@@ -28,32 +29,43 @@ const SATIntegration = ({ onSyncComplete }) => {
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
-  const [syncHistory, setSyncHistory] = useState([]);
+  const [requestsDialogOpen, setRequestsDialogOpen] = useState(false);
+  const [downloadRequests, setDownloadRequests] = useState([]);
+  
+  // File refs
+  const cerFileRef = useRef(null);
+  const keyFileRef = useRef(null);
   
   // Form states
-  const [credentials, setCredentials] = useState({ rfc: '', ciec: '' });
+  const [cerFile, setCerFile] = useState(null);
+  const [keyFile, setKeyFile] = useState(null);
+  const [password, setPassword] = useState('');
   const [savingCredentials, setSavingCredentials] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   
   // Sync form
   const [syncConfig, setSyncConfig] = useState({
-    fecha_inicio: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
+    fecha_inicio: format(new Date(), 'yyyy-MM-dd'),
     fecha_fin: format(new Date(), 'yyyy-MM-dd'),
-    tipo_comprobante: 'todos',
-    incluir_emitidos: true,
-    incluir_recibidos: true
+    tipo_comprobante: '',
+    tipo_solicitud: 'CFDI'
   });
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+  const [checkingStatus, setCheckingStatus] = useState(null);
 
   const tiposComprobante = [
-    { value: 'todos', label: 'Todos los tipos' },
-    { value: 'ingreso', label: 'Ingreso (I)' },
-    { value: 'egreso', label: 'Egreso (E)' },
-    { value: 'pago', label: 'Pago (P)' },
-    { value: 'nomina', label: 'Nómina (N)' },
-    { value: 'traslado', label: 'Traslado (T)' }
+    { value: '', label: 'Todos los tipos' },
+    { value: 'I', label: 'Ingreso (I)' },
+    { value: 'E', label: 'Egreso (E)' },
+    { value: 'P', label: 'Pago (P)' },
+    { value: 'N', label: 'Nómina (N)' },
+    { value: 'T', label: 'Traslado (T)' }
+  ];
+
+  const tiposSolicitud = [
+    { value: 'CFDI', label: 'XML Completos (máx. 1 día)' },
+    { value: 'Metadata', label: 'Solo Metadatos (máx. 7 días)' }
   ];
 
   useEffect(() => {
@@ -72,43 +84,44 @@ const SATIntegration = ({ onSyncComplete }) => {
     }
   };
 
-  const loadSyncHistory = async () => {
+  const loadDownloadRequests = async () => {
     try {
-      const response = await api.get('/sat/sync/history?limit=10');
-      setSyncHistory(response.data);
+      const response = await api.get('/sat/requests?limit=20');
+      setDownloadRequests(response.data);
     } catch (error) {
-      console.error('Error loading sync history:', error);
+      console.error('Error loading requests:', error);
     }
   };
 
-  const handleSaveCredentials = async () => {
-    if (!credentials.rfc || !credentials.ciec) {
-      toast.error('Por favor ingrese RFC y CIEC');
-      return;
-    }
-
-    if (credentials.rfc.length < 12 || credentials.rfc.length > 13) {
-      toast.error('RFC inválido. Debe tener 12 o 13 caracteres.');
-      return;
-    }
-
-    if (credentials.ciec.length < 8) {
-      toast.error('CIEC inválida. Debe tener al menos 8 caracteres.');
+  const handleSaveFIEL = async () => {
+    if (!cerFile || !keyFile || !password) {
+      toast.error('Por favor seleccione los archivos .cer, .key e ingrese la contraseña');
       return;
     }
 
     setSavingCredentials(true);
     try {
-      await api.post('/sat/credentials', {
-        rfc: credentials.rfc.toUpperCase(),
-        ciec: credentials.ciec
+      const formData = new FormData();
+      formData.append('cer_file', cerFile);
+      formData.append('key_file', keyFile);
+      formData.append('password', password);
+
+      const response = await api.post('/sat/fiel/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
-      toast.success('Credenciales SAT guardadas correctamente');
-      setConfigDialogOpen(false);
-      setCredentials({ rfc: '', ciec: '' });
-      loadSATStatus();
+
+      if (response.data.success) {
+        toast.success(`FIEL guardada correctamente. RFC: ${response.data.rfc}`);
+        setConfigDialogOpen(false);
+        setCerFile(null);
+        setKeyFile(null);
+        setPassword('');
+        loadSATStatus();
+      } else {
+        toast.error(response.data.error || 'Error guardando FIEL');
+      }
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error guardando credenciales');
+      toast.error(error.response?.data?.detail || 'Error guardando FIEL');
     } finally {
       setSavingCredentials(false);
     }
@@ -122,25 +135,10 @@ const SATIntegration = ({ onSyncComplete }) => {
         toast.success('¡Conexión exitosa con el SAT!');
         loadSATStatus();
       } else {
-        // Check if it's a Chrome missing error
-        if (response.data.chrome_missing) {
-          toast.warning('Credenciales guardadas. La prueba de conexión requiere Chrome en el servidor.', {
-            duration: 5000
-          });
-        } else {
-          toast.error(response.data.error || 'Error de conexión con SAT');
-        }
+        toast.error(response.data.error || 'Error de conexión con SAT');
       }
     } catch (error) {
-      const errorMsg = error.response?.data?.detail || 'Error probando conexión';
-      // Check for Chrome/browser related errors
-      if (errorMsg.toLowerCase().includes('chrome') || errorMsg.toLowerCase().includes('navegador')) {
-        toast.warning('Credenciales guardadas. La conexión al SAT no está disponible en este servidor.', {
-          duration: 5000
-        });
-      } else {
-        toast.error(errorMsg);
-      }
+      toast.error(error.response?.data?.detail || 'Error probando conexión');
     } finally {
       setTestingConnection(false);
     }
@@ -157,64 +155,95 @@ const SATIntegration = ({ onSyncComplete }) => {
     }
   };
 
-  const handleSync = async () => {
-    // Validate date range
-    const dateStart = new Date(syncConfig.fecha_inicio);
-    const dateEnd = new Date(syncConfig.fecha_fin);
-    const daysDiff = Math.ceil((dateEnd - dateStart) / (1000 * 60 * 60 * 24));
-
-    if (daysDiff > 31) {
-      toast.error('El rango de fechas no puede exceder 31 días');
-      return;
-    }
-
-    if (dateEnd < dateStart) {
-      toast.error('La fecha final debe ser posterior a la fecha inicial');
-      return;
-    }
-
-    if (!syncConfig.incluir_emitidos && !syncConfig.incluir_recibidos) {
-      toast.error('Debe seleccionar al menos un tipo de CFDI (emitidos o recibidos)');
-      return;
-    }
-
+  const handleRequestDownload = async () => {
     setSyncing(true);
     setSyncResult(null);
 
     try {
-      const response = await api.post('/sat/sync', {
+      const response = await api.post('/sat/request-download', {
         fecha_inicio: syncConfig.fecha_inicio,
         fecha_fin: syncConfig.fecha_fin,
-        tipo_comprobante: syncConfig.tipo_comprobante,
-        incluir_emitidos: syncConfig.incluir_emitidos,
-        incluir_recibidos: syncConfig.incluir_recibidos
+        tipo_comprobante: syncConfig.tipo_comprobante || null,
+        tipo_solicitud: syncConfig.tipo_solicitud
       });
 
-      setSyncResult(response.data);
-      
       if (response.data.success) {
-        const total = response.data.total_new || 0;
-        if (total > 0) {
-          toast.success(`¡Sincronización exitosa! ${total} CFDIs nuevos importados`);
-          if (onSyncComplete) onSyncComplete();
-        } else {
-          toast.info('Sincronización completada. No se encontraron CFDIs nuevos.');
-        }
-        loadSATStatus();
+        toast.success(`Solicitud creada: ${response.data.id_solicitud}`);
+        setSyncResult({
+          success: true,
+          id_solicitud: response.data.id_solicitud,
+          mensaje: response.data.mensaje
+        });
+        loadDownloadRequests();
       } else {
-        toast.error(response.data.error || 'Error en sincronización');
+        toast.error(response.data.error || 'Error creando solicitud');
+        setSyncResult({ success: false, error: response.data.error });
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error sincronizando con SAT');
-      setSyncResult({ success: false, error: error.response?.data?.detail || 'Error desconocido' });
+      const errorMsg = error.response?.data?.detail || 'Error creando solicitud';
+      toast.error(errorMsg);
+      setSyncResult({ success: false, error: errorMsg });
     } finally {
       setSyncing(false);
     }
   };
 
-  const handleOpenHistory = () => {
-    loadSyncHistory();
-    setHistoryDialogOpen(true);
+  const handleCheckRequestStatus = async (idSolicitud) => {
+    setCheckingStatus(idSolicitud);
+    try {
+      const response = await api.post('/sat/check-request', { id_solicitud: idSolicitud });
+      
+      if (response.data.success) {
+        toast.info(`Estado: ${response.data.estado_texto} - ${response.data.numero_cfdis} CFDIs`);
+        loadDownloadRequests();
+        
+        // If ready to download, show packages
+        if (response.data.paquetes && response.data.paquetes.length > 0) {
+          toast.success(`¡Listo! ${response.data.paquetes.length} paquetes disponibles para descarga`);
+        }
+      } else {
+        toast.error(response.data.error || 'Error verificando solicitud');
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error verificando solicitud');
+    } finally {
+      setCheckingStatus(null);
+    }
+  };
+
+  const handleDownloadPackage = async (idPaquete) => {
+    setCheckingStatus(idPaquete);
+    try {
+      const response = await api.post('/sat/download-package', { id_paquete: idPaquete });
+      
+      if (response.data.success) {
+        toast.success(`¡Paquete procesado! ${response.data.cfdis_new} nuevos, ${response.data.cfdis_updated} actualizados`);
+        if (onSyncComplete) onSyncComplete();
+        loadDownloadRequests();
+      } else {
+        toast.error(response.data.error || 'Error descargando paquete');
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error descargando paquete');
+    } finally {
+      setCheckingStatus(null);
+    }
+  };
+
+  const handleOpenRequests = () => {
+    loadDownloadRequests();
+    setRequestsDialogOpen(true);
+  };
+
+  const isValidDate = () => {
+    const start = new Date(syncConfig.fecha_inicio);
+    const end = new Date(syncConfig.fecha_fin);
+    const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+    
+    if (syncConfig.tipo_solicitud === 'CFDI') {
+      return diffDays <= 1;
+    }
+    return diffDays <= 7;
   };
 
   if (loading) {
@@ -233,10 +262,10 @@ const SATIntegration = ({ onSyncComplete }) => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-[#1E40AF]">
             <Cloud size={20} />
-            Integración SAT
+            Integración SAT (e.firma / FIEL)
           </CardTitle>
           <CardDescription className="text-[#3B82F6]">
-            Descarga automática de CFDIs desde el portal del SAT usando RFC + CIEC
+            Descarga automática de CFDIs usando el Web Service oficial del SAT con FIEL
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -245,14 +274,19 @@ const SATIntegration = ({ onSyncComplete }) => {
             <div className="flex items-center gap-2 bg-white rounded-lg px-4 py-2 border">
               {satStatus?.configured ? (
                 <>
-                  <div className={`w-3 h-3 rounded-full ${satStatus?.status === 'active' ? 'bg-green-500' : satStatus?.status === 'error' ? 'bg-red-500' : 'bg-yellow-500'}`} />
-                  <span className="text-sm font-medium text-[#1E293B]">
-                    RFC: {satStatus?.rfc}
-                  </span>
-                  {satStatus?.last_sync && (
-                    <span className="text-xs text-[#64748B]">
-                      • Última sincronización: {format(new Date(satStatus.last_sync), 'dd/MM/yyyy HH:mm', { locale: es })}
+                  <div className={`w-3 h-3 rounded-full ${satStatus?.status === 'active' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-[#1E293B]">
+                      RFC: {satStatus?.rfc}
                     </span>
+                    <span className="text-xs text-[#64748B]">
+                      Serial: {satStatus?.serial_number?.slice(0, 16)}...
+                    </span>
+                  </div>
+                  {satStatus?.valid_to && (
+                    <Badge variant={new Date(satStatus.valid_to) > new Date() ? "outline" : "destructive"} className="ml-2">
+                      {new Date(satStatus.valid_to) > new Date() ? 'Vigente' : 'Expirada'}
+                    </Badge>
                   )}
                 </>
               ) : (
@@ -276,18 +310,18 @@ const SATIntegration = ({ onSyncComplete }) => {
                     data-testid="test-sat-connection-btn"
                   >
                     {testingConnection ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                    Probar conexión
+                    Probar
                   </Button>
                   
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleOpenHistory}
+                    onClick={handleOpenRequests}
                     className="gap-1"
-                    data-testid="sat-history-btn"
+                    data-testid="sat-requests-btn"
                   >
                     <History size={14} />
-                    Historial
+                    Solicitudes
                   </Button>
 
                   <Button
@@ -297,7 +331,7 @@ const SATIntegration = ({ onSyncComplete }) => {
                     data-testid="sync-sat-btn"
                   >
                     <Download size={14} />
-                    Sincronizar CFDIs
+                    Descargar CFDIs
                   </Button>
 
                   <Button
@@ -307,8 +341,8 @@ const SATIntegration = ({ onSyncComplete }) => {
                     className="gap-1 text-[#64748B]"
                     data-testid="edit-sat-credentials-btn"
                   >
-                    <Key size={14} />
-                    Editar
+                    <FileKey size={14} />
+                    Cambiar FIEL
                   </Button>
 
                   <Button
@@ -327,8 +361,8 @@ const SATIntegration = ({ onSyncComplete }) => {
                   className="gap-2 bg-[#3B82F6] hover:bg-[#2563EB]"
                   data-testid="configure-sat-btn"
                 >
-                  <Key size={16} />
-                  Configurar Credenciales SAT
+                  <FileKey size={16} />
+                  Configurar FIEL (e.firma)
                 </Button>
               )}
             </div>
@@ -336,56 +370,97 @@ const SATIntegration = ({ onSyncComplete }) => {
         </CardContent>
       </Card>
 
-      {/* Configure Credentials Dialog */}
+      {/* Configure FIEL Dialog */}
       <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Shield size={20} className="text-[#3B82F6]" />
-              Configurar Credenciales SAT
+              Configurar FIEL (e.firma)
             </DialogTitle>
             <DialogDescription>
-              Ingrese su RFC y CIEC para conectar con el portal del SAT.
-              Las credenciales se almacenan de forma encriptada.
+              Suba los archivos de su FIEL para conectar con el SAT.
+              Los archivos se almacenan de forma encriptada.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {/* CER File */}
             <div className="space-y-2">
-              <Label htmlFor="rfc">RFC</Label>
-              <Input
-                id="rfc"
-                placeholder="Ej: XAXX010101000"
-                value={credentials.rfc}
-                onChange={(e) => setCredentials({ ...credentials, rfc: e.target.value.toUpperCase() })}
-                maxLength={13}
-                data-testid="sat-rfc-input"
-              />
-              <p className="text-xs text-[#64748B]">12 caracteres para persona moral, 13 para persona física</p>
+              <Label>Certificado (.cer)</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="file"
+                  accept=".cer"
+                  ref={cerFileRef}
+                  onChange={(e) => setCerFile(e.target.files?.[0] || null)}
+                  className="hidden"
+                />
+                <Button
+                  variant="outline"
+                  className="w-full justify-start gap-2"
+                  onClick={() => cerFileRef.current?.click()}
+                >
+                  <Upload size={14} />
+                  {cerFile ? cerFile.name : 'Seleccionar archivo .cer'}
+                </Button>
+                {cerFile && (
+                  <Button variant="ghost" size="icon" onClick={() => setCerFile(null)}>
+                    <XCircle size={14} />
+                  </Button>
+                )}
+              </div>
             </div>
 
+            {/* KEY File */}
             <div className="space-y-2">
-              <Label htmlFor="ciec">CIEC (Contraseña)</Label>
+              <Label>Llave privada (.key)</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="file"
+                  accept=".key"
+                  ref={keyFileRef}
+                  onChange={(e) => setKeyFile(e.target.files?.[0] || null)}
+                  className="hidden"
+                />
+                <Button
+                  variant="outline"
+                  className="w-full justify-start gap-2"
+                  onClick={() => keyFileRef.current?.click()}
+                >
+                  <Upload size={14} />
+                  {keyFile ? keyFile.name : 'Seleccionar archivo .key'}
+                </Button>
+                {keyFile && (
+                  <Button variant="ghost" size="icon" onClick={() => setKeyFile(null)}>
+                    <XCircle size={14} />
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Password */}
+            <div className="space-y-2">
+              <Label htmlFor="fiel-password">Contraseña de la llave privada</Label>
               <Input
-                id="ciec"
+                id="fiel-password"
                 type="password"
                 placeholder="••••••••"
-                value={credentials.ciec}
-                onChange={(e) => setCredentials({ ...credentials, ciec: e.target.value })}
-                data-testid="sat-ciec-input"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                data-testid="sat-fiel-password-input"
               />
-              <p className="text-xs text-[#64748B]">Mínimo 8 caracteres</p>
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <div className="flex items-start gap-2">
-                <AlertCircle size={16} className="text-amber-600 mt-0.5" />
-                <div className="text-xs text-amber-800">
-                  <p className="font-medium mb-1">Nota de seguridad:</p>
+                <AlertCircle size={16} className="text-blue-600 mt-0.5" />
+                <div className="text-xs text-blue-800">
+                  <p className="font-medium mb-1">¿Dónde obtener la FIEL?</p>
                   <ul className="list-disc list-inside space-y-1">
-                    <li>Sus credenciales se almacenan encriptadas</li>
-                    <li>Nunca compartimos sus datos con terceros</li>
-                    <li>La CIEC es la contraseña de acceso al SAT</li>
+                    <li>Visite el portal del SAT</li>
+                    <li>Descargue sus archivos .cer y .key</li>
+                    <li>La FIEL es diferente a la CSD (sellos)</li>
                   </ul>
                 </div>
               </div>
@@ -397,31 +472,55 @@ const SATIntegration = ({ onSyncComplete }) => {
               Cancelar
             </Button>
             <Button 
-              onClick={handleSaveCredentials} 
-              disabled={savingCredentials}
+              onClick={handleSaveFIEL} 
+              disabled={savingCredentials || !cerFile || !keyFile || !password}
               className="bg-[#3B82F6] hover:bg-[#2563EB]"
             >
               {savingCredentials ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
-              Guardar Credenciales
+              Guardar FIEL
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Sync Dialog */}
+      {/* Download Request Dialog */}
       <Dialog open={syncDialogOpen} onOpenChange={setSyncDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Download size={20} className="text-[#3B82F6]" />
-              Sincronizar CFDIs desde SAT
+              Solicitar Descarga de CFDIs
             </DialogTitle>
             <DialogDescription>
-              Configure los parámetros para descargar CFDIs del portal del SAT.
+              Configure los parámetros para solicitar CFDIs al SAT.
+              El SAT procesa las solicitudes de forma asíncrona.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {/* Tipo de Solicitud */}
+            <div className="space-y-2">
+              <Label>Tipo de descarga</Label>
+              <Select 
+                value={syncConfig.tipo_solicitud} 
+                onValueChange={(v) => setSyncConfig({ ...syncConfig, tipo_solicitud: v })}
+              >
+                <SelectTrigger data-testid="sync-tipo-solicitud-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {tiposSolicitud.map(t => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-[#64748B]">
+                {syncConfig.tipo_solicitud === 'CFDI' 
+                  ? 'Descarga XML completos. Máximo 1 día por solicitud.'
+                  : 'Descarga solo metadatos (sin XML). Máximo 7 días por solicitud.'}
+              </p>
+            </div>
+
             {/* Date Range */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -451,19 +550,21 @@ const SATIntegration = ({ onSyncComplete }) => {
               </div>
             </div>
 
-            <p className="text-xs text-[#64748B]">
-              Máximo 31 días por sincronización. Para períodos mayores, realice múltiples sincronizaciones.
-            </p>
+            {!isValidDate() && (
+              <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
+                ⚠️ El rango de fechas excede el límite permitido para este tipo de solicitud.
+              </div>
+            )}
 
             {/* Tipo de Comprobante */}
             <div className="space-y-2">
-              <Label>Tipo de comprobante</Label>
+              <Label>Tipo de comprobante (opcional)</Label>
               <Select 
                 value={syncConfig.tipo_comprobante} 
                 onValueChange={(v) => setSyncConfig({ ...syncConfig, tipo_comprobante: v })}
               >
                 <SelectTrigger data-testid="sync-tipo-select">
-                  <SelectValue />
+                  <SelectValue placeholder="Todos los tipos" />
                 </SelectTrigger>
                 <SelectContent>
                   {tiposComprobante.map(t => (
@@ -473,33 +574,6 @@ const SATIntegration = ({ onSyncComplete }) => {
               </Select>
             </div>
 
-            {/* Include Options */}
-            <div className="space-y-3">
-              <Label>Incluir:</Label>
-              <div className="flex gap-6">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="incluir_recibidos"
-                    checked={syncConfig.incluir_recibidos}
-                    onCheckedChange={(c) => setSyncConfig({ ...syncConfig, incluir_recibidos: c })}
-                  />
-                  <Label htmlFor="incluir_recibidos" className="text-sm font-normal cursor-pointer">
-                    CFDIs Recibidos (compras)
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="incluir_emitidos"
-                    checked={syncConfig.incluir_emitidos}
-                    onCheckedChange={(c) => setSyncConfig({ ...syncConfig, incluir_emitidos: c })}
-                  />
-                  <Label htmlFor="incluir_emitidos" className="text-sm font-normal cursor-pointer">
-                    CFDIs Emitidos (ventas)
-                  </Label>
-                </div>
-              </div>
-            </div>
-
             {/* Sync Result */}
             {syncResult && (
               <div className={`rounded-lg p-4 ${syncResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
@@ -507,36 +581,19 @@ const SATIntegration = ({ onSyncComplete }) => {
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-green-700 font-medium">
                       <CheckCircle2 size={16} />
-                      Sincronización completada
+                      Solicitud creada
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div>
-                        <span className="text-[#64748B]">Recibidos descargados:</span>
-                        <span className="ml-2 font-medium">{syncResult.recibidos?.downloaded || 0}</span>
-                      </div>
-                      <div>
-                        <span className="text-[#64748B]">Recibidos nuevos:</span>
-                        <span className="ml-2 font-medium text-green-600">{syncResult.recibidos?.new || 0}</span>
-                      </div>
-                      <div>
-                        <span className="text-[#64748B]">Emitidos descargados:</span>
-                        <span className="ml-2 font-medium">{syncResult.emitidos?.downloaded || 0}</span>
-                      </div>
-                      <div>
-                        <span className="text-[#64748B]">Emitidos nuevos:</span>
-                        <span className="ml-2 font-medium text-green-600">{syncResult.emitidos?.new || 0}</span>
-                      </div>
-                    </div>
-                    <div className="pt-2 border-t border-green-200">
-                      <span className="text-green-700 font-medium">
-                        Total nuevos: {syncResult.total_new || 0}
-                      </span>
+                    <div className="text-sm">
+                      <p><strong>ID:</strong> {syncResult.id_solicitud}</p>
+                      <p className="text-xs text-[#64748B] mt-1">
+                        El SAT procesará la solicitud. Verifique el estado en "Solicitudes".
+                      </p>
                     </div>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-red-700">
                     <XCircle size={16} />
-                    <span>{syncResult.error || 'Error en sincronización'}</span>
+                    <span>{syncResult.error || 'Error en solicitud'}</span>
                   </div>
                 )}
               </div>
@@ -548,19 +605,19 @@ const SATIntegration = ({ onSyncComplete }) => {
               Cerrar
             </Button>
             <Button 
-              onClick={handleSync} 
-              disabled={syncing}
+              onClick={handleRequestDownload} 
+              disabled={syncing || !isValidDate()}
               className="bg-[#3B82F6] hover:bg-[#2563EB]"
             >
               {syncing ? (
                 <>
                   <Loader2 size={16} className="animate-spin mr-2" />
-                  Sincronizando...
+                  Solicitando...
                 </>
               ) : (
                 <>
                   <Download size={16} className="mr-2" />
-                  Iniciar Sincronización
+                  Crear Solicitud
                 </>
               )}
             </Button>
@@ -568,43 +625,85 @@ const SATIntegration = ({ onSyncComplete }) => {
         </DialogContent>
       </Dialog>
 
-      {/* History Dialog */}
-      <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
-        <DialogContent className="max-w-2xl">
+      {/* Download Requests Dialog */}
+      <Dialog open={requestsDialogOpen} onOpenChange={setRequestsDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <History size={20} className="text-[#3B82F6]" />
-              Historial de Sincronizaciones
+              Solicitudes de Descarga
             </DialogTitle>
           </DialogHeader>
 
-          <div className="max-h-96 overflow-y-auto">
-            {syncHistory.length === 0 ? (
+          <div className="overflow-y-auto max-h-96">
+            {downloadRequests.length === 0 ? (
               <div className="text-center py-8 text-[#64748B]">
-                No hay sincronizaciones registradas
+                No hay solicitudes registradas
               </div>
             ) : (
               <div className="space-y-3">
-                {syncHistory.map((sync, idx) => (
-                  <div key={idx} className="border rounded-lg p-3 bg-[#F8FAFC]">
+                {downloadRequests.map((req, idx) => (
+                  <div key={idx} className="border rounded-lg p-4 bg-[#F8FAFC]">
                     <div className="flex justify-between items-start mb-2">
-                      <div className="text-sm font-medium">
-                        {format(new Date(sync.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}
-                      </div>
-                      <div className={`px-2 py-0.5 rounded text-xs ${sync.result?.success ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {sync.result?.success ? 'Exitoso' : 'Error'}
-                      </div>
-                    </div>
-                    <div className="text-xs text-[#64748B] space-y-1">
-                      <div>Período: {sync.fecha_inicio} - {sync.fecha_fin}</div>
-                      <div>Tipo: {sync.tipo_comprobante}</div>
-                      {sync.result?.success && (
-                        <div className="text-green-600">
-                          Nuevos: {sync.result?.total_new || 0} | Actualizados: {sync.result?.total_updated || 0}
+                      <div>
+                        <div className="text-sm font-medium font-mono">
+                          {req.id_solicitud}
                         </div>
+                        <div className="text-xs text-[#64748B]">
+                          {format(new Date(req.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}
+                        </div>
+                      </div>
+                      <Badge variant={
+                        req.estado === 'Terminada' ? 'default' :
+                        req.estado === 'En proceso' ? 'secondary' :
+                        req.estado === 'Error' ? 'destructive' : 'outline'
+                      }>
+                        {req.estado || 'Solicitada'}
+                      </Badge>
+                    </div>
+                    
+                    <div className="text-xs text-[#64748B] space-y-1 mb-3">
+                      <div>Período: {req.fecha_inicio?.split('T')[0]} - {req.fecha_fin?.split('T')[0]}</div>
+                      <div>Tipo: {req.tipo_solicitud} | Comprobante: {req.tipo_comprobante || 'Todos'}</div>
+                      {req.numero_cfdis > 0 && (
+                        <div className="text-green-600">CFDIs encontrados: {req.numero_cfdis}</div>
                       )}
-                      {!sync.result?.success && sync.result?.error && (
-                        <div className="text-red-600">{sync.result.error}</div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCheckRequestStatus(req.id_solicitud)}
+                        disabled={checkingStatus === req.id_solicitud}
+                      >
+                        {checkingStatus === req.id_solicitud ? (
+                          <Loader2 size={14} className="animate-spin mr-1" />
+                        ) : (
+                          <RefreshCw size={14} className="mr-1" />
+                        )}
+                        Verificar
+                      </Button>
+                      
+                      {req.paquetes && req.paquetes.length > 0 && (
+                        <div className="flex gap-1 flex-wrap">
+                          {req.paquetes.map((paquete, pIdx) => (
+                            <Button
+                              key={pIdx}
+                              size="sm"
+                              onClick={() => handleDownloadPackage(paquete)}
+                              disabled={checkingStatus === paquete}
+                              className="bg-green-600 hover:bg-green-700"
+                            >
+                              {checkingStatus === paquete ? (
+                                <Loader2 size={14} className="animate-spin mr-1" />
+                              ) : (
+                                <Package size={14} className="mr-1" />
+                              )}
+                              Paquete {pIdx + 1}
+                            </Button>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -614,8 +713,12 @@ const SATIntegration = ({ onSyncComplete }) => {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setHistoryDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setRequestsDialogOpen(false)}>
               Cerrar
+            </Button>
+            <Button onClick={loadDownloadRequests} variant="outline">
+              <RefreshCw size={14} className="mr-2" />
+              Actualizar
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -625,10 +728,10 @@ const SATIntegration = ({ onSyncComplete }) => {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar credenciales SAT?</AlertDialogTitle>
+            <AlertDialogTitle>¿Eliminar FIEL?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción eliminará las credenciales SAT guardadas. 
-              Deberá volver a configurarlas para sincronizar CFDIs.
+              Esta acción eliminará la FIEL guardada. 
+              Deberá volver a configurarla para descargar CFDIs.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
