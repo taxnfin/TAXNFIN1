@@ -273,6 +273,19 @@ const Catalogs = () => {
     }
   };
 
+  const handleDeleteCompany = async () => {
+    if (!deleteConfirm.item || deleteConfirm.type !== 'company') return;
+    
+    try {
+      await api.delete(`/companies/${deleteConfirm.item.id}`);
+      toast.success('Empresa eliminada');
+      setDeleteConfirm({ open: false, type: null, item: null });
+      loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error eliminando empresa');
+    }
+  };
+
   const handleCreateVendor = async (e) => {
     e.preventDefault();
     try {
