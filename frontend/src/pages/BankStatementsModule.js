@@ -707,14 +707,16 @@ const BankStatementsModule = () => {
       let successCount = 0;
       let errorMessages = [];
       
-      // Reconcile each selected CFDI
+      // Reconcile each selected CFDI with PARTIAL AMOUNT
       for (const cfdi of selectedCfdis) {
         try {
+          const montoAplicar = getMontoAplicar(cfdi);
           await api.post('/reconciliations', {
             bank_transaction_id: selectedTransaction.id,
             cfdi_id: cfdi.id,
             metodo_conciliacion: 'manual',
-            porcentaje_match: 100
+            porcentaje_match: 100,
+            monto_aplicado: montoAplicar // Send partial amount!
           });
           successCount++;
         } catch (cfdiError) {
@@ -734,6 +736,7 @@ const BankStatementsModule = () => {
         setReconcileDialogOpen(false);
         setSelectedTransaction(null);
         setSelectedCfdis([]);
+        setMontosParciales({}); // Clear partial amounts
         setCfdiSearchTerm('');
       } else if (successCount > 0) {
         toast.warning(`Parcialmente conciliado: ${successCount}/${selectedCfdis.length} CFDIs. Errores: ${errorMessages.join(', ')}`);
