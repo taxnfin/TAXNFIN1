@@ -22,7 +22,7 @@ class SATSyncRequest(BaseModel):
     fecha_inicio: str
     fecha_fin: str
     tipo_comprobante: Optional[str] = None
-    tipo_solicitud: str = 'CFDI'
+    tipo_solicitud: str = 'recibidos'  # 'recibidos' or 'emitidos'
 
 
 class CheckRequestModel(BaseModel):
