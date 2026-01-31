@@ -2408,9 +2408,22 @@ const BankStatementsModule = () => {
                           
                           {/* Show payment history if partial payments exist */}
                           {yaPagado > 0 && (
-                            <div className="flex justify-between text-xs mb-2 px-2 py-1 bg-yellow-50 rounded">
-                              <span className="text-yellow-700">Ya pagado anteriormente:</span>
-                              <span className="font-mono text-yellow-700">${yaPagado.toLocaleString('es-MX', {minimumFractionDigits: 2})} {cfdiMoneda}</span>
+                            <div className="flex justify-between items-center text-xs mb-2 px-2 py-1 bg-yellow-50 rounded">
+                              <div>
+                                <span className="text-yellow-700">Ya pagado anteriormente:</span>
+                                <span className="font-mono text-yellow-700 ml-2">${yaPagado.toLocaleString('es-MX', {minimumFractionDigits: 2})} {cfdiMoneda}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  loadPaymentHistory(cfdi);
+                                }}
+                                className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                              >
+                                <History size={12} />
+                                Ver detalle
+                              </button>
                             </div>
                           )}
                           
