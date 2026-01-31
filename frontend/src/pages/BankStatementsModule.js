@@ -2609,6 +2609,25 @@ const BankStatementsModule = () => {
                                 ${cfdi.total?.toLocaleString('es-MX', {minimumFractionDigits: 2})}
                               </p>
                               <p className="text-xs text-gray-500">{cfdi.moneda}</p>
+                              {/* Show saldo pendiente and history button if there are previous payments */}
+                              {(cfdi.monto_pagado > 0 || cfdi.monto_cobrado > 0 || cfdi.saldo_pendiente < cfdi.total) && (
+                                <div className="mt-1">
+                                  <p className="text-xs text-amber-600">
+                                    Saldo: ${cfdi.saldo_pendiente?.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      loadPaymentHistory(cfdi);
+                                    }}
+                                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-1"
+                                  >
+                                    <History size={12} />
+                                    Ver historial
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
