@@ -222,7 +222,7 @@ const Catalogs = () => {
       toast.success('Proveedor actualizado');
       setDialogs({ ...dialogs, editVendor: false });
       setEditingVendor(null);
-      setVendorForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: 30 });
+      setVendorForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: '' });
       // Refresh data
       const vendorsRes = await api.get('/vendors');
       setVendors(vendorsRes.data);
@@ -269,7 +269,7 @@ const Catalogs = () => {
       toast.success('Cliente actualizado');
       setDialogs({ ...dialogs, editCustomer: false });
       setEditingCustomer(null);
-      setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_cobranza: 30 });
+      setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_cobranza: '' });
       // Refresh data
       const customersRes = await api.get('/customers');
       setCustomers(customersRes.data);
@@ -315,7 +315,7 @@ const Catalogs = () => {
       toast.success('Proveedor creado');
       setDialogs({ ...dialogs, vendor: false });
       loadData();
-      setVendorForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: 30 });
+      setVendorForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: '' });
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error creando proveedor');
     }
@@ -328,7 +328,7 @@ const Catalogs = () => {
       toast.success('Cliente creado');
       setDialogs({ ...dialogs, customer: false });
       loadData();
-      setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_cobranza: 30 });
+      setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_cobranza: '' });
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error creando cliente');
     }
@@ -969,7 +969,7 @@ const Catalogs = () => {
             setDialogs({...dialogs, editVendor: open});
             if (!open) {
               setEditingVendor(null);
-              setVendorForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: 30 });
+              setVendorForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: '' });
             }
           }}>
             <DialogContent className="max-w-lg">
@@ -1196,7 +1196,7 @@ const Catalogs = () => {
             setDialogs({...dialogs, editVendor: open});
             if (!open) {
               setEditingVendor(null);
-              setVendorForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: 30 });
+              setVendorForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: '' });
             }
           }}>
             <DialogContent className="max-w-lg">
@@ -1254,7 +1254,7 @@ const Catalogs = () => {
             setDialogs({...dialogs, editCustomer: open});
             if (!open) {
               setEditingCustomer(null);
-              setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_cobranza: 30 });
+              setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_cobranza: '' });
             }
           }}>
             <DialogContent className="max-w-lg">
