@@ -2145,6 +2145,15 @@ async def list_cfdis(
         for field in ['fecha_emision', 'fecha_timbrado', 'created_at']:
             if isinstance(c.get(field), str):
                 c[field] = datetime.fromisoformat(c[field])
+        
+        # Calculate saldo_pendiente for partial payments support
+        cfdi_total = c.get('total', 0)
+        if c.get('tipo_cfdi') == 'ingreso':
+            monto_cubierto = c.get('monto_cobrado', 0) or 0
+        else:
+            monto_cubierto = c.get('monto_pagado', 0) or 0
+        c['saldo_pendiente'] = max(0, cfdi_total - monto_cubierto)
+    
     return cfdis
 
 @api_router.delete("/cfdi/{cfdi_id}")
