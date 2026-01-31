@@ -177,6 +177,37 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
   - Alert dialog for delete confirmation
 - **Endpoints used**: `PUT /api/bank-accounts/{id}`, `DELETE /api/bank-accounts/{id}`
 
+### Phase 14: SAT Integration for CFDI Downloads ✅
+- **Date**: January 31, 2026
+- **Feature**: Automatic download of CFDIs from the SAT portal using RFC + CIEC credentials
+- **Technology**: Selenium WebDriver for web scraping the SAT portal
+- **New files**:
+  - `backend/modules/cfdi_sat.py` - SAT integration module with credential encryption (Fernet)
+  - `backend/routes/sat.py` - SAT API endpoints
+  - `frontend/src/components/SATIntegration.js` - UI component for SAT integration
+- **Endpoints**:
+  - `GET /api/sat/status` - Get SAT integration status (configured/not configured)
+  - `POST /api/sat/credentials` - Save encrypted SAT credentials (RFC + CIEC)
+  - `POST /api/sat/credentials/validate` - Validate credentials without saving
+  - `DELETE /api/sat/credentials` - Delete saved credentials
+  - `POST /api/sat/sync` - Sync CFDIs from SAT portal
+  - `GET /api/sat/sync/history` - Get sync history
+  - `POST /api/sat/test-connection` - Test connection using saved credentials
+  - `GET /api/sat/comprobante-types` - Get list of CFDI types for filtering
+- **UI Features**:
+  - SAT Integration card in CFDI module showing connection status
+  - Configure Credentials dialog with RFC and CIEC fields
+  - Security note explaining encrypted storage
+  - Sync dialog with date range, CFDI type filter, and emitidos/recibidos options
+  - Sync history dialog showing past synchronizations
+  - Test connection button to verify credentials
+  - Delete credentials with confirmation dialog
+- **Security**:
+  - Credentials encrypted using Fernet symmetric encryption
+  - SAT_ENCRYPTION_KEY should be set in production .env
+  - CIEC never stored in plain text
+- **Dependencies Added**: selenium, webdriver-manager
+
 ---
 
 ## Current Architecture
