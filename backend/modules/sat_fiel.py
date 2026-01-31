@@ -27,11 +27,16 @@ from lxml import etree
 
 logger = logging.getLogger(__name__)
 
-# SAT Web Service URLs (Production)
+# SAT Web Service URLs (Production - Official 2024/2025)
 SAT_AUTH_URL = "https://cfdidescargamasivasolicitud.clouda.sat.gob.mx/Autenticacion/Autenticacion.svc"
 SAT_SOLICITUD_URL = "https://cfdidescargamasivasolicitud.clouda.sat.gob.mx/SolicitaDescargaMasivaTercerosCFDI.svc"
 SAT_VERIFICA_URL = "https://cfdidescargamasivasolicitud.clouda.sat.gob.mx/VerificaSolicitudDescargaService.svc"
-SAT_DESCARGA_URL = "https://cfdidescargamasiva.clouda.sat.gob.mx/DescargaMasivaService.svc"
+SAT_DESCARGA_URL = "https://cfdidescargamasivasolicitud.clouda.sat.gob.mx/DescargaMasivaService.svc"
+
+# Alternative URLs (backup)
+SAT_AUTH_URL_ALT = "https://cfdidescargamasiva.sat.gob.mx/nidp/app/login"
+SAT_SOLICITUD_URL_ALT = "https://cfdidescargamasiva.sat.gob.mx/solicitud/"
+SAT_DESCARGA_URL_ALT = "https://cfdidescargamasiva.sat.gob.mx/descarga/"
 
 # Namespaces
 NSMAP = {
