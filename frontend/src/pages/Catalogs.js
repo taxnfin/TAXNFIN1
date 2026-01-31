@@ -68,9 +68,9 @@ const Catalogs = () => {
   const [editingCompany, setEditingCompany] = useState(null);
   const [accountForm, setAccountForm] = useState({ nombre: '', numero_cuenta: '', banco: '', moneda: 'MXN', saldo_inicial: 0 });
   const [editingAccount, setEditingAccount] = useState(null);
-  const [vendorForm, setVendorForm] = useState({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: 30 });
+  const [vendorForm, setVendorForm] = useState({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: '' });
   const [editingVendor, setEditingVendor] = useState(null);
-  const [customerForm, setCustomerForm] = useState({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_cobranza: 30 });
+  const [customerForm, setCustomerForm] = useState({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_cobranza: '' });
   const [editingCustomer, setEditingCustomer] = useState(null);
 
   useEffect(() => {
