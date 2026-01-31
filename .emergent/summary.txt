@@ -1,53 +1,48 @@
-<analysis>**original_problem_statement:** The user's initial goal is to build a comprehensive cash flow management tool, TaxnFin.
+<analysis>**original_problem_statement:** The user's primary goal is to build a comprehensive cash flow management tool named TaxnFin.
 
-The most recent request is to evolve the existing 18-week Cash Flow report into a CFO-grade report for control and governance.
-
-**PRODUCT REQUIREMENTS (P0):**
-1.  **Integrate new KPIs into the 18-Week Cash Flow Report:**
-    *   **Net Burn Rate:** Calculate the average weekly net flow for both historical (Real S1-S4) and future (Proyectado S6-S18) periods.
-    *   **Forecast Accuracy:** Measure the percentage variation between Real and Proyectado for collections, payments, and net flow, on both a weekly and a 4-week rolling basis.
-    *   **Cash Gap Analysis:** Show the difference between the projected balance and a minimum required cash threshold for each week.
-    *   **Accumulated Cash Flow:** Display a comparative view of Real vs. Proyectado accumulated cash flow.
-    *   **Cash Flow Volatility:** Calculate the standard deviation of the real weekly net flow.
-2.  **Structural Report Adjustments:**
-    *   Add new columns for Saldo inicial por semana (Initial balance per week) and Saldo final por semana (Final balance per week).
-    *   Maintain the clear separation between Real (Past), Actual (Current), and Proyectado (Future) data.
-
-The objective is to transform the report from a simple cash flow view into a powerful tool for measuring forecast quality, liquidity risk, and operational stability, fit for a CFO.
+The most recent user requests were:
+1.  In the CFDI/SAT module, separate the Emisor (Issuer) and Receptor (Receiver) into two distinct columns.
+2.  Fix a bug in the same module where the total count of CFDIs was always capped at 100.
+3.  **[P0 - HIGH PRIORITY]** Develop a new integration with the SAT (Mexico's tax authority) to automatically download CFDI (digital invoice) XML files. The user wants this to work via RFC + CIEC authentication.
 
 **User's preferred language**: The user communicates exclusively in **Spanish**. The next agent MUST respond in Spanish and ensure all UI text is also in Spanish.
 
 **what currently exists?**
-A full-stack fintech application (React, FastAPI, MongoDB) that has undergone significant data integrity and feature enhancements.
-
--   **Dashboard Overhaul**: The main Dashboard has been completely refactored to pull data directly from the  collection via a new, dedicated backend endpoint (). It now displays accurate, real-time KPIs, weekly cash flow charts, variance analysis, cash pooling by currency, and detailed account balances. All filters (currency, date, bank account) are fully functional.
--   **Data Integrity Engine**: The application enforces a single source of truth principle (). Several critical data bugs were fixed in this session, including duplicate payments, incorrect statuses, and currency conversion errors. The agent created backend scripts to sync and clean inconsistent data.
--   **Core Modules**: The  and  are stable. The  now includes previously missing features like an editable exchange rate and an accumulated balance view when creating new payments.
--   **Backend Refactor**: The refactor of  remains in progress. New endpoints were added to , , and  to support the bug fixes and dashboard overhaul.
+The application is a stable full-stack React/FastAPI/MongoDB tool. Key recent enhancements include:
+*   **CFO-Grade Cash Flow Report**: The  page is now a sophisticated 18-week report with advanced KPIs, comparative charts using Recharts, and a Export to PDF feature.
+*   **Advanced Bank Reconciliation**: The  now supports complex workflows:
+    *   **Partial Payments**: Users can apply partial payments to CFDIs. The CFDI's status is updated to parcial, and it remains open to receive further payments until its balance is zero.
+    *   **Payment History**: A View History modal displays all payments applied to a CFDI, including dates and bank references.
+    *   **Enhanced Filtering**: The module now includes filters for Emisor/Cliente and Categoría in addition to the existing ones.
+*   **CFDI Module UI Fixes**: The UI in  now correctly shows separate columns for EMISOR and RECEPTOR, and the bug limiting the view to 100 CFDIs has been resolved.
 
 **Last working item**:
--   **Last item agent was working**: The user requested a major evolution of the  report to include several CFO-grade KPIs (Net Burn Rate, Forecast Accuracy, etc.) and structural changes. The agent had just begun analyzing the  file to plan the implementation.
--   **Status**: NOT STARTED
+-   **Last item agent was working**: Implementing the new integration with the SAT for CFDI downloads. The agent confirmed the technical approach (RFC + CIEC auth) with the user, researched libraries, and created the foundational module file .
+-   **Status**: IN PROGRESS
 -   **Agent Testing Done**: N
--   **Which testing method agent to use?**: Frontend testing agent. This is a complex change to a critical report involving new calculations and UI elements. A final screenshot is also required for visual verification.
+-   **Which testing method agent to use?**: Backend testing agent. This is a complex backend feature involving external service interaction, credential management, file parsing, and potential web scraping.
 -   **User Testing Done**: N
 
 **All Pending/In progress Issue list**:
-There are no pending bugs. The main focus is on the new feature request.
+There are no pending bugs. The main focus is on the new feature and the ongoing refactor.
 
 **In progress Task List**:
--   **Task 1: (P0) Implement CFO-grade KPIs in the 18-week Cash Flow Report.**
-    -   **Where to resume**: In . The agent needs to calculate the new KPIs (Net Burn Rate, Forecast Accuracy, etc.) based on the existing  and render them in a new summary section. New columns for initial and final weekly balances must also be added to the main table.
-    -   **What will be achieved with this?**: This will fulfill the user's high-priority request to transform the report into a strategic financial control tool.
-    -   **Status**: NOT STARTED
-    -   **Should Test frontend/backend/both after fix?**: Frontend.
-    -   **Blocked on something**: None.
+-   **Task 1: (P0) Implement SAT Integration for CFDI Download.**
+    -   **Where to resume**: .
+    -   **What will be achieved with this?**: This will fulfill the user's high-priority request for automating CFDI acquisition. The task involves building the logic to:
+        1.  Securely handle user credentials (RFC + CIEC).
+        2.  Authenticate against the SAT portal.
+        3.  Download CFDI XML files based on user-defined filters (e.g., date range).
+        4.  Parse the XMLs and store the relevant data in the database.
+    -   **Status**: IN PROGRESS
+    -   **Should Test frontend/backend/both after fix?**: Backend
+    -   **Blocked on something**: None. The user confirmed they have test credentials available.
 
 -   **Task 2: (P1) Complete  refactor.**
-    -   **Where to resume**: Many endpoints have been moved from  to modular files in . The duplicated code still exists in  and must be carefully removed. The new dashboard endpoint () in  should also be moved to a new file like .
-    -   **What will be achieved with this?**: This will complete the user's high-priority refactoring request, significantly reduce the monolith's size, prevent routing conflicts, and improve code maintainability.
+    -   **Where to resume**: .
+    -   **What will be achieved with this?**: Complete the user's long-standing request to refactor the monolithic  by removing all duplicated/legacy endpoints that have already been moved to modular files in . This will improve maintainability and prevent routing conflicts.
     -   **Status**: IN PROGRESS
-    -   **Should Test frontend/backend/both after fix?**: Backend (thorough regression testing via the testing agent is required after removing code).
+    -   **Should Test frontend/backend/both after fix?**: Backend (thorough regression testing is required).
     -   **Blocked on something**: None.
 
 **Upcoming and Future Tasks**
@@ -59,95 +54,95 @@ There are no pending bugs. The main focus is on the new feature request.
     *   **P4 - Finalize Belvo Bank Integration**: Blocked on user credentials.
 
 **Completed work in this session**
--   **Dashboard Overhaul**: Fixed the dashboard by creating a new endpoint () that generates data directly from the  collection, bypassing an old, un-updated  collection. This resolved issues of empty graphs and incorrect KPIs.
--   **Dashboard Feature Parity**: Implemented fully functional filters (currency, date range, bank account), cash pooling by currency, detailed account balances (with initial vs. final values), and variance charts on the new dashboard.
--   **Data Integrity - Status Sync**: Fixed a critical bug where  showed items as Completado when their bank transaction was Pendiente. Created a backend endpoint () and modified the frontend to use the true reconciliation status.
--   **Data Integrity - Currency Operations**:
-    -   Fixed a projection bug where non-conciliated currency operations were being shown.
-    -   Fixed a major currency conversion error where a USD value was being incorrectly subtracted from an MXN total on a CFDI.
-    -   Implemented a neutral effect for currency exchange operations in projections, ensuring the MXN outflow for a USD purchase is calculated from the corresponding MXN inflow of the USD sale.
--   **Data Integrity - Duplicate Payments**: Identified and resolved an issue with duplicate payments being created. Added a cleanup endpoint () and removed the duplicates from the database.
--   **Feature Restoration**: Re-implemented the editable exchange rate and accumulated balance features in the  dialog, which the user reported as missing after previous changes.
--   **UI Cleanup**: Removed several unused KPI cards from the Dashboard as requested by the user.
+-   **CFO Report v2**: Implemented comparative charts (Recharts) and PDF export functionality (, ) in .
+-   **Partial Payments Feature**: Implemented the full workflow for partial payments in , including UI for applying partial amounts and backend logic to update CFDI balances without closing them.
+-   **CFDI Payment History**: Created a new endpoint () and a UI modal to show a detailed history of all payments applied to a single CFDI.
+-   **New Reconciliation Filters**: Added Emisor/Cliente and Categoría filters to the bank reconciliation module.
+-   **CFDI Module Fixes**: Separated Emisor and Receptor into distinct columns and fixed the bug that limited the display to 100 CFDIs.
+-   **Template Download Bug Fix**: Resolved a 404 error on the bank statement template download by fixing a route conflict between  and .
 
 **Earlier issues found/mentioned but not fixed**
 -   The payroll auto-reconciliation feature remains untested due to a lack of Nómina CFDI test data.
 
 **Known issue recurrence from previous fork**
--   **Issue recurrence in previous fork**: The  refactoring task was a recurring item. While significant progress was made by moving logic, the task is not complete until the old code is removed from .
--   **Recurrence count**: 5
+-   **Issue recurrence in previous fork**: The  refactoring task. Significant progress has been made by moving endpoints, but the final cleanup of legacy code in  is still pending.
+-   **Recurrence count**: 6
 -   **Status**: IN PROGRESS
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-*   **Single Source of Truth**: Data flow principle (CFDI -> Payments -> Projections/Dashboard) is now strictly enforced.
-*   **Backend**: FastAPI, MongoDB. New pattern of creating data-syncing endpoints (, ) to correct inconsistencies.
-*   **Frontend**: React. Extensive use of ,  to manage complex state in the Dashboard and reports. Conditional rendering based on data availability and user selections.
-*   **Data Reconciliation**: The session heavily focused on ensuring frontend state accurately reflects backend database state, especially the link between  and  collections.
+*   **PDF Generation**: Client-side generation using  and .
+*   **Complex State Management**: Extensive use of React hooks in  to manage state for partial payments, dynamic calculations, and multiple interactive filters.
+*   **Modular Backend Architecture**: Continued migration of endpoints from  to dedicated router files in FastAPI. Resolved a critical route conflict caused by duplicate endpoint definitions.
+*   **External Service Integration**: The next major task is to build an integration with an external government portal (SAT), which will likely require web scraping and automation techniques.
 
 **key DB schema**
-- No schema changes. The focus was on correcting inconsistent data within the existing schemas (, , ).
+-   No schema changes. However, the  collection is now actively being updated with partial payment amounts (/) and a status of .
 
 **All files of reference**
-*   : **CRITICAL**. Completely refactored to use a new data source.
-*   : **CRITICAL**. Target for the next major feature implementation (CFO KPIs). Was also fixed for data integrity.
-*   : **CRITICAL**. Fixed to show correct payment status and had features restored.
-*   : **CRITICAL**. Contains the vital new dashboard endpoint  and legacy code to be refactored.
-*   : Contains new sync/cleanup endpoints.
-*   : Contains new sync endpoint.
+*   : **CRITICAL**. The starting point for the new SAT integration feature.
+*   : **CRITICAL**. The target for the P1 refactoring task.
+*   : Contains the new partial payment, history, and filter logic.
+*   : Contains the new charts and PDF export logic.
+*   : Contains the updated table structure.
+*   : Contains the modified reconciliation logic to handle partial amounts.
+*   : Contains the new endpoint to fetch payment history.
 
 **Areas that need refactoring**:
-*   **CRITICAL**: . Duplicated routes must be deleted. The large, new  endpoint should be moved to its own file (e.g., ).
+*   **CRITICAL**: . Legacy, duplicated endpoints that were moved to modular routers must be deleted to finalize the refactor and prevent future conflicts.
 
 **key api endpoints**
-*   : **(New & Critical)** Generates all data for the main dashboard directly from the  collection.
-*   : (New) Syncs  with the real status from the linked bank transaction.
-*   : (New) Recalculates  based on actual linked payments to fix currency inconsistencies.
-*   : (New) Deletes duplicate payments linked to the same bank transaction.
-*   : (New) Fetches payments along with their true reconciliation status.
+*   **New**:
+    *   : Fetches a detailed payment history for a specific CFDI.
+*   **Modified**:
+    *   : The payload for this endpoint now supports an optional  field to process partial payments.
+    *   : The response objects now correctly calculate and include the .
+    *   : Endpoint was moved from  to  to resolve a routing conflict.
 
 **Critical Info for New Agent**
 *   **MUST RESPOND IN SPANISH.**
-*   **New Highest Priority**: The immediate task is to implement the CFO-grade KPIs in the  report as requested by the user.
-*   **Dashboard Has a New Engine**: The Dashboard no longer uses the old  collection. It is powered entirely by the new  endpoint in . Any future dashboard changes must be made there.
-*   **Data Sync Scripts Exist**: The agent created several endpoints (, ) to fix data integrity issues. If similar inconsistencies appear (e.g., statuses not matching), these scripts can be reused or adapted.
-*   **User is Detail-Oriented**: The user meticulously checks numbers and functionality. Double-check all calculations and UI behavior before presenting to the user.
+*   **New Highest Priority (P0)**: The immediate task is to build the SAT integration for automatic CFDI download. Begin development in . The user has confirmed they have test credentials (RFC + CIEC).
+*   **Partial Payments Logic is Live**: The complex logic for partial reconciliation is now a core feature. Be aware of its implementation across  (frontend state),  (backend processing), and  (history).
+*   **The  Refactor is a Recurring Task**: This is a P1 priority. After completing the SAT integration, this technical debt should be addressed by deleting the now-unused legacy code from .
 
 **documents and test reports created in this job**
-*   None.
+*   
+*   
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **Latest**: User provided a detailed spec to evolve the 18-week cash flow report into a CFO-grade report with specific KPIs (Net Burn Rate, Forecast Accuracy, etc.). **Status: NOT STARTED.**
-2.  User asked to restore date filters on the dashboard and show cash flow by currency. **Status: Implemented.**
-3.  User reported that the dashboard date range was incorrect (showing October instead of starting 4 weeks prior). **Status: Implemented.**
-4.  User reported that dashboard filters (e.g., changing currency to USD) were not working. **Status: Implemented.**
-5.  User reported that the dashboard graphs and KPIs were empty or showing incorrect data. **Status: Implemented.**
-6.  User reported that currency exchange operations in projections were incorrect and should have a net-zero effect. **Status: Implemented.**
-7.  User reported that Venta de USD transactions were marked pendiente when they should be completado, causing them to be missing from projections. **Status: Implemented.**
-8.  User reported that Compra de USD values in projections were incorrect and didn't match their Excel sheet. **Status: Implemented.**
-9.  User reported that features were removed (editable TC, running balance) and that currency calculations were wrong. **Status: Implemented.**
-10. User reported duplicate movements in the Cobranza y Pagos module. **Status: Implemented.**
+1.  **Latest**: User provides detailed requirements for SAT integration, requests separation of Emisor/Receptor columns, and reports a bug with the CFDI count. **Status: SAT integration is IN PROGRESS; other two items are COMPLETED.**
+2.  User requests a payment history feature for CFDIs and new filters (Emisor, Categoria) for bank reconciliation. **Status: COMPLETED.**
+3.  User provides an image and explains the need for partial payment reconciliation. **Status: COMPLETED.**
+4.  User provides an image of a Script error when trying to download a template. **Status: COMPLETED.**
+5.  User confirms they want comparative charts and PDF export added to the cash flow report. **Status: COMPLETED.**
+6.  Agent asked for clarification on the imprimir request (PDF export).
+7.  User confirms they want graphs and PDF export.
+8.  Agent finished the CFO KPIs and suggested adding comparative charts.
+9.  Agent asked the user to confirm the plan to implement CFO KPIs.
+10. User confirmed the plan to implement CFO KPIs.
 
 **Project Health Check:**
-*   **Broken**: No. The application is stable and significantly more reliable than at the start of the session.
+*   **Broken**: No. The application is stable and has significantly more features than at the start of the session.
 *   **Mocked**: The Belvo integration remains scaffolded but is non-functional pending user credentials.
 
 **3rd Party Integrations**
 *   **Belvo**: For open banking integration. Requires User API Key.
-*   **Banxico (Banco de México)**: For official daily exchange rates (MXN pairs).
+*   **Banxico (Banco de México)**: For official daily exchange rates.
 *   **Open Exchange Rates**: For complementary exchange rates.
+*   **(New / In Progress)** **SAT Portal**: For CFDI download via RFC+CIEC. This will be a new, custom integration.
 
 **Testing status**
--   **Testing agent used after significant changes**: NO
+-   **Testing agent used after significant changes**: YES, for the CFO-grade report features.
 -   **Troubleshoot agent used after agent stuck in loop**: NO
 -   **Test files created**: None.
--   **Known regressions**: None. All user-reported issues and regressions were addressed.
+-   **Known regressions**: None.
 
 **Credentials to test flow:**
 *   **Email**: 
 *   **Password**: 
+*   **SAT Credentials**: The user has confirmed they have test credentials (RFC, CIEC) and will provide them when requested for the integration task.
 
 **What agent forgot to execute**
--   The agent has not yet removed the duplicated, legacy endpoints from . This remains a pending refactoring task.</analysis>
+-   The final step of the  refactor—deleting the old, duplicated endpoints—remains incomplete. This is a recurring piece of technical debt.</analysis>
