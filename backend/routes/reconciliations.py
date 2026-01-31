@@ -116,21 +116,35 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
             # Update CFDI amounts
             if tipo_pago == 'cobro':
                 current_cobrado = cfdi.get('monto_cobrado', 0) or 0
+                new_cobrado = current_cobrado + payment_doc['monto']
                 await db.cfdis.update_one(
                     {'id': reconciliation_data.cfdi_id},
-                    {'$set': {'monto_cobrado': current_cobrado + payment_doc['monto']}}
+                    {'$set': {'monto_cobrado': new_cobrado}}
                 )
+                # Check if CFDI is fully paid
+                cfdi_total = cfdi.get('total', 0)
+                is_fully_paid = new_cobrado >= cfdi_total - 0.01
             else:
                 current_pagado = cfdi.get('monto_pagado', 0) or 0
+                new_pagado = current_pagado + payment_doc['monto']
                 await db.cfdis.update_one(
                     {'id': reconciliation_data.cfdi_id},
-                    {'$set': {'monto_pagado': current_pagado + payment_doc['monto']}}
+                    {'$set': {'monto_pagado': new_pagado}}
                 )
+                # Check if CFDI is fully paid
+                cfdi_total = cfdi.get('total', 0)
+                is_fully_paid = new_pagado >= cfdi_total - 0.01
+        else:
+            # Payment already exists - check if fully paid for status update
+            cfdi_total = cfdi.get('total', 0)
+            monto_cubierto = cfdi.get('monto_cobrado' if cfdi.get('tipo_cfdi') == 'ingreso' else 'monto_pagado', 0) or 0
+            is_fully_paid = monto_cubierto >= cfdi_total - 0.01
         
-        # Always update CFDI estado_conciliacion when reconciling
+        # Update CFDI estado_conciliacion: 'conciliado' if fully paid, 'parcial' if partial
+        nuevo_estado = 'conciliado' if is_fully_paid else 'parcial'
         await db.cfdis.update_one(
             {'id': reconciliation_data.cfdi_id},
-            {'$set': {'estado_conciliacion': 'conciliado'}}
+            {'$set': {'estado_conciliacion': nuevo_estado}}
         )
     
     reconciliation = BankReconciliation(
