@@ -109,6 +109,31 @@ const Catalogs = () => {
     }
   };
 
+  const handleEditCompany = (company) => {
+    setEditingCompany(company);
+    setCompanyForm({
+      nombre: company.nombre,
+      rfc: company.rfc,
+      moneda_base: company.moneda_base || 'MXN',
+      pais: company.pais || 'México'
+    });
+    setDialogs({ ...dialogs, editCompany: true });
+  };
+
+  const handleUpdateCompany = async (e) => {
+    e.preventDefault();
+    try {
+      await api.put(`/companies/${editingCompany.id}`, companyForm);
+      toast.success('Empresa actualizada');
+      setDialogs({ ...dialogs, editCompany: false });
+      loadData();
+      setEditingCompany(null);
+      setCompanyForm({ nombre: '', rfc: '', moneda_base: 'MXN', pais: 'México' });
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error actualizando empresa');
+    }
+  };
+
   const handleCreateAccount = async (e) => {
     e.preventDefault();
     try {
