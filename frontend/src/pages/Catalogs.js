@@ -216,8 +216,10 @@ const Catalogs = () => {
       toast.success('Proveedor actualizado');
       setDialogs({ ...dialogs, editVendor: false });
       setEditingVendor(null);
-      loadData();
       setVendorForm({ nombre: '', rfc: '', email: '', telefono: '' });
+      // Refresh data
+      const vendorsRes = await api.get('/vendors');
+      setVendors(vendorsRes.data);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error actualizando proveedor');
     }
