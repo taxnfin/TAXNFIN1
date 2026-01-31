@@ -189,7 +189,9 @@ const Catalogs = () => {
       await api.delete(`/bank-accounts/${deleteConfirm.item.id}`);
       toast.success('Cuenta bancaria eliminada');
       setDeleteConfirm({ open: false, type: null, item: null });
-      loadData();
+      // Refresh data
+      const accountsRes = await api.get('/bank-accounts');
+      setBankAccounts(accountsRes.data);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error eliminando cuenta');
     }
