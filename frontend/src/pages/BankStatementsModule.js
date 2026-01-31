@@ -372,6 +372,12 @@ const BankStatementsModule = () => {
   
   // Montos parciales para conciliación - { cfdiId: montoAplicar }
   const [montosParciales, setMontosParciales] = useState({});
+  
+  // Historial de pagos del CFDI
+  const [paymentHistoryDialogOpen, setPaymentHistoryDialogOpen] = useState(false);
+  const [selectedCfdiForHistory, setSelectedCfdiForHistory] = useState(null);
+  const [paymentHistory, setPaymentHistory] = useState(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const [formData, setFormData] = useState({
     bank_account_id: '',
