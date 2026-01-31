@@ -1189,28 +1189,6 @@ const Catalogs = () => {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-
-          {/* Delete Company Confirmation */}
-          <AlertDialog open={deleteConfirm.open && deleteConfirm.type === 'company'} onOpenChange={(open) => !open && setDeleteConfirm({ open: false, type: null, item: null })}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>¿Eliminar empresa?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Esta acción eliminará la empresa "{deleteConfirm.item?.nombre}". 
-                  Esta acción no se puede deshacer y podría afectar datos relacionados.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction 
-                  className="bg-red-600 hover:bg-red-700"
-                  onClick={handleDeleteCompany}
-                >
-                  Eliminar
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
         </TabsContent>
       </Tabs>
     </div>
