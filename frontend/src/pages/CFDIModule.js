@@ -814,6 +814,7 @@ const CFDIModule = () => {
                 <TableHead>UUID</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Emisor</TableHead>
+                <TableHead>Receptor</TableHead>
                 <TableHead>Fecha</TableHead>
                 <TableHead>Total ({viewCurrency})</TableHead>
                 <TableHead>Categoría</TableHead>
