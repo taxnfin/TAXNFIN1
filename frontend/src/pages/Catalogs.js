@@ -173,8 +173,10 @@ const Catalogs = () => {
       toast.success('Cuenta bancaria actualizada');
       setDialogs({ ...dialogs, editAccount: false });
       setEditingAccount(null);
-      loadData();
       setAccountForm({ nombre: '', numero_cuenta: '', banco: '', moneda: 'MXN', saldo_inicial: 0 });
+      // Refresh data
+      const accountsRes = await api.get('/bank-accounts');
+      setBankAccounts(accountsRes.data);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error actualizando cuenta');
     }
