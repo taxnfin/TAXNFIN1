@@ -253,6 +253,17 @@ async def test_sat_connection(
             credentials['ciec']
         )
         
+        # Check if Chrome is missing
+        if result.get('chrome_missing'):
+            # Credentials are valid but we can't test - return success with warning
+            return {
+                'success': False,
+                'chrome_missing': True,
+                'error': result.get('error'),
+                'rfc': credentials['rfc'],
+                'message': 'Credenciales guardadas. La prueba de conexión no está disponible en este servidor.'
+            }
+        
         # Update credential status based on test
         if result.get('success'):
             await db.sat_credentials.update_one(
