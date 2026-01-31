@@ -931,6 +931,7 @@ const Catalogs = () => {
                       <TableRow key={vendor.id}>
                         <TableCell className="font-medium">{vendor.nombre}</TableCell>
                         <TableCell className="mono">{vendor.rfc || '-'}</TableCell>
+                        <TableCell>{vendor.plazo_pago || 30} días</TableCell>
                         <TableCell>{vendor.email || '-'}</TableCell>
                         <TableCell>{vendor.telefono || '-'}</TableCell>
                         <TableCell className="text-right">
