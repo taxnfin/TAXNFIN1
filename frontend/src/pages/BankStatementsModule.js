@@ -351,6 +351,8 @@ const BankStatementsModule = () => {
   const [filterAccount, setFilterAccount] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterEmisor, setFilterEmisor] = useState('all');
+  const [filterCategoria, setFilterCategoria] = useState('all');
   const [importFile, setImportFile] = useState(null);
   const [importAccountId, setImportAccountId] = useState('');
   const [importing, setImporting] = useState(false);
