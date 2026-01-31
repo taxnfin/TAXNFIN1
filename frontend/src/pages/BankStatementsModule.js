@@ -367,6 +367,9 @@ const BankStatementsModule = () => {
   const [transferFromAccount, setTransferFromAccount] = useState('');
   const [transferToAccount, setTransferToAccount] = useState('');
   const [transferring, setTransferring] = useState(false);
+  
+  // Montos parciales para conciliación - { cfdiId: montoAplicar }
+  const [montosParciales, setMontosParciales] = useState({});
 
   const [formData, setFormData] = useState({
     bank_account_id: '',
