@@ -2274,48 +2274,98 @@ const BankStatementsModule = () => {
               {selectedCfdis.length > 0 && (
                 <div className="p-3 bg-green-50 rounded-lg border border-green-200">
                   <div className="flex justify-between items-center mb-2">
-                    <p className="text-sm font-medium text-green-700">CFDIs seleccionados:</p>
+                    <p className="text-sm font-medium text-green-700">CFDIs seleccionados (Pagos Parciales Permitidos):</p>
                     <p className="text-xs text-gray-500">
-                      Total en {getReconciliationTotals().movimientoMoneda}: ${getReconciliationTotals().cfdiTotalOriginal.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                      Total a aplicar: ${getReconciliationTotals().cfdiTotalOriginal.toLocaleString('es-MX', {minimumFractionDigits: 2})} {getReconciliationTotals().movimientoMoneda}
                     </p>
                   </div>
-                  <div className="space-y-1 max-h-[120px] overflow-y-auto">
+                  <div className="space-y-2 max-h-[200px] overflow-y-auto">
                     {selectedCfdis.map((cfdi, idx) => {
                       const cfdiMoneda = cfdi.moneda || 'MXN';
                       const movMoneda = getReconciliationTotals().movimientoMoneda;
                       const tc = getReconciliationTotals().tcUsado;
+                      const saldoPendiente = cfdi.saldo_pendiente ?? (cfdi.total - (cfdi.monto_pagado || 0));
+                      const montoAplicar = getMontoAplicar(cfdi);
+                      const yaPagado = cfdi.monto_pagado || 0;
+                      
                       // Convert CFDI to movement currency for display
-                      let cfdiEnMovMoneda = cfdi.total;
+                      let montoEnMovMoneda = montoAplicar;
                       if (cfdiMoneda !== movMoneda) {
                         if (cfdiMoneda === 'MXN' && movMoneda !== 'MXN') {
-                          cfdiEnMovMoneda = cfdi.total / tc;
+                          montoEnMovMoneda = montoAplicar / tc;
                         } else if (cfdiMoneda !== 'MXN' && movMoneda === 'MXN') {
-                          cfdiEnMovMoneda = cfdi.total * tc;
+                          montoEnMovMoneda = montoAplicar * tc;
                         }
                       }
                       
                       return (
-                        <div key={cfdi.id} className="flex justify-between items-center text-sm bg-white p-2 rounded">
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <button 
-                              onClick={() => toggleCfdiSelection(cfdi)}
-                              className="text-red-500 hover:text-red-700 shrink-0"
-                              title="Quitar CFDI"
-                            >
-                              <X size={14} />
-                            </button>
-                            <span className="font-medium truncate">{cfdi.receptor_nombre || cfdi.emisor_nombre}</span>
-                            <span className="text-xs text-gray-400 shrink-0">({cfdi.uuid?.substring(0, 8)})</span>
+                        <div key={cfdi.id} className="bg-white p-3 rounded border border-green-100">
+                          <div className="flex justify-between items-start mb-2">
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <button 
+                                onClick={() => toggleCfdiSelection(cfdi)}
+                                className="text-red-500 hover:text-red-700 shrink-0"
+                                title="Quitar CFDI"
+                              >
+                                <X size={14} />
+                              </button>
+                              <div>
+                                <span className="font-medium text-sm truncate block">{cfdi.receptor_nombre || cfdi.emisor_nombre}</span>
+                                <span className="text-xs text-gray-400">UUID: {cfdi.uuid?.substring(0, 8)}...</span>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0 ml-2">
+                              <div className="text-xs text-gray-500">Total CFDI:</div>
+                              <span className="font-mono text-sm text-gray-700">${cfdi.total?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {cfdiMoneda}</span>
+                            </div>
                           </div>
-                          <div className="text-right shrink-0 ml-2">
-                            <span className="font-mono text-green-700">${cfdi.total?.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
-                            <span className="text-xs text-gray-400 ml-1">{cfdiMoneda}</span>
-                            {cfdiMoneda !== movMoneda && (
-                              <span className="text-xs text-blue-500 ml-1">
-                                (≈${cfdiEnMovMoneda?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {movMoneda})
+                          
+                          {/* Show payment history if partial payments exist */}
+                          {yaPagado > 0 && (
+                            <div className="flex justify-between text-xs mb-2 px-2 py-1 bg-yellow-50 rounded">
+                              <span className="text-yellow-700">Ya pagado anteriormente:</span>
+                              <span className="font-mono text-yellow-700">${yaPagado.toLocaleString('es-MX', {minimumFractionDigits: 2})} {cfdiMoneda}</span>
+                            </div>
+                          )}
+                          
+                          {/* Editable partial amount */}
+                          <div className="flex items-center gap-2 mt-2">
+                            <div className="flex-1">
+                              <Label className="text-xs text-green-700">Monto a aplicar ahora:</Label>
+                              <div className="flex items-center gap-1 mt-1">
+                                <span className="text-sm text-gray-500">$</span>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  max={saldoPendiente}
+                                  value={montoAplicar}
+                                  onChange={(e) => updateMontoParcial(cfdi.id, e.target.value)}
+                                  className="h-8 text-sm font-mono w-32"
+                                  data-testid={`monto-parcial-${cfdi.id}`}
+                                />
+                                <span className="text-xs text-gray-500">{cfdiMoneda}</span>
+                                {cfdiMoneda !== movMoneda && (
+                                  <span className="text-xs text-blue-500">
+                                    (≈${montoEnMovMoneda?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {movMoneda})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-xs text-gray-500">Saldo pendiente:</div>
+                              <span className={`font-mono text-sm ${saldoPendiente > 0 ? 'text-amber-600' : 'text-green-600'}`}>
+                                ${saldoPendiente.toLocaleString('es-MX', {minimumFractionDigits: 2})} {cfdiMoneda}
                               </span>
-                            )}
+                            </div>
                           </div>
+                          
+                          {/* Remaining after this payment */}
+                          {montoAplicar < saldoPendiente && montoAplicar > 0 && (
+                            <div className="mt-2 text-xs text-blue-600 bg-blue-50 p-1 rounded text-center">
+                              Después de este pago quedará pendiente: ${(saldoPendiente - montoAplicar).toLocaleString('es-MX', {minimumFractionDigits: 2})} {cfdiMoneda}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
