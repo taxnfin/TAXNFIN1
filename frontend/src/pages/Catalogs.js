@@ -141,11 +141,16 @@ const Catalogs = () => {
   const handleCreateAccount = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/bank-accounts', { ...accountForm, saldo_inicial: parseFloat(accountForm.saldo_inicial) });
+      const payload = { 
+        ...accountForm, 
+        saldo_inicial: parseFloat(accountForm.saldo_inicial),
+        fecha_saldo: accountForm.fecha_saldo || null
+      };
+      await api.post('/bank-accounts', payload);
       toast.success('Cuenta bancaria creada');
       setDialogs({ ...dialogs, account: false });
       loadData();
-      setAccountForm({ nombre: '', numero_cuenta: '', banco: '', moneda: 'MXN', saldo_inicial: 0 });
+      setAccountForm({ nombre: '', numero_cuenta: '', banco: '', moneda: 'MXN', saldo_inicial: 0, fecha_saldo: '' });
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error creando cuenta');
     }
@@ -158,7 +163,8 @@ const Catalogs = () => {
       numero_cuenta: account.numero_cuenta,
       banco: account.banco,
       moneda: account.moneda,
-      saldo_inicial: account.saldo_inicial
+      saldo_inicial: account.saldo_inicial,
+      fecha_saldo: account.fecha_saldo ? account.fecha_saldo.split('T')[0] : ''
     });
     setDialogs({ ...dialogs, editAccount: true });
   };
@@ -170,12 +176,13 @@ const Catalogs = () => {
     try {
       await api.put(`/bank-accounts/${editingAccount.id}`, { 
         ...accountForm, 
-        saldo_inicial: parseFloat(accountForm.saldo_inicial) 
+        saldo_inicial: parseFloat(accountForm.saldo_inicial),
+        fecha_saldo: accountForm.fecha_saldo || null
       });
       toast.success('Cuenta bancaria actualizada');
       setDialogs({ ...dialogs, editAccount: false });
       setEditingAccount(null);
-      setAccountForm({ nombre: '', numero_cuenta: '', banco: '', moneda: 'MXN', saldo_inicial: 0 });
+      setAccountForm({ nombre: '', numero_cuenta: '', banco: '', moneda: 'MXN', saldo_inicial: 0, fecha_saldo: '' });
       // Refresh data
       const accountsRes = await api.get('/bank-accounts');
       setBankAccounts(accountsRes.data);
