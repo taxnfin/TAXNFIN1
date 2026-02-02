@@ -523,16 +523,23 @@ const BankStatementsModule = () => {
 
   const loadData = async () => {
     try {
-      const [txnRes, accountsRes, cfdisRes, categoriesRes] = await Promise.all([
+      const [txnRes, accountsRes, cfdisRes, categoriesRes, summaryRes] = await Promise.all([
         api.get('/bank-transactions?limit=500'),
         api.get('/bank-accounts'),
         api.get('/cfdi?limit=500'),
-        api.get('/categories')
+        api.get('/categories'),
+        api.get('/bank-accounts/summary')
       ]);
       setBankTransactions(txnRes.data);
       setBankAccounts(accountsRes.data);
       setCfdis(cfdisRes.data);
       setCategories(categoriesRes.data || []);
+      setBankSummary(summaryRes.data);
+      
+      // Use FX rates from summary (which uses fecha_saldo) 
+      if (summaryRes.data?.tipos_cambio) {
+        setFxRates(prev => ({ ...prev, ...summaryRes.data.tipos_cambio }));
+      }
       
       // Load FX rate based on earliest transaction date
       if (txnRes.data && txnRes.data.length > 0) {
