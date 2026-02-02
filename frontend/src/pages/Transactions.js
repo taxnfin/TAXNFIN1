@@ -166,18 +166,23 @@ const AgingModule = () => {
     };
 
     filtered.forEach(cfdi => {
-      const bucket = getAgingBucket(cfdi.fecha_emision);
+      const bucket = getAgingBucket(cfdi, tipo);
       const amountField = isIngreso ? 'monto_cobrado' : 'monto_pagado';
       const pendiente = cfdi.total - (cfdi[amountField] || 0);
       const moneda = cfdi.moneda || 'MXN';
       const pendienteMXN = convertToMXN(pendiente, moneda);
+      const dueDate = getDueDate(cfdi, tipo);
+      const diasVencido = getDaysOverdue(cfdi, tipo);
+      const plazo = getPlazo(cfdi, tipo);
       
       buckets[bucket].cfdis.push({
         ...cfdi,
         pendiente,
         pendienteMXN,
         moneda,
-        diasVencido: differenceInDays(new Date(), new Date(cfdi.fecha_emision))
+        fechaVencimiento: dueDate,
+        diasVencido,
+        plazo
       });
       buckets[bucket].total += pendiente;
       buckets[bucket].totalMXN += pendienteMXN;
