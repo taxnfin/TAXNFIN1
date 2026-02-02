@@ -319,29 +319,30 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ### Completed in This Session ✅
 
-**Filtros en Aging de Cartera (CxC / CxP)**
+**1. Filtros en Aging de Cartera (CxC / CxP)**
 
-1. ✅ **Filtros implementados en Cuentas por Cobrar (CxC)**
-   - Búsqueda por nombre de **Cliente**
-   - Selector de **Moneda** (Todas, MXN, USD, EUR)
-   - Selector de **Antigüedad** (Vigente, 1-30 días, 31-60 días, etc.)
-   - Rango de fechas de emisión (**Desde** / **Hasta**)
-   - Botón "Limpiar filtros" cuando hay filtros activos
+- ✅ Búsqueda por nombre de **Cliente** / **Proveedor**
+- ✅ Selector de **Moneda** (Todas, MXN, USD, EUR)
+- ✅ Selector de **Antigüedad** (Vigente, 1-30 días, 31-60 días, etc.)
+- ✅ Rango de fechas de emisión (**Desde** / **Hasta**)
+- ✅ Botón "Limpiar filtros" cuando hay filtros activos
 
-2. ✅ **Filtros implementados en Cuentas por Pagar (CxP)**
-   - Búsqueda por nombre de **Proveedor**
-   - Selector de **Moneda** (Todas, MXN, USD, EUR)
-   - Selector de **Antigüedad** (Vigente, 1-30 días, 31-60 días, etc.)
-   - Rango de fechas de emisión (**Desde** / **Hasta**)
-   - Botón "Limpiar filtros" cuando hay filtros activos
+**2. Exportación de Datos Filtrados a Excel**
 
-3. ✅ **Funcionalidades adicionales**
-   - Total filtrado mostrado en la descripción de la tabla
-   - Contador de facturas filtradas vs total
-   - Los filtros persisten al cambiar entre pestañas CxC/CxP
-   - Mensaje contextual cuando no hay resultados con los filtros aplicados
+- ✅ Botón cambia a **"Exportar Filtrado"** cuando hay filtros activos
+- ✅ Exporta solo los datos que coinciden con los filtros aplicados
+- ✅ Muestra contador de facturas filtradas y total filtrado en MXN
+- ✅ Nombre de archivo incluye "_Filtrado" cuando se exportan datos filtrados
 
-**Archivo modificado:** `frontend/src/pages/Transactions.js`
+**3. Nuevo Fondo de Login Profesional**
+
+- ✅ Reemplazado fondo de edificios por gradiente abstracto azul oscuro
+- ✅ Imagen: Unsplash (azul/púrpura abstracto profesional)
+- ✅ Overlay semitransparente reducido a 60% para mejor visibilidad
+
+**Archivos modificados:**
+- `frontend/src/pages/Transactions.js` - Filtros y exportación filtrada
+- `frontend/src/pages/Login.js` - Nuevo background profesional
 
 ---
 
