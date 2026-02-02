@@ -2852,13 +2852,22 @@ async def find_matching_cfdi_for_transaction(
         
         # Amount matching (compare with transaction amount)
         # Allow for some tolerance (0.5% for banking fees, rounding)
+        # Compare with both total and saldo_pendiente
         if monto > 0:
-            # Check if amounts match closely
-            diff_pct = abs(monto - saldo_pendiente) / saldo_pendiente * 100 if saldo_pendiente > 0 else 100
+            # Calculate differences with both total and pending
+            diff_pct_pending = abs(monto - saldo_pendiente) / saldo_pendiente * 100 if saldo_pendiente > 0 else 100
+            diff_pct_total = abs(monto - cfdi_total) / cfdi_total * 100 if cfdi_total > 0 else 100
             
-            if diff_pct < 0.5:  # Exact or near-exact match
+            # Use the better match (smaller difference)
+            diff_pct = min(diff_pct_pending, diff_pct_total)
+            match_with_total = diff_pct_total < diff_pct_pending
+            
+            if diff_pct < 0.1:  # Exact match (within 0.1%)
+                score += 55
+                match_reasons.append("Monto exacto" + (" (total)" if match_with_total else ""))
+            elif diff_pct < 0.5:  # Near-exact match
                 score += 50
-                match_reasons.append("Monto exacto")
+                match_reasons.append("Monto exacto" + (" (total)" if match_with_total else ""))
             elif diff_pct < 2:  # Within 2%
                 score += 35
                 match_reasons.append(f"Monto muy cercano ({diff_pct:.1f}% dif)")
