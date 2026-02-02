@@ -683,6 +683,15 @@ const Catalogs = () => {
                         <Input type="number" step="0.01" value={accountForm.saldo_inicial} onChange={(e) => setAccountForm({...accountForm, saldo_inicial: e.target.value})} />
                       </div>
                     </div>
+                    <div className="space-y-2">
+                      <Label>Fecha del Saldo Inicial</Label>
+                      <Input 
+                        type="date" 
+                        value={accountForm.fecha_saldo} 
+                        onChange={(e) => setAccountForm({...accountForm, fecha_saldo: e.target.value})} 
+                      />
+                      <p className="text-xs text-muted-foreground">Fecha a partir de la cual aplica este saldo para los reportes</p>
+                    </div>
                     <DialogFooter>
                       <Button type="submit" data-testid="account-submit-button">Crear Cuenta</Button>
                     </DialogFooter>
