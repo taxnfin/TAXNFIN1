@@ -4,6 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   BarChart, Bar, Area, AreaChart, ComposedChart, Legend, ReferenceLine
@@ -11,7 +13,7 @@ import {
 import { 
   TrendingUp, TrendingDown, DollarSign, FileText, CheckCircle2, ArrowRightLeft, 
   Wallet, Building2, AlertTriangle, AlertCircle, PiggyBank, Layers, RefreshCw,
-  Filter, ArrowUpRight, ArrowDownRight, Minus, Calendar
+  Filter, ArrowUpRight, ArrowDownRight, Minus, Calendar, Settings
 } from 'lucide-react';
 import { toast } from 'sonner';
 
