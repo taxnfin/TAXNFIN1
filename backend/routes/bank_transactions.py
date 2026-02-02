@@ -280,7 +280,9 @@ async def get_cfdi_matches_for_transaction(
     monto = txn.get('monto', 0)
     tipo = txn.get('tipo_movimiento', '')
     moneda = txn.get('moneda', 'MXN')
-    descripcion = txn.get('descripcion', '').lower()
+    descripcion_original = txn.get('descripcion', '')
+    referencia = txn.get('referencia', '')
+    descripcion = (descripcion_original + ' ' + referencia).upper()
     
     # Determine CFDI type based on transaction type
     tipo_cfdi = 'ingreso' if tipo == 'credito' else 'egreso'
@@ -288,9 +290,8 @@ async def get_cfdi_matches_for_transaction(
     # Find matching CFDIs
     query = {
         'company_id': company_id,
-        'tipo_cfdi': tipo_cfdi,
+        'tipo_cfdi': tipo_cfdi if tipo == 'credito' else {'$in': ['egreso', 'nomina']},
         'estado_conciliacion': {'$ne': 'conciliado'},
-        'moneda': moneda
     }
     
     cfdis = await db.cfdis.find(query, {'_id': 0, 'xml_original': 0}).to_list(1000)
@@ -298,38 +299,128 @@ async def get_cfdi_matches_for_transaction(
     matches = []
     for cfdi in cfdis:
         cfdi_total = cfdi.get('total', 0)
-        cfdi_emisor = cfdi.get('emisor_nombre', '').lower()
-        cfdi_receptor = cfdi.get('receptor_nombre', '').lower()
+        cfdi_moneda = cfdi.get('moneda', 'MXN')
+        cfdi_emisor = cfdi.get('emisor_nombre', '').upper()
+        cfdi_receptor = cfdi.get('receptor_nombre', '').upper()
+        
+        # Calculate pending amount
+        if cfdi.get('tipo_cfdi') == 'ingreso':
+            monto_cubierto = cfdi.get('monto_cobrado', 0) or 0
+        else:
+            monto_cubierto = cfdi.get('monto_pagado', 0) or 0
+        
+        saldo_pendiente = cfdi_total - monto_cubierto
+        
+        # Skip fully paid CFDIs
+        if saldo_pendiente < 0.01:
+            continue
         
         # Calculate match score
         score = 0
+        match_reasons = []
         
-        # Amount match (exact or close)
-        if abs(cfdi_total - monto) < 0.01:
+        # Amount match - compare with both total and pending
+        diff_pct_pending = abs(saldo_pendiente - monto) / max(saldo_pendiente, 0.01) * 100
+        diff_pct_total = abs(cfdi_total - monto) / max(cfdi_total, 0.01) * 100
+        diff_pct = min(diff_pct_pending, diff_pct_total)
+        
+        if diff_pct < 0.1:  # Exact match
+            score += 55
+            match_reasons.append("Monto exacto")
+        elif diff_pct < 1:  # Within 1%
             score += 50
-        elif abs(cfdi_total - monto) / max(cfdi_total, monto) < 0.05:
-            score += 30
-        elif abs(cfdi_total - monto) / max(cfdi_total, monto) < 0.10:
-            score += 15
+            match_reasons.append("Monto exacto")
+        elif diff_pct < 5:  # Within 5%
+            score += 35
+            match_reasons.append(f"Monto cercano ({diff_pct:.1f}%)")
+        elif diff_pct < 10:  # Within 10%
+            score += 20
+            match_reasons.append(f"Monto aproximado ({diff_pct:.1f}%)")
+        else:
+            continue  # Skip if amount too different
         
-        # Name match in description
-        if cfdi_emisor and cfdi_emisor in descripcion:
-            score += 30
-        if cfdi_receptor and cfdi_receptor in descripcion:
-            score += 30
+        # Currency match bonus
+        if cfdi_moneda == moneda:
+            score += 10
+            match_reasons.append("Moneda coincide")
         
-        # Only include if score > 0
-        if score > 0:
+        # Name matching - improved for truncated bank descriptions
+        nombres_buscar = [cfdi_emisor, cfdi_receptor]
+        
+        for nombre in nombres_buscar:
+            if not nombre or len(nombre) < 3:
+                continue
+            
+            nombre_parts = [p for p in nombre.split() if len(p) > 2]
+            descripcion_parts = [p for p in descripcion.split() if len(p) > 2]
+            
+            # Method 1: Count CFDI name parts in description
+            matches_count = sum(1 for part in nombre_parts if part in descripcion)
+            
+            if matches_count >= 3:
+                score += 50
+                match_reasons.append("Nombre completo")
+                break
+            elif matches_count >= 2:
+                score += 40
+                match_reasons.append(f"Nombre parcial ({matches_count} partes)")
+                break
+            elif matches_count >= 1 and len(nombre_parts) <= 3:
+                score += 25
+                match_reasons.append("Nombre parcial")
+                break
+            
+            # Method 2: Check if truncated description matches start of CFDI name
+            # e.g., "INGENIERIA EN MAQUINARIA Y ENE" matches "INGENIERIA EN MAQUINARIA Y ENERGIA..."
+            if descripcion_parts and len(descripcion_parts) >= 2:
+                consecutive_matches = 0
+                for i, desc_part in enumerate(descripcion_parts):
+                    if i < len(nombre_parts) and desc_part in nombre_parts[i]:
+                        consecutive_matches += 1
+                    elif desc_part in nombre:
+                        consecutive_matches += 0.5
+                
+                if consecutive_matches >= len(descripcion_parts) * 0.7:
+                    score += 45
+                    match_reasons.append("Nombre truncado coincide")
+                    break
+            
+            # Method 3: Check if description contains start of name (without spaces)
+            nombre_sin_espacios = ''.join(nombre.split())[:30]
+            desc_sin_espacios = ''.join(descripcion.split())[:30]
+            
+            if len(desc_sin_espacios) >= 10 and nombre_sin_espacios.startswith(desc_sin_espacios[:15]):
+                score += 40
+                match_reasons.append("Nombre truncado")
+                break
+        
+        # Only include if score is meaningful
+        if score >= 20:
             matches.append({
                 'cfdi': cfdi,
                 'score': score,
-                'match_reasons': []
+                'match_reasons': match_reasons
             })
     
     # Sort by score
     matches.sort(key=lambda x: x['score'], reverse=True)
     
-    return {'matches': matches[:10], 'total_candidates': len(matches)}
+    # Find best match
+    best_match = None
+    if matches:
+        best = matches[0]
+        best_match = {
+            **best['cfdi'],
+            'score': best['score'],
+            'match_reasons': best['match_reasons']
+        }
+    
+    return {
+        'matches': matches[:10], 
+        'total_candidates': len(matches),
+        'best_match': best_match,
+        'all_matches': [m['cfdi'] | {'score': m['score'], 'match_reasons': m['match_reasons']} for m in matches[:10]]
+    }
 
 
 @router.post("/check-duplicates")
