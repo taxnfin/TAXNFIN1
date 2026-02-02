@@ -92,12 +92,12 @@ const Login = ({ onLogin }) => {
     <div 
       className="min-h-screen flex items-center justify-center p-4"
       style={{
-        backgroundImage: 'url(https://images.unsplash.com/photo-1646320570932-e1b727f8d243)',
+        backgroundImage: 'url(https://images.unsplash.com/photo-1748885107428-21dc225745eb?crop=entropy&cs=srgb&fm=jpg&q=85)',
         backgroundSize: 'cover',
         backgroundPosition: 'center'
       }}
     >
-      <div className="absolute inset-0 bg-[#0F172A]/80"></div>
+      <div className="absolute inset-0 bg-[#0F172A]/60"></div>
       
       <Card className="w-full max-w-md relative z-10 border-[#CBD5E1] shadow-lg" data-testid="login-card">
         <CardHeader className="space-y-1">
