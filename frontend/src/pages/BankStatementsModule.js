@@ -2512,27 +2512,44 @@ const BankStatementsModule = () => {
                       const res = await api.get(`/bank-transactions/${selectedTransaction.id}/match-cfdi?tolerance_days=90`);
                       toast.dismiss('auto-match');
                       
-                      // Use best_match from response
+                      // Get matches from response - handle both response formats
                       const bestMatch = res.data.best_match;
-                      const matches = res.data.all_matches || [];
+                      const allMatches = res.data.all_matches || res.data.matches || [];
                       
-                      if (bestMatch && bestMatch.cfdi_id) {
-                        const cfdiToSelect = cfdis.find(c => c.id === bestMatch.cfdi_id);
+                      console.log('Match response:', { bestMatch, allMatches, total: res.data.total_candidates });
+                      
+                      if (bestMatch) {
+                        // bestMatch contains the full CFDI data with id, score, match_reasons
+                        const cfdiId = bestMatch.id || bestMatch.cfdi_id;
+                        const cfdiToSelect = cfdis.find(c => c.id === cfdiId);
                         
                         if (cfdiToSelect && !selectedCfdis.find(c => c.id === cfdiToSelect.id)) {
                           setSelectedCfdis(prev => [...prev, cfdiToSelect]);
-                          toast.success(`✓ Auto-seleccionado: ${bestMatch.emisor_nombre || bestMatch.receptor_nombre} - Score: ${bestMatch.score}% (${bestMatch.match_reasons?.join(', ')})`);
+                          const nombre = bestMatch.emisor_nombre || bestMatch.receptor_nombre || 'CFDI';
+                          const razones = bestMatch.match_reasons?.join(', ') || '';
+                          toast.success(`✓ Auto-seleccionado: ${nombre} - Score: ${bestMatch.score} (${razones})`);
                         } else if (!cfdiToSelect) {
-                          toast.warning(`Mejor coincidencia: ${bestMatch.emisor_nombre || bestMatch.receptor_nombre} ($${bestMatch.total?.toLocaleString()}) pero no está en la lista`);
+                          const nombre = bestMatch.emisor_nombre || bestMatch.receptor_nombre || 'CFDI';
+                          toast.warning(`Mejor coincidencia: ${nombre} ($${bestMatch.total?.toLocaleString()}) - Score: ${bestMatch.score}`);
                         } else {
                           toast.info('El CFDI sugerido ya está seleccionado');
                         }
-                      } else if (matches.length > 0) {
-                        const firstMatch = matches[0];
-                        const cfdiToSelect = cfdis.find(c => c.id === firstMatch.cfdi_id);
+                      } else if (allMatches.length > 0) {
+                        // Try first match from array
+                        const firstMatch = allMatches[0];
+                        const cfdiData = firstMatch.cfdi || firstMatch;
+                        const cfdiId = cfdiData.id || cfdiData.cfdi_id;
+                        const cfdiToSelect = cfdis.find(c => c.id === cfdiId);
+                        
                         if (cfdiToSelect && !selectedCfdis.find(c => c.id === cfdiToSelect.id)) {
                           setSelectedCfdis(prev => [...prev, cfdiToSelect]);
-                          toast.success(`✓ Auto-seleccionado: ${firstMatch.emisor_nombre || firstMatch.receptor_nombre} - Score: ${firstMatch.score}%`);
+                          const nombre = cfdiData.emisor_nombre || cfdiData.receptor_nombre || 'CFDI';
+                          const score = firstMatch.score || cfdiData.score;
+                          const razones = (firstMatch.match_reasons || cfdiData.match_reasons || []).join(', ');
+                          toast.success(`✓ Auto-seleccionado: ${nombre} - Score: ${score} (${razones})`);
+                        } else if (!cfdiToSelect) {
+                          const nombre = cfdiData.emisor_nombre || cfdiData.receptor_nombre || 'CFDI';
+                          toast.warning(`Coincidencia encontrada: ${nombre} ($${cfdiData.total?.toLocaleString()}) pero no está en la lista filtrada`);
                         }
                       } else {
                         toast.info('No se encontraron coincidencias automáticas para este movimiento');
