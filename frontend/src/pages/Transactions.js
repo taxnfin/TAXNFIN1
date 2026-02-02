@@ -532,9 +532,14 @@ const AgingModule = () => {
                   )}
                 </CardDescription>
               </div>
-              <Button variant="outline" className="gap-2">
+              <Button 
+                variant="outline" 
+                className="gap-2"
+                onClick={() => handleExportFiltered(filteredCfdis, tipo, isFiltered)}
+                data-testid={`export-${tipo}-btn`}
+              >
                 <Download size={14} />
-                Exportar
+                {isFiltered ? 'Exportar Filtrado' : 'Exportar'}
               </Button>
             </div>
           </CardHeader>
