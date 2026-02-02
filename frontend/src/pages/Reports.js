@@ -401,12 +401,25 @@ const Reports = () => {
             </p>
             {bankSummary?.por_moneda && Object.entries(bankSummary.por_moneda).length > 0 && (
               <div className="mt-2 text-xs space-y-1">
-                {Object.entries(bankSummary.por_moneda).map(([moneda, info]) => (
-                  <div key={moneda} className="flex justify-between text-blue-700">
-                    <span>{moneda}:</span>
-                    <span className="mono">{moneda === 'MXN' ? '$' : ''}{info.saldo?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {moneda !== 'MXN' && `(TC: ${bankSummary.tipos_cambio?.[moneda] || '?'})`}</span>
-                  </div>
-                ))}
+                {Object.entries(bankSummary.por_moneda).map(([moneda, info]) => {
+                  // Get the TC used from the accounts in por_banco
+                  let tcUsado = null;
+                  if (moneda !== 'MXN' && bankSummary.por_banco) {
+                    Object.values(bankSummary.por_banco).forEach(banco => {
+                      banco.cuentas?.forEach(cuenta => {
+                        if (cuenta.moneda === moneda && cuenta.tipo_cambio_usado) {
+                          tcUsado = cuenta.tipo_cambio_usado;
+                        }
+                      });
+                    });
+                  }
+                  return (
+                    <div key={moneda} className="flex justify-between text-blue-700">
+                      <span>{moneda}:</span>
+                      <span className="mono">{moneda === 'MXN' ? '$' : ''}{info.saldo?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {moneda !== 'MXN' && tcUsado && `(TC: ${tcUsado})`}</span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </CardContent>
