@@ -259,45 +259,58 @@ const AgingModule = () => {
                   <TableHead>{tipo === 'cxc' ? 'Cliente' : 'Proveedor'}</TableHead>
                   <TableHead>UUID</TableHead>
                   <TableHead>Fecha Emisión</TableHead>
-                  <TableHead>Días</TableHead>
+                  <TableHead>Plazo</TableHead>
+                  <TableHead>Vencimiento</TableHead>
+                  <TableHead>Días Venc.</TableHead>
                   <TableHead>Moneda</TableHead>
-                  <TableHead className="text-right">Total Original</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Pagado</TableHead>
                   <TableHead className="text-right">Pendiente</TableHead>
-                  <TableHead className="text-right bg-blue-50">Pendiente MXN</TableHead>
+                  <TableHead className="text-right bg-blue-50">Pend. MXN</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {allCfdis.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={12} className="text-center py-8 text-gray-500">
                       No hay facturas pendientes de {tipo === 'cxc' ? 'cobro' : 'pago'}
                     </TableCell>
                   </TableRow>
                 ) : (
                   allCfdis.sort((a, b) => b.diasVencido - a.diasVencido).map(cfdi => {
-                    const bucket = getAgingBucket(cfdi.fecha_emision);
+                    const bucket = getAgingBucket(cfdi, tipo);
                     const bucketInfo = buckets[bucket];
                     const pagado = tipo === 'cxc' ? (cfdi.monto_cobrado || 0) : (cfdi.monto_pagado || 0);
                     
                     return (
-                      <TableRow key={cfdi.id} className="hover:bg-gray-50">
+                      <TableRow key={cfdi.id} className={`hover:bg-gray-50 ${cfdi.diasVencido > 90 ? 'bg-red-50' : ''}`}>
                         <TableCell>
                           <span className={`text-xs px-2 py-1 rounded ${bucketInfo.color}`}>
                             {bucketInfo.label}
                           </span>
                         </TableCell>
-                        <TableCell className="font-medium max-w-[180px] truncate">
+                        <TableCell className="font-medium max-w-[150px] truncate">
                           <div className="flex items-center gap-2">
                             {tipo === 'cxc' ? <User size={14} className="text-blue-500" /> : <Building2 size={14} className="text-orange-500" />}
-                            {getPartyName(cfdi, tipo)}
+                            <span className="truncate">{getPartyName(cfdi, tipo)}</span>
                           </div>
                         </TableCell>
                         <TableCell className="font-mono text-xs">{cfdi.uuid?.substring(0, 8)}...</TableCell>
-                        <TableCell>{format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy')}</TableCell>
-                        <TableCell>
-                          <span className={`font-mono ${cfdi.diasVencido > 90 ? 'text-red-600 font-bold' : cfdi.diasVencido > 30 ? 'text-orange-600' : 'text-gray-600'}`}>
-                            {cfdi.diasVencido} días
+                        <TableCell className="text-xs">{format(new Date(cfdi.fecha_emision), 'dd/MM/yy')}</TableCell>
+                        <TableCell className="text-center">
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${cfdi.plazo === 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>
+                            {cfdi.plazo === 0 ? 'Contado' : `${cfdi.plazo}d`}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-xs">{format(cfdi.fechaVencimiento, 'dd/MM/yy')}</TableCell>
+                        <TableCell className="text-center">
+                          <span className={`font-mono text-xs font-semibold px-1.5 py-0.5 rounded ${
+                            cfdi.diasVencido <= 0 ? 'bg-green-100 text-green-800' :
+                            cfdi.diasVencido > 90 ? 'bg-red-200 text-red-800' : 
+                            cfdi.diasVencido > 30 ? 'bg-orange-100 text-orange-700' : 
+                            'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {cfdi.diasVencido <= 0 ? `${Math.abs(cfdi.diasVencido)}d` : `+${cfdi.diasVencido}d`}
                           </span>
                         </TableCell>
                         <TableCell>
@@ -305,10 +318,10 @@ const AgingModule = () => {
                             {cfdi.moneda || 'MXN'}
                           </span>
                         </TableCell>
-                        <TableCell className="text-right font-mono">{formatCurrency(cfdi.total, cfdi.moneda)}</TableCell>
-                        <TableCell className="text-right font-mono text-green-600">{formatCurrency(pagado, cfdi.moneda)}</TableCell>
-                        <TableCell className="text-right font-mono font-bold text-orange-600">{formatCurrency(cfdi.pendiente, cfdi.moneda)}</TableCell>
-                        <TableCell className="text-right font-mono font-bold bg-blue-50 text-blue-700">{formatCurrency(cfdi.pendienteMXN, 'MXN')}</TableCell>
+                        <TableCell className="text-right font-mono text-xs">{formatCurrency(cfdi.total, cfdi.moneda)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs text-green-600">{formatCurrency(pagado, cfdi.moneda)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs font-bold text-orange-600">{formatCurrency(cfdi.pendiente, cfdi.moneda)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs font-bold bg-blue-50 text-blue-700">{formatCurrency(cfdi.pendienteMXN, 'MXN')}</TableCell>
                       </TableRow>
                     );
                   })
