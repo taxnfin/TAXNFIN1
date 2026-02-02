@@ -66,7 +66,7 @@ const Catalogs = () => {
   
   const [companyForm, setCompanyForm] = useState({ nombre: '', rfc: '', moneda_base: 'MXN', pais: 'México' });
   const [editingCompany, setEditingCompany] = useState(null);
-  const [accountForm, setAccountForm] = useState({ nombre: '', numero_cuenta: '', banco: '', moneda: 'MXN', saldo_inicial: 0 });
+  const [accountForm, setAccountForm] = useState({ nombre: '', numero_cuenta: '', banco: '', moneda: 'MXN', saldo_inicial: 0, fecha_saldo: '' });
   const [editingAccount, setEditingAccount] = useState(null);
   const [vendorForm, setVendorForm] = useState({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: '' });
   const [editingVendor, setEditingVendor] = useState(null);
