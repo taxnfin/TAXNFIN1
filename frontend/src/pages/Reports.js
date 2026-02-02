@@ -48,7 +48,10 @@ const Reports = () => {
       setCfdis(cfdisRes.data || []);
       setBankSummary(bankRes.data || null);
       
-      if (fxRes.data?.rates) {
+      // Use FX rates from bank summary (which uses fecha_saldo) as primary source
+      if (bankRes.data?.tipos_cambio) {
+        setFxRates(prev => ({ ...prev, ...bankRes.data.tipos_cambio }));
+      } else if (fxRes.data?.rates) {
         setFxRates(prev => ({ ...prev, ...fxRes.data.rates }));
       }
     } catch (error) {
