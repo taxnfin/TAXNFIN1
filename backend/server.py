@@ -2923,23 +2923,67 @@ async def find_matching_cfdi_for_transaction(
                 nombres_buscar.append(receptor.upper())
         
         # Check name parts in transaction description
+        # Improved matching: also check if transaction description is contained in CFDI name
+        name_matched = False
         for nombre in nombres_buscar:
+            if name_matched:
+                break
+                
             nombre_parts = [p for p in nombre.split() if len(p) > 2]
-            if nombre_parts:
-                # Count how many name parts appear in description
-                matches_count = sum(1 for part in nombre_parts if part in txn_descripcion_upper)
-                if matches_count >= 3:
-                    score += 50
-                    match_reasons.append(f"Nombre completo coincide")
-                    break
-                elif matches_count >= 2:
-                    score += 35
-                    match_reasons.append(f"Nombre parcial coincide ({matches_count} partes)")
-                    break
-                elif matches_count >= 1 and len(nombre_parts) <= 2:
-                    score += 20
-                    match_reasons.append(f"Nombre parcial coincide")
-                    break
+            if not nombre_parts:
+                continue
+                
+            # Method 1: Check how many CFDI name parts appear in bank description
+            matches_count = sum(1 for part in nombre_parts if part in txn_descripcion_upper)
+            
+            # Method 2: Check if bank description (possibly truncated) is start of CFDI name
+            # This handles cases like "INGENIERIA EN MAQUINARIA Y ENE" matching "INGENIERIA EN MAQUINARIA Y ENERGIA..."
+            txn_desc_clean = txn_descripcion_upper.replace(',', ' ').replace('.', ' ').strip()
+            txn_parts = [p for p in txn_desc_clean.split() if len(p) > 2]
+            
+            # Check if transaction description words match start of CFDI name
+            if txn_parts and len(txn_parts) >= 2:
+                # Count consecutive matches from start
+                consecutive_matches = 0
+                for i, part in enumerate(txn_parts):
+                    if i < len(nombre_parts) and part in nombre_parts[i]:
+                        consecutive_matches += 1
+                    elif part in nombre:  # Part appears anywhere in name
+                        consecutive_matches += 0.5
+                    else:
+                        break
+                
+                # If most of transaction description matches CFDI name start
+                if consecutive_matches >= len(txn_parts) * 0.8:
+                    score += 45
+                    match_reasons.append(f"Nombre coincide (descripción truncada)")
+                    name_matched = True
+                    continue
+            
+            # Original method: count name parts in description
+            if matches_count >= 3:
+                score += 50
+                match_reasons.append(f"Nombre completo coincide")
+                name_matched = True
+            elif matches_count >= 2:
+                score += 35
+                match_reasons.append(f"Nombre parcial coincide ({matches_count} partes)")
+                name_matched = True
+            elif matches_count >= 1 and len(nombre_parts) <= 2:
+                score += 20
+                match_reasons.append(f"Nombre parcial coincide")
+                name_matched = True
+            
+            # Method 3: Check similarity between names (for truncated bank descriptions)
+            if not name_matched and txn_desc_clean:
+                # See if bank description is a prefix of CFDI name
+                nombre_sin_espacios = ''.join(nombre.split())
+                desc_sin_espacios = ''.join(txn_desc_clean.split())
+                
+                if len(desc_sin_espacios) >= 10 and nombre_sin_espacios.startswith(desc_sin_espacios[:min(len(desc_sin_espacios), 20)]):
+                    score += 40
+                    match_reasons.append(f"Nombre truncado coincide")
+                    name_matched = True
         
         # Only include if score is meaningful
         if score >= 20:
