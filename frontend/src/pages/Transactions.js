@@ -350,6 +350,13 @@ const AgingModule = () => {
 
   const renderAgingTable = (buckets, tipo) => {
     const allCfdis = Object.values(buckets).flatMap(b => b.cfdis);
+    const filters = tipo === 'cxc' ? cxcFilters : cxpFilters;
+    const filteredCfdis = applyFilters(allCfdis, tipo, filters);
+    const currencies = tipo === 'cxc' ? cxcCurrencies : cxpCurrencies;
+    const isFiltered = hasActiveFilters(tipo);
+    
+    // Recalculate totals based on filtered data
+    const filteredTotalMXN = filteredCfdis.reduce((sum, cfdi) => sum + cfdi.pendienteMXN, 0);
     
     return (
       <div className="space-y-6">
@@ -373,13 +380,157 @@ const AgingModule = () => {
           ))}
         </div>
 
+        {/* Filters Section */}
+        <Card className="border-blue-200 bg-blue-50/50">
+          <CardHeader className="pb-3">
+            <div className="flex justify-between items-center">
+              <CardTitle className="text-sm font-medium flex items-center gap-2 text-blue-800">
+                <Filter size={16} />
+                Filtros
+              </CardTitle>
+              {isFiltered && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-blue-600 hover:text-blue-800 h-7 px-2 gap-1"
+                  onClick={() => resetFilters(tipo)}
+                  data-testid={`clear-filters-${tipo}`}
+                >
+                  <X size={14} />
+                  Limpiar filtros
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-5 gap-4">
+              {/* Search by Cliente/Proveedor */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-600">
+                  {tipo === 'cxc' ? 'Cliente' : 'Proveedor'}
+                </label>
+                <div className="relative">
+                  <Search size={14} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <Input
+                    placeholder={`Buscar ${tipo === 'cxc' ? 'cliente' : 'proveedor'}...`}
+                    value={tipo === 'cxc' ? filters.cliente : filters.proveedor}
+                    onChange={(e) => {
+                      if (tipo === 'cxc') {
+                        setCxcFilters(prev => ({ ...prev, cliente: e.target.value }));
+                      } else {
+                        setCxpFilters(prev => ({ ...prev, proveedor: e.target.value }));
+                      }
+                    }}
+                    className="pl-8 h-9 text-sm"
+                    data-testid={`filter-${tipo}-name`}
+                  />
+                </div>
+              </div>
+
+              {/* Filter by Moneda */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-600">Moneda</label>
+                <Select
+                  value={filters.moneda}
+                  onValueChange={(value) => {
+                    if (tipo === 'cxc') {
+                      setCxcFilters(prev => ({ ...prev, moneda: value }));
+                    } else {
+                      setCxpFilters(prev => ({ ...prev, moneda: value }));
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-sm" data-testid={`filter-${tipo}-currency`}>
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas</SelectItem>
+                    {currencies.map(currency => (
+                      <SelectItem key={currency} value={currency}>{currency}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filter by Antigüedad */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-600">Antigüedad</label>
+                <Select
+                  value={filters.antiguedad}
+                  onValueChange={(value) => {
+                    if (tipo === 'cxc') {
+                      setCxcFilters(prev => ({ ...prev, antiguedad: value }));
+                    } else {
+                      setCxpFilters(prev => ({ ...prev, antiguedad: value }));
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-sm" data-testid={`filter-${tipo}-aging`}>
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agingOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filter by Fecha Desde */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-600">Desde</label>
+                <Input
+                  type="date"
+                  value={filters.fechaDesde}
+                  onChange={(e) => {
+                    if (tipo === 'cxc') {
+                      setCxcFilters(prev => ({ ...prev, fechaDesde: e.target.value }));
+                    } else {
+                      setCxpFilters(prev => ({ ...prev, fechaDesde: e.target.value }));
+                    }
+                  }}
+                  className="h-9 text-sm"
+                  data-testid={`filter-${tipo}-date-from`}
+                />
+              </div>
+
+              {/* Filter by Fecha Hasta */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-600">Hasta</label>
+                <Input
+                  type="date"
+                  value={filters.fechaHasta}
+                  onChange={(e) => {
+                    if (tipo === 'cxc') {
+                      setCxcFilters(prev => ({ ...prev, fechaHasta: e.target.value }));
+                    } else {
+                      setCxpFilters(prev => ({ ...prev, fechaHasta: e.target.value }));
+                    }
+                  }}
+                  className="h-9 text-sm"
+                  data-testid={`filter-${tipo}-date-to`}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Detail Table */}
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
               <div>
                 <CardTitle>Detalle de {tipo === 'cxc' ? 'Cuentas por Cobrar' : 'Cuentas por Pagar'}</CardTitle>
-                <CardDescription>{allCfdis.length} facturas pendientes</CardDescription>
+                <CardDescription>
+                  {isFiltered ? (
+                    <span className="text-blue-600">
+                      Mostrando {filteredCfdis.length} de {allCfdis.length} facturas 
+                      <span className="font-semibold ml-2">(Total filtrado: {formatCurrency(filteredTotalMXN, 'MXN')})</span>
+                    </span>
+                  ) : (
+                    `${allCfdis.length} facturas pendientes`
+                  )}
+                </CardDescription>
               </div>
               <Button variant="outline" className="gap-2">
                 <Download size={14} />
@@ -406,14 +557,17 @@ const AgingModule = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {allCfdis.length === 0 ? (
+                {filteredCfdis.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={12} className="text-center py-8 text-gray-500">
-                      No hay facturas pendientes de {tipo === 'cxc' ? 'cobro' : 'pago'}
+                      {isFiltered 
+                        ? 'No hay facturas que coincidan con los filtros seleccionados'
+                        : `No hay facturas pendientes de ${tipo === 'cxc' ? 'cobro' : 'pago'}`
+                      }
                     </TableCell>
                   </TableRow>
                 ) : (
-                  allCfdis.sort((a, b) => b.diasVencido - a.diasVencido).map(cfdi => {
+                  filteredCfdis.sort((a, b) => b.diasVencido - a.diasVencido).map(cfdi => {
                     const bucket = getAgingBucket(cfdi, tipo);
                     const bucketInfo = buckets[bucket];
                     const pagado = tipo === 'cxc' ? (cfdi.monto_cobrado || 0) : (cfdi.monto_pagado || 0);
