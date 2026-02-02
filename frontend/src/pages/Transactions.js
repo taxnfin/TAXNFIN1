@@ -222,6 +222,107 @@ const AgingModule = () => {
     }
   };
 
+  // Apply filters to processed CFDIs
+  const applyFilters = (allCfdis, tipo, filters) => {
+    let filtered = [...allCfdis];
+    
+    // Filter by cliente/proveedor name
+    const searchTerm = tipo === 'cxc' ? filters.cliente : filters.proveedor;
+    if (searchTerm && searchTerm.trim() !== '') {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(cfdi => {
+        const partyName = getPartyName(cfdi, tipo).toLowerCase();
+        return partyName.includes(term);
+      });
+    }
+    
+    // Filter by moneda
+    if (filters.moneda && filters.moneda !== 'todas') {
+      filtered = filtered.filter(cfdi => (cfdi.moneda || 'MXN') === filters.moneda);
+    }
+    
+    // Filter by antiguedad bucket
+    if (filters.antiguedad && filters.antiguedad !== 'todas') {
+      filtered = filtered.filter(cfdi => {
+        const bucket = getAgingBucket(cfdi, tipo);
+        return bucket === filters.antiguedad;
+      });
+    }
+    
+    // Filter by fecha desde
+    if (filters.fechaDesde && filters.fechaDesde.trim() !== '') {
+      const fromDate = parseISO(filters.fechaDesde);
+      if (isValid(fromDate)) {
+        filtered = filtered.filter(cfdi => {
+          const emisionDate = new Date(cfdi.fecha_emision);
+          return !isBefore(emisionDate, fromDate);
+        });
+      }
+    }
+    
+    // Filter by fecha hasta
+    if (filters.fechaHasta && filters.fechaHasta.trim() !== '') {
+      const toDate = parseISO(filters.fechaHasta);
+      if (isValid(toDate)) {
+        filtered = filtered.filter(cfdi => {
+          const emisionDate = new Date(cfdi.fecha_emision);
+          return !isAfter(emisionDate, toDate);
+        });
+      }
+    }
+    
+    return filtered;
+  };
+
+  // Get unique currencies from CFDIs
+  const getUniqueCurrencies = (tipo) => {
+    const isIngreso = tipo === 'cxc';
+    const filtered = cfdis.filter(cfdi => {
+      if (cfdi.tipo_cfdi !== (isIngreso ? 'ingreso' : 'egreso')) return false;
+      if (cfdi.estado_cancelacion === 'cancelado') return false;
+      const amountField = isIngreso ? 'monto_cobrado' : 'monto_pagado';
+      const pendiente = cfdi.total - (cfdi[amountField] || 0);
+      return pendiente > 0.01;
+    });
+    
+    const currencies = new Set(filtered.map(cfdi => cfdi.moneda || 'MXN'));
+    return Array.from(currencies).sort();
+  };
+
+  // Reset filters
+  const resetFilters = (tipo) => {
+    if (tipo === 'cxc') {
+      setCxcFilters({
+        cliente: '',
+        moneda: 'todas',
+        antiguedad: 'todas',
+        fechaDesde: '',
+        fechaHasta: ''
+      });
+    } else {
+      setCxpFilters({
+        proveedor: '',
+        moneda: 'todas',
+        antiguedad: 'todas',
+        fechaDesde: '',
+        fechaHasta: ''
+      });
+    }
+  };
+
+  // Check if filters are active
+  const hasActiveFilters = (tipo) => {
+    const filters = tipo === 'cxc' ? cxcFilters : cxpFilters;
+    const searchTerm = tipo === 'cxc' ? filters.cliente : filters.proveedor;
+    return (
+      (searchTerm && searchTerm.trim() !== '') ||
+      filters.moneda !== 'todas' ||
+      filters.antiguedad !== 'todas' ||
+      (filters.fechaDesde && filters.fechaDesde.trim() !== '') ||
+      (filters.fechaHasta && filters.fechaHasta.trim() !== '')
+    );
+  };
+
   if (loading) return <div className="p-8">Cargando...</div>;
 
   const cxcBuckets = processAging('cxc');
@@ -231,6 +332,21 @@ const AgingModule = () => {
   const totalCxP = Object.values(cxpBuckets).reduce((s, b) => s + b.total, 0);
   const totalCxCMXN = Object.values(cxcBuckets).reduce((s, b) => s + b.totalMXN, 0);
   const totalCxPMXN = Object.values(cxpBuckets).reduce((s, b) => s + b.totalMXN, 0);
+
+  // Currency options
+  const cxcCurrencies = getUniqueCurrencies('cxc');
+  const cxpCurrencies = getUniqueCurrencies('cxp');
+
+  // Aging bucket options
+  const agingOptions = [
+    { value: 'todas', label: 'Todas' },
+    { value: 'vigente', label: 'Vigente' },
+    { value: '1-30', label: '1-30 días' },
+    { value: '31-60', label: '31-60 días' },
+    { value: '61-90', label: '61-90 días' },
+    { value: '91-120', label: '91-120 días' },
+    { value: '120+', label: '+120 días' }
+  ];
 
   const renderAgingTable = (buckets, tipo) => {
     const allCfdis = Object.values(buckets).flatMap(b => b.cfdis);
