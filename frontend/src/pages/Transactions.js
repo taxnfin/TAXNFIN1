@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { TrendingUp, TrendingDown, Clock, AlertTriangle, Calendar, Download, FileText, Building2, User, RefreshCw, Filter, X, Search } from 'lucide-react';
 import { format, differenceInDays, parseISO, isAfter, isBefore, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { exportAging } from '@/utils/excelExport';
+import { exportAging, exportToExcel } from '@/utils/excelExport';
 
 const AgingModule = () => {
   const [loading, setLoading] = useState(true);
