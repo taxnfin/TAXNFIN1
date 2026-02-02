@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import api from '@/api/axios';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { TrendingUp, TrendingDown, Clock, AlertTriangle, Calendar, Download, FileText, Building2, User, RefreshCw } from 'lucide-react';
-import { format, differenceInDays } from 'date-fns';
+import { TrendingUp, TrendingDown, Clock, AlertTriangle, Calendar, Download, FileText, Building2, User, RefreshCw, Filter, X, Search } from 'lucide-react';
+import { format, differenceInDays, parseISO, isAfter, isBefore, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { exportAging } from '@/utils/excelExport';
 
@@ -18,6 +20,24 @@ const AgingModule = () => {
   const [fxRates, setFxRates] = useState({});
   const [syncingRates, setSyncingRates] = useState(false);
   const [activeTab, setActiveTab] = useState('cxc'); // cxc = Cuentas por Cobrar, cxp = Cuentas por Pagar
+
+  // Filtros para CxC
+  const [cxcFilters, setCxcFilters] = useState({
+    cliente: '',
+    moneda: 'todas',
+    antiguedad: 'todas',
+    fechaDesde: '',
+    fechaHasta: ''
+  });
+
+  // Filtros para CxP
+  const [cxpFilters, setCxpFilters] = useState({
+    proveedor: '',
+    moneda: 'todas',
+    antiguedad: 'todas',
+    fechaDesde: '',
+    fechaHasta: ''
+  });
 
   useEffect(() => {
     loadData();
