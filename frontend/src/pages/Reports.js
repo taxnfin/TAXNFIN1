@@ -393,8 +393,19 @@ const Reports = () => {
               {formatCurrency(saldoInicialBancos)}
             </p>
             <p className="text-xs text-blue-600 mt-1">
-              {bankSummary?.by_currency ? Object.keys(bankSummary.by_currency).length : 0} monedas
+              {bankSummary?.por_moneda ? Object.keys(bankSummary.por_moneda).length : 0} moneda(s) • 
+              {bankSummary?.total_cuentas || 0} cuenta(s)
             </p>
+            {bankSummary?.por_moneda && Object.entries(bankSummary.por_moneda).length > 0 && (
+              <div className="mt-2 text-xs space-y-1">
+                {Object.entries(bankSummary.por_moneda).map(([moneda, info]) => (
+                  <div key={moneda} className="flex justify-between text-blue-700">
+                    <span>{moneda}:</span>
+                    <span className="mono">{moneda === 'MXN' ? '$' : ''}{info.saldo?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {moneda !== 'MXN' && `(TC: ${bankSummary.tipos_cambio?.[moneda] || '?'})`}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
