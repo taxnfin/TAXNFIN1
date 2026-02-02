@@ -891,11 +891,108 @@ const Dashboard = () => {
       {/* Escenarios de Liquidez */}
       <Card className="shadow-sm">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <AlertTriangle size={16} className="text-amber-600" />
-            Análisis de Escenarios
-          </CardTitle>
-          <CardDescription>Proyección de liquidez bajo diferentes condiciones</CardDescription>
+          <div className="flex justify-between items-center">
+            <div>
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <AlertTriangle size={16} className="text-amber-600" />
+                Análisis de Escenarios
+              </CardTitle>
+              <CardDescription>Proyección de liquidez bajo diferentes condiciones</CardDescription>
+            </div>
+            <Dialog open={scenarioDialogOpen} onOpenChange={(open) => {
+              setScenarioDialogOpen(open);
+              if (open) setTempScenarioConfig(scenarioConfig);
+            }}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <Settings size={14} />
+                  Configurar
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Configurar Escenarios</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-6 py-4">
+                  {/* Pesimista */}
+                  <div className="space-y-3 p-4 bg-red-50 rounded-lg border border-red-200">
+                    <div className="flex items-center gap-2">
+                      <TrendingDown size={16} className="text-red-600" />
+                      <span className="font-medium text-red-800">Escenario Pesimista</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Variación Cobranza (%)</Label>
+                        <Input 
+                          type="number" 
+                          value={tempScenarioConfig.pesimista.cobranza}
+                          onChange={(e) => setTempScenarioConfig({
+                            ...tempScenarioConfig,
+                            pesimista: { ...tempScenarioConfig.pesimista, cobranza: parseFloat(e.target.value) || 0 }
+                          })}
+                          className="h-8"
+                        />
+                        <p className="text-xs text-gray-500">Negativo = menos cobranza</p>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Variación Gastos (%)</Label>
+                        <Input 
+                          type="number" 
+                          value={tempScenarioConfig.pesimista.gastos}
+                          onChange={(e) => setTempScenarioConfig({
+                            ...tempScenarioConfig,
+                            pesimista: { ...tempScenarioConfig.pesimista, gastos: parseFloat(e.target.value) || 0 }
+                          })}
+                          className="h-8"
+                        />
+                        <p className="text-xs text-gray-500">Positivo = más gastos</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Optimista */}
+                  <div className="space-y-3 p-4 bg-green-50 rounded-lg border border-green-200">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp size={16} className="text-green-600" />
+                      <span className="font-medium text-green-800">Escenario Optimista</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Variación Cobranza (%)</Label>
+                        <Input 
+                          type="number" 
+                          value={tempScenarioConfig.optimista.cobranza}
+                          onChange={(e) => setTempScenarioConfig({
+                            ...tempScenarioConfig,
+                            optimista: { ...tempScenarioConfig.optimista, cobranza: parseFloat(e.target.value) || 0 }
+                          })}
+                          className="h-8"
+                        />
+                        <p className="text-xs text-gray-500">Positivo = más cobranza</p>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Variación Gastos (%)</Label>
+                        <Input 
+                          type="number" 
+                          value={tempScenarioConfig.optimista.gastos}
+                          onChange={(e) => setTempScenarioConfig({
+                            ...tempScenarioConfig,
+                            optimista: { ...tempScenarioConfig.optimista, gastos: parseFloat(e.target.value) || 0 }
+                          })}
+                          className="h-8"
+                        />
+                        <p className="text-xs text-gray-500">Negativo = menos gastos</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setScenarioDialogOpen(false)}>Cancelar</Button>
+                  <Button onClick={handleSaveScenarios} className="bg-[#0F172A]">Guardar</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -905,11 +1002,16 @@ const Dashboard = () => {
                 <TrendingDown size={16} className="text-red-600" />
                 <span className="font-medium text-red-800">Escenario Pesimista</span>
               </div>
-              <p className="text-xs text-gray-600 mb-3">Cobranza baja 30%, gastos suben 15%</p>
+              <p className="text-xs text-gray-600 mb-3">
+                Cobranza {scenarioConfig.pesimista.cobranza >= 0 ? '+' : ''}{scenarioConfig.pesimista.cobranza}%, 
+                gastos {scenarioConfig.pesimista.gastos >= 0 ? '+' : ''}{scenarioConfig.pesimista.gastos}%
+              </p>
               {(() => {
                 const avgIng = chartData.reduce((sum, w) => sum + (w.ingresos || 0), 0) / Math.max(chartData.length, 1);
                 const avgEgr = chartData.reduce((sum, w) => sum + (w.egresos || 0), 0) / Math.max(chartData.length, 1);
-                const pesimista = saldoInicial + ((avgIng * 0.7) - (avgEgr * 1.15)) * 13;
+                const cobranzaFactor = 1 + (scenarioConfig.pesimista.cobranza / 100);
+                const gastosFactor = 1 + (scenarioConfig.pesimista.gastos / 100);
+                const pesimista = saldoInicial + ((avgIng * cobranzaFactor) - (avgEgr * gastosFactor)) * 13;
                 return (
                   <div className={`text-xl font-bold ${pesimista < 0 ? 'text-red-600' : 'text-gray-800'}`}>
                     {formatCurrency(pesimista)}
@@ -939,11 +1041,16 @@ const Dashboard = () => {
                 <TrendingUp size={16} className="text-green-600" />
                 <span className="font-medium text-green-800">Escenario Optimista</span>
               </div>
-              <p className="text-xs text-gray-600 mb-3">Cobranza mejora 20%, gastos bajan 10%</p>
+              <p className="text-xs text-gray-600 mb-3">
+                Cobranza {scenarioConfig.optimista.cobranza >= 0 ? '+' : ''}{scenarioConfig.optimista.cobranza}%, 
+                gastos {scenarioConfig.optimista.gastos >= 0 ? '+' : ''}{scenarioConfig.optimista.gastos}%
+              </p>
               {(() => {
                 const avgIng = chartData.reduce((sum, w) => sum + (w.ingresos || 0), 0) / Math.max(chartData.length, 1);
                 const avgEgr = chartData.reduce((sum, w) => sum + (w.egresos || 0), 0) / Math.max(chartData.length, 1);
-                const optimista = saldoInicial + ((avgIng * 1.2) - (avgEgr * 0.9)) * 13;
+                const cobranzaFactor = 1 + (scenarioConfig.optimista.cobranza / 100);
+                const gastosFactor = 1 + (scenarioConfig.optimista.gastos / 100);
+                const optimista = saldoInicial + ((avgIng * cobranzaFactor) - (avgEgr * gastosFactor)) * 13;
                 return (
                   <div className="text-xl font-bold text-green-800">
                     {formatCurrency(optimista)}
