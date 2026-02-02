@@ -40,6 +40,35 @@ const Dashboard = () => {
   const [lastRateSync, setLastRateSync] = useState(null);
   const [schedulerStatus, setSchedulerStatus] = useState(null);
   const [fxAlerts, setFxAlerts] = useState(null);
+  
+  // Configurable scenarios - load from localStorage or use defaults
+  const [scenarioConfig, setScenarioConfig] = useState(() => {
+    const saved = localStorage.getItem('scenarioConfig');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Error loading scenario config');
+      }
+    }
+    return {
+      pesimista: { cobranza: -30, gastos: 15 },
+      optimista: { cobranza: 20, gastos: -10 }
+    };
+  });
+  const [scenarioDialogOpen, setScenarioDialogOpen] = useState(false);
+  const [tempScenarioConfig, setTempScenarioConfig] = useState(scenarioConfig);
+
+  // Save scenario config to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('scenarioConfig', JSON.stringify(scenarioConfig));
+  }, [scenarioConfig]);
+
+  const handleSaveScenarios = () => {
+    setScenarioConfig(tempScenarioConfig);
+    setScenarioDialogOpen(false);
+    toast.success('Escenarios actualizados');
+  };
 
   useEffect(() => {
     loadBankAccounts();
