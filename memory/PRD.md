@@ -315,9 +315,39 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
-## Latest Updates (January 22, 2026 - Session 2)
+## Latest Updates (February 2, 2026)
 
 ### Completed in This Session ✅
+
+**Filtros en Aging de Cartera (CxC / CxP)**
+
+1. ✅ **Filtros implementados en Cuentas por Cobrar (CxC)**
+   - Búsqueda por nombre de **Cliente**
+   - Selector de **Moneda** (Todas, MXN, USD, EUR)
+   - Selector de **Antigüedad** (Vigente, 1-30 días, 31-60 días, etc.)
+   - Rango de fechas de emisión (**Desde** / **Hasta**)
+   - Botón "Limpiar filtros" cuando hay filtros activos
+
+2. ✅ **Filtros implementados en Cuentas por Pagar (CxP)**
+   - Búsqueda por nombre de **Proveedor**
+   - Selector de **Moneda** (Todas, MXN, USD, EUR)
+   - Selector de **Antigüedad** (Vigente, 1-30 días, 31-60 días, etc.)
+   - Rango de fechas de emisión (**Desde** / **Hasta**)
+   - Botón "Limpiar filtros" cuando hay filtros activos
+
+3. ✅ **Funcionalidades adicionales**
+   - Total filtrado mostrado en la descripción de la tabla
+   - Contador de facturas filtradas vs total
+   - Los filtros persisten al cambiar entre pestañas CxC/CxP
+   - Mensaje contextual cuando no hay resultados con los filtros aplicados
+
+**Archivo modificado:** `frontend/src/pages/Transactions.js`
+
+---
+
+## Previous Updates (January 22, 2026 - Session 2)
+
+### Completed Previously ✅
 
 **Corrección 1: Conciliación = Pagado/Cobrado**
 
