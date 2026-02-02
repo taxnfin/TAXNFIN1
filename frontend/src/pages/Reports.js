@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { format, addWeeks, addDays } from 'date-fns';
-import { TrendingUp, TrendingDown, Calendar, RefreshCw } from 'lucide-react';
+import { TrendingUp, TrendingDown, Calendar, RefreshCw, Wallet, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // All available currencies
@@ -20,9 +20,13 @@ const CURRENCIES = [
   { code: 'CNY', name: 'Yuan Chino', symbol: '¥' },
 ];
 
+// Threshold for highlighting significant variances (percentage)
+const VARIANCE_THRESHOLD = 20; // 20% deviation from projected
+
 const Reports = () => {
   const [payments, setPayments] = useState([]);
   const [cfdis, setCfdis] = useState([]);
+  const [bankSummary, setBankSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedCurrency, setSelectedCurrency] = useState('MXN');
   const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.4545, EUR: 20.4852, GBP: 22.00, JPY: 0.13, CHF: 20.00, CAD: 13.00, CNY: 2.40 });
@@ -34,13 +38,15 @@ const Reports = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [paymentsRes, cfdisRes, fxRes] = await Promise.all([
+      const [paymentsRes, cfdisRes, fxRes, bankRes] = await Promise.all([
         api.get('/payments'),
         api.get('/cfdi?limit=500'),
-        api.get('/fx-rates/latest')
+        api.get('/fx-rates/latest'),
+        api.get('/bank-accounts/summary')
       ]);
       setPayments(paymentsRes.data || []);
       setCfdis(cfdisRes.data || []);
+      setBankSummary(bankRes.data || null);
       
       if (fxRes.data?.rates) {
         setFxRates(prev => ({ ...prev, ...fxRes.data.rates }));
@@ -52,11 +58,17 @@ const Reports = () => {
     }
   };
 
+  // Get initial bank balance in MXN
+  const saldoInicialBancos = useMemo(() => {
+    if (!bankSummary) return 0;
+    return bankSummary.total_mxn || 0;
+  }, [bankSummary]);
+
   // Convert amount to MXN
   const convertToMXN = (amount, currency) => {
     if (!amount) return 0;
     if (currency === 'MXN' || !currency) return amount;
-    const rate = fxRates[currency] || 17.4545;  // Use current API rate as fallback
+    const rate = fxRates[currency] || 17.4545;
     return amount * rate;
   };
 
@@ -86,10 +98,8 @@ const Reports = () => {
   // - S1-S4: 4 semanas históricas (Real)
   // - S5: Semana actual (Actual)  
   // - S6-S18: 13 semanas futuras proyectadas (Proy)
-  // TOTAL: 18 semanas visibles
   const HISTORICAL_WEEKS = 4;
   const FORECAST_WEEKS = 13;
-  const TOTAL_WEEKS = HISTORICAL_WEEKS + 1 + FORECAST_WEEKS; // 18
   
   const weeksData = useMemo(() => {
     const today = new Date();
@@ -117,7 +127,10 @@ const Reports = () => {
         cobrosReales: 0,
         pagosReales: 0,
         cobrosProyectados: 0,
-        pagosProyectados: 0
+        pagosProyectados: 0,
+        // Store original projections for variance calculation
+        cobrosProyectadosOriginal: 0,
+        pagosProyectadosOriginal: 0
       });
     }
     
@@ -138,7 +151,9 @@ const Reports = () => {
       cobrosReales: 0,
       pagosReales: 0,
       cobrosProyectados: 0,
-      pagosProyectados: 0
+      pagosProyectados: 0,
+      cobrosProyectadosOriginal: 0,
+      pagosProyectadosOriginal: 0
     });
     
     // S6-S18: 13 semanas futuras proyectadas (Proy)
@@ -161,14 +176,16 @@ const Reports = () => {
         cobrosReales: 0,
         pagosReales: 0,
         cobrosProyectados: 0,
-        pagosProyectados: 0
+        pagosProyectados: 0,
+        cobrosProyectadosOriginal: 0,
+        pagosProyectadosOriginal: 0
       });
     }
     
     // Track processed bank transactions to avoid duplicates
     const processedBankTxns = new Set();
     
-    // Process REAL payments (completed) - for historical and current weeks
+    // Process REAL payments (completed)
     payments.forEach(payment => {
       if (payment.estatus !== 'completado') return;
       
@@ -202,7 +219,7 @@ const Reports = () => {
       }
     });
     
-    // Process PROJECTED data from pending CFDIs (for current and future weeks only)
+    // Process PROJECTED data from pending CFDIs
     cfdis.forEach(cfdi => {
       const total = cfdi.total || 0;
       const pagado = cfdi.monto_pagado || 0;
@@ -233,12 +250,23 @@ const Reports = () => {
       
       if (weekIdx === -1) return;
       
-      // Only add projections to current and future weeks
+      // Add projections to current and future weeks
       if (weeks[weekIdx].type === 'ACTUAL' || weeks[weekIdx].type === 'PROYECTADO') {
         if (cfdi.tipo_cfdi === 'ingreso') {
           weeks[weekIdx].cobrosProyectados += pendienteMXN;
+          weeks[weekIdx].cobrosProyectadosOriginal += pendienteMXN;
         } else if (cfdi.tipo_cfdi === 'egreso') {
           weeks[weekIdx].pagosProyectados += pendienteMXN;
+          weeks[weekIdx].pagosProyectadosOriginal += pendienteMXN;
+        }
+      }
+      
+      // For historical weeks, store what was projected (for variance)
+      if (weeks[weekIdx].type === 'REAL') {
+        if (cfdi.tipo_cfdi === 'ingreso') {
+          weeks[weekIdx].cobrosProyectadosOriginal += pendienteMXN;
+        } else if (cfdi.tipo_cfdi === 'egreso') {
+          weeks[weekIdx].pagosProyectadosOriginal += pendienteMXN;
         }
       }
     });
@@ -246,16 +274,78 @@ const Reports = () => {
     return weeks;
   }, [payments, cfdis, fxRates]);
 
+  // Calculate running bank balance for each week
+  const weeksWithBalance = useMemo(() => {
+    let runningBalance = saldoInicialBancos;
+    
+    return weeksData.map((week, idx) => {
+      // For historical weeks, use real data
+      // For current/future, mix real + projected
+      const cobros = week.cobrosReales + (week.isFuture || week.isCurrent ? week.cobrosProyectados : 0);
+      const pagos = week.pagosReales + (week.isFuture || week.isCurrent ? week.pagosProyectados : 0);
+      const flujoNeto = cobros - pagos;
+      
+      // Calculate balance at end of week
+      const saldoInicial = runningBalance;
+      const saldoFinal = runningBalance + flujoNeto;
+      runningBalance = saldoFinal;
+      
+      // Calculate variance (Real vs Projected) for historical weeks
+      let variacionCobros = 0;
+      let variacionPagos = 0;
+      let variacionPorcentajeCobros = 0;
+      let variacionPorcentajePagos = 0;
+      let hasSignificantVariance = false;
+      
+      if (week.isPast && (week.cobrosProyectadosOriginal > 0 || week.pagosProyectadosOriginal > 0)) {
+        // Cobros variance
+        if (week.cobrosProyectadosOriginal > 0) {
+          variacionCobros = week.cobrosReales - week.cobrosProyectadosOriginal;
+          variacionPorcentajeCobros = ((week.cobrosReales - week.cobrosProyectadosOriginal) / week.cobrosProyectadosOriginal) * 100;
+          if (Math.abs(variacionPorcentajeCobros) > VARIANCE_THRESHOLD) {
+            hasSignificantVariance = true;
+          }
+        }
+        
+        // Pagos variance
+        if (week.pagosProyectadosOriginal > 0) {
+          variacionPagos = week.pagosReales - week.pagosProyectadosOriginal;
+          variacionPorcentajePagos = ((week.pagosReales - week.pagosProyectadosOriginal) / week.pagosProyectadosOriginal) * 100;
+          if (Math.abs(variacionPorcentajePagos) > VARIANCE_THRESHOLD) {
+            hasSignificantVariance = true;
+          }
+        }
+      }
+      
+      return {
+        ...week,
+        saldoInicial,
+        saldoFinal,
+        flujoNeto,
+        variacionCobros,
+        variacionPagos,
+        variacionPorcentajeCobros,
+        variacionPorcentajePagos,
+        hasSignificantVariance
+      };
+    });
+  }, [weeksData, saldoInicialBancos]);
+
   // Calculate totals
   const totals = useMemo(() => {
-    return weeksData.reduce((acc, week) => {
+    return weeksWithBalance.reduce((acc, week) => {
       acc.cobrosReales += week.cobrosReales;
       acc.pagosReales += week.pagosReales;
       acc.cobrosProyectados += week.cobrosProyectados;
       acc.pagosProyectados += week.pagosProyectados;
       return acc;
     }, { cobrosReales: 0, pagosReales: 0, cobrosProyectados: 0, pagosProyectados: 0 });
-  }, [weeksData]);
+  }, [weeksWithBalance]);
+
+  // Get final projected balance
+  const saldoFinalProyectado = weeksWithBalance.length > 0 
+    ? weeksWithBalance[weeksWithBalance.length - 1].saldoFinal 
+    : saldoInicialBancos;
 
   if (loading) return <div className="p-8">Cargando...</div>;
 
@@ -289,6 +379,57 @@ const Reports = () => {
         </div>
       </div>
 
+      {/* Bank Balance Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-blue-800 flex items-center gap-2">
+              <Wallet size={16} />
+              Saldo Inicial Bancos
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold mono text-blue-700">
+              {formatCurrency(saldoInicialBancos)}
+            </p>
+            <p className="text-xs text-blue-600 mt-1">
+              {bankSummary?.by_currency ? Object.keys(bankSummary.by_currency).length : 0} monedas
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className={`border-2 ${(totals.cobrosReales - totals.pagosReales) >= 0 ? 'border-green-400 bg-gradient-to-br from-green-50 to-green-100' : 'border-red-400 bg-gradient-to-br from-red-50 to-red-100'}`}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-gray-800 flex items-center gap-2">
+              {(totals.cobrosReales - totals.pagosReales) >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+              Flujo Neto Real (S1-S5)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className={`text-2xl font-bold mono ${(totals.cobrosReales - totals.pagosReales) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+              {(totals.cobrosReales - totals.pagosReales) >= 0 ? '+' : ''}{formatCurrency(totals.cobrosReales - totals.pagosReales)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className={`border-2 ${saldoFinalProyectado >= 0 ? 'border-emerald-400 bg-gradient-to-br from-emerald-50 to-emerald-100' : 'border-red-400 bg-gradient-to-br from-red-50 to-red-100'}`}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-gray-800 flex items-center gap-2">
+              <Calendar size={16} />
+              Saldo Proyectado S18
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className={`text-2xl font-bold mono ${saldoFinalProyectado >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+              {formatCurrency(saldoFinalProyectado)}
+            </p>
+            <p className="text-xs text-gray-600 mt-1">
+              Al {weeksWithBalance.length > 0 ? format(weeksWithBalance[weeksWithBalance.length - 1].weekEnd, 'dd/MM/yyyy') : '-'}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* FX Rate notice */}
       {selectedCurrency !== 'MXN' && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
@@ -301,17 +442,20 @@ const Reports = () => {
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Calendar size={20} />
-            Flujo de Efectivo - 18 Semanas (4 Real + 1 Actual + 13 Proy)
+            Flujo de Efectivo con Saldo de Bancos
           </CardTitle>
-          <CardDescription>
-            <span className="inline-flex items-center gap-1 mr-4">
+          <CardDescription className="flex flex-wrap gap-4">
+            <span className="inline-flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-green-500"></span> Cobrado (Real)
             </span>
-            <span className="inline-flex items-center gap-1 mr-4">
+            <span className="inline-flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-red-500"></span> Pagado (Real)
             </span>
             <span className="inline-flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-gray-400"></span> Proyectado
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <AlertTriangle size={12} className="text-amber-500" /> Variación &gt;{VARIANCE_THRESHOLD}%
             </span>
           </CardDescription>
         </CardHeader>
@@ -319,25 +463,43 @@ const Reports = () => {
           <div className="overflow-x-auto">
             <Table className="text-sm">
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-gray-50">
                   <TableHead className="w-14 font-bold">Sem</TableHead>
                   <TableHead className="w-28">Período</TableHead>
                   <TableHead className="w-16 text-center">Tipo</TableHead>
                   <TableHead className="text-right">Cobros Real</TableHead>
                   <TableHead className="text-right">Pagos Real</TableHead>
-                  <TableHead className="text-right bg-gray-50">Cobros Proy.</TableHead>
-                  <TableHead className="text-right bg-gray-50">Pagos Proy.</TableHead>
+                  <TableHead className="text-right bg-gray-100">Cobros Proy.</TableHead>
+                  <TableHead className="text-right bg-gray-100">Pagos Proy.</TableHead>
                   <TableHead className="text-right font-bold">Flujo Neto</TableHead>
+                  <TableHead className="text-right font-bold bg-blue-50">Saldo Bancos</TableHead>
+                  <TableHead className="text-center">Variación</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {weeksData.map((week) => {
-                  const flujoNeto = (week.cobrosReales + week.cobrosProyectados) - (week.pagosReales + week.pagosProyectados);
+                {/* Initial Balance Row */}
+                <TableRow className="bg-blue-50 border-b-2 border-blue-200">
+                  <TableCell colSpan={8} className="font-semibold text-blue-800">
+                    SALDO INICIAL DE BANCOS
+                  </TableCell>
+                  <TableCell className="mono text-right font-bold text-blue-700 bg-blue-100">
+                    {formatCurrency(saldoInicialBancos)}
+                  </TableCell>
+                  <TableCell></TableCell>
+                </TableRow>
+                
+                {weeksWithBalance.map((week) => {
+                  const isNegativeBalance = week.saldoFinal < 0;
                   
                   return (
                     <TableRow 
                       key={week.label} 
-                      className={week.isCurrent ? 'bg-blue-50' : week.isPast ? '' : 'bg-gray-50/50'}
+                      className={`
+                        ${week.isCurrent ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''} 
+                        ${week.isPast ? '' : 'bg-gray-50/50'}
+                        ${week.hasSignificantVariance ? 'bg-amber-50' : ''}
+                        ${isNegativeBalance ? 'bg-red-50' : ''}
+                      `}
                     >
                       <TableCell className="mono font-bold">{week.label}</TableCell>
                       <TableCell className="text-xs">{week.dateRange}</TableCell>
@@ -364,10 +526,30 @@ const Reports = () => {
                       <TableCell className="mono text-right text-gray-500 bg-gray-50">
                         {week.pagosProyectados > 0 ? formatCurrency(week.pagosProyectados) : '-'}
                       </TableCell>
-                      <TableCell className={`mono text-right font-bold ${flujoNeto >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                        {flujoNeto !== 0 ? (
-                          <>{flujoNeto >= 0 ? '+' : ''}{formatCurrency(flujoNeto)}</>
+                      <TableCell className={`mono text-right font-bold ${week.flujoNeto >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                        {week.flujoNeto !== 0 ? (
+                          <>{week.flujoNeto >= 0 ? '+' : ''}{formatCurrency(week.flujoNeto)}</>
                         ) : '-'}
+                      </TableCell>
+                      <TableCell className={`mono text-right font-bold bg-blue-50 ${isNegativeBalance ? 'text-red-700 bg-red-100' : 'text-blue-700'}`}>
+                        {formatCurrency(week.saldoFinal)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {week.isPast && week.hasSignificantVariance && (
+                          <div className="flex flex-col items-center gap-1">
+                            <AlertTriangle size={14} className="text-amber-500" />
+                            {week.variacionPorcentajeCobros !== 0 && Math.abs(week.variacionPorcentajeCobros) > VARIANCE_THRESHOLD && (
+                              <span className={`text-xs px-1 py-0.5 rounded ${week.variacionPorcentajeCobros > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                C: {week.variacionPorcentajeCobros > 0 ? '+' : ''}{week.variacionPorcentajeCobros.toFixed(0)}%
+                              </span>
+                            )}
+                            {week.variacionPorcentajePagos !== 0 && Math.abs(week.variacionPorcentajePagos) > VARIANCE_THRESHOLD && (
+                              <span className={`text-xs px-1 py-0.5 rounded ${week.variacionPorcentajePagos < 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                P: {week.variacionPorcentajePagos > 0 ? '+' : ''}{week.variacionPorcentajePagos.toFixed(0)}%
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
@@ -380,9 +562,13 @@ const Reports = () => {
                   <TableCell className="mono text-right text-red-400">{formatCurrency(totals.pagosReales)}</TableCell>
                   <TableCell className="mono text-right text-gray-400">{formatCurrency(totals.cobrosProyectados)}</TableCell>
                   <TableCell className="mono text-right text-gray-400">{formatCurrency(totals.pagosProyectados)}</TableCell>
-                  <TableCell className={`mono text-right font-bold ${(totals.cobrosReales - totals.pagosReales) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {formatCurrency(totals.cobrosReales - totals.pagosReales)}
+                  <TableCell className={`mono text-right font-bold ${(totals.cobrosReales + totals.cobrosProyectados - totals.pagosReales - totals.pagosProyectados) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {formatCurrency(totals.cobrosReales + totals.cobrosProyectados - totals.pagosReales - totals.pagosProyectados)}
                   </TableCell>
+                  <TableCell className={`mono text-right font-bold ${saldoFinalProyectado >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                    {formatCurrency(saldoFinalProyectado)}
+                  </TableCell>
+                  <TableCell></TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -420,24 +606,21 @@ const Reports = () => {
           </CardContent>
         </Card>
 
-        <Card className={`border-2 ${(totals.cobrosReales - totals.pagosReales) >= 0 ? 'border-green-400 bg-green-100' : 'border-red-400 bg-red-100'}`}>
+        <Card className="border-blue-200 bg-blue-50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-800">Flujo Neto Real</CardTitle>
+            <CardTitle className="text-sm text-blue-800">Por Cobrar (Proy.)</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className={`text-2xl font-bold mono ${(totals.cobrosReales - totals.pagosReales) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-              {(totals.cobrosReales - totals.pagosReales) >= 0 ? '+' : ''}{formatCurrency(totals.cobrosReales - totals.pagosReales)}
-            </p>
+            <p className="text-2xl font-bold mono text-green-600">+{formatCurrency(totals.cobrosProyectados)}</p>
           </CardContent>
         </Card>
 
-        <Card className="border-blue-200 bg-blue-50">
+        <Card className="border-orange-200 bg-orange-50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-blue-800">Por Cobrar/Pagar (Proy.)</CardTitle>
+            <CardTitle className="text-sm text-orange-800">Por Pagar (Proy.)</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-lg font-bold mono text-green-600">+{formatCurrency(totals.cobrosProyectados)}</p>
-            <p className="text-lg font-bold mono text-red-600">-{formatCurrency(totals.pagosProyectados)}</p>
+            <p className="text-2xl font-bold mono text-red-600">-{formatCurrency(totals.pagosProyectados)}</p>
           </CardContent>
         </Card>
       </div>
