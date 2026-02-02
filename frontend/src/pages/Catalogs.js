@@ -708,6 +708,7 @@ const Catalogs = () => {
                     <TableHead>Número</TableHead>
                     <TableHead>Moneda</TableHead>
                     <TableHead>Saldo Inicial</TableHead>
+                    <TableHead>Fecha Saldo</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -719,6 +720,9 @@ const Catalogs = () => {
                       <TableCell className="mono">{account.numero_cuenta}</TableCell>
                       <TableCell>{account.moneda}</TableCell>
                       <TableCell className="mono">${account.saldo_inicial?.toLocaleString('es-MX') || '0'}</TableCell>
+                      <TableCell className="text-xs">
+                        {account.fecha_saldo ? new Date(account.fecha_saldo).toLocaleDateString('es-MX') : '-'}
+                      </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
                           <Button 
