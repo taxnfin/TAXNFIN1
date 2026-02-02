@@ -406,6 +406,9 @@ const BankStatementsModule = () => {
   // Exchange rates for conversion
   const [fxRates, setFxRates] = useState({ USD: 17.5, EUR: 19.0 });
   
+  // Bank accounts summary with correct FX rates from fecha_saldo
+  const [bankSummary, setBankSummary] = useState(null);
+  
   // Historical exchange rate for reconciliation (based on transaction date)
   const [historicalFxRate, setHistoricalFxRate] = useState(null);
   
