@@ -757,7 +757,7 @@ const Catalogs = () => {
             setDialogs({...dialogs, editAccount: open});
             if (!open) {
               setEditingAccount(null);
-              setAccountForm({ nombre: '', numero_cuenta: '', banco: '', moneda: 'MXN', saldo_inicial: 0 });
+              setAccountForm({ nombre: '', numero_cuenta: '', banco: '', moneda: 'MXN', saldo_inicial: 0, fecha_saldo: '' });
             }
           }}>
             <DialogContent>
