@@ -6837,7 +6837,7 @@ async def get_dashboard_from_payments(
     
     accounts = await db.bank_accounts.find(accounts_query, {'_id': 0}).to_list(50)
     
-    # Calculate initial balance
+    # Calculate initial balance using fecha_saldo for FX rate
     saldo_bancos_mxn = 0
     selected_account_moneda = 'MXN'
     selected_account_saldo = 0
@@ -6845,7 +6845,19 @@ async def get_dashboard_from_payments(
     for acc in accounts:
         saldo = acc.get('saldo_inicial', 0) or 0
         moneda = acc.get('moneda', 'MXN')
-        saldo_bancos_mxn += convert_to_mxn(saldo, moneda)
+        fecha_saldo = acc.get('fecha_saldo')
+        
+        # Use the FX rate from fecha_saldo date
+        if fecha_saldo and moneda != 'MXN':
+            if isinstance(fecha_saldo, str):
+                fecha_saldo = datetime.fromisoformat(fecha_saldo.replace('Z', '+00:00').split('+')[0])
+            rate = await get_fx_rate_by_date(company_id, moneda, fecha_saldo)
+        else:
+            rate = fx_map.get(moneda, 1) if moneda != 'MXN' else 1
+        
+        saldo_mxn = saldo * rate if moneda != 'MXN' else saldo
+        saldo_bancos_mxn += saldo_mxn
+        
         if bank_account_id and acc.get('id') == bank_account_id:
             selected_account_moneda = moneda
             selected_account_saldo = saldo
