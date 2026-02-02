@@ -337,6 +337,53 @@ const AgingModule = () => {
   const cxcCurrencies = getUniqueCurrencies('cxc');
   const cxpCurrencies = getUniqueCurrencies('cxp');
 
+  // Export filtered data to Excel
+  const handleExportFiltered = (filteredCfdis, tipo, isFiltered) => {
+    if (filteredCfdis.length === 0) {
+      toast.error('No hay datos para exportar');
+      return;
+    }
+
+    const exportData = filteredCfdis.map(cfdi => {
+      const bucket = getAgingBucket(cfdi, tipo);
+      const bucketLabel = {
+        'vigente': 'Vigente',
+        '1-30': '1-30 días',
+        '31-60': '31-60 días',
+        '61-90': '61-90 días',
+        '91-120': '91-120 días',
+        '120+': '+120 días'
+      }[bucket] || bucket;
+      
+      const pagado = tipo === 'cxc' ? (cfdi.monto_cobrado || 0) : (cfdi.monto_pagado || 0);
+      
+      return {
+        'Antigüedad': bucketLabel,
+        [tipo === 'cxc' ? 'Cliente' : 'Proveedor']: getPartyName(cfdi, tipo),
+        'UUID': cfdi.uuid || '',
+        'Fecha Emisión': format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy'),
+        'Plazo': cfdi.plazo === 0 ? 'Contado' : `${cfdi.plazo} días`,
+        'Vencimiento': format(cfdi.fechaVencimiento, 'dd/MM/yyyy'),
+        'Días Vencido': cfdi.diasVencido,
+        'Moneda': cfdi.moneda || 'MXN',
+        'Total': cfdi.total,
+        'Pagado': pagado,
+        'Pendiente': cfdi.pendiente,
+        'Pendiente MXN': cfdi.pendienteMXN
+      };
+    });
+
+    const tipoNombre = tipo === 'cxc' ? 'CxC' : 'CxP';
+    const filename = isFiltered ? `Aging_${tipoNombre}_Filtrado` : `Aging_${tipoNombre}`;
+    
+    const success = exportToExcel(exportData, filename, `${tipoNombre} Pendientes`);
+    if (success) {
+      toast.success(`${isFiltered ? 'Datos filtrados exportados' : 'Datos exportados'} a Excel`);
+    } else {
+      toast.error('Error al exportar');
+    }
+  };
+
   // Aging bucket options
   const agingOptions = [
     { value: 'todas', label: 'Todas' },
