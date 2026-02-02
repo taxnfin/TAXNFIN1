@@ -76,18 +76,70 @@ const AgingModule = () => {
     return amount * rate;
   };
 
-  // Calculate aging bucket
-  const getAgingBucket = (fechaEmision) => {
-    const today = new Date();
-    const emision = new Date(fechaEmision);
-    const dias = differenceInDays(today, emision);
+  // Get the due date for a CFDI based on:
+  // 1. fecha_vencimiento if exists
+  // 2. fecha_emision + plazo_pago/plazo_cobranza from vendor/customer
+  // 3. fecha_emision + 30 days as default
+  const getDueDate = (cfdi, tipo) => {
+    // If CFDI has explicit due date, use it
+    if (cfdi.fecha_vencimiento) {
+      return new Date(cfdi.fecha_vencimiento);
+    }
     
-    if (dias <= 0) return 'vigente';
-    if (dias <= 30) return '1-30';
-    if (dias <= 60) return '31-60';
-    if (dias <= 90) return '61-90';
-    if (dias <= 120) return '91-120';
+    const fechaEmision = new Date(cfdi.fecha_emision);
+    let plazoDias = 30; // Default: 30 days
+    
+    if (tipo === 'cxc') {
+      // For Accounts Receivable (CxC): use customer's plazo_cobranza
+      const customer = customers.find(c => c.id === cfdi.customer_id || c.rfc === cfdi.receptor_rfc);
+      if (customer && customer.plazo_cobranza !== null && customer.plazo_cobranza !== undefined) {
+        plazoDias = customer.plazo_cobranza;
+      }
+    } else {
+      // For Accounts Payable (CxP): use vendor's plazo_pago
+      const vendor = vendors.find(v => v.id === cfdi.vendor_id || v.rfc === cfdi.emisor_rfc);
+      if (vendor && vendor.plazo_pago !== null && vendor.plazo_pago !== undefined) {
+        plazoDias = vendor.plazo_pago;
+      }
+    }
+    
+    // Add plazo days to emission date
+    const dueDate = new Date(fechaEmision);
+    dueDate.setDate(dueDate.getDate() + plazoDias);
+    return dueDate;
+  };
+
+  // Calculate aging bucket based on days past due date
+  const getAgingBucket = (cfdi, tipo) => {
+    const today = new Date();
+    const dueDate = getDueDate(cfdi, tipo);
+    const diasVencido = differenceInDays(today, dueDate);
+    
+    // If due date is in the future, it's not due yet
+    if (diasVencido <= 0) return 'vigente';
+    if (diasVencido <= 30) return '1-30';
+    if (diasVencido <= 60) return '31-60';
+    if (diasVencido <= 90) return '61-90';
+    if (diasVencido <= 120) return '91-120';
     return '120+';
+  };
+
+  // Get days past due for a CFDI
+  const getDaysOverdue = (cfdi, tipo) => {
+    const today = new Date();
+    const dueDate = getDueDate(cfdi, tipo);
+    return differenceInDays(today, dueDate);
+  };
+
+  // Get the plazo (credit terms) for a CFDI
+  const getPlazo = (cfdi, tipo) => {
+    if (tipo === 'cxc') {
+      const customer = customers.find(c => c.id === cfdi.customer_id || c.rfc === cfdi.receptor_rfc);
+      return customer?.plazo_cobranza ?? 30;
+    } else {
+      const vendor = vendors.find(v => v.id === cfdi.vendor_id || v.rfc === cfdi.emisor_rfc);
+      return vendor?.plazo_pago ?? 30;
+    }
   };
 
   // Process CFDIs for aging
