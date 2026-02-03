@@ -370,6 +370,10 @@ const BankStatementsModule = () => {
   const [transferToAccount, setTransferToAccount] = useState('');
   const [transferring, setTransferring] = useState(false);
   
+  // Highlight state for auto-selected CFDI
+  const [highlightedCfdiId, setHighlightedCfdiId] = useState(null);
+  const cfdiListRef = useRef(null);
+  
   // Montos parciales para conciliación - { cfdiId: montoAplicar }
   const [montosParciales, setMontosParciales] = useState({});
   
