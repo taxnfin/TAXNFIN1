@@ -2308,6 +2308,132 @@ const CashflowProjections = () => {
                         })()}
                       </TableCell>
                     </TableRow>
+                      </>
+                    ) : (
+                      /* ===== VISTA POR PROVEEDOR/CLIENTE ===== */
+                      <>
+                        {/* Header row for totals */}
+                        <TableRow className="bg-gray-100 font-bold border-b-2">
+                          <TableCell className="sticky left-0 bg-gray-100">
+                            <div className="flex items-center gap-2">
+                              <Building2 size={16} className="text-gray-600" />
+                              PROVEEDOR / CLIENTE
+                            </div>
+                          </TableCell>
+                          {weeklyTotals.map((week, idx) => (
+                            <TableCell key={idx} className="text-center text-xs text-gray-600">
+                              Tot: {formatCurrency(week.ingresos.total - week.egresos.total)}
+                            </TableCell>
+                          ))}
+                          <TableCell className="text-center bg-gray-200 font-bold">-</TableCell>
+                        </TableRow>
+
+                        {/* Render each party */}
+                        {(() => {
+                          const partyData = processDataByParty();
+                          // Sort by total absolute value (most important first)
+                          const sortedParties = partyData.sort((a, b) => {
+                            const totalA = Object.values(a.weeks).reduce((s, w) => s + Math.abs(w.ingresos - w.egresos), 0);
+                            const totalB = Object.values(b.weeks).reduce((s, w) => s + Math.abs(w.ingresos - w.egresos), 0);
+                            return totalB - totalA;
+                          });
+
+                          return sortedParties.map(party => {
+                            const totalIngresos = Object.values(party.weeks).reduce((s, w) => s + w.ingresos, 0);
+                            const totalEgresos = Object.values(party.weeks).reduce((s, w) => s + w.egresos, 0);
+                            const netTotal = totalIngresos - totalEgresos;
+                            
+                            if (totalIngresos === 0 && totalEgresos === 0) return null;
+                            
+                            return (
+                              <TableRow 
+                                key={party.id} 
+                                className={`hover:bg-gray-50 ${party.tipo === 'cliente' ? 'hover:bg-green-50/30' : 'hover:bg-red-50/30'}`}
+                              >
+                                <TableCell className="sticky left-0 bg-white">
+                                  <div className="flex items-center gap-2">
+                                    {party.tipo === 'cliente' ? (
+                                      <User size={14} className="text-blue-500" />
+                                    ) : (
+                                      <Building2 size={14} className="text-orange-500" />
+                                    )}
+                                    <span className="truncate max-w-[170px]" title={party.nombre}>
+                                      {party.nombre}
+                                    </span>
+                                    <Badge variant="outline" className="text-xs ml-1">
+                                      {party.tipo === 'cliente' ? 'C' : 'P'}
+                                    </Badge>
+                                  </div>
+                                </TableCell>
+                                {weeklyTotals.map((_, weekIdx) => {
+                                  const weekData = party.weeks[weekIdx] || { ingresos: 0, egresos: 0 };
+                                  const netValue = weekData.ingresos - weekData.egresos;
+                                  const hasItems = weekData.ingresos > 0 || weekData.egresos > 0;
+                                  
+                                  return (
+                                    <TableCell 
+                                      key={weekIdx} 
+                                      className={`text-center text-sm ${
+                                        netValue > 0 ? 'text-green-600' : 
+                                        netValue < 0 ? 'text-red-600' : 'text-gray-400'
+                                      } ${hasItems ? 'cursor-pointer hover:bg-gray-100 hover:underline' : ''}`}
+                                      onClick={() => {
+                                        if (hasItems) {
+                                          // Open drill-down with party's items for this week
+                                          const items = weekData.items || [];
+                                          setDrillDownData({
+                                            weekNum: weekIdx + 1,
+                                            weekLabel: weeklyData[weekIdx]?.label || `S${weekIdx + 1}`,
+                                            dateLabel: weeklyData[weekIdx]?.dateLabel || '',
+                                            dataType: weeklyData[weekIdx]?.dataType,
+                                            tipo: netValue >= 0 ? 'ingreso' : 'egreso',
+                                            categoryName: party.nombre,
+                                            subcategoryName: party.tipo === 'cliente' ? 'Cliente' : 'Proveedor',
+                                            items: items.map(item => ({
+                                              ...item,
+                                              tercero: party.nombre,
+                                              terceroTipo: party.tipo
+                                            })),
+                                            total: netValue
+                                          });
+                                          setDrillDownOpen(true);
+                                        }
+                                      }}
+                                    >
+                                      {netValue !== 0 ? formatCurrency(netValue) : '-'}
+                                    </TableCell>
+                                  );
+                                })}
+                                <TableCell className={`text-center font-bold ${
+                                  netTotal > 0 ? 'bg-green-50 text-green-700' : 
+                                  netTotal < 0 ? 'bg-red-50 text-red-700' : 'text-gray-500'
+                                }`}>
+                                  {formatCurrency(netTotal)}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          });
+                        })()}
+
+                        {/* Totals row */}
+                        <TableRow className="bg-gray-200 font-bold border-t-2">
+                          <TableCell className="sticky left-0 bg-gray-200">
+                            TOTAL NETO
+                          </TableCell>
+                          {weeklyTotals.map((week, idx) => {
+                            const net = week.ingresos.total - week.egresos.total;
+                            return (
+                              <TableCell key={idx} className={`text-center font-bold ${net >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                {formatCurrency(net)}
+                              </TableCell>
+                            );
+                          })}
+                          <TableCell className={`text-center font-bold ${grandTotalFlujo >= 0 ? 'text-green-800 bg-green-100' : 'text-red-800 bg-red-100'}`}>
+                            {formatCurrency(grandTotalFlujo)}
+                          </TableCell>
+                        </TableRow>
+                      </>
+                    )}
                   </TableBody>
                 </Table>
               </div>
