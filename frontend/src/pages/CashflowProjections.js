@@ -439,6 +439,7 @@ const CashflowProjections = () => {
         concepto: payment.concepto,
         beneficiario: payment.beneficiario,
         uuid: payment.cfdi_uuid,
+        bankAccountId: payment.bank_account_id,
         source: 'payment'
       });
       
