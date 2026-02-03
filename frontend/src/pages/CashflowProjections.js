@@ -1211,6 +1211,58 @@ const CashflowProjections = () => {
     return Object.values(partyMap);
   };
 
+  // Filter party data based on current filters
+  const filterPartyData = (partyData) => {
+    return partyData.filter(party => {
+      // Filter by search term
+      if (partyFilters.searchTerm.trim() !== '') {
+        const searchLower = partyFilters.searchTerm.toLowerCase();
+        if (!party.nombre.toLowerCase().includes(searchLower)) {
+          return false;
+        }
+      }
+      
+      // Filter by tipo tercero
+      if (partyFilters.tipoTercero !== 'todos') {
+        if (party.tipo !== partyFilters.tipoTercero) {
+          return false;
+        }
+      }
+      
+      // Filter by saldo tipo
+      if (partyFilters.saldoTipo !== 'todos') {
+        const totalIngresos = Object.values(party.weeks).reduce((s, w) => s + w.ingresos, 0);
+        const totalEgresos = Object.values(party.weeks).reduce((s, w) => s + w.egresos, 0);
+        const netTotal = totalIngresos - totalEgresos;
+        
+        if (partyFilters.saldoTipo === 'positivo' && netTotal <= 0) {
+          return false;
+        }
+        if (partyFilters.saldoTipo === 'negativo' && netTotal >= 0) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+  };
+
+  // Check if party filters are active
+  const hasPartyFiltersActive = () => {
+    return partyFilters.searchTerm.trim() !== '' || 
+           partyFilters.tipoTercero !== 'todos' || 
+           partyFilters.saldoTipo !== 'todos';
+  };
+
+  // Reset party filters
+  const resetPartyFilters = () => {
+    setPartyFilters({
+      searchTerm: '',
+      tipoTercero: 'todos',
+      saldoTipo: 'todos'
+    });
+  };
+
   // =====================================================================
   // EXPORTAR REPORTE DETALLADO
   // =====================================================================
