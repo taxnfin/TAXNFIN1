@@ -533,6 +533,8 @@ const CashflowProjections = () => {
         uuid: cfdi.uuid,
         emisor: cfdi.emisor_nombre,
         receptor: cfdi.receptor_nombre,
+        fecha: cfdi.fecha_emision,
+        moneda: cfdi.moneda,
         source: 'cfdi'
       });
       
