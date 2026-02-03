@@ -2561,6 +2561,136 @@ const CashflowProjections = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* ===== DRILL-DOWN DIALOG ===== */}
+      <Dialog open={drillDownOpen} onOpenChange={setDrillDownOpen}>
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              <Eye size={20} className={drillDownData.tipo === 'ingreso' ? 'text-green-600' : 'text-red-600'} />
+              <span>
+                Detalle: {drillDownData.categoryName}
+                {drillDownData.subcategoryName && ` > ${drillDownData.subcategoryName}`}
+              </span>
+              <Badge variant={drillDownData.dataType === 'real' ? 'default' : drillDownData.dataType === 'actual' ? 'secondary' : 'outline'}>
+                {drillDownData.weekLabel} - {drillDownData.dataType === 'real' ? 'Real' : drillDownData.dataType === 'actual' ? 'Actual' : 'Proyectado'}
+              </Badge>
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-auto">
+            {/* Summary */}
+            <div className="grid grid-cols-3 gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
+              <div>
+                <div className="text-xs text-gray-500">Semana</div>
+                <div className="font-bold">{drillDownData.weekLabel} ({drillDownData.dateLabel})</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Tipo</div>
+                <div className={`font-bold ${drillDownData.tipo === 'ingreso' ? 'text-green-600' : 'text-red-600'}`}>
+                  {drillDownData.tipo === 'ingreso' ? '↑ Ingreso' : '↓ Egreso'}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Total</div>
+                <div className="font-bold text-lg">{formatCurrency(drillDownData.total)}</div>
+              </div>
+            </div>
+
+            {/* Items Table */}
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-gray-100">
+                  <TableHead className="w-[180px]">Proveedor/Cliente</TableHead>
+                  <TableHead className="w-[100px]">UUID</TableHead>
+                  <TableHead className="w-[90px]">Fecha</TableHead>
+                  <TableHead className="text-right w-[100px]">Monto</TableHead>
+                  <TableHead className="w-[70px]">Moneda</TableHead>
+                  <TableHead className="text-right w-[110px]">Monto MXN</TableHead>
+                  <TableHead className="w-[180px]">Mov. Bancario</TableHead>
+                  <TableHead className="w-[90px] text-center">Conciliado</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {drillDownData.items.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                      No hay items para mostrar
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  drillDownData.items.map((item, idx) => (
+                    <TableRow key={idx} className="hover:bg-gray-50">
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {item.terceroTipo === 'cliente' ? (
+                            <User size={14} className="text-blue-500" />
+                          ) : (
+                            <Building2 size={14} className="text-orange-500" />
+                          )}
+                          <span className="truncate max-w-[150px]" title={item.tercero}>
+                            {item.tercero || 'Sin asignar'}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {item.uuid ? (
+                          <span title={item.uuid}>{item.uuid.substring(0, 8)}...</span>
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {item.fechaFactura ? format(new Date(item.fechaFactura), 'dd/MM/yy') : '-'}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {formatCurrency(item.montoOriginal || item.monto)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">
+                          {item.moneda || 'MXN'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm font-bold">
+                        {formatCurrency(item.monto)}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {item.bankTxnDescripcion ? (
+                          <span className="truncate max-w-[170px] block" title={item.bankTxnDescripcion}>
+                            {item.bankTxnDescripcion}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {item.conciliado ? (
+                          <span className="inline-flex items-center justify-center w-6 h-6 bg-green-100 rounded-full">
+                            <Check size={14} className="text-green-600" />
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full">
+                            <XIcon size={14} className="text-gray-400" />
+                          </span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          
+          <DialogFooter className="border-t pt-4">
+            <div className="flex justify-between items-center w-full">
+              <div className="text-sm text-gray-500">
+                {drillDownData.items.length} movimiento(s)
+              </div>
+              <Button variant="outline" onClick={() => setDrillDownOpen(false)}>
+                Cerrar
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
