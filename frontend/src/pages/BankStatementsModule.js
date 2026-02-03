@@ -2572,15 +2572,42 @@ const BankStatementsModule = () => {
                         const cfdiId = cfdiData.id || cfdiData.cfdi_id;
                         const cfdiToSelect = cfdis.find(c => c.id === cfdiId);
                         
+                        console.log('First match ID:', cfdiId);
+                        console.log('CFDI found in local state:', cfdiToSelect?.id);
+                        
                         if (cfdiToSelect && !selectedCfdis.find(c => c.id === cfdiToSelect.id)) {
+                          // Clear search term to show all CFDIs
+                          setCfdiSearchTerm('');
+                          
+                          // Add to selection
                           setSelectedCfdis(prev => [...prev, cfdiToSelect]);
+                          
+                          // Initialize partial amount
+                          const saldoPendiente = cfdiToSelect.saldo_pendiente ?? (cfdiToSelect.total - (cfdiToSelect.monto_pagado || 0));
+                          setMontosParciales(prevMontos => ({
+                            ...prevMontos,
+                            [cfdiToSelect.id]: Math.max(0, saldoPendiente)
+                          }));
+                          
+                          // Highlight the selected CFDI
+                          setHighlightedCfdiId(cfdiId);
+                          setTimeout(() => setHighlightedCfdiId(null), 3000);
+                          
+                          // Scroll to the CFDI
+                          setTimeout(() => {
+                            const element = document.querySelector(`[data-cfdi-id="${cfdiId}"]`);
+                            if (element) {
+                              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }
+                          }, 100);
+                          
                           const nombre = cfdiData.emisor_nombre || cfdiData.receptor_nombre || 'CFDI';
                           const score = firstMatch.score || cfdiData.score;
                           const razones = (firstMatch.match_reasons || cfdiData.match_reasons || []).join(', ');
                           toast.success(`✓ Auto-seleccionado: ${nombre} - Score: ${score} (${razones})`);
                         } else if (!cfdiToSelect) {
                           const nombre = cfdiData.emisor_nombre || cfdiData.receptor_nombre || 'CFDI';
-                          toast.warning(`Coincidencia encontrada: ${nombre} ($${cfdiData.total?.toLocaleString()}) pero no está en la lista filtrada`);
+                          toast.warning(`Coincidencia encontrada: ${nombre} ($${cfdiData.total?.toLocaleString()}) pero no está en la lista (puede estar conciliado o filtrado)`);
                         }
                       } else {
                         toast.info('No se encontraron coincidencias automáticas para este movimiento');
