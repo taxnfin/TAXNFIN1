@@ -1044,41 +1044,60 @@ const CashflowProjections = () => {
         ? reconciliations.find(r => r.bank_transaction_id === bankTxn.id)
         : null;
       
-      // Get vendor/customer info
-      let tercero = item.beneficiario || payment?.beneficiario || '';
+      // Get vendor/customer info - prioritize item's own data first
+      let tercero = '';
       let terceroTipo = '';
       
-      if (payment?.vendor_id) {
-        const vendor = vendors.find(v => v.id === payment.vendor_id);
-        tercero = vendor?.nombre || tercero;
-        terceroTipo = 'proveedor';
-      } else if (payment?.customer_id) {
-        const customer = customers.find(c => c.id === payment.customer_id);
-        tercero = customer?.nombre || tercero;
+      // First try: Use item's direct emisor/receptor data (from CFDI processing)
+      if (tipo === 'ingreso') {
+        tercero = item.receptor || item.beneficiario || '';
         terceroTipo = 'cliente';
-      } else if (cfdi) {
+      } else {
+        tercero = item.emisor || item.beneficiario || '';
+        terceroTipo = 'proveedor';
+      }
+      
+      // Second try: Get from payment's vendor/customer
+      if (!tercero && payment?.vendor_id) {
+        const vendor = vendors.find(v => v.id === payment.vendor_id);
+        tercero = vendor?.nombre || payment.beneficiario || '';
+        terceroTipo = 'proveedor';
+      } else if (!tercero && payment?.customer_id) {
+        const customer = customers.find(c => c.id === payment.customer_id);
+        tercero = customer?.nombre || payment.beneficiario || '';
+        terceroTipo = 'cliente';
+      }
+      
+      // Third try: Get from CFDI emisor/receptor
+      if (!tercero && cfdi) {
         if (tipo === 'ingreso') {
           const customer = customers.find(c => c.rfc === cfdi.receptor_rfc);
-          tercero = customer?.nombre || cfdi.receptor_nombre || tercero;
+          tercero = customer?.nombre || cfdi.receptor_nombre || '';
           terceroTipo = 'cliente';
         } else {
           const vendor = vendors.find(v => v.rfc === cfdi.emisor_rfc);
-          tercero = vendor?.nombre || cfdi.emisor_nombre || tercero;
+          tercero = vendor?.nombre || cfdi.emisor_nombre || '';
           terceroTipo = 'proveedor';
         }
+      }
+      
+      // Final fallback: use beneficiario from payment
+      if (!tercero && payment?.beneficiario) {
+        tercero = payment.beneficiario;
+        terceroTipo = tipo === 'ingreso' ? 'cliente' : 'proveedor';
       }
       
       return {
         ...item,
         paymentId: payment?.id,
         concepto: item.concepto || payment?.concepto || cfdi?.concepto || '',
-        tercero,
-        terceroTipo,
+        tercero: tercero || 'Sin asignar',
+        terceroTipo: terceroTipo || (tipo === 'ingreso' ? 'cliente' : 'proveedor'),
         uuid: item.uuid || cfdi?.uuid || '',
         folio: cfdi?.folio || '',
-        fechaFactura: cfdi?.fecha_emision || payment?.fecha_pago,
+        fechaFactura: cfdi?.fecha_emision || payment?.fecha_pago || item.fecha,
         montoOriginal: payment?.monto || cfdi?.total || item.monto,
-        moneda: payment?.moneda || cfdi?.moneda || 'MXN',
+        moneda: payment?.moneda || cfdi?.moneda || item.moneda || 'MXN',
         // Bank transaction info
         bankTxnId: bankTxn?.id,
         bankTxnDescripcion: bankTxn?.descripcion,
