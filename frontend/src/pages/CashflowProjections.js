@@ -2130,7 +2130,11 @@ const CashflowProjections = () => {
                                 </button>
                               </TableCell>
                               {weekTotals.map((total, idx) => (
-                                <TableCell key={idx} className="text-center text-red-600">
+                                <TableCell 
+                                  key={idx} 
+                                  className={`text-center text-red-600 ${total > 0 ? 'cursor-pointer hover:bg-red-100 hover:underline' : ''}`}
+                                  onClick={() => total > 0 && handleCellClick(idx, 'egreso', categoryName)}
+                                >
                                   {total > 0 ? formatCurrency(total) : '-'}
                                 </TableCell>
                               ))}
@@ -2161,7 +2165,11 @@ const CashflowProjections = () => {
                                       └ {subName}
                                     </TableCell>
                                     {subTotals.map((total, idx) => (
-                                      <TableCell key={idx} className="text-center text-red-500 text-sm">
+                                      <TableCell 
+                                        key={idx} 
+                                        className={`text-center text-red-500 text-sm ${total > 0 ? 'cursor-pointer hover:bg-red-100 hover:underline' : ''}`}
+                                        onClick={() => total > 0 && handleCellClick(idx, 'egreso', categoryName, subName)}
+                                      >
                                         {total > 0 ? formatCurrency(total) : '-'}
                                       </TableCell>
                                     ))}
