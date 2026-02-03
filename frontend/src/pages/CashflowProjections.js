@@ -452,6 +452,8 @@ const CashflowProjections = () => {
       section.byCategory[categoryName].bySubcategory[subKey].items.push({
         id: payment.id,
         monto: montoMXN,
+        beneficiario: payment.beneficiario,
+        bankAccountId: payment.bank_account_id,
         source: 'payment'
       });
       
