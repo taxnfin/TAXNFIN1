@@ -1874,12 +1874,45 @@ const CashflowProjections = () => {
           {/* ===== MAIN CASH FLOW TABLE ===== */}
           <Card>
             <CardHeader className="bg-[#0F172A] text-white rounded-t-lg">
-              <CardTitle className="flex items-center justify-between">
-                <span>Modelo de Flujo de Efectivo - 18 Semanas</span>
-                <span className="text-sm font-normal">
-                  {format(new Date(), 'MMMM yyyy', { locale: es })}
-                </span>
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-3">
+                  <span>Modelo de Flujo de Efectivo - 18 Semanas</span>
+                  <div className="flex items-center gap-2 ml-4">
+                    <Button
+                      variant={tableViewMode === 'categoria' ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className={`h-7 text-xs ${tableViewMode === 'categoria' ? 'bg-white text-[#0F172A]' : 'text-white/70 hover:text-white hover:bg-white/10'}`}
+                      onClick={() => setTableViewMode('categoria')}
+                    >
+                      <Layers size={14} className="mr-1" />
+                      Por Categoría
+                    </Button>
+                    <Button
+                      variant={tableViewMode === 'tercero' ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className={`h-7 text-xs ${tableViewMode === 'tercero' ? 'bg-white text-[#0F172A]' : 'text-white/70 hover:text-white hover:bg-white/10'}`}
+                      onClick={() => setTableViewMode('tercero')}
+                    >
+                      <Building2 size={14} className="mr-1" />
+                      Por Proveedor/Cliente
+                    </Button>
+                  </div>
+                </CardTitle>
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-xs text-white/80 hover:text-white hover:bg-white/10 gap-1"
+                    onClick={exportDetailReport}
+                  >
+                    <FileSpreadsheet size={14} />
+                    Exportar Detalle
+                  </Button>
+                  <span className="text-sm font-normal opacity-70">
+                    {format(new Date(), 'MMMM yyyy', { locale: es })}
+                  </span>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
