@@ -69,6 +69,27 @@ const CashflowProjections = () => {
   // CFO KPIs configuration
   const [umbralMinimoCaja, setUmbralMinimoCaja] = useState(500000); // Default 500K MXN
 
+  // Drill-down dialog state
+  const [drillDownOpen, setDrillDownOpen] = useState(false);
+  const [drillDownData, setDrillDownData] = useState({
+    weekNum: null,
+    weekLabel: '',
+    dateLabel: '',
+    tipo: '', // 'ingreso' | 'egreso'
+    categoryName: '',
+    subcategoryName: '',
+    items: [],
+    total: 0
+  });
+
+  // View mode toggle: 'categoria' | 'tercero'
+  const [tableViewMode, setTableViewMode] = useState('categoria');
+
+  // Payments and bank transactions for drill-down
+  const [allPayments, setAllPayments] = useState([]);
+  const [bankTransactions, setBankTransactions] = useState([]);
+  const [reconciliations, setReconciliations] = useState([]);
+
   // Currency list - All available currencies
   const CURRENCIES = [
     { code: 'MXN', name: 'Peso Mexicano', symbol: '$' },
