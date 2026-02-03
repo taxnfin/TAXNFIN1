@@ -97,6 +97,7 @@ const CashflowProjections = () => {
   const [allPayments, setAllPayments] = useState([]);
   const [bankTransactions, setBankTransactions] = useState([]);
   const [reconciliations, setReconciliations] = useState([]);
+  const [bankAccounts, setBankAccounts] = useState([]);
 
   // Currency list - All available currencies
   const CURRENCIES = [
