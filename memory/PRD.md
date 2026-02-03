@@ -358,6 +358,7 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
   - Filtro por tipo (Todos / Clientes / Proveedores)
   - Filtro por saldo (Todos / Positivo / Negativo)
   - Botón "Limpiar" filtros cuando hay filtros activos
+  - **Exportar Terceros / Exportar Filtrado** a Excel
 - ✅ **Botón "Exportar Detalle"**: Genera reporte Excel con todos los movimientos
 
 **Archivo modificado:** `frontend/src/pages/CashflowProjections.js`
