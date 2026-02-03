@@ -2658,13 +2658,17 @@ const BankStatementsModule = () => {
                     })
                     .map(cfdi => {
                       const isSelected = selectedCfdis.some(c => c.id === cfdi.id);
+                      const isHighlighted = highlightedCfdiId === cfdi.id;
                       return (
                         <div
                           key={cfdi.id}
-                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                            isSelected 
-                              ? 'bg-green-100 border-green-400' 
-                              : 'hover:bg-blue-50 border-gray-200'
+                          data-cfdi-id={cfdi.id}
+                          className={`p-3 border rounded-lg cursor-pointer transition-all duration-300 ${
+                            isHighlighted
+                              ? 'bg-yellow-100 border-yellow-500 ring-2 ring-yellow-400 shadow-lg animate-pulse'
+                              : isSelected 
+                                ? 'bg-green-100 border-green-400' 
+                                : 'hover:bg-blue-50 border-gray-200'
                           }`}
                           onClick={() => toggleCfdiSelection(cfdi)}
                         >
