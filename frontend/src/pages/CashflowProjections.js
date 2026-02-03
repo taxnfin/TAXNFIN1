@@ -2513,6 +2513,20 @@ const CashflowProjections = () => {
                                   Limpiar
                                 </Button>
                               )}
+                              
+                              {/* Export button */}
+                              <div className="ml-auto">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="h-8 text-xs gap-1"
+                                  onClick={exportPartyReport}
+                                  data-testid="party-export-btn"
+                                >
+                                  <Download size={14} />
+                                  {hasPartyFiltersActive() ? 'Exportar Filtrado' : 'Exportar Terceros'}
+                                </Button>
+                              </div>
                             </div>
                           </TableCell>
                         </TableRow>
