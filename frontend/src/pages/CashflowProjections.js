@@ -1050,6 +1050,10 @@ const CashflowProjections = () => {
         ? reconciliations.find(r => r.bank_transaction_id === bankTxn.id)
         : null;
       
+      // Get bank account info
+      const bankAccountId = item.bankAccountId || payment?.bank_account_id;
+      const bankAccount = bankAccountId ? bankAccounts.find(b => b.id === bankAccountId) : null;
+      
       // Get vendor/customer info - prioritize item's own data first
       let tercero = '';
       let terceroTipo = '';
@@ -1087,10 +1091,27 @@ const CashflowProjections = () => {
         }
       }
       
-      // Final fallback: use beneficiario from payment
+      // Fourth try: Use beneficiario from payment
       if (!tercero && payment?.beneficiario) {
         tercero = payment.beneficiario;
         terceroTipo = tipo === 'ingreso' ? 'cliente' : 'proveedor';
+      }
+      
+      // Fifth try: For bank fees, use bank name
+      if (!tercero && bankAccount) {
+        tercero = bankAccount.banco || bankAccount.nombre || 'Banco';
+        terceroTipo = 'proveedor'; // Bank fees are always providers
+      }
+      
+      // Sixth try: Extract from concepto if it's a bank fee
+      if (!tercero && item.concepto) {
+        const concepto = item.concepto.toLowerCase();
+        if (concepto.includes('comisión') || concepto.includes('comision') || 
+            concepto.includes('iva') || concepto.includes('cargo')) {
+          // Use bank name from bank account or default
+          tercero = bankAccount?.banco || 'Cargo Bancario';
+          terceroTipo = 'proveedor';
+        }
       }
       
       return {
@@ -1109,6 +1130,8 @@ const CashflowProjections = () => {
         bankTxnDescripcion: bankTxn?.descripcion,
         bankTxnFecha: bankTxn?.fecha,
         bankTxnMonto: bankTxn?.monto,
+        // Bank account info
+        bankAccountName: bankAccount?.banco || bankAccount?.nombre || '',
         // Reconciliation status
         conciliado: !!reconciliation,
         reconciliacionId: reconciliation?.id,
