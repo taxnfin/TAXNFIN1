@@ -997,6 +997,302 @@ const CashflowProjections = () => {
     }
   };
 
+  // =====================================================================
+  // DRILL-DOWN: Abrir detalle de una celda
+  // =====================================================================
+  const handleCellClick = (weekIdx, tipo, categoryName, subcategoryName = null) => {
+    const week = weeklyData[weekIdx];
+    if (!week) return;
+    
+    const section = tipo === 'ingreso' ? week.ingresos : week.egresos;
+    const category = section.byCategory[categoryName];
+    
+    if (!category) return;
+    
+    let items = [];
+    let total = 0;
+    
+    if (subcategoryName) {
+      // Drill-down to subcategory level
+      const subcategory = category.bySubcategory?.[subcategoryName];
+      if (subcategory) {
+        items = subcategory.items || [];
+        total = subcategory.total || 0;
+      }
+    } else {
+      // Drill-down to category level
+      items = category.items || [];
+      total = category.total || 0;
+    }
+    
+    // Enrich items with full details from payments, CFDIs, and reconciliations
+    const enrichedItems = items.map(item => {
+      const payment = allPayments.find(p => p.id === item.id);
+      const cfdi = cfdis.find(c => c.uuid === item.uuid || c.id === item.cfdiId);
+      const bankTxn = payment?.bank_transaction_id 
+        ? bankTransactions.find(t => t.id === payment.bank_transaction_id)
+        : null;
+      const reconciliation = bankTxn 
+        ? reconciliations.find(r => r.bank_transaction_id === bankTxn.id)
+        : null;
+      
+      // Get vendor/customer info
+      let tercero = item.beneficiario || payment?.beneficiario || '';
+      let terceroTipo = '';
+      
+      if (payment?.vendor_id) {
+        const vendor = vendors.find(v => v.id === payment.vendor_id);
+        tercero = vendor?.nombre || tercero;
+        terceroTipo = 'proveedor';
+      } else if (payment?.customer_id) {
+        const customer = customers.find(c => c.id === payment.customer_id);
+        tercero = customer?.nombre || tercero;
+        terceroTipo = 'cliente';
+      } else if (cfdi) {
+        if (tipo === 'ingreso') {
+          const customer = customers.find(c => c.rfc === cfdi.receptor_rfc);
+          tercero = customer?.nombre || cfdi.receptor_nombre || tercero;
+          terceroTipo = 'cliente';
+        } else {
+          const vendor = vendors.find(v => v.rfc === cfdi.emisor_rfc);
+          tercero = vendor?.nombre || cfdi.emisor_nombre || tercero;
+          terceroTipo = 'proveedor';
+        }
+      }
+      
+      return {
+        ...item,
+        paymentId: payment?.id,
+        concepto: item.concepto || payment?.concepto || cfdi?.concepto || '',
+        tercero,
+        terceroTipo,
+        uuid: item.uuid || cfdi?.uuid || '',
+        folio: cfdi?.folio || '',
+        fechaFactura: cfdi?.fecha_emision || payment?.fecha_pago,
+        montoOriginal: payment?.monto || cfdi?.total || item.monto,
+        moneda: payment?.moneda || cfdi?.moneda || 'MXN',
+        // Bank transaction info
+        bankTxnId: bankTxn?.id,
+        bankTxnDescripcion: bankTxn?.descripcion,
+        bankTxnFecha: bankTxn?.fecha,
+        bankTxnMonto: bankTxn?.monto,
+        // Reconciliation status
+        conciliado: !!reconciliation,
+        reconciliacionId: reconciliation?.id,
+        tipoConciliacion: reconciliation?.tipo_conciliacion,
+        // Source
+        source: item.source
+      };
+    });
+    
+    setDrillDownData({
+      weekNum: weekIdx + 1,
+      weekLabel: week.label || `S${weekIdx + 1}`,
+      dateLabel: week.dateLabel || '',
+      dataType: week.dataType,
+      tipo,
+      categoryName,
+      subcategoryName,
+      items: enrichedItems,
+      total
+    });
+    setDrillDownOpen(true);
+  };
+
+  // =====================================================================
+  // VISTA POR PROVEEDOR/CLIENTE: Procesar datos agrupados por tercero
+  // =====================================================================
+  const processDataByParty = () => {
+    // Create a map: { terceroId: { nombre, tipo, weeks: { weekIdx: { ingresos, egresos } } } }
+    const partyMap = {};
+    
+    weeklyData.forEach((week, weekIdx) => {
+      // Process ingresos
+      Object.entries(week.ingresos.byCategory).forEach(([catName, catData]) => {
+        (catData.items || []).forEach(item => {
+          const payment = allPayments.find(p => p.id === item.id);
+          let terceroId = 'sin-asignar';
+          let terceroNombre = 'Sin Asignar';
+          let terceroTipo = 'cliente';
+          
+          if (payment?.customer_id) {
+            const customer = customers.find(c => c.id === payment.customer_id);
+            if (customer) {
+              terceroId = customer.id;
+              terceroNombre = customer.nombre;
+              terceroTipo = 'cliente';
+            }
+          } else {
+            // Try to find customer by RFC from CFDI
+            const cfdi = cfdis.find(c => c.uuid === item.uuid);
+            if (cfdi?.receptor_rfc) {
+              const customer = customers.find(c => c.rfc === cfdi.receptor_rfc);
+              if (customer) {
+                terceroId = customer.id;
+                terceroNombre = customer.nombre;
+                terceroTipo = 'cliente';
+              }
+            }
+          }
+          
+          if (!partyMap[terceroId]) {
+            partyMap[terceroId] = {
+              id: terceroId,
+              nombre: terceroNombre,
+              tipo: terceroTipo,
+              weeks: {}
+            };
+          }
+          
+          if (!partyMap[terceroId].weeks[weekIdx]) {
+            partyMap[terceroId].weeks[weekIdx] = { ingresos: 0, egresos: 0, items: [] };
+          }
+          
+          partyMap[terceroId].weeks[weekIdx].ingresos += item.monto || 0;
+          partyMap[terceroId].weeks[weekIdx].items.push({ ...item, tipo: 'ingreso' });
+        });
+      });
+      
+      // Process egresos
+      Object.entries(week.egresos.byCategory).forEach(([catName, catData]) => {
+        (catData.items || []).forEach(item => {
+          const payment = allPayments.find(p => p.id === item.id);
+          let terceroId = 'sin-asignar';
+          let terceroNombre = 'Sin Asignar';
+          let terceroTipo = 'proveedor';
+          
+          if (payment?.vendor_id) {
+            const vendor = vendors.find(v => v.id === payment.vendor_id);
+            if (vendor) {
+              terceroId = vendor.id;
+              terceroNombre = vendor.nombre;
+              terceroTipo = 'proveedor';
+            }
+          } else {
+            // Try to find vendor by RFC from CFDI
+            const cfdi = cfdis.find(c => c.uuid === item.uuid);
+            if (cfdi?.emisor_rfc) {
+              const vendor = vendors.find(v => v.rfc === cfdi.emisor_rfc);
+              if (vendor) {
+                terceroId = vendor.id;
+                terceroNombre = vendor.nombre;
+                terceroTipo = 'proveedor';
+              }
+            }
+          }
+          
+          if (!partyMap[terceroId]) {
+            partyMap[terceroId] = {
+              id: terceroId,
+              nombre: terceroNombre,
+              tipo: terceroTipo,
+              weeks: {}
+            };
+          }
+          
+          if (!partyMap[terceroId].weeks[weekIdx]) {
+            partyMap[terceroId].weeks[weekIdx] = { ingresos: 0, egresos: 0, items: [] };
+          }
+          
+          partyMap[terceroId].weeks[weekIdx].egresos += item.monto || 0;
+          partyMap[terceroId].weeks[weekIdx].items.push({ ...item, tipo: 'egreso' });
+        });
+      });
+    });
+    
+    return Object.values(partyMap);
+  };
+
+  // =====================================================================
+  // EXPORTAR REPORTE DETALLADO
+  // =====================================================================
+  const exportDetailReport = () => {
+    const reportData = [];
+    
+    weeklyData.forEach((week, weekIdx) => {
+      const weekLabel = `S${weekIdx + 1}`;
+      const dataType = week.dataType === 'real' ? 'Real' : week.dataType === 'actual' ? 'Actual' : 'Proyectado';
+      
+      // Process ingresos
+      Object.entries(week.ingresos.byCategory).forEach(([catName, catData]) => {
+        (catData.items || []).forEach(item => {
+          const payment = allPayments.find(p => p.id === item.id);
+          const cfdi = cfdis.find(c => c.uuid === item.uuid);
+          const bankTxn = payment?.bank_transaction_id ? bankTransactions.find(t => t.id === payment.bank_transaction_id) : null;
+          
+          let tercero = item.beneficiario || payment?.beneficiario || '';
+          if (payment?.customer_id) {
+            const customer = customers.find(c => c.id === payment.customer_id);
+            tercero = customer?.nombre || tercero;
+          }
+          
+          reportData.push({
+            'Semana': weekLabel,
+            'Fecha': week.dateLabel,
+            'Tipo Dato': dataType,
+            'Categoría': catName,
+            'Tipo': 'Ingreso',
+            'Cliente/Proveedor': tercero,
+            'UUID': item.uuid || cfdi?.uuid || '',
+            'Folio': cfdi?.folio || '',
+            'Fecha Factura': cfdi?.fecha_emision ? format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy') : '',
+            'Monto': item.monto,
+            'Moneda': payment?.moneda || cfdi?.moneda || 'MXN',
+            'Monto MXN': item.monto,
+            'Cuenta Bancaria': bankTxn?.banco || '',
+            'Conciliado': bankTxn ? 'Sí' : 'No',
+            'Movimiento Bancario': bankTxn?.descripcion || ''
+          });
+        });
+      });
+      
+      // Process egresos
+      Object.entries(week.egresos.byCategory).forEach(([catName, catData]) => {
+        (catData.items || []).forEach(item => {
+          const payment = allPayments.find(p => p.id === item.id);
+          const cfdi = cfdis.find(c => c.uuid === item.uuid);
+          const bankTxn = payment?.bank_transaction_id ? bankTransactions.find(t => t.id === payment.bank_transaction_id) : null;
+          
+          let tercero = item.beneficiario || payment?.beneficiario || '';
+          if (payment?.vendor_id) {
+            const vendor = vendors.find(v => v.id === payment.vendor_id);
+            tercero = vendor?.nombre || tercero;
+          }
+          
+          reportData.push({
+            'Semana': weekLabel,
+            'Fecha': week.dateLabel,
+            'Tipo Dato': dataType,
+            'Categoría': catName,
+            'Tipo': 'Egreso',
+            'Cliente/Proveedor': tercero,
+            'UUID': item.uuid || cfdi?.uuid || '',
+            'Folio': cfdi?.folio || '',
+            'Fecha Factura': cfdi?.fecha_emision ? format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy') : '',
+            'Monto': item.monto,
+            'Moneda': payment?.moneda || cfdi?.moneda || 'MXN',
+            'Monto MXN': item.monto,
+            'Cuenta Bancaria': bankTxn?.banco || '',
+            'Conciliado': bankTxn ? 'Sí' : 'No',
+            'Movimiento Bancario': bankTxn?.descripcion || ''
+          });
+        });
+      });
+    });
+    
+    if (reportData.length === 0) {
+      toast.error('No hay datos para exportar');
+      return;
+    }
+    
+    const success = exportToExcel(reportData, 'Detalle_Cashflow', 'Detalle');
+    if (success) {
+      toast.success('Reporte de detalle exportado a Excel');
+    } else {
+      toast.error('Error al exportar');
+    }
+  };
+
   if (loading) return <div className="p-8">Cargando proyecciones...</div>;
 
   const weeklyTotals = calculateRunningTotals();
