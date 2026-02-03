@@ -353,6 +353,11 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
   - Cada tercero en su propia fila
   - Badge C (Cliente) o P (Proveedor)
   - Totales por semana cuadran con vista por categoría
+- ✅ **Filtros en vista por Proveedor/Cliente**:
+  - Búsqueda por nombre de tercero
+  - Filtro por tipo (Todos / Clientes / Proveedores)
+  - Filtro por saldo (Todos / Positivo / Negativo)
+  - Botón "Limpiar" filtros cuando hay filtros activos
 - ✅ **Botón "Exportar Detalle"**: Genera reporte Excel con todos los movimientos
 
 **Archivo modificado:** `frontend/src/pages/CashflowProjections.js`
