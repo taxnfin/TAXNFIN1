@@ -1939,25 +1939,27 @@ const CashflowProjections = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {/* SALDO INICIAL POR SEMANA Row */}
-                    <TableRow className="bg-blue-100 font-bold border-b-2 border-blue-300">
-                      <TableCell className="sticky left-0 bg-blue-100">
-                        <div className="flex items-center gap-2">
-                          <Building2 className="text-blue-600" size={16} />
-                          SALDO INICIAL SEMANA
-                        </div>
-                      </TableCell>
-                      {weeklyTotals.map((week, idx) => (
-                        <TableCell key={idx} className="text-center text-blue-700 font-bold text-sm">
-                          {formatCurrency(week.saldoInicial)}
-                        </TableCell>
-                      ))}
-                      <TableCell className="text-center bg-blue-200 text-blue-800 font-bold">
-                        {formatCurrency(saldoInicialBancos)}
-                      </TableCell>
-                    </TableRow>
+                    {tableViewMode === 'categoria' ? (
+                      <>
+                        {/* SALDO INICIAL POR SEMANA Row */}
+                        <TableRow className="bg-blue-100 font-bold border-b-2 border-blue-300">
+                          <TableCell className="sticky left-0 bg-blue-100">
+                            <div className="flex items-center gap-2">
+                              <Building2 className="text-blue-600" size={16} />
+                              SALDO INICIAL SEMANA
+                            </div>
+                          </TableCell>
+                          {weeklyTotals.map((week, idx) => (
+                            <TableCell key={idx} className="text-center text-blue-700 font-bold text-sm">
+                              {formatCurrency(week.saldoInicial)}
+                            </TableCell>
+                          ))}
+                          <TableCell className="text-center bg-blue-200 text-blue-800 font-bold">
+                            {formatCurrency(saldoInicialBancos)}
+                          </TableCell>
+                        </TableRow>
 
-                    {/* RECEIPTS / INGRESOS Section */}
+                        {/* RECEIPTS / INGRESOS Section */}
                     <TableRow className="bg-green-50 font-bold">
                       <TableCell className="sticky left-0 bg-green-50">
                         <div className="flex items-center gap-2">
