@@ -2527,14 +2527,41 @@ const BankStatementsModule = () => {
                         const cfdiId = bestMatch.id || bestMatch.cfdi_id;
                         const cfdiToSelect = cfdis.find(c => c.id === cfdiId);
                         
+                        console.log('Best match ID:', cfdiId);
+                        console.log('CFDI found in local state:', cfdiToSelect?.id);
+                        
                         if (cfdiToSelect && !selectedCfdis.find(c => c.id === cfdiToSelect.id)) {
+                          // Clear search term to show all CFDIs
+                          setCfdiSearchTerm('');
+                          
+                          // Add to selection
                           setSelectedCfdis(prev => [...prev, cfdiToSelect]);
+                          
+                          // Initialize partial amount
+                          const saldoPendiente = cfdiToSelect.saldo_pendiente ?? (cfdiToSelect.total - (cfdiToSelect.monto_pagado || 0));
+                          setMontosParciales(prevMontos => ({
+                            ...prevMontos,
+                            [cfdiToSelect.id]: Math.max(0, saldoPendiente)
+                          }));
+                          
+                          // Highlight the selected CFDI
+                          setHighlightedCfdiId(cfdiId);
+                          setTimeout(() => setHighlightedCfdiId(null), 3000);
+                          
+                          // Scroll to the CFDI after a short delay to let React render
+                          setTimeout(() => {
+                            const element = document.querySelector(`[data-cfdi-id="${cfdiId}"]`);
+                            if (element) {
+                              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }
+                          }, 100);
+                          
                           const nombre = bestMatch.emisor_nombre || bestMatch.receptor_nombre || 'CFDI';
                           const razones = bestMatch.match_reasons?.join(', ') || '';
                           toast.success(`✓ Auto-seleccionado: ${nombre} - Score: ${bestMatch.score} (${razones})`);
                         } else if (!cfdiToSelect) {
                           const nombre = bestMatch.emisor_nombre || bestMatch.receptor_nombre || 'CFDI';
-                          toast.warning(`Mejor coincidencia: ${nombre} ($${bestMatch.total?.toLocaleString()}) - Score: ${bestMatch.score}`);
+                          toast.warning(`Mejor coincidencia: ${nombre} ($${bestMatch.total?.toLocaleString()}) - Score: ${bestMatch.score} - NO está en la lista (puede estar conciliado o filtrado)`);
                         } else {
                           toast.info('El CFDI sugerido ya está seleccionado');
                         }
