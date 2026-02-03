@@ -330,19 +330,32 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 **2. Exportación de Datos Filtrados a Excel**
 
 - ✅ Botón cambia a **"Exportar Filtrado"** cuando hay filtros activos
-- ✅ Exporta solo los datos que coinciden con los filtros aplicados
+- ✅ Exporta solo los datos que coinciden con los filtros
 - ✅ Muestra contador de facturas filtradas y total filtrado en MXN
-- ✅ Nombre de archivo incluye "_Filtrado" cuando se exportan datos filtrados
 
 **3. Nuevo Fondo de Login Profesional**
 
-- ✅ Reemplazado fondo de edificios por gradiente abstracto azul oscuro
-- ✅ Imagen: Unsplash (azul/púrpura abstracto profesional)
-- ✅ Overlay semitransparente reducido a 60% para mejor visibilidad
+- ✅ Gradiente abstracto azul oscuro más sobrio y empresarial
 
-**Archivos modificados:**
-- `frontend/src/pages/Transactions.js` - Filtros y exportación filtrada
-- `frontend/src/pages/Login.js` - Nuevo background profesional
+**4. Drill-Down Jerárquico en Modelo de Flujo de Efectivo - 18 Semanas**
+
+- ✅ **Celdas clickeables**: Cada monto en la tabla de proyecciones es ahora clickeable
+- ✅ **Dialog de detalle** muestra para cada celda:
+  - Proveedor/Cliente con icono distintivo
+  - UUID de factura (primeros 8 caracteres + tooltip)
+  - Fecha de emisión
+  - Monto en moneda original + Monto convertido a MXN
+  - Movimiento bancario relacionado
+  - Estado de conciliación (✓/✗)
+- ✅ **Toggle de vista**: Botones "Por Categoría" / "Por Proveedor/Cliente" en el header
+- ✅ **Vista por Proveedor/Cliente**: 
+  - Mismas 18 semanas que la vista por categoría
+  - Cada tercero en su propia fila
+  - Badge C (Cliente) o P (Proveedor)
+  - Totales por semana cuadran con vista por categoría
+- ✅ **Botón "Exportar Detalle"**: Genera reporte Excel con todos los movimientos
+
+**Archivo modificado:** `frontend/src/pages/CashflowProjections.js`
 
 ---
 
