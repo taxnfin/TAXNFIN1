@@ -1263,6 +1263,64 @@ const CashflowProjections = () => {
     });
   };
 
+  // Export party data (filtered or all)
+  const exportPartyReport = () => {
+    const partyData = processDataByParty();
+    const filteredParties = filterPartyData(partyData);
+    
+    if (filteredParties.length === 0) {
+      toast.error('No hay datos para exportar');
+      return;
+    }
+    
+    const reportData = [];
+    
+    filteredParties.forEach(party => {
+      // Calculate totals for this party
+      const totalIngresos = Object.values(party.weeks).reduce((s, w) => s + w.ingresos, 0);
+      const totalEgresos = Object.values(party.weeks).reduce((s, w) => s + w.egresos, 0);
+      const netTotal = totalIngresos - totalEgresos;
+      
+      // Create a row for each week with data
+      weeklyData.forEach((week, weekIdx) => {
+        const weekData = party.weeks[weekIdx];
+        if (!weekData || (weekData.ingresos === 0 && weekData.egresos === 0)) return;
+        
+        const weekLabel = `S${weekIdx + 1}`;
+        const dataType = week.dataType === 'real' ? 'Real' : week.dataType === 'actual' ? 'Actual' : 'Proyectado';
+        
+        reportData.push({
+          'Proveedor/Cliente': party.nombre,
+          'Tipo Tercero': party.tipo === 'cliente' ? 'Cliente' : 'Proveedor',
+          'Semana': weekLabel,
+          'Fecha': week.dateLabel,
+          'Tipo Dato': dataType,
+          'Ingresos': weekData.ingresos,
+          'Egresos': weekData.egresos,
+          'Neto Semana': weekData.ingresos - weekData.egresos,
+          'Total Ingresos': totalIngresos,
+          'Total Egresos': totalEgresos,
+          'Saldo Neto Total': netTotal
+        });
+      });
+    });
+    
+    if (reportData.length === 0) {
+      toast.error('No hay movimientos para exportar');
+      return;
+    }
+    
+    const isFiltered = hasPartyFiltersActive();
+    const filename = isFiltered ? 'Terceros_Filtrado' : 'Terceros_18_Semanas';
+    
+    const success = exportToExcel(reportData, filename, 'Por Tercero');
+    if (success) {
+      toast.success(isFiltered ? 'Terceros filtrados exportados a Excel' : 'Datos de terceros exportados a Excel');
+    } else {
+      toast.error('Error al exportar');
+    }
+  };
+
   // =====================================================================
   // EXPORTAR REPORTE DETALLADO
   // =====================================================================
