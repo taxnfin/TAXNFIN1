@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { TrendingUp, TrendingDown, Calendar, Building2, User, FileText, ChevronDown, ChevronRight, Download, Plus, Trash2, Settings, AlertTriangle, BarChart3, Target, Activity, FileDown, ExternalLink, Check, X as XIcon, Eye, ToggleLeft, ToggleRight, FileSpreadsheet, Layers } from 'lucide-react';
+import { TrendingUp, TrendingDown, Calendar, Building2, User, FileText, ChevronDown, ChevronRight, Download, Plus, Trash2, Settings, AlertTriangle, BarChart3, Target, Activity, FileDown, ExternalLink, Check, X as XIcon, Eye, ToggleLeft, ToggleRight, FileSpreadsheet, Layers, Filter, Search } from 'lucide-react';
 import { format, addWeeks, startOfWeek, addMonths, startOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { exportProjections, exportToExcel } from '@/utils/excelExport';
