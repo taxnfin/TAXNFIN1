@@ -117,7 +117,7 @@ const CashflowProjections = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes, fxRes, paymentsRes, bankTxnsRes, reconRes] = await Promise.all([
+      const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes, fxRes, paymentsRes, bankTxnsRes, reconRes, bankAccountsRes] = await Promise.all([
         api.get('/cfdi?limit=500'),
         api.get('/categories'),
         api.get('/customers'),
@@ -127,7 +127,8 @@ const CashflowProjections = () => {
         api.get('/fx-rates/latest'),
         api.get('/payments'),
         api.get('/bank-transactions?limit=500'),
-        api.get('/reconciliations')
+        api.get('/reconciliations'),
+        api.get('/bank-accounts')
       ]);
       
       setCfdis(cfdiRes.data);
@@ -139,6 +140,7 @@ const CashflowProjections = () => {
       setAllPayments(paymentsRes.data || []);
       setBankTransactions(bankTxnsRes.data || []);
       setReconciliations(reconRes.data || []);
+      setBankAccounts(bankAccountsRes.data || []);
       
       // Get initial bank balance
       const totalBancosMXN = bankSummaryRes.data?.total_mxn || 0;
