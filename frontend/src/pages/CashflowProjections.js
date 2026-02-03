@@ -86,6 +86,13 @@ const CashflowProjections = () => {
   // View mode toggle: 'categoria' | 'tercero'
   const [tableViewMode, setTableViewMode] = useState('categoria');
 
+  // Filters for "Por Proveedor/Cliente" view
+  const [partyFilters, setPartyFilters] = useState({
+    searchTerm: '',
+    tipoTercero: 'todos', // 'todos' | 'cliente' | 'proveedor'
+    saldoTipo: 'todos' // 'todos' | 'positivo' | 'negativo'
+  });
+
   // Payments and bank transactions for drill-down
   const [allPayments, setAllPayments] = useState([]);
   const [bankTransactions, setBankTransactions] = useState([]);
