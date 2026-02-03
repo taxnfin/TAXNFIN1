@@ -542,6 +542,16 @@ const CashflowProjections = () => {
         section.byCategory[categoryName].bySubcategory[subKey] = { total: 0, items: [] };
       }
       section.byCategory[categoryName].bySubcategory[subKey].total += montoMXN;
+      section.byCategory[categoryName].bySubcategory[subKey].items.push({
+        id: cfdi.id,
+        monto: montoMXN,
+        uuid: cfdi.uuid,
+        emisor: cfdi.emisor_nombre,
+        receptor: cfdi.receptor_nombre,
+        fecha: cfdi.fecha_emision,
+        moneda: cfdi.moneda,
+        source: 'cfdi'
+      });
       
       // Add to section total
       section.total += montoMXN;
