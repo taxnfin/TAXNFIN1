@@ -320,48 +320,28 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 ### Completed in This Session ✅
 
 **1. Filtros en Aging de Cartera (CxC / CxP)**
+- ✅ Búsqueda, Moneda, Antigüedad, Rango de fechas
+- ✅ Exportación de datos filtrados a Excel
 
-- ✅ Búsqueda por nombre de **Cliente** / **Proveedor**
-- ✅ Selector de **Moneda** (Todas, MXN, USD, EUR)
-- ✅ Selector de **Antigüedad** (Vigente, 1-30 días, 31-60 días, etc.)
-- ✅ Rango de fechas de emisión (**Desde** / **Hasta**)
-- ✅ Botón "Limpiar filtros" cuando hay filtros activos
+**2. Nuevo Fondo de Login Profesional**
+- ✅ Gradiente abstracto azul oscuro
 
-**2. Exportación de Datos Filtrados a Excel**
+**3. Drill-Down Jerárquico en Modelo de Flujo de Efectivo - 18 Semanas**
+- ✅ Celdas clickeables con Dialog de detalle (UUID, Moneda, Conciliación)
+- ✅ Toggle "Por Categoría" / "Por Proveedor/Cliente"
+- ✅ Filtros en vista por tercero + Exportar Filtrado
+- ✅ Botón "Exportar Detalle" genera Excel completo
 
-- ✅ Botón cambia a **"Exportar Filtrado"** cuando hay filtros activos
-- ✅ Exporta solo los datos que coinciden con los filtros
-- ✅ Muestra contador de facturas filtradas y total filtrado en MXN
+**4. Bug P0 Corregido: Sugerencia de Conciliación UI**
+- ✅ El CFDI sugerido ahora se selecciona Y se resalta visualmente correctamente
+- ✅ Agregado **highlight amarillo pulsante** al CFDI auto-seleccionado (3 segundos)
+- ✅ **Scroll automático** al CFDI seleccionado
+- ✅ **Limpia el filtro de búsqueda** para mostrar todos los CFDIs disponibles
+- ✅ **Inicializa el monto parcial** automáticamente con el saldo pendiente
+- ✅ **data-cfdi-id** agregado para facilitar el scroll programático
+- ✅ Logs de consola para debugging futuro
 
-**3. Nuevo Fondo de Login Profesional**
-
-- ✅ Gradiente abstracto azul oscuro más sobrio y empresarial
-
-**4. Drill-Down Jerárquico en Modelo de Flujo de Efectivo - 18 Semanas**
-
-- ✅ **Celdas clickeables**: Cada monto en la tabla de proyecciones es ahora clickeable
-- ✅ **Dialog de detalle** muestra para cada celda:
-  - Proveedor/Cliente con icono distintivo
-  - UUID de factura (primeros 8 caracteres + tooltip)
-  - Fecha de emisión
-  - Monto en moneda original + Monto convertido a MXN
-  - Movimiento bancario relacionado
-  - Estado de conciliación (✓/✗)
-- ✅ **Toggle de vista**: Botones "Por Categoría" / "Por Proveedor/Cliente" en el header
-- ✅ **Vista por Proveedor/Cliente**: 
-  - Mismas 18 semanas que la vista por categoría
-  - Cada tercero en su propia fila
-  - Badge C (Cliente) o P (Proveedor)
-  - Totales por semana cuadran con vista por categoría
-- ✅ **Filtros en vista por Proveedor/Cliente**:
-  - Búsqueda por nombre de tercero
-  - Filtro por tipo (Todos / Clientes / Proveedores)
-  - Filtro por saldo (Todos / Positivo / Negativo)
-  - Botón "Limpiar" filtros cuando hay filtros activos
-  - **Exportar Terceros / Exportar Filtrado** a Excel
-- ✅ **Botón "Exportar Detalle"**: Genera reporte Excel con todos los movimientos
-
-**Archivo modificado:** `frontend/src/pages/CashflowProjections.js`
+**Archivo modificado:** `frontend/src/pages/BankStatementsModule.js`
 
 ---
 
