@@ -2371,6 +2371,94 @@ const CashflowProjections = () => {
                     ) : (
                       /* ===== VISTA POR PROVEEDOR/CLIENTE ===== */
                       <>
+                        {/* Filters Row */}
+                        <TableRow className="bg-blue-50 border-b-2 border-blue-200">
+                          <TableCell colSpan={weeklyTotals.length + 2} className="py-3">
+                            <div className="flex items-center gap-4 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <Filter size={16} className="text-blue-600" />
+                                <span className="text-sm font-medium text-blue-800">Filtros:</span>
+                              </div>
+                              
+                              {/* Search by name */}
+                              <div className="relative flex-1 min-w-[200px] max-w-[300px]">
+                                <Search size={14} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                                <Input
+                                  placeholder="Buscar proveedor/cliente..."
+                                  value={partyFilters.searchTerm}
+                                  onChange={(e) => setPartyFilters(prev => ({ ...prev, searchTerm: e.target.value }))}
+                                  className="pl-8 h-8 text-sm"
+                                  data-testid="party-filter-search"
+                                />
+                              </div>
+                              
+                              {/* Filter by tipo */}
+                              <Select
+                                value={partyFilters.tipoTercero}
+                                onValueChange={(value) => setPartyFilters(prev => ({ ...prev, tipoTercero: value }))}
+                              >
+                                <SelectTrigger className="w-[140px] h-8 text-sm" data-testid="party-filter-type">
+                                  <SelectValue placeholder="Tipo" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="todos">Todos</SelectItem>
+                                  <SelectItem value="cliente">
+                                    <div className="flex items-center gap-2">
+                                      <User size={12} className="text-blue-500" />
+                                      Clientes
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="proveedor">
+                                    <div className="flex items-center gap-2">
+                                      <Building2 size={12} className="text-orange-500" />
+                                      Proveedores
+                                    </div>
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                              
+                              {/* Filter by saldo */}
+                              <Select
+                                value={partyFilters.saldoTipo}
+                                onValueChange={(value) => setPartyFilters(prev => ({ ...prev, saldoTipo: value }))}
+                              >
+                                <SelectTrigger className="w-[150px] h-8 text-sm" data-testid="party-filter-balance">
+                                  <SelectValue placeholder="Saldo" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="todos">Todos los saldos</SelectItem>
+                                  <SelectItem value="positivo">
+                                    <div className="flex items-center gap-2">
+                                      <TrendingUp size={12} className="text-green-500" />
+                                      Saldo positivo
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="negativo">
+                                    <div className="flex items-center gap-2">
+                                      <TrendingDown size={12} className="text-red-500" />
+                                      Saldo negativo
+                                    </div>
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                              
+                              {/* Clear filters button */}
+                              {hasPartyFiltersActive() && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="h-8 text-xs text-blue-600 hover:text-blue-800 gap-1"
+                                  onClick={resetPartyFilters}
+                                  data-testid="party-filter-clear"
+                                >
+                                  <XIcon size={14} />
+                                  Limpiar
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+
                         {/* Header row for totals */}
                         <TableRow className="bg-gray-100 font-bold border-b-2">
                           <TableCell className="sticky left-0 bg-gray-100">
@@ -2384,18 +2472,32 @@ const CashflowProjections = () => {
                               Tot: {formatCurrency(week.ingresos.total - week.egresos.total)}
                             </TableCell>
                           ))}
-                          <TableCell className="text-center bg-gray-200 font-bold">-</TableCell>
+                          <TableCell className="text-center bg-gray-200 font-bold">TOTAL</TableCell>
                         </TableRow>
 
                         {/* Render each party */}
                         {(() => {
                           const partyData = processDataByParty();
+                          // Apply filters
+                          const filteredParties = filterPartyData(partyData);
                           // Sort by total absolute value (most important first)
-                          const sortedParties = partyData.sort((a, b) => {
+                          const sortedParties = filteredParties.sort((a, b) => {
                             const totalA = Object.values(a.weeks).reduce((s, w) => s + Math.abs(w.ingresos - w.egresos), 0);
                             const totalB = Object.values(b.weeks).reduce((s, w) => s + Math.abs(w.ingresos - w.egresos), 0);
                             return totalB - totalA;
                           });
+
+                          if (sortedParties.length === 0) {
+                            return (
+                              <TableRow>
+                                <TableCell colSpan={weeklyTotals.length + 2} className="text-center py-8 text-gray-500">
+                                  {hasPartyFiltersActive() 
+                                    ? 'No hay terceros que coincidan con los filtros seleccionados'
+                                    : 'No hay datos de proveedores/clientes para mostrar'}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          }
 
                           return sortedParties.map(party => {
                             const totalIngresos = Object.values(party.weeks).reduce((s, w) => s + w.ingresos, 0);
