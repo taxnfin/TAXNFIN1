@@ -14,11 +14,12 @@ import {
   Plus, CheckCircle, Building2, Trash2, DollarSign, 
   Upload, Download, Link2, RefreshCw, FileSpreadsheet,
   ArrowUpCircle, ArrowDownCircle, Search, Filter, X,
-  AlertCircle, Clock, Check, FileText, ArrowRightLeft, Pencil, Sparkles, RotateCcw, History
+  AlertCircle, Clock, Check, FileText, ArrowRightLeft, Pencil, Sparkles, RotateCcw, History, PlusCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
+import PDFInvoiceUploader from '@/components/PDFInvoiceUploader';
 
 // Belvo Connect Form Component
 const BelvoConnectForm = ({ bankAccounts, onSuccess, onClose }) => {
