@@ -755,6 +755,17 @@ const PaymentsModule = () => {
               Nuevo Pago/Cobro
             </Button>
           </DialogTrigger>
+          
+          {/* Button to import from PDF */}
+          <Button 
+            variant="outline" 
+            className="gap-2 border-purple-300 text-purple-700 hover:bg-purple-50"
+            onClick={() => setPdfUploaderOpen(true)}
+            data-testid="import-pdf-btn"
+          >
+            <Upload size={16} />
+            Importar PDF
+          </Button>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Registrar Pago/Cobro</DialogTitle>
