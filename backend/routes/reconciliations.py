@@ -139,7 +139,7 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
                 'auto_created_from_reconciliation': True,
                 # Use category from reconciliation request (user-selected) or fallback to CFDI
                 'category_id': category_id,
-                'subcategory_id': subcategory,
+                'subcategory_id': subcategory_id or subcategory_text,  # Use ID if created, or fallback to text
                 'cfdi_uuid': cfdi.get('uuid'),
                 'cfdi_emisor': cfdi.get('emisor_nombre'),
                 'cfdi_receptor': cfdi.get('receptor_nombre')
