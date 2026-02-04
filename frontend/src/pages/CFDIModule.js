@@ -109,6 +109,21 @@ const CFDIModule = () => {
 
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ total: 0, current: 0, success: 0, failed: 0 });
+  const [pdfInvoiceUploaderOpen, setPdfInvoiceUploaderOpen] = useState(false);  // PDF Invoice uploader modal
+  const [bankAccounts, setBankAccounts] = useState([]);
+
+  // Load bank accounts for PDF importer
+  useEffect(() => {
+    const loadBankAccounts = async () => {
+      try {
+        const res = await api.get('/api/bank-accounts');
+        setBankAccounts(res.data || []);
+      } catch (err) {
+        console.error('Error loading bank accounts:', err);
+      }
+    };
+    loadBankAccounts();
+  }, []);
 
   const handleFileUpload = async (e) => {
     const files = Array.from(e.target.files);
