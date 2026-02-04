@@ -2180,6 +2180,18 @@ const PaymentsModule = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* PDF Invoice Uploader Modal */}
+      <PDFInvoiceUploader
+        isOpen={pdfUploaderOpen}
+        onClose={() => setPdfUploaderOpen(false)}
+        onSuccess={() => {
+          loadData();
+          setPdfUploaderOpen(false);
+        }}
+        categories={categories}
+        bankAccounts={bankAccounts}
+      />
     </div>
   );
 };
