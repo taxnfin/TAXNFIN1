@@ -912,6 +912,24 @@ const BankStatementsModule = () => {
       .map(c => ({ value: `user_${c.id}`, label: c.nombre, isUser: true, categoryId: c.id }));
     return [...userCats, ...DEFAULT_EXPENSE_CATEGORIES];
   };
+  
+  // Get categories for reconciliation dialog based on CFDI type
+  const getCategoriesForCfdi = (cfdi) => {
+    // Determine if it's income or expense based on CFDI type
+    const tipoCfdi = cfdi?.tipo_cfdi || '';
+    const tipo = (tipoCfdi === 'ingreso' || tipoCfdi === 'I') ? 'ingreso' : 'egreso';
+    
+    const userCats = categories
+      .filter(c => c.tipo === tipo && c.activo !== false)
+      .map(c => ({ id: c.id, nombre: c.nombre }));
+    
+    // Add default categories if no user categories exist for this type
+    if (userCats.length === 0) {
+      return DEFAULT_EXPENSE_CATEGORIES.map(c => ({ id: c.value, nombre: c.label }));
+    }
+    
+    return userCats;
+  };
 
   const openSinUUIDDialog = (txn, tipo = 'sin_uuid') => {
     setSinUUIDTransaction(txn);
