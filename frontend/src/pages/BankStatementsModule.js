@@ -745,6 +745,13 @@ const BankStatementsModule = () => {
       return;
     }
     
+    // Validate that all CFDIs have a category selected
+    const missingCategories = selectedCfdis.filter(cfdi => !cfdiCategories[cfdi.id]?.categoria_id);
+    if (missingCategories.length > 0) {
+      toast.error(`Selecciona una categoría para ${missingCategories.length === 1 ? 'el CFDI' : 'los ' + missingCategories.length + ' CFDIs'} pendientes`);
+      return;
+    }
+    
     try {
       let successCount = 0;
       let errorMessages = [];
@@ -753,12 +760,16 @@ const BankStatementsModule = () => {
       for (const cfdi of selectedCfdis) {
         try {
           const montoAplicar = getMontoAplicar(cfdi);
+          const categoryData = cfdiCategories[cfdi.id] || {};
+          
           await api.post('/reconciliations', {
             bank_transaction_id: selectedTransaction.id,
             cfdi_id: cfdi.id,
             metodo_conciliacion: 'manual',
             porcentaje_match: 100,
-            monto_aplicado: montoAplicar // Send partial amount!
+            monto_aplicado: montoAplicar, // Send partial amount!
+            categoria_id: categoryData.categoria_id,
+            subcategoria: categoryData.subcategoria || ''
           });
           successCount++;
         } catch (cfdiError) {
@@ -779,6 +790,7 @@ const BankStatementsModule = () => {
         setSelectedTransaction(null);
         setSelectedCfdis([]);
         setMontosParciales({}); // Clear partial amounts
+        setCfdiCategories({}); // Clear categories
         setCfdiSearchTerm('');
       } else if (successCount > 0) {
         toast.warning(`Parcialmente conciliado: ${successCount}/${selectedCfdis.length} CFDIs. Errores: ${errorMessages.join(', ')}`);
