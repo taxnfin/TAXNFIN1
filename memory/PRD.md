@@ -315,7 +315,37 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
-## Latest Updates (February 2, 2026)
+## Latest Updates (February 4, 2026)
+
+### Completed in This Session ✅
+
+**P0 - Selección de Categoría/Subcategoría en Conciliación**
+- ✅ Campo de **Categoría obligatorio** en diálogo de conciliación
+- ✅ Campo de **Subcategoría opcional** (texto libre)
+- ✅ Categorías **filtradas por tipo de CFDI** (ingreso/egreso)
+- ✅ **Validación** que previene confirmar sin seleccionar categoría
+- ✅ **Backend actualizado**: `BankReconciliationCreate` acepta `categoria_id` y `subcategoria`
+- ✅ **Payment creado** con category_id y subcategory_id correctos
+- ✅ **Testing**: 100% (6/6 features verificadas, 8/8 backend tests passed)
+
+**Archivos modificados:**
+- `backend/models/bank.py` - Agregados campos `categoria_id` y `subcategoria` al modelo
+- `backend/routes/reconciliations.py` - Lógica para guardar categoría en payment
+- `frontend/src/pages/BankStatementsModule.js` - Nueva función `getCategoriesForCfdi()`, UI para selección de categoría
+
+**Nueva función frontend:**
+```javascript
+// Get categories for reconciliation dialog based on CFDI type
+const getCategoriesForCfdi = (cfdi) => {
+  const tipoCfdi = cfdi?.tipo_cfdi || '';
+  const tipo = (tipoCfdi === 'ingreso' || tipoCfdi === 'I') ? 'ingreso' : 'egreso';
+  return categories.filter(c => c.tipo === tipo && c.activo !== false);
+};
+```
+
+---
+
+## Previous Updates (February 2, 2026)
 
 ### Completed in This Session ✅
 
