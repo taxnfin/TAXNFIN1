@@ -545,6 +545,7 @@ async def sync_alegra_bills(
             "total": len(all_bills),
             "created": created,
             "updated": updated,
+            "skipped": skipped,
             "errors": errors
         }
     }
@@ -553,7 +554,9 @@ async def sync_alegra_bills(
 @router.post("/sync/payments")
 async def sync_alegra_payments(
     request: Request,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(get_current_user),
+    date_from: str = Query(None, description="Date from (YYYY-MM-DD)"),
+    date_to: str = Query(None, description="Date to (YYYY-MM-DD)")
 ):
     """
     Sync payment receipts from Alegra
