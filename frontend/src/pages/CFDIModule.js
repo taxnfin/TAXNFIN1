@@ -1140,6 +1140,66 @@ const CFDIModule = () => {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Delete All Dialog */}
+      <AlertDialog open={deleteAllDialogOpen} onOpenChange={setDeleteAllDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-red-600 flex items-center gap-2">
+              <Trash2 size={20} />
+              ¿Eliminar {filteredCfdis.length} CFDIs?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <div className="space-y-3">
+                <p>
+                  Estás a punto de eliminar <strong>{filteredCfdis.length}</strong> CFDIs
+                  {filteredCfdis.length !== cfdis.length && (
+                    <span className="text-orange-600"> (de {cfdis.length} totales, basado en los filtros activos)</span>
+                  )}
+                </p>
+                
+                {(filterEmisor || filterReceptor || filterCategory !== 'all' || filterDateFrom || filterDateTo) && (
+                  <div className="bg-orange-50 border border-orange-200 rounded p-2 text-sm">
+                    <strong>Filtros activos:</strong>
+                    <ul className="list-disc list-inside mt-1">
+                      {filterEmisor && <li>Emisor: "{filterEmisor}"</li>}
+                      {filterReceptor && <li>Receptor: "{filterReceptor}"</li>}
+                      {filterCategory !== 'all' && <li>Categoría aplicada</li>}
+                      {filterDateFrom && <li>Desde: {filterDateFrom}</li>}
+                      {filterDateTo && <li>Hasta: {filterDateTo}</li>}
+                    </ul>
+                  </div>
+                )}
+                
+                <p className="text-red-600 font-semibold">
+                  ⚠️ Esta acción no se puede deshacer.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingAll}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteAllConfirm}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deletingAll}
+              data-testid="confirm-delete-all-btn"
+            >
+              {deletingAll ? (
+                <>
+                  <Loader2 size={14} className="mr-1 animate-spin" />
+                  Eliminando...
+                </>
+              ) : (
+                <>
+                  <Trash2 size={14} className="mr-1" />
+                  Eliminar {filteredCfdis.length} CFDIs
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Categorize Dialog */}
       <Dialog open={categorizeDialogOpen} onOpenChange={setCategorizeDialogOpen}>
         <DialogContent>
