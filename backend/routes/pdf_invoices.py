@@ -229,7 +229,6 @@ async def extract_pdf_invoice(
             "is_duplicate": is_duplicate,
             "duplicate_message": duplicate_message
         }
-        }
     finally:
         # Clean up temp file
         os.unlink(tmp_path)
