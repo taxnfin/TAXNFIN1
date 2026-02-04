@@ -213,6 +213,17 @@ const PDFInvoiceUploader = ({
           {/* Extracted Data Preview */}
           {extractedData?.data && (
             <div className="space-y-4">
+              {/* Duplicate Warning */}
+              {extractedData.is_duplicate && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-300">
+                  <AlertCircle className="w-6 h-6 text-amber-600" />
+                  <div>
+                    <p className="font-semibold text-amber-700">⚠️ FACTURA DUPLICADA</p>
+                    <p className="text-sm text-amber-600">{extractedData.duplicate_message}</p>
+                  </div>
+                </div>
+              )}
+              
               {/* Type Badge */}
               <div className={`
                 flex items-center gap-2 p-3 rounded-lg
