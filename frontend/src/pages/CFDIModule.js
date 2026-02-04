@@ -42,6 +42,8 @@ const CFDIModule = () => {
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [cfdiToDelete, setCfdiToDelete] = useState(null);
+  const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const [viewCurrency, setViewCurrency] = useState('MXN');
   const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.50, EUR: 19.00 });
   const [summary, setSummary] = useState(null);
