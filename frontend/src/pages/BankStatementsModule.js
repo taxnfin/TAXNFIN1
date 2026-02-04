@@ -352,6 +352,7 @@ const BankStatementsModule = () => {
   const [filterAccount, setFilterAccount] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchTercero, setSearchTercero] = useState('');  // New: search by tercero (emisor/receptor)
   const [filterEmisor, setFilterEmisor] = useState('all');
   const [filterCategoria, setFilterCategoria] = useState('all');
   const [importFile, setImportFile] = useState(null);
