@@ -444,6 +444,11 @@ async def sync_alegra_bills(
         params = {"start": start, "limit": limit, "order_direction": "DESC", "order_field": "id"}
         if status != "all":
             params["status"] = status
+        # Add date filters if provided
+        if date_from:
+            params["date_start"] = date_from
+        if date_to:
+            params["date_end"] = date_to
         
         # bills endpoint
         bills = await alegra_request("GET", "bills", email, token, params=params)
@@ -461,6 +466,7 @@ async def sync_alegra_bills(
     # Process and save bills as payments (pagos pendientes)
     created = 0
     updated = 0
+    skipped = 0
     errors = 0
     
     for bill in all_bills:
