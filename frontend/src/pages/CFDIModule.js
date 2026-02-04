@@ -533,6 +533,8 @@ const CFDIModule = () => {
     setFilterReconciliation('all');
     setFilterDateFrom('');
     setFilterDateTo('');
+    setFilterEmisor('');
+    setFilterReceptor('');
   };
 
   // Convert amount to view currency
