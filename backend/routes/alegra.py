@@ -739,3 +739,62 @@ async def disconnect_alegra(
     )
     
     return {"success": True, "message": "Alegra desconectado exitosamente"}
+
+
+@router.delete("/clear-data")
+async def clear_alegra_data(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    clear_customers: bool = Query(True, description="Clear customers from Alegra"),
+    clear_vendors: bool = Query(True, description="Clear vendors from Alegra"),
+    clear_payments: bool = Query(True, description="Clear payments from Alegra")
+):
+    """
+    Clear all data synced from Alegra for the active company
+    This allows re-syncing from scratch
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    results = {
+        "customers_deleted": 0,
+        "vendors_deleted": 0,
+        "payments_deleted": 0
+    }
+    
+    # Delete customers sourced from Alegra
+    if clear_customers:
+        delete_result = await db.customers.delete_many({
+            'company_id': company_id,
+            'source': 'alegra'
+        })
+        results['customers_deleted'] = delete_result.deleted_count
+    
+    # Delete vendors sourced from Alegra
+    if clear_vendors:
+        delete_result = await db.vendors.delete_many({
+            'company_id': company_id,
+            'source': 'alegra'
+        })
+        results['vendors_deleted'] = delete_result.deleted_count
+    
+    # Delete payments sourced from Alegra
+    if clear_payments:
+        delete_result = await db.payments.delete_many({
+            'company_id': company_id,
+            'source': 'alegra'
+        })
+        results['payments_deleted'] = delete_result.deleted_count
+    
+    # Reset last sync time
+    await db.companies.update_one(
+        {'id': company_id},
+        {'$set': {'alegra_last_sync': None}}
+    )
+    
+    total_deleted = results['customers_deleted'] + results['vendors_deleted'] + results['payments_deleted']
+    
+    return {
+        "success": True,
+        "message": f"Se eliminaron {total_deleted} registros de Alegra",
+        "results": results
+    }
