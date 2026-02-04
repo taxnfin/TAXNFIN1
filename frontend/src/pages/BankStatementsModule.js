@@ -2058,9 +2058,10 @@ const BankStatementsModule = () => {
                 </SelectContent>
               </Select>
             </div>
-            {(searchTerm || filterAccount !== 'all' || filterStatus !== 'all' || filterEmisor !== 'all' || filterCategoria !== 'all') && (
+            {(searchTerm || searchTercero || filterAccount !== 'all' || filterStatus !== 'all' || filterEmisor !== 'all' || filterCategoria !== 'all') && (
               <Button variant="ghost" size="sm" onClick={() => {
                 setSearchTerm('');
+                setSearchTercero('');
                 setFilterAccount('all');
                 setFilterStatus('all');
                 setFilterEmisor('all');
