@@ -930,6 +930,16 @@ const BankStatementsModule = () => {
     
     return userCats;
   };
+  
+  // Get subcategories for a selected category
+  const getSubcategoriesForCategory = (categoryId) => {
+    if (!categoryId) return [];
+    const category = categories.find(c => c.id === categoryId);
+    if (!category || !category.subcategorias) return [];
+    return category.subcategorias
+      .filter(s => s.activo !== false)
+      .map(s => ({ id: s.id, nombre: s.nombre }));
+  };
 
   const openSinUUIDDialog = (txn, tipo = 'sin_uuid') => {
     setSinUUIDTransaction(txn);
