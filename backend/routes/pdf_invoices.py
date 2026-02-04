@@ -16,8 +16,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType
-from database import db
-from routes.auth import get_current_user, get_active_company_id
+from core.database import db
+from core.auth import get_current_user, get_active_company_id
 
 import logging
 logger = logging.getLogger(__name__)
