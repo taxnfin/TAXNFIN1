@@ -362,7 +362,6 @@ const BankStatementsModule = () => {
   const [selectedCfdis, setSelectedCfdis] = useState([]);
   const [cfdiSearchTerm, setCfdiSearchTerm] = useState('');
   const [importPdfDialogOpen, setImportPdfDialogOpen] = useState(false);
-  const [pdfInvoiceUploaderOpen, setPdfInvoiceUploaderOpen] = useState(false);  // New AI-powered invoice importer
   const [pdfFile, setPdfFile] = useState(null);
   const [pdfAccountId, setPdfAccountId] = useState('');
   const [importingPdf, setImportingPdf] = useState(false);
