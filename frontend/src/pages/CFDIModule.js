@@ -53,6 +53,8 @@ const CFDIModule = () => {
   const [filterReconciliation, setFilterReconciliation] = useState('all');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterEmisor, setFilterEmisor] = useState('');
+  const [filterReceptor, setFilterReceptor] = useState('');
   const [aiCategorizingAll, setAiCategorizingAll] = useState(false);
   const [aiCategorizingSingle, setAiCategorizingSingle] = useState(null);
   const [aiResultsDialogOpen, setAiResultsDialogOpen] = useState(false);
