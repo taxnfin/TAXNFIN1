@@ -297,3 +297,7 @@ frontend/node_modules/.cache/default-development/8.pack_
 *.env
 *.env.*
 frontend/node_modules/.cache/default-development/15.pack
+-e 
+# Environment files
+*.env
+*.env.*
