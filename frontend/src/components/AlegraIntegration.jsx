@@ -530,6 +530,55 @@ export default function AlegraIntegration() {
             )}
           </DialogContent>
         </Dialog>
+
+        {/* Clear Data Dialog */}
+        <Dialog open={clearDataDialogOpen} onOpenChange={setClearDataDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-orange-600">
+                <Trash2 className="h-5 w-5" />
+                Limpiar Datos de Alegra
+              </DialogTitle>
+              <DialogDescription>
+                Esta acción eliminará todos los registros sincronizados desde Alegra (clientes, proveedores y pagos/facturas). 
+                Los datos originales de Alegra no se modificarán. Podrás volver a sincronizar después.
+              </DialogDescription>
+            </DialogHeader>
+            <Alert className="bg-orange-50 border-orange-200">
+              <AlertCircle className="h-4 w-4 text-orange-600" />
+              <AlertDescription className="text-orange-700">
+                Esta acción no se puede deshacer. Se recomienda usarla cuando necesites reiniciar la sincronización desde cero.
+              </AlertDescription>
+            </Alert>
+            <DialogFooter className="flex gap-2 pt-4">
+              <Button 
+                variant="outline" 
+                onClick={() => setClearDataDialogOpen(false)}
+                disabled={clearing}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                variant="destructive"
+                onClick={clearAlegraData}
+                disabled={clearing}
+                data-testid="confirm-clear-alegra-btn"
+              >
+                {clearing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Eliminando...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Eliminar Datos
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );
