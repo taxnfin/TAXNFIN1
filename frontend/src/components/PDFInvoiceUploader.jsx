@@ -68,7 +68,15 @@ const PDFInvoiceUploader = ({
 
       if (result.success) {
         setExtractedData(result);
-        toast.success(result.message);
+        
+        // Show duplicate warning if applicable
+        if (result.is_duplicate) {
+          toast.warning(`⚠️ DUPLICADO: ${result.duplicate_message}`, {
+            duration: 8000
+          });
+        } else {
+          toast.success(result.message);
+        }
       } else {
         toast.error(result.detail || 'Error al extraer datos del PDF');
       }
