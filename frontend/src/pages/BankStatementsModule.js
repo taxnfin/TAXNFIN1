@@ -2527,7 +2527,7 @@ const BankStatementsModule = () => {
                                   <SelectValue placeholder="Seleccionar categoría" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {getAllCategories().map(cat => (
+                                  {getCategoriesForCfdi(cfdi).map(cat => (
                                     <SelectItem key={cat.id} value={cat.id}>{cat.nombre}</SelectItem>
                                   ))}
                                 </SelectContent>
