@@ -95,7 +95,7 @@ export default function AlegraIntegration() {
     if (!window.confirm('¿Estás seguro de desconectar Alegra?')) return;
     setDisconnecting(true);
     try {
-      await api.delete('/api/alegra/disconnect');
+      await api.delete('/alegra/disconnect');
       toast.success('Alegra desconectado');
       fetchStatus();
     } catch (error) {
