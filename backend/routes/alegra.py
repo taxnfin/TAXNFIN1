@@ -77,6 +77,48 @@ async def alegra_request(method: str, endpoint: str, email: str, token: str, par
             raise HTTPException(status_code=500, detail=f"Error connecting to Alegra: {str(e)}")
 
 
+async def save_alegra_exchange_rate(company_id: str, moneda: str, tipo_cambio: float, fecha: str):
+    """Save exchange rate from Alegra to fx_rates collection"""
+    try:
+        # Parse date
+        if fecha:
+            fecha_vigencia = datetime.fromisoformat(fecha.replace('Z', '+00:00')) if 'T' in fecha else datetime.strptime(fecha, '%Y-%m-%d')
+        else:
+            fecha_vigencia = datetime.now(timezone.utc)
+        
+        # Check if we already have this rate for this date
+        existing = await db.fx_rates.find_one({
+            'company_id': company_id,
+            'moneda_cotizada': moneda,
+            'fecha_vigencia': {'$gte': fecha_vigencia.replace(hour=0, minute=0, second=0), '$lt': fecha_vigencia.replace(hour=23, minute=59, second=59)}
+        })
+        
+        if existing:
+            # Update if rate changed
+            if existing.get('tipo_cambio') != tipo_cambio:
+                await db.fx_rates.update_one(
+                    {'_id': existing['_id']},
+                    {'$set': {'tipo_cambio': tipo_cambio, 'fuente': 'alegra', 'updated_at': datetime.now(timezone.utc).isoformat()}}
+                )
+        else:
+            # Insert new rate
+            rate_doc = {
+                'id': str(uuid.uuid4()),
+                'company_id': company_id,
+                'moneda_base': 'MXN',
+                'moneda_cotizada': moneda,
+                'tipo_cambio': tipo_cambio,
+                'fecha_vigencia': fecha_vigencia.isoformat(),
+                'fuente': 'alegra',
+                'source': 'alegra',
+                'created_at': datetime.now(timezone.utc).isoformat()
+            }
+            await db.fx_rates.insert_one(rate_doc)
+            logger.info(f"Saved exchange rate from Alegra: {moneda} = {tipo_cambio} MXN for {fecha}")
+    except Exception as e:
+        logger.error(f"Error saving exchange rate: {str(e)}")
+
+
 @router.post("/test-connection")
 async def test_alegra_connection(
     credentials: AlegraCredentials,
