@@ -34,6 +34,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
   const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
     { name: 'Proyecciones', href: '/projections', icon: TrendingUp, highlight: true },
+    { name: 'Decisiones', href: '/treasury', icon: Lightbulb, highlight: true },
     { name: 'Aging CxC/CxP', href: '/transactions', icon: ArrowRightLeft },
     { name: 'CFDI / SAT', href: '/cfdi', icon: FileText },
     { name: 'Conciliaciones', href: '/bank-statements', icon: Receipt },
