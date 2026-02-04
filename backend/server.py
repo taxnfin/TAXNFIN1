@@ -41,6 +41,7 @@ from routes.fx_rates import router as fx_rates_router
 from routes.bank_transactions import router as bank_transactions_router
 from routes.sat import router as sat_router
 from routes.pdf_invoices import router as pdf_invoices_router
+from routes.alegra import router as alegra_router
 
 # Include modular routers in api_router
 api_router.include_router(auth_router)
