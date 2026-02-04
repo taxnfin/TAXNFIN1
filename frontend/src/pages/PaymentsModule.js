@@ -65,6 +65,9 @@ const PaymentsModule = () => {
   const [reconciling, setReconciling] = useState(false);
   const [newPaymentId, setNewPaymentId] = useState(null);
   
+  // PDF Invoice Uploader state
+  const [pdfUploaderOpen, setPdfUploaderOpen] = useState(false);
+  
   // States for clients/vendors and invoices
   const [customers, setCustomers] = useState([]);
   const [vendors, setVendors] = useState([]);
