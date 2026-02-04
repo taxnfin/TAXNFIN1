@@ -60,7 +60,7 @@ export default function AlegraIntegration() {
     }
     setTestingConnection(true);
     try {
-      const response = await api.post('/api/alegra/test-connection', credentials);
+      const response = await api.post('/alegra/test-connection', credentials);
       if (response.data.success) {
         toast.success('Conexión exitosa con Alegra');
       } else {
