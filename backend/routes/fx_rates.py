@@ -1,7 +1,7 @@
 """FX Rates routes - Exchange rate management"""
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from typing import Dict, List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uuid
 import logging
 
