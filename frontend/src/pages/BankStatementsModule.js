@@ -1472,6 +1472,22 @@ const BankStatementsModule = () => {
     if (filterStatus === 'pendiente' && txn.conciliado) return false;
     if (searchTerm && !txn.descripcion?.toLowerCase().includes(searchTerm.toLowerCase()) &&
         !txn.referencia?.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+    
+    // Filter by Tercero (search in description, and associated CFDI emisor/receptor)
+    if (searchTercero) {
+      const searchLower = searchTercero.toLowerCase();
+      const matchDesc = txn.descripcion?.toLowerCase().includes(searchLower);
+      const matchRef = txn.referencia?.toLowerCase().includes(searchLower);
+      // Also search in associated CFDI data if available
+      const matchCfdiEmisor = txn.cfdi_emisor?.toLowerCase().includes(searchLower);
+      const matchCfdiReceptor = txn.cfdi_receptor?.toLowerCase().includes(searchLower);
+      const matchBeneficiario = txn.beneficiario?.toLowerCase().includes(searchLower);
+      
+      if (!matchDesc && !matchRef && !matchCfdiEmisor && !matchCfdiReceptor && !matchBeneficiario) {
+        return false;
+      }
+    }
+    
     // Filter by Emisor (from description - typically contains the counterparty name)
     if (filterEmisor !== 'all') {
       const emisorNormalizado = filterEmisor.toLowerCase();
