@@ -1984,6 +1984,19 @@ const BankStatementsModule = () => {
                 />
               </div>
             </div>
+            <div className="flex-1 min-w-[200px]">
+              <Label className="text-xs text-gray-500">Buscar Tercero (Emisor/Receptor)</Label>
+              <div className="relative">
+                <Building2 size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <Input
+                  placeholder="Nombre de proveedor o cliente..."
+                  value={searchTercero}
+                  onChange={(e) => setSearchTercero(e.target.value)}
+                  className="pl-10"
+                  data-testid="search-tercero"
+                />
+              </div>
+            </div>
             <div className="w-48">
               <Label className="text-xs text-gray-500">Cuenta</Label>
               <Select value={filterAccount} onValueChange={setFilterAccount}>
