@@ -1042,9 +1042,10 @@ const CFDIModule = () => {
                             size="sm"
                             className="text-red-500 hover:text-red-700 hover:bg-red-50"
                             onClick={() => handleDeleteClick(cfdi)}
+                            title="Eliminar CFDI"
                             data-testid={`delete-cfdi-${cfdi.id}`}
                           >
-                            <Trash2 size={16} />
+                            <Trash2 size={18} />
                           </Button>
                         </div>
                       </TableCell>
