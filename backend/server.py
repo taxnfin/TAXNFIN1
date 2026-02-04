@@ -40,6 +40,7 @@ from routes.cfdi import router as cfdi_router
 from routes.fx_rates import router as fx_rates_router
 from routes.bank_transactions import router as bank_transactions_router
 from routes.sat import router as sat_router
+from routes.pdf_invoices import router as pdf_invoices_router
 
 # Include modular routers in api_router
 api_router.include_router(auth_router)
@@ -54,6 +55,7 @@ api_router.include_router(cfdi_router)
 api_router.include_router(fx_rates_router)
 api_router.include_router(bank_transactions_router)
 api_router.include_router(sat_router)
+api_router.include_router(pdf_invoices_router)
 
 JWT_SECRET = os.environ.get('JWT_SECRET', 'taxnfin-secret-key-change-in-production')
 JWT_ALGORITHM = 'HS256'
