@@ -483,6 +483,22 @@ const CFDIModule = () => {
       if (cfdiDate > toDate) return false;
     }
     
+    // Emisor filter (search by name or RFC)
+    if (filterEmisor) {
+      const searchTerm = filterEmisor.toLowerCase();
+      const emisorNombre = (cfdi.emisor_nombre || '').toLowerCase();
+      const emisorRfc = (cfdi.emisor_rfc || '').toLowerCase();
+      if (!emisorNombre.includes(searchTerm) && !emisorRfc.includes(searchTerm)) return false;
+    }
+    
+    // Receptor filter (search by name or RFC)
+    if (filterReceptor) {
+      const searchTerm = filterReceptor.toLowerCase();
+      const receptorNombre = (cfdi.receptor_nombre || '').toLowerCase();
+      const receptorRfc = (cfdi.receptor_rfc || '').toLowerCase();
+      if (!receptorNombre.includes(searchTerm) && !receptorRfc.includes(searchTerm)) return false;
+    }
+    
     return true;
   });
 
