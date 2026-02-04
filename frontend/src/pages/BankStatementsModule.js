@@ -1625,7 +1625,7 @@ const BankStatementsModule = () => {
           <Button 
             variant="outline" 
             className="gap-2 border-purple-300 text-purple-700 hover:bg-purple-50"
-            onClick={() => setImportPdfDialogOpen(true)}
+            onClick={() => setPdfInvoiceUploaderOpen(true)}
             data-testid="import-factura-pdf-btn"
           >
             <Upload size={16} />
