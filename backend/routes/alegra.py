@@ -282,7 +282,9 @@ async def sync_alegra_contacts(
 async def sync_alegra_invoices(
     request: Request,
     current_user: Dict = Depends(get_current_user),
-    status: str = Query("all", description="Status: all, open, closed, void")
+    status: str = Query("all", description="Status: all, open, closed, void"),
+    date_from: str = Query(None, description="Date from (YYYY-MM-DD)"),
+    date_to: str = Query(None, description="Date to (YYYY-MM-DD)")
 ):
     """
     Sync invoices (sales/receivables) from Alegra
@@ -306,6 +308,11 @@ async def sync_alegra_invoices(
         params = {"start": start, "limit": limit, "order_direction": "DESC", "order_field": "id"}
         if status != "all":
             params["status"] = status
+        # Add date filters if provided
+        if date_from:
+            params["date_start"] = date_from
+        if date_to:
+            params["date_end"] = date_to
         
         invoices = await alegra_request("GET", "invoices", email, token, params=params)
         
@@ -322,6 +329,7 @@ async def sync_alegra_invoices(
     # Process and save invoices as payments (cobros pendientes)
     created = 0
     updated = 0
+    skipped = 0
     errors = 0
     
     for invoice in all_invoices:
