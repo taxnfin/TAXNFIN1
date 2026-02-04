@@ -2568,7 +2568,6 @@ const BankStatementsModule = () => {
                                 </SelectContent>
                               </Select>
                             </div>
-                            </div>
                           </div>
                           
                           {/* Remaining after this payment */}
