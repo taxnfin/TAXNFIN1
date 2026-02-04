@@ -13,6 +13,7 @@ import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { exportCFDIs } from '@/utils/excelExport';
 import SATIntegration from '@/components/SATIntegration';
+import AlegraIntegration from '@/components/AlegraIntegration';
 import PDFInvoiceUploader from '@/components/PDFInvoiceUploader';
 import {
   AlertDialog,
