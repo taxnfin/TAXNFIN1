@@ -229,6 +229,32 @@ const CFDIModule = () => {
     }
   };
 
+  const handleDeleteAllConfirm = async () => {
+    setDeletingAll(true);
+    try {
+      // Build query params for filtered deletion
+      const params = new URLSearchParams();
+      if (filterCategory !== 'all') params.append('category_id', filterCategory);
+      if (filterReconciliation !== 'all') params.append('estado_conciliacion', filterReconciliation);
+      if (filterDateFrom) params.append('fecha_desde', filterDateFrom);
+      if (filterDateTo) params.append('fecha_hasta', filterDateTo);
+      if (filterEmisor) params.append('emisor', filterEmisor);
+      if (filterReceptor) params.append('receptor', filterReceptor);
+      
+      const queryString = params.toString();
+      const url = queryString ? `/cfdi/bulk-delete?${queryString}` : '/cfdi/bulk-delete';
+      
+      const response = await api.delete(url);
+      toast.success(`Se eliminaron ${response.data.deleted} CFDIs correctamente`);
+      loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error eliminando CFDIs');
+    } finally {
+      setDeleteAllDialogOpen(false);
+      setDeletingAll(false);
+    }
+  };
+
   const handleCategorizeClick = (cfdi) => {
     setCfdiToCategorize(cfdi);
     setCategorizeData({
