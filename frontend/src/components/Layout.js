@@ -18,7 +18,8 @@ import {
   Tags,
   TrendingUp,
   FileSpreadsheet,
-  Receipt
+  Receipt,
+  Lightbulb
 } from 'lucide-react';
 import {
   DropdownMenu,
