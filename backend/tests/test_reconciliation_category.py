@@ -129,12 +129,13 @@ class TestReconciliationCategory:
             pytest.skip("No matching pending transaction/CFDI pair found for testing")
         
         # Create reconciliation with categoria_id
+        saldo_pendiente = test_cfdi['total'] - (test_cfdi.get('monto_pagado', 0) or 0)
         reconciliation_data = {
             "bank_transaction_id": test_txn['id'],
             "cfdi_id": test_cfdi['id'],
             "metodo_conciliacion": "manual",
             "porcentaje_match": 100,
-            "monto_aplicado": test_cfdi['total'],
+            "monto_aplicado": saldo_pendiente,
             "categoria_id": test_category['id'],
             "subcategoria": "TEST_Subcategoria"
         }
@@ -218,12 +219,13 @@ class TestReconciliationCategory:
             pytest.skip("No matching pending transaction/CFDI pair found for testing")
         
         # Create reconciliation WITHOUT categoria_id (backend should still accept, validation is in frontend)
+        saldo_pendiente = test_cfdi['total'] - (test_cfdi.get('monto_pagado', 0) or 0)
         reconciliation_data = {
             "bank_transaction_id": test_txn['id'],
             "cfdi_id": test_cfdi['id'],
             "metodo_conciliacion": "manual",
             "porcentaje_match": 100,
-            "monto_aplicado": test_cfdi['total']
+            "monto_aplicado": saldo_pendiente
             # No categoria_id or subcategoria
         }
         
@@ -297,12 +299,13 @@ class TestReconciliationCategory:
         
         # Create reconciliation with category
         test_subcategoria = "TEST_PaymentSubcategory"
+        saldo_pendiente = test_cfdi['total'] - (test_cfdi.get('monto_pagado', 0) or 0)
         reconciliation_data = {
             "bank_transaction_id": test_txn['id'],
             "cfdi_id": test_cfdi['id'],
             "metodo_conciliacion": "manual",
             "porcentaje_match": 100,
-            "monto_aplicado": test_cfdi['total'],
+            "monto_aplicado": saldo_pendiente,
             "categoria_id": test_category['id'],
             "subcategoria": test_subcategoria
         }
