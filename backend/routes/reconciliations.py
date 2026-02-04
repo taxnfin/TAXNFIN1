@@ -211,14 +211,37 @@ async def delete_reconciliation(
     
     bank_txn_id = recon.get('bank_transaction_id')
     cfdi_id = recon.get('cfdi_id')
-    monto_aplicado = recon.get('monto_aplicado', 0)  # Get the amount that was applied
+    monto_aplicado = recon.get('monto_aplicado')
+    
+    # If monto_aplicado is None (legacy reconciliations), try to get it from the payment or bank transaction
+    if monto_aplicado is None and cfdi_id:
+        # Try to find the associated payment to get the amount
+        associated_payment = await db.payments.find_one({
+            'company_id': company_id,
+            'cfdi_id': cfdi_id,
+            'bank_transaction_id': bank_txn_id
+        }, {'_id': 0, 'monto': 1})
+        if associated_payment:
+            monto_aplicado = associated_payment.get('monto', 0)
+        elif bank_txn_id:
+            # Fall back to bank transaction amount
+            bank_txn = await db.bank_transactions.find_one({'id': bank_txn_id}, {'_id': 0, 'monto': 1})
+            if bank_txn:
+                monto_aplicado = bank_txn.get('monto', 0)
+    
+    # Ensure monto_aplicado is a number
+    monto_aplicado = float(monto_aplicado or 0)
+    
+    logger.info(f"Canceling reconciliation {reconciliation_id}: cfdi_id={cfdi_id}, monto_aplicado={monto_aplicado}")
     
     # Check if there are other reconciliations for this CFDI
-    other_recons = await db.reconciliations.count_documents({
-        'company_id': company_id,
-        'cfdi_id': cfdi_id,
-        'id': {'$ne': reconciliation_id}
-    })
+    other_recons = 0
+    if cfdi_id:
+        other_recons = await db.reconciliations.count_documents({
+            'company_id': company_id,
+            'cfdi_id': cfdi_id,
+            'id': {'$ne': reconciliation_id}
+        })
     
     # Delete the reconciliation
     await db.reconciliations.delete_one({'id': reconciliation_id})
@@ -240,20 +263,23 @@ async def delete_reconciliation(
         cfdi = await db.cfdis.find_one({'id': cfdi_id}, {'_id': 0})
         if cfdi:
             tipo_cfdi = cfdi.get('tipo_cfdi', '')
+            cfdi_total = float(cfdi.get('total', 0) or 0)
             
             # Determine which field to update based on CFDI type
             if tipo_cfdi in ['ingreso', 'I']:
                 # For income CFDIs, we reduce monto_cobrado
                 current_cobrado = float(cfdi.get('monto_cobrado', 0) or 0)
-                new_cobrado = max(0, current_cobrado - float(monto_aplicado or 0))
+                new_cobrado = max(0, current_cobrado - monto_aplicado)
                 
-                # Determine new status
-                if other_recons == 0:
+                # Determine new status based on remaining amount
+                if other_recons == 0 or new_cobrado < 0.01:
                     new_estado = 'pendiente'
-                elif new_cobrado > 0:
+                elif new_cobrado < cfdi_total - 0.01:
                     new_estado = 'parcial'
                 else:
                     new_estado = 'pendiente'
+                
+                logger.info(f"CFDI {cfdi_id}: tipo=ingreso, cobrado {current_cobrado} -> {new_cobrado}, estado -> {new_estado}")
                 
                 await db.cfdis.update_one(
                     {'id': cfdi_id},
@@ -265,15 +291,17 @@ async def delete_reconciliation(
             else:
                 # For expense CFDIs, we reduce monto_pagado
                 current_pagado = float(cfdi.get('monto_pagado', 0) or 0)
-                new_pagado = max(0, current_pagado - float(monto_aplicado or 0))
+                new_pagado = max(0, current_pagado - monto_aplicado)
                 
-                # Determine new status
-                if other_recons == 0:
+                # Determine new status based on remaining amount
+                if other_recons == 0 or new_pagado < 0.01:
                     new_estado = 'pendiente'
-                elif new_pagado > 0:
+                elif new_pagado < cfdi_total - 0.01:
                     new_estado = 'parcial'
                 else:
                     new_estado = 'pendiente'
+                
+                logger.info(f"CFDI {cfdi_id}: tipo=egreso, pagado {current_pagado} -> {new_pagado}, estado -> {new_estado}")
                 
                 await db.cfdis.update_one(
                     {'id': cfdi_id},
@@ -283,12 +311,20 @@ async def delete_reconciliation(
                     }}
                 )
     
-    # Delete auto-created payment if exists
-    auto_payment = await db.payments.find_one({
-        'company_id': company_id,
-        'bank_transaction_id': bank_txn_id,
-        'auto_created_from_reconciliation': True
-    }, {'_id': 0, 'id': 1})
+    # Delete auto-created payment if exists - search by both bank_txn_id AND cfdi_id
+    payment_query = {'company_id': company_id, 'auto_created_from_reconciliation': True}
+    if bank_txn_id and cfdi_id:
+        payment_query['$or'] = [
+            {'bank_transaction_id': bank_txn_id, 'cfdi_id': cfdi_id},
+            {'bank_transaction_id': bank_txn_id},
+            {'cfdi_id': cfdi_id}
+        ]
+    elif bank_txn_id:
+        payment_query['bank_transaction_id'] = bank_txn_id
+    elif cfdi_id:
+        payment_query['cfdi_id'] = cfdi_id
+    
+    auto_payment = await db.payments.find_one(payment_query, {'_id': 0, 'id': 1})
     
     if auto_payment:
         await db.payments.delete_one({'id': auto_payment['id']})
