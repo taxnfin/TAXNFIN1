@@ -123,7 +123,7 @@ export default function AlegraIntegration() {
   const syncEntity = async (entity) => {
     setSyncing(true);
     try {
-      const response = await api.post(`/api/alegra/sync/${entity}`);
+      const response = await api.post(`/alegra/sync/${entity}`);
       toast.success(`${entity} sincronizados: ${response.data.stats?.created || 0} nuevos, ${response.data.stats?.updated || 0} actualizados`);
       fetchStatus();
     } catch (error) {
