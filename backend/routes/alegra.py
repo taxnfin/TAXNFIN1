@@ -408,6 +408,7 @@ async def sync_alegra_invoices(
             "total": len(all_invoices),
             "created": created,
             "updated": updated,
+            "skipped": skipped,
             "errors": errors
         }
     }
@@ -417,7 +418,9 @@ async def sync_alegra_invoices(
 async def sync_alegra_bills(
     request: Request,
     current_user: Dict = Depends(get_current_user),
-    status: str = Query("all", description="Status: all, open, closed, void")
+    status: str = Query("all", description="Status: all, open, closed, void"),
+    date_from: str = Query(None, description="Date from (YYYY-MM-DD)"),
+    date_to: str = Query(None, description="Date to (YYYY-MM-DD)")
 ):
     """
     Sync bills (purchases/payables) from Alegra
