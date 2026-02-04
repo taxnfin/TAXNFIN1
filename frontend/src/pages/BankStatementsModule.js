@@ -1619,6 +1619,18 @@ const BankStatementsModule = () => {
               </span>
             </Button>
           </label>
+          
+          {/* New AI-powered PDF Invoice Importer */}
+          <Button 
+            variant="outline" 
+            className="gap-2 border-purple-300 text-purple-700 hover:bg-purple-50"
+            onClick={() => setImportPdfDialogOpen(true)}
+            data-testid="import-factura-pdf-btn"
+          >
+            <Upload size={16} />
+            Importar Factura
+          </Button>
+          
           <Button variant="outline" onClick={exportToExcel} className="gap-2" data-testid="export-statements-btn">
             <Download size={16} />
             Exportar
