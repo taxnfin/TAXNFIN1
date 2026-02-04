@@ -672,11 +672,20 @@ async def sync_alegra_payments(
 @router.post("/sync/all")
 async def sync_all_alegra_data(
     request: Request,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(get_current_user),
+    date_from: str = Query(None, description="Date from (YYYY-MM-DD)"),
+    date_to: str = Query(None, description="Date to (YYYY-MM-DD)")
 ):
     """
     Sync all data from Alegra: contacts, invoices, bills, and payments
+    With optional date range filtering
     """
+    company_id = await get_active_company_id(request, current_user)
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0})
+    
+    if not company.get('alegra_connected'):
+        raise HTTPException(status_code=400, detail="Alegra no está conectado")
+    
     results = {}
     
     # Sync contacts
@@ -686,29 +695,28 @@ async def sync_all_alegra_data(
     except Exception as e:
         results['contacts'] = {'error': str(e)}
     
-    # Sync invoices (CxC)
+    # Sync invoices (CxC) with date filters
     try:
-        invoices_result = await sync_alegra_invoices(request, current_user, "all")
+        invoices_result = await sync_alegra_invoices(request, current_user, "all", date_from, date_to)
         results['invoices'] = invoices_result.get('stats', {})
     except Exception as e:
         results['invoices'] = {'error': str(e)}
     
-    # Sync bills (CxP)
+    # Sync bills (CxP) with date filters
     try:
-        bills_result = await sync_alegra_bills(request, current_user, "all")
+        bills_result = await sync_alegra_bills(request, current_user, "all", date_from, date_to)
         results['bills'] = bills_result.get('stats', {})
     except Exception as e:
         results['bills'] = {'error': str(e)}
     
-    # Sync bank movements
+    # Sync bank movements with date filters
     try:
-        payments_result = await sync_alegra_payments(request, current_user)
+        payments_result = await sync_alegra_payments(request, current_user, date_from, date_to)
         results['payments'] = payments_result.get('stats', {})
     except Exception as e:
         results['payments'] = {'error': str(e)}
     
     # Update last sync time
-    company_id = await get_active_company_id(request, current_user)
     await db.companies.update_one(
         {'id': company_id},
         {'$set': {'alegra_last_sync': datetime.now(timezone.utc).isoformat()}}
