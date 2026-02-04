@@ -1,77 +1,82 @@
 <analysis>**original_problem_statement:**
 The user's primary goal is to build a comprehensive cash flow management tool named TaxnFin.
 
-The project's main feature is an integration with Mexico's tax authority (SAT) to download digital invoices (CFDIs). The initial approach was abandoned due to technical hurdles (CAPTCHA), and a new implementation using the official SAT Web Service (SOAP) with FIEL credentials has been built but is pending user verification.
+The project has evolved significantly through user requests. The core requirements implemented and requested include:
+1.  **SAT Integration**: A feature to download digital invoices (CFDIs) from Mexico's tax authority (SAT) using FIEL credentials. This is built but pending user testing.
+2.  **Catalog Management**: Full CRUD functionality for Companies, Vendors, and Customers, including fields for  and payment/collection terms.
+3.  **Advanced Reporting**:
+    *   An overhauled Reports page showing initial bank balances (using historical exchange rates), weekly cash flow, and variance analysis.
+    *   An Aging report (Accounts Payable/Receivable) that uses vendor/customer-specific terms to calculate due dates.
+    *   Filters have been added to the Aging report by Customer/Vendor, Currency, Age, and Date Range.
+4.  **Interactive Cash Flow Projections**:
+    *   A highly detailed 18-week cash flow projection model.
+    *   **Drill-Down Auditing**: Every numerical cell in the projection is clickable, opening a dialog that shows the detailed source transactions (CFDIs, bank movements, payments) with their status.
+    *   **View Toggling**: A toggle allows switching the main view from By Category to By Provider/Customer.
+    *   **Filtering**: The By Provider/Customer view includes filters for searching by name, type (Client/Provider), and balance (positive/negative).
+    *   **Excel Export**: Functionality to export both filtered Aging reports and filtered Provider/Customer projection data to Excel.
+5.  **Reconciliation Module**: An interface to match bank transactions with CFDIs, featuring an improved automatic suggestion engine.
+6.  **UI/UX Improvements**: The login page background has been updated for a more professional look.
 
-Throughout the session, the user has also requested and guided the development of numerous features and bug fixes, including:
-1.  CRUD functionality for Companies, Vendors, and Customers.
-2.  Adding fields for , , and .
-3.  Fixing a bug preventing  from being used as a payment/collection term.
-4.  A complete overhaul of the Reports page to show initial bank balance, weekly real vs. projected cash flow, and variance analysis.
-5.  Adding an initial balance date to bank accounts to fetch and use the correct historical exchange rate for all financial calculations, ensuring consistency across all modules.
-6.  Integrating  into the Aging (Accounts Payable/Receivable) report to calculate accurate due dates.
-7.  Making the Liquidity Scenarios (Pessimistic, Base, Optimistic) on the Dashboard configurable by the user.
-8.  Improving the automatic reconciliation suggestion logic to find matches that were previously missed.
-
-**User's preferred language**: Spanish. The user communicates exclusively in Spanish. The next agent MUST respond in Spanish and ensure all UI text is also in Spanish.
+**User's preferred language**: Spanish. The user exclusively communicates in Spanish. The next agent MUST respond in Spanish and ensure all UI text is also in Spanish.
 
 **what currently exists?**
 The application is a full-stack React/FastAPI/MongoDB tool.
-- A robust SAT integration module () using the  library is ready but awaits user testing.
-- The Catalogs section () provides full CRUD for companies, vendors, and customers, including new fields for addresses and payment/collection terms.
-- The Reports page () has been completely redesigned, featuring initial bank balances calculated with historical exchange rates, weekly cash flow breakdowns, and real-vs-projected variance highlighting.
-- The Aging report () now accurately calculates invoice due dates using the specific payment/collection terms defined for each vendor/customer.
-- The Dashboard scenarios are now user-configurable via a dialog, with settings saved to .
-- The reconciliation suggestion engine in the backend () has been significantly improved with fuzzy name matching and more flexible amount comparison.
+-   **Frontend**: The UI is feature-rich, especially the  and  pages, which contain complex state management and interactivity. Filters, exports, drill-downs, and view toggles are fully implemented. The P0 bug from the previous session (reconciliation UI error) has been fixed and verified.
+-   **Backend**: The FastAPI backend serves all the data and contains the business logic for reconciliation suggestions, historical exchange rates, and entity CRUD. The SAT integration module () is complete but awaits user credentials for a live test.
+-   **Database**: MongoDB stores all application data, including companies, vendors, customers, CFDIs, bank transactions, and reconciliations.
 
 **Last working item**:
--   **Last item agent was working**: Debugging an issue where the user reported that reconciliation suggestions were still failing. The agent determined that the backend logic is now **correct** and successfully identifies the match (confirmed via API calls and a success toast in the UI). However, a UI rendering bug in  causes the wrong CFDI to be visually highlighted in the list, making the feature appear broken to the user.
+-   **Last item agent was working**: Implementing a user request to add **Category** and **Subcategory** selection fields to the reconciliation dialog. When a user matches a bank transaction to a CFDI, they must be able to classify the resulting expense/income instead of the system assuming a default category like Costo.
 -   **Status**: IN PROGRESS
--   **Agent Testing Done**: Y (for the backend API), N (for the end-to-end frontend verification)
--   **Which testing method agent to use?**: Frontend testing agent or manual screenshot verification. The focus should be on the reconciliation dialog in  after triggering the Sugerir (Suggest) button to confirm the correct CFDI is selected and highlighted.
+-   **Agent Testing Done**: N
+-   **Which testing method agent to use?**: Both.
+    1.  **Frontend**: Use the screenshot tool to verify the new Category/Subcategory dropdowns appear correctly in the reconciliation dialog for each selected CFDI ().
+    2.  **Backend**: Modify the reconciliation creation endpoint (). Test the end-to-end flow by using  to simulate the frontend request with the new category data and then verifying the  document created in the database has the correct category/subcategory saved.
 -   **User Testing Done**: N
 
 **All Pending/In progress Issue list**:
--   **Issue 1: (P0) Reconciliation Suggestion UI Rendering Bug.**
+-   **Issue 1: (P0) Complete Category/Subcategory selection during reconciliation.**
 -   **Issue 2: (P1) Reconciliation Cancellation Fix Verification.**
 -   **Issue 3: (P2) SAT FIEL Integration Verification.**
 
 Issues Detail:
--   **Issue 1: (P0) Reconciliation Suggestion UI Rendering Bug.**
-    -   **Description**: In the reconciliation module (), when the user clicks Sugerir (Suggest), the backend correctly identifies the matching CFDI and a success toast confirms this. However, the UI visually selects a different, incorrect CFDI in the list.
-    -   **Attempted fixes**: The backend logic in  was overhauled using  library for fuzzy name matching, which works correctly. The frontend in  was updated to handle the API response. The root cause is now isolated to the frontend rendering/state update after the correct data is received.
+-   **Issue 1: (P0) Complete Category/Subcategory selection during reconciliation.**
+    -   **Description**: When reconciling a bank transaction with a CFDI, the UI must prompt the user to select a Category and Subcategory. This information must be saved with the resulting transaction.
+    -   **Attempted fixes**: The agent started modifying .
+        -   Added a new state  to hold selections.
+        -   Added  components for Category and Subcategory within the loop that renders selected CFDIs in the dialog.
+        -   Added a check in the  function to validate that a category is selected.
     -   **Next debug checklist**:
-        1.  Inspect .
-        2.  Focus on the  function (around line 2512).
-        3.  After the API call returns the correct , log the result of finding the CFDI in the local state: .
-        4.  Verify the state update logic that sets the selected CFDI(s). It's possible a re-render or another state dependency is causing the wrong item to be visually highlighted despite the correct item being selected in the state.
-    -   **Why fix this issue and what will be achieved with the fix?**: This is a critical usability bug. The core matching logic now works, but the confusing UI prevents the user from benefiting from the improved suggestion feature.
+        1.  **Backend Modification**: The primary remaining task is to update the backend. Locate the reconciliation creation endpoint (likely  in ).
+        2.  Update the Pydantic model for the request body to accept  and  for each reconciled item.
+        3.  Modify the service logic to save these values onto the  document that is created or updated during reconciliation.
+        4.  **Frontend Finalization**: Ensure the  function sends the  state in the API payload to the backend.
+        5.  **End-to-End Test**: Perform a full reconciliation, select a category, and confirm. Verify through the UI or DB that the resulting categorized payment appears correctly in other modules, like the Cash Flow projection drill-down.
+    -   **Why fix this issue and what will be achieved with the fix?**: This is a critical accounting requirement. It prevents miscategorization of expenses/income and ensures accurate financial reporting in the cash flow model.
     -   **Status**: IN PROGRESS
-    -   **Is recurring issue?**: Y
-    -   **Should Test frontend/backend/both after fix?**: Frontend
+    -   **Is recurring issue?**: N
+    -   **Should Test frontend/backend/both after fix?**: Both
     -   **Blocked on other issue**: None
 
 -   **Issue 2: (P1) Reconciliation Cancellation Fix Verification.**
     -   **Description**: A fix was implemented in  to correctly restore a CFDI's balance after a reconciliation is canceled.
-    -   **Next debug checklist**: This is pending user verification. The user needs to try the flow again.
     -   **Status**: USER VERIFICATION PENDING
     -   **Is recurring issue?**: N
     -   **Should Test frontend/backend/both after fix?**: None, pending user feedback.
 
 -   **Issue 3: (P2) SAT FIEL Integration Verification.**
-    -   **Description**: The SAT integration was refactored to use the  library. A  was fixed.
-    -   **Next debug checklist**: This is pending user verification. The user needs to re-upload their FIEL credentials and attempt a download.
+    -   **Description**: The SAT integration was refactored to use the  library.
     -   **Status**: USER VERIFICATION PENDING
     -   **Is recurring issue?**: Y
     -   **Should Test frontend/backend/both after fix?**: Both.
 
 **In progress Task List**:
--   **Task 1: (P0) Complete  refactor.**
+-   **Task 1: (P1) Complete  refactor.**
     -   **Where to resume**: .
     -   **What will be achieved with this?**: Remove legacy/duplicated endpoints from the monolithic  that have been moved to modular files in . This will improve maintainability.
     -   **Status**: NOT STARTED
     -   **Should Test frontend/backend/both after fix?**: Backend (regression testing needed).
-    -   **Blocked on something**: P0 issue.
+    -   **Blocked on something**: Blocked on the current P0 issue.
 
 **Upcoming and Future Tasks**
 *   **Upcoming Tasks**:
@@ -83,90 +88,84 @@ Issues Detail:
     *   **P4 - Finalize Belvo Bank Integration**: Blocked on user credentials.
 
 **Completed work in this session**
--   **Fixed Catalog Dialogs**: Resolved a bug where Edit dialogs for companies, vendors, and customers would not open by moving the Dialog components to their correct parent  in .
--   **Enhanced Catalog Models**: Added ,  (vendors), and  (customers) fields to the frontend UI and backend models (, ).
--   **Fixed '0' Term Bug**: Corrected logic in  to allow  (for cash/contado) as a valid payment/collection term.
--   **Overhauled Reports Page**: Rebuilt  to display initial bank balance (using historical FX rates), weekly cash flow analysis, and variance highlighting.
--   **Standardized Exchange Rate Logic**: Ensured all modules (Dashboard, Reports, Bank Module, Reconciliations) consistently use the historical exchange rate from the  of a bank account for all initial balance calculations, resolving major data discrepancies.
--   **Implemented Dynamic Aging Calculation**: Updated  to use vendor/customer-specific payment/collection terms to calculate invoice due dates for the Aging report.
--   **Made Scenarios Configurable**: Implemented a configuration dialog on  to allow users to customize percentages for liquidity scenarios, persisting settings in .
--   **Improved Reconciliation Suggestions**: Overhauled the backend matching logic in  with fuzzy string matching to significantly improve the accuracy of automatic reconciliation suggestions.
+-   **Reconciliation Suggestion UI Bug (RESOLVED)**: Fixed the P0 bug from the previous fork. The reconciliation dialog in  now correctly highlights and auto-selects the suggested CFDI match, with added auto-scroll and a temporary highlight for improved UX.
+-   **Cashflow Projections Drill-Down**: Implemented a clickable drill-down feature on the projections table (), allowing users to see the source documents (CFDIs, payments) for any amount.
+-   **Cashflow Projections View Toggle & Filters**: Added a toggle to switch between By Category and By Provider/Customer views, and implemented filters (search, type, balance) for the latter.
+-   **Drill-Down Data Accuracy Fixes**:
+    -   Corrected the logic to display the correct Provider/Customer names instead of Sin asignar.
+    -   Ensured bank commission expenses show the Bank's name as the provider.
+    -   Fixed a bug where the drill-down for projected weeks showed No hay items para mostrar.
+-   **Filters in Aging Report**: Added comprehensive filters (Client/Vendor, Currency, Age, Date Range) to the Accounts Payable/Receivable page ().
+-   **Filtered Data Export**: Added Export to Excel functionality for filtered data in both the Aging Report and the Cashflow Projections By Provider/Customer view.
+-   **Login Page UI Update**: Updated the background of  to a more professional design.
 
 **Earlier issues found/mentioned but not fixed**
 -   The payroll auto-reconciliation feature remains untested due to a lack of Nómina CFDI test data.
 
 **Known issue recurrence from previous fork**
 -   **Issue recurrence in previous fork**: The  refactoring task.
--   **Recurrence count**: 8
+-   **Recurrence count**: 9
 -   **Status**: NOT STARTED
 
 **Code Architecture**
-cfdiclient
+
 
 **Key Technical Concepts**
-*   **Fuzzy String Matching**: The  library was integrated into the backend () to enable more flexible name matching for reconciliation suggestions.
-*   **Historical Exchange Rates**: A key feature implemented involves fetching the correct FX rate based on the  of a bank account to ensure accurate, consistent financial reporting across all modules. This logic resides in .
-*   **React Component Placement**: A recurring bug pattern was fixed where stateful dialogs were rendered inside inactive  components, preventing them from appearing.
-*   **Client-Side Persistence**: User settings for dashboard scenarios are now saved in the browser's  for persistence between sessions.
+*   **Complex Client-Side State Management**: Both  and  have become very large components that manage a significant amount of state, fetched data, and user interactions directly.
+*   **On-the-fly Data Enrichment**: The cashflow drill-down feature joins data from multiple API calls (payments, CFDIs, bank accounts) on the client side to build its detailed view.
+*   **DOM Manipulation for UX**: Using  and  to automatically focus the user's view on an element selected by the application logic (e.g., the suggested CFDI).
 
 **key DB schema**
--   **vendors**: 
--   **customers**: 
--   **bank_accounts**: Now includes  to anchor initial balance calculations.
--   **historical_fx_rates**: Stores daily exchange rates, queried by .
+-   **payments**: The schema for this collection will need to be implicitly updated to include  and  fields to support the current P0 task.
 
 **All files of reference**
-*   : **CRITICAL**. Location of the current P0 UI rendering bug.
-*   : **CRITICAL**. Contains the improved and correct backend logic for suggestions.
-*   : Contains all CRUD forms and logic for companies, vendors, customers, and bank accounts.
-*   : The new, completely rewritten cash flow report.
-*   : Contains the configurable scenarios feature.
-*   : Location of the improved Aging report.
-*   : Core logic for fetching historical exchange rates.
-*   , : Pydantic models for new entities.
+*   : **CRITICAL**. Location of the current P0 task to add category selection to the reconciliation dialog.
+*   : **CRITICAL**. This file contains the backend endpoint that must be modified to save the category information.
+*   : Contains the new, highly interactive drill-down and view-toggle features.
+*   : The location of the Aging report (CxC/CxP) with the new filters.
 
 **Critical Info for New Agent**
 *   **MUST RESPOND IN SPANISH.**
-*   **Immediate Priority (P0)**: Fix the UI rendering bug in . The backend logic for reconciliation suggestions is **correct**, but the UI visually selects the wrong item in the list, making the feature appear broken. The success toast proves the backend is working. The focus should be entirely on the frontend state updates and rendering logic after the suggestion API call returns.
-*   **Exchange Rate Unification**: A major effort was completed to unify all modules to use a historical exchange rate based on the bank account's . This is now correct and consistent. The fixed exchange rate for Jan 1, 2026, is **17.9528**. Do not change this unless the user provides new historical data.
-*   **User Verification Needed**: After fixing the P0 UI bug, you must guide the user to test the two major pending items: the **reconciliation cancellation fix** and the primary **SAT FIEL integration**.
+*   **Immediate Priority (P0)**: Finish the implementation of Category/Subcategory selection in the reconciliation dialog. The frontend work in  is partially complete; the main remaining task is modifying the backend endpoint in  to receive and store this data.
+*   **Component Complexity**: Be aware that  and  are now very large and complex files. Navigate them carefully when making changes. Consider suggesting a refactor as a future task to break them down into smaller, manageable components.
+*   **Pending User Verification**: Once the P0 is complete, guide the user to test the two major features still awaiting their feedback: the **SAT FIEL integration** and the **reconciliation cancellation fix**.
 
 **documents and test reports created in this job**
-*   None in this session.
+*   /app/memory/PRD.md (updated multiple times).
 
 **Last 10 User Messages and any pending HUMAN messages**
-10. **Latest**: SIGUE SIN FUNCIONAR LA COINCIDENCIA (The match is still not working). **Status: IN PROGRESS** (Backend is fixed, but a UI rendering bug remains).
-9.  REVISA BIEN EL CODIGO PORQUE SI HAY COINCIDENCIAS (Check the code carefully because there are matches). **Status: Addressed** (Backend logic was improved and now finds the match).
-8.  DEJA QUE UNO DECIDA LOS ESCENARIOS... (Let one decide the scenarios...). **Status: Implemented**.
-7.  Usar plazos de pago/cobranza en el cálculo de Aging CxP/CxC HAZ ESTA TAREA (Use payment/collection terms in the Aging CxP/CxC calculation DO THIS TASK). **Status: Implemented**.
-6.  estas usando el tipo de cambio incorrecto... (you are using the wrong exchange rate...). **Status: Addressed**. The correct historical rate of 17.9528 is now used.
-5.  REVISA EL SALDO INICAL DEL MODULO BANCARIO PORQUE NO CONCUERDA... (CHECK THE INITIAL BALANCE OF THE BANKING MODULE BECAUSE IT DOESN'T MATCH...). **Status: Addressed**. All modules now show a consistent initial balance.
-4.  ahora ya con la fecha de incio toma el tipo de cambio de ese dia... (now with the start date, take the exchange rate of that day...). **Status: Implemented**.
-3.  permiteme poner la fecha de inicio de carga de los saldos bancarios... (let me put the start date for loading bank balances...). **Status: Implemented**.
-2.  ponme el saldo inicial y ve dandome el saldo de bancos diario... (put the initial balance and give me the daily bank balance...). **Status: Implemented**.
-1.  EN EL PLAZO DE PAGO O COBRO NO ME DEJA PONER 0 O CONTADO... (IN THE PAYMENT OR COLLECTION TERM IT DOES NOT LET ME PUT 0 OR CASH...). **Status: Implemented**.
+10. **Latest**: HAY UN DERALLE QUE MEJORAR, YA QUE NO PIDE CATEGORIA... (There's a detail to improve, it doesn't ask for a category...) -> **Status: IN PROGRESS** (This is the current P0 task).
+9.  se requiere mostrar lo que se incluye en esa semana aun y cuando sea proyectado (it's required to show what's included in that week even if it's projected) -> **Status: Completed**.
+8.  sigue sin poner los nombres de los proveedores ejemplo las comisiones (it's still not showing provider names for example commissions) -> **Status: Completed**.
+7.  porque no esta poniendo el proveedor... (why isn't it putting the provider...) -> **Status: Completed**.
+6.  User confirms continuing with the P0 reconciliation bug. -> **Status: Completed** (The original P0 bug was fixed).
+5.  User confirms adding filtered export for third parties. -> **Status: Completed**.
+4.  User confirms adding filters to the By Provider/Cliente view. -> **Status: Completed**.
+3.  User requests drill-down, view toggle, and detailed report for the cash flow model. -> **Status: Completed**.
+2.  User requests export to Excel and a new background image. -> **Status: Completed**.
+1.  User requests filters for the Aging report (CxC/CxP). -> **Status: Completed**.
 
 **Project Health Check:**
-*   **Broken**: Yes. The reconciliation suggestion UI rendering is broken, which is a P0 issue.
-*   **Mocked**: The Belvo integration remains scaffolded but is non-functional pending user credentials.
+*   **Broken**: Yes. The reconciliation workflow is functionally incomplete because it doesn't capture mandatory accounting data (Category/Subcategory), which affects data integrity.
+*   **Mocked**: The Belvo integration is still pending user credentials.
 
 **3rd Party Integrations**
-*   **(New / In Progress)** **SAT Web Service (SOAP)**: For massive CFDI download using  library and FIEL (e.firma) credentials.
-*   **Belvo**: For open banking integration. Requires User API Key.
-*   **Banxico (Banco de México)**: For official daily exchange rates.
-*   **Open Exchange Rates**: For complementary exchange rates.
-*   **thefuzz**: Python library used for fuzzy string matching in reconciliation logic.
+*   **(In Progress)** **SAT Web Service (SOAP)**: Uses  library. Awaiting user testing with FIEL credentials.
+*   **Belvo**: For open banking. Requires User API Key.
+*   **Banxico (Banco de México)**: For exchange rates.
+*   **Open Exchange Rates**: For exchange rates.
+*   **thefuzz**: Python library for fuzzy string matching.
 
 **Testing status**
 -   **Testing agent used after significant changes**: NO
 -   **Troubleshoot agent used after agent stuck in loop**: NO
 -   **Test files created**: None.
--   **Known regressions**: None.
+-   **Known regressions**: None identified.
 
 **Credentials to test flow:**
 *   **Email**: 
 *   **Password**: 
-*   **SAT Credentials**: The user must provide their own FIEL credentials (, , and password) via the UI to test the integration.
+*   **SAT Credentials**: User must provide their own FIEL credentials (, , password) for testing.
 
 **What agent forgot to execute**
--   The final step of the  refactor—deleting the old, duplicated endpoints—remains incomplete.</analysis>
+-   The final refactoring of  to remove duplicated, legacy endpoints remains incomplete.</analysis>
