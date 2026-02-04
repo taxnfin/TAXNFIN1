@@ -187,6 +187,34 @@ async def extract_pdf_invoice(
         # Extract data
         extracted_data = await extract_invoice_data_from_pdf(tmp_path, company_rfc)
         
+        # Check for duplicates by folio_fiscal (UUID)
+        is_duplicate = False
+        duplicate_message = None
+        if extracted_data.folio_fiscal:
+            # Check in CFDIs
+            existing_cfdi = await db.cfdis.find_one({
+                'company_id': company_id,
+                '$or': [
+                    {'uuid': extracted_data.folio_fiscal},
+                    {'folio_fiscal': extracted_data.folio_fiscal}
+                ]
+            }, {'_id': 0, 'id': 1, 'emisor_nombre': 1, 'total': 1})
+            
+            if existing_cfdi:
+                is_duplicate = True
+                duplicate_message = f"Ya existe un CFDI con este folio fiscal ({extracted_data.folio_fiscal[:8]}...). Emisor: {existing_cfdi.get('emisor_nombre')}, Total: {existing_cfdi.get('total')}"
+            
+            # Also check in payments
+            if not is_duplicate:
+                existing_payment = await db.payments.find_one({
+                    'company_id': company_id,
+                    'pdf_folio_fiscal': extracted_data.folio_fiscal
+                }, {'_id': 0, 'id': 1, 'beneficiario': 1, 'monto': 1})
+                
+                if existing_payment:
+                    is_duplicate = True
+                    duplicate_message = f"Ya existe un pago importado con este folio fiscal ({extracted_data.folio_fiscal[:8]}...). Beneficiario: {existing_payment.get('beneficiario')}, Monto: {existing_payment.get('monto')}"
+        
         # Determine type description
         tipo_desc = "PAGO (Gasto/Compra)" if extracted_data.es_pago else "COBRANZA (Ingreso/Venta)"
         tercero = extracted_data.emisor_nombre if extracted_data.es_pago else extracted_data.receptor_nombre
@@ -197,7 +225,10 @@ async def extract_pdf_invoice(
             "data": extracted_data.model_dump(),
             "tipo": "pago" if extracted_data.es_pago else "cobro",
             "tercero": tercero,
-            "company_rfc": company_rfc
+            "company_rfc": company_rfc,
+            "is_duplicate": is_duplicate,
+            "duplicate_message": duplicate_message
+        }
         }
     finally:
         # Clean up temp file
