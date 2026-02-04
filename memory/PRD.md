@@ -313,6 +313,11 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 2. **SAT Scraping** - Requires selenium, currently returning mock data
 3. **Belvo Bank Integration** - Scaffolding complete, pending user API credentials
 
+### REAL - Connected to Live Services
+1. **Alegra API** - ✅ Fully integrated and syncing real data
+   - Email: karina.villafuerte@ortech.com.mx
+   - Synced: 30 contactos, 687 facturas CxC, 2058 facturas CxP
+
 ---
 
 ## Latest Updates (February 4, 2026)
