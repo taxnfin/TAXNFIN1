@@ -22,7 +22,9 @@ import {
   Loader2,
   Unplug,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Trash2,
+  Calendar
 } from 'lucide-react';
 
 export default function AlegraIntegration() {
@@ -30,12 +32,16 @@ export default function AlegraIntegration() {
   const [loading, setLoading] = useState(true);
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [clearDataDialogOpen, setClearDataDialogOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [syncResults, setSyncResults] = useState(null);
   const [credentials, setCredentials] = useState({ email: '', token: '' });
   const [testingConnection, setTestingConnection] = useState(false);
   const [savingCredentials, setSavingCredentials] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [syncDateFrom, setSyncDateFrom] = useState('');
+  const [syncDateTo, setSyncDateTo] = useState('');
 
   const fetchStatus = useCallback(async () => {
     try {
