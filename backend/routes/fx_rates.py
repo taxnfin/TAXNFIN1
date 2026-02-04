@@ -264,3 +264,105 @@ async def get_fx_alerts(request: Request, current_user: Dict = Depends(get_curre
                 pass
     
     return {'alerts': alerts, 'count': len(alerts)}
+
+
+
+@router.post("/sync")
+async def sync_fx_rates(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Manually sync FX rates from external sources (Banxico, OpenExchange)
+    Creates new records with current timestamp
+    """
+    from forex_service import get_forex_service
+    
+    company_id = await get_active_company_id(request, current_user)
+    
+    try:
+        # Get forex service
+        service = get_forex_service()
+        
+        # Fetch rates from external sources
+        rates = await service.get_all_rates()
+        
+        if not rates:
+            return {
+                "success": False,
+                "message": "No se pudieron obtener las tasas de cambio",
+                "updated": 0
+            }
+        
+        # Current timestamp for new records
+        timestamp = datetime.now(timezone.utc)
+        updated_count = 0
+        
+        for currency, rate_info in rates.items():
+            if currency == 'MXN':
+                continue
+            
+            rate_value = rate_info.get('rate', 0)
+            source = rate_info.get('source', 'api')
+            
+            if rate_value <= 0:
+                continue
+            
+            # Create new record with current date
+            rate_doc = {
+                'id': str(uuid.uuid4()),
+                'company_id': company_id,
+                'moneda_base': 'MXN',
+                'moneda_cotizada': currency,
+                'tipo_cambio': rate_value,
+                'fuente': source,
+                'auto_sync': False,
+                'fecha_vigencia': timestamp.isoformat(),
+                'created_at': timestamp.isoformat()
+            }
+            
+            await db.fx_rates.insert_one(rate_doc)
+            updated_count += 1
+            logger.info(f"Synced {currency}: {rate_value} MXN from {source}")
+        
+        return {
+            "success": True,
+            "message": f"Se actualizaron {updated_count} tasas de cambio desde Banxico y Open Exchange",
+            "updated": updated_count,
+            "timestamp": timestamp.isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error syncing FX rates: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error sincronizando tasas: {str(e)}")
+
+
+@router.get("/scheduler-status")
+async def get_scheduler_status(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Get the status of the FX rate scheduler"""
+    import pytz
+    from datetime import time
+    
+    mexico_tz = pytz.timezone('America/Mexico_City')
+    now_mexico = datetime.now(mexico_tz)
+    
+    # Calculate next sync times
+    morning_sync = time(9, 0)  # 9:00 AM
+    afternoon_sync = time(13, 0)  # 1:00 PM (FIX rate)
+    
+    next_morning = datetime.combine(now_mexico.date(), morning_sync)
+    next_afternoon = datetime.combine(now_mexico.date(), afternoon_sync)
+    
+    if now_mexico.time() >= morning_sync:
+        next_morning = datetime.combine(now_mexico.date(), morning_sync) + timedelta(days=1)
+    if now_mexico.time() >= afternoon_sync:
+        next_afternoon = datetime.combine(now_mexico.date(), afternoon_sync) + timedelta(days=1)
+    
+    # Find closest next sync
+    next_sync = min(next_morning, next_afternoon)
+    
+    return {
+        "enabled": True,
+        "next_sync": next_sync.strftime("%H:%M:%S") + " CST",
+        "schedules": [
+            {"name": "Sincronización matutina", "time": "09:00:00 CST"},
+            {"name": "Tasa FIX oficial", "time": "13:00:00 CST"}
+        ]
+    }
