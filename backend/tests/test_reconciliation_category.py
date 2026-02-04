@@ -83,14 +83,24 @@ class TestReconciliationCategory:
         if not pending_txns:
             pytest.skip("No pending bank transactions available for testing")
         
-        # Get a pending CFDI
+        # Get CFDIs with saldo pendiente
         cfdi_response = self.session.get(f"{BASE_URL}/api/cfdi?limit=100")
         assert cfdi_response.status_code == 200
         cfdis = cfdi_response.json()
         
-        pending_cfdis = [c for c in cfdis if c.get('estado_conciliacion') == 'pendiente']
+        # Filter CFDIs that have saldo pendiente (not fully paid)
+        def has_saldo_pendiente(cfdi):
+            total = cfdi.get('total', 0)
+            tipo = cfdi.get('tipo_cfdi', '')
+            if tipo == 'ingreso':
+                monto_cubierto = cfdi.get('monto_cobrado', 0) or 0
+            else:
+                monto_cubierto = cfdi.get('monto_pagado', 0) or 0
+            return (total - monto_cubierto) > 0.01
+        
+        pending_cfdis = [c for c in cfdis if has_saldo_pendiente(c)]
         if not pending_cfdis:
-            pytest.skip("No pending CFDIs available for testing")
+            pytest.skip("No CFDIs with pending balance available for testing")
         
         # Find a matching transaction and CFDI (egreso CFDI with debito transaction)
         test_txn = None
@@ -100,11 +110,13 @@ class TestReconciliationCategory:
         for cfdi in pending_cfdis:
             cfdi_tipo = cfdi.get('tipo_cfdi', '')
             cfdi_total = cfdi.get('total', 0)
+            monto_pagado = cfdi.get('monto_pagado', 0) or 0
+            saldo_pendiente = cfdi_total - monto_pagado
             
             # For egreso CFDIs, look for debito transactions
             if cfdi_tipo == 'egreso':
                 for txn in pending_txns:
-                    if txn.get('tipo_movimiento') == 'debito' and abs(txn.get('monto', 0) - cfdi_total) < 0.01:
+                    if txn.get('tipo_movimiento') == 'debito' and abs(txn.get('monto', 0) - saldo_pendiente) < 0.01:
                         test_txn = txn
                         test_cfdi = cfdi
                         test_category = self.egreso_categories[0] if self.egreso_categories else None
@@ -163,14 +175,24 @@ class TestReconciliationCategory:
         if not pending_txns:
             pytest.skip("No pending bank transactions available for testing")
         
-        # Get a pending CFDI
+        # Get CFDIs with saldo pendiente
         cfdi_response = self.session.get(f"{BASE_URL}/api/cfdi?limit=100")
         assert cfdi_response.status_code == 200
         cfdis = cfdi_response.json()
         
-        pending_cfdis = [c for c in cfdis if c.get('estado_conciliacion') == 'pendiente']
+        # Filter CFDIs that have saldo pendiente
+        def has_saldo_pendiente(cfdi):
+            total = cfdi.get('total', 0)
+            tipo = cfdi.get('tipo_cfdi', '')
+            if tipo == 'ingreso':
+                monto_cubierto = cfdi.get('monto_cobrado', 0) or 0
+            else:
+                monto_cubierto = cfdi.get('monto_pagado', 0) or 0
+            return (total - monto_cubierto) > 0.01
+        
+        pending_cfdis = [c for c in cfdis if has_saldo_pendiente(c)]
         if not pending_cfdis:
-            pytest.skip("No pending CFDIs available for testing")
+            pytest.skip("No CFDIs with pending balance available for testing")
         
         # Find a matching transaction and CFDI
         test_txn = None
@@ -179,10 +201,12 @@ class TestReconciliationCategory:
         for cfdi in pending_cfdis:
             cfdi_tipo = cfdi.get('tipo_cfdi', '')
             cfdi_total = cfdi.get('total', 0)
+            monto_pagado = cfdi.get('monto_pagado', 0) or 0
+            saldo_pendiente = cfdi_total - monto_pagado
             
             if cfdi_tipo == 'egreso':
                 for txn in pending_txns:
-                    if txn.get('tipo_movimiento') == 'debito' and abs(txn.get('monto', 0) - cfdi_total) < 0.01:
+                    if txn.get('tipo_movimiento') == 'debito' and abs(txn.get('monto', 0) - saldo_pendiente) < 0.01:
                         test_txn = txn
                         test_cfdi = cfdi
                         break
@@ -227,14 +251,24 @@ class TestReconciliationCategory:
         if not pending_txns:
             pytest.skip("No pending bank transactions available for testing")
         
-        # Get a pending CFDI
+        # Get CFDIs with saldo pendiente
         cfdi_response = self.session.get(f"{BASE_URL}/api/cfdi?limit=100")
         assert cfdi_response.status_code == 200
         cfdis = cfdi_response.json()
         
-        pending_cfdis = [c for c in cfdis if c.get('estado_conciliacion') == 'pendiente']
+        # Filter CFDIs that have saldo pendiente
+        def has_saldo_pendiente(cfdi):
+            total = cfdi.get('total', 0)
+            tipo = cfdi.get('tipo_cfdi', '')
+            if tipo == 'ingreso':
+                monto_cubierto = cfdi.get('monto_cobrado', 0) or 0
+            else:
+                monto_cubierto = cfdi.get('monto_pagado', 0) or 0
+            return (total - monto_cubierto) > 0.01
+        
+        pending_cfdis = [c for c in cfdis if has_saldo_pendiente(c)]
         if not pending_cfdis:
-            pytest.skip("No pending CFDIs available for testing")
+            pytest.skip("No CFDIs with pending balance available for testing")
         
         # Find a matching transaction and CFDI
         test_txn = None
@@ -244,10 +278,12 @@ class TestReconciliationCategory:
         for cfdi in pending_cfdis:
             cfdi_tipo = cfdi.get('tipo_cfdi', '')
             cfdi_total = cfdi.get('total', 0)
+            monto_pagado = cfdi.get('monto_pagado', 0) or 0
+            saldo_pendiente = cfdi_total - monto_pagado
             
             if cfdi_tipo == 'egreso':
                 for txn in pending_txns:
-                    if txn.get('tipo_movimiento') == 'debito' and abs(txn.get('monto', 0) - cfdi_total) < 0.01:
+                    if txn.get('tipo_movimiento') == 'debito' and abs(txn.get('monto', 0) - saldo_pendiente) < 0.01:
                         test_txn = txn
                         test_cfdi = cfdi
                         test_category = self.egreso_categories[0] if self.egreso_categories else None
