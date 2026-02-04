@@ -757,6 +757,32 @@ const CFDIModule = () => {
       <Card className="border-[#E2E8F0]">
         <CardContent className="py-4">
           <div className="flex flex-wrap gap-4 items-center">
+            {/* Emisor Filter */}
+            <div className="space-y-1">
+              <Label className="text-xs">Emisor</Label>
+              <Input
+                type="text"
+                placeholder="Buscar emisor..."
+                value={filterEmisor}
+                onChange={(e) => setFilterEmisor(e.target.value)}
+                className="w-44"
+                data-testid="filter-emisor"
+              />
+            </div>
+            
+            {/* Receptor Filter */}
+            <div className="space-y-1">
+              <Label className="text-xs">Receptor</Label>
+              <Input
+                type="text"
+                placeholder="Buscar receptor..."
+                value={filterReceptor}
+                onChange={(e) => setFilterReceptor(e.target.value)}
+                className="w-44"
+                data-testid="filter-receptor"
+              />
+            </div>
+            
             <div className="space-y-1">
               <Label className="text-xs">Categoría</Label>
               <Select value={filterCategory} onValueChange={setFilterCategory}>
