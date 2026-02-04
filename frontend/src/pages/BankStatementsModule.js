@@ -2545,19 +2545,29 @@ const BankStatementsModule = () => {
                             </div>
                             <div>
                               <Label className="text-xs text-gray-600">Subcategoría</Label>
-                              <Input
-                                type="text"
-                                placeholder="Ej: Materiales, Servicios..."
+                              <Select
                                 value={cfdiCategories[cfdi.id]?.subcategoria || ''}
-                                onChange={(e) => {
+                                onValueChange={(value) => {
                                   setCfdiCategories(prev => ({
                                     ...prev,
-                                    [cfdi.id]: { ...prev[cfdi.id], subcategoria: e.target.value }
+                                    [cfdi.id]: { ...prev[cfdi.id], subcategoria: value }
                                   }));
                                 }}
-                                className="h-8 text-sm mt-1"
-                                data-testid={`subcategoria-${cfdi.id}`}
-                              />
+                                disabled={!cfdiCategories[cfdi.id]?.categoria_id}
+                              >
+                                <SelectTrigger className="h-8 text-sm mt-1" data-testid={`subcategoria-${cfdi.id}`}>
+                                  <SelectValue placeholder={cfdiCategories[cfdi.id]?.categoria_id ? "Seleccionar subcategoría" : "Primero selecciona categoría"} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {getSubcategoriesForCategory(cfdiCategories[cfdi.id]?.categoria_id).map(sub => (
+                                    <SelectItem key={sub.id} value={sub.id}>{sub.nombre}</SelectItem>
+                                  ))}
+                                  {getSubcategoriesForCategory(cfdiCategories[cfdi.id]?.categoria_id).length === 0 && (
+                                    <SelectItem value="none" disabled>Sin subcategorías</SelectItem>
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            </div>
                             </div>
                           </div>
                           
