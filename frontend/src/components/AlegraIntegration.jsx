@@ -230,6 +230,36 @@ export default function AlegraIntegration() {
               )}
             </div>
 
+            {/* Sync Date Range */}
+            <div className="bg-white rounded-lg p-3 border border-purple-100">
+              <div className="text-xs font-medium text-gray-600 mb-2 flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                Rango de fechas (opcional)
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs text-gray-500">Desde</Label>
+                  <Input
+                    type="date"
+                    value={syncDateFrom}
+                    onChange={(e) => setSyncDateFrom(e.target.value)}
+                    className="h-8 text-sm"
+                    data-testid="sync-date-from"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-500">Hasta</Label>
+                  <Input
+                    type="date"
+                    value={syncDateTo}
+                    onChange={(e) => setSyncDateTo(e.target.value)}
+                    className="h-8 text-sm"
+                    data-testid="sync-date-to"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Sync Buttons */}
             <div className="grid grid-cols-2 gap-2">
               <Button 
@@ -296,6 +326,21 @@ export default function AlegraIntegration() {
                     <RefreshCw className="h-4 w-4 mr-2" />
                     Sincronizar Todo
                   </>
+                )}
+              </Button>
+              <Button 
+                variant="outline" 
+                size="icon"
+                onClick={() => setClearDataDialogOpen(true)}
+                disabled={clearing}
+                className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                title="Limpiar datos de Alegra"
+                data-testid="clear-alegra-data-btn"
+              >
+                {clearing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
                 )}
               </Button>
               <Button 
