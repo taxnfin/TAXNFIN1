@@ -119,7 +119,7 @@ const CFDIModule = () => {
   useEffect(() => {
     const loadBankAccounts = async () => {
       try {
-        const res = await api.get('/api/bank-accounts');
+        const res = await api.get('/bank-accounts');
         setBankAccounts(res.data || []);
       } catch (err) {
         console.error('Error loading bank accounts:', err);
