@@ -3603,19 +3603,6 @@ const BankStatementsModule = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
-      {/* PDF Invoice Uploader Modal (AI-powered) */}
-      <PDFInvoiceUploader
-        isOpen={pdfInvoiceUploaderOpen}
-        onClose={() => setPdfInvoiceUploaderOpen(false)}
-        onSuccess={() => {
-          loadData();
-          setPdfInvoiceUploaderOpen(false);
-          toast.success('Pago/Cobranza creado desde factura PDF');
-        }}
-        categories={categories}
-        bankAccounts={bankAccounts}
-      />
     </div>
   );
 };
