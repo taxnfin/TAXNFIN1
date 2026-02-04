@@ -111,11 +111,32 @@ export default function AlegraIntegration() {
     }
   };
 
+  const clearAlegraData = async () => {
+    setClearing(true);
+    try {
+      const response = await api.delete('/alegra/clear-data');
+      toast.success(response.data.message || 'Datos de Alegra eliminados');
+      setClearDataDialogOpen(false);
+      fetchStatus();
+    } catch (error) {
+      toast.error('Error eliminando datos: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const syncAll = async () => {
     setSyncing(true);
     setSyncResults(null);
     try {
-      const response = await api.post('/alegra/sync/all');
+      // Build URL with date params if provided
+      let url = '/alegra/sync/all';
+      const params = new URLSearchParams();
+      if (syncDateFrom) params.append('date_from', syncDateFrom);
+      if (syncDateTo) params.append('date_to', syncDateTo);
+      if (params.toString()) url += '?' + params.toString();
+      
+      const response = await api.post(url);
       setSyncResults(response.data.results);
       toast.success('Sincronización completada');
       fetchStatus();
@@ -129,7 +150,14 @@ export default function AlegraIntegration() {
   const syncEntity = async (entity) => {
     setSyncing(true);
     try {
-      const response = await api.post(`/alegra/sync/${entity}`);
+      // Build URL with date params if provided
+      let url = `/alegra/sync/${entity}`;
+      const params = new URLSearchParams();
+      if (syncDateFrom) params.append('date_from', syncDateFrom);
+      if (syncDateTo) params.append('date_to', syncDateTo);
+      if (params.toString()) url += '?' + params.toString();
+      
+      const response = await api.post(url);
       toast.success(`${entity} sincronizados: ${response.data.stats?.created || 0} nuevos, ${response.data.stats?.updated || 0} actualizados`);
       fetchStatus();
     } catch (error) {
