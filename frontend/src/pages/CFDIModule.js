@@ -702,8 +702,14 @@ const CFDIModule = () => {
         </Card>
       </div>
 
-      {/* SAT Integration */}
-      <SATIntegration onSyncComplete={loadData} />
+      {/* Integrations Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* SAT Integration */}
+        <SATIntegration onSyncComplete={loadData} />
+        
+        {/* Alegra Integration */}
+        <AlegraIntegration />
+      </div>
 
       {/* Exchange Rates Info */}
       {Object.keys(fxRates).length > 1 && (
