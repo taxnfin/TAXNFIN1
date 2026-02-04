@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 import logging
 
-from core.db import db
+from core.database import db
 from core.auth import get_current_user, get_active_company_id
 
 router = APIRouter(prefix="/treasury", tags=["Treasury"])
