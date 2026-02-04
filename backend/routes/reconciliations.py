@@ -85,7 +85,38 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
             
             # Use category from reconciliation request if provided, otherwise inherit from CFDI
             category_id = reconciliation_data.categoria_id or cfdi.get('category_id')
-            subcategory = reconciliation_data.subcategoria or cfdi.get('subcategory_id') or ''
+            subcategory_text = reconciliation_data.subcategoria or cfdi.get('subcategory_id') or ''
+            
+            # If subcategory is provided as text and category exists, check if we need to create it
+            subcategory_id = ''
+            if subcategory_text and category_id:
+                # Check if subcategory already exists (by name or id)
+                existing_subcat = await db.subcategories.find_one({
+                    'company_id': company_id,
+                    'category_id': category_id,
+                    '$or': [
+                        {'id': subcategory_text},
+                        {'nombre': {'$regex': f'^{subcategory_text}$', '$options': 'i'}}
+                    ],
+                    'activo': True
+                }, {'_id': 0})
+                
+                if existing_subcat:
+                    subcategory_id = existing_subcat.get('id')
+                else:
+                    # Create new subcategory
+                    new_subcat_id = str(uuid.uuid4())
+                    new_subcat = {
+                        'id': new_subcat_id,
+                        'company_id': company_id,
+                        'category_id': category_id,
+                        'nombre': subcategory_text,
+                        'activo': True,
+                        'created_at': datetime.now(timezone.utc).isoformat()
+                    }
+                    await db.subcategories.insert_one(new_subcat)
+                    subcategory_id = new_subcat_id
+                    logger.info(f"Created new subcategory: {subcategory_text} (ID: {new_subcat_id}) for category {category_id}")
             
             payment_doc = {
                 'id': str(uuid.uuid4()),
