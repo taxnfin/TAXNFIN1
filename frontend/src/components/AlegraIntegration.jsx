@@ -39,7 +39,7 @@ export default function AlegraIntegration() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const response = await api.get('/api/alegra/status');
+      const response = await api.get('/alegra/status');
       setStatus(response.data);
     } catch (error) {
       console.error('Error fetching Alegra status:', error);
