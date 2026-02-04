@@ -344,7 +344,18 @@ const PDFInvoiceUploader = ({
                   <SelectContent>
                     {bankAccounts.map(acc => (
                       <SelectItem key={acc.id} value={acc.id}>
-                        {acc.banco} - {acc.numero_cuenta?.slice(-4) || acc.nombre}
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{acc.banco}</span>
+                          <span className="text-gray-500">-</span>
+                          <span>{acc.nombre}</span>
+                          <span className={`ml-1 text-xs px-1.5 py-0.5 rounded font-bold ${
+                            acc.moneda === 'USD' ? 'bg-blue-100 text-blue-700' :
+                            acc.moneda === 'EUR' ? 'bg-purple-100 text-purple-700' :
+                            'bg-green-100 text-green-700'
+                          }`}>
+                            {acc.moneda}
+                          </span>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
