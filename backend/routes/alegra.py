@@ -364,6 +364,15 @@ async def sync_alegra_invoices(
             fecha = invoice.get('date', '')
             fecha_vencimiento = invoice.get('dueDate', fecha)
             
+            # Extract currency and exchange rate
+            currency_data = invoice.get('currency', {})
+            moneda = currency_data.get('code', 'MXN') if isinstance(currency_data, dict) else 'MXN'
+            tipo_cambio = float(currency_data.get('exchangeRate', 1) or 1) if isinstance(currency_data, dict) else 1
+            
+            # Save exchange rate to fx_rates if not MXN and rate is not 1
+            if moneda != 'MXN' and tipo_cambio and tipo_cambio != 1:
+                await save_alegra_exchange_rate(company_id, moneda, tipo_cambio, fecha)
+            
             payment_doc = {
                 'alegra_id': alegra_id,
                 'alegra_type': 'invoice',
@@ -373,7 +382,8 @@ async def sync_alegra_invoices(
                 'monto': total,
                 'monto_pagado': total_paid,
                 'saldo_pendiente': balance,
-                'moneda': invoice.get('currency', {}).get('code', 'MXN') if isinstance(invoice.get('currency'), dict) else 'MXN',
+                'moneda': moneda,
+                'tipo_cambio_historico': tipo_cambio if moneda != 'MXN' else None,
                 'metodo_pago': 'transferencia',
                 'fecha_vencimiento': fecha_vencimiento,
                 'fecha_pago': None if payment_status != 'completado' else fecha,
