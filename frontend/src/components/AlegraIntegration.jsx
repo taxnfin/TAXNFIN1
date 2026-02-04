@@ -80,7 +80,7 @@ export default function AlegraIntegration() {
     }
     setSavingCredentials(true);
     try {
-      await api.post('/api/alegra/save-credentials', credentials);
+      await api.post('/alegra/save-credentials', credentials);
       toast.success('Credenciales guardadas exitosamente');
       setConfigDialogOpen(false);
       fetchStatus();
