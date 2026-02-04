@@ -909,6 +909,17 @@ const CFDIModule = () => {
                 {exporting ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Download size={14} className="mr-1" />}
                 Exportar Excel
               </Button>
+              
+              <Button 
+                variant="destructive"
+                size="sm"
+                onClick={() => setDeleteAllDialogOpen(true)}
+                disabled={filteredCfdis.length === 0}
+                data-testid="delete-all-cfdi-btn"
+              >
+                <Trash2 size={14} className="mr-1" />
+                Eliminar {filteredCfdis.length === cfdis.length ? 'Todos' : `(${filteredCfdis.length})`}
+              </Button>
             </div>
           </div>
         </CardContent>
