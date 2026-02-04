@@ -88,6 +88,8 @@ class BankReconciliationCreate(BaseModel):
     porcentaje_match: float = 100.0
     notas: Optional[str] = None
     monto_aplicado: Optional[float] = None  # For partial payments
+    categoria_id: Optional[str] = None  # Category ID for the reconciliation
+    subcategoria: Optional[str] = None  # Subcategory text for the reconciliation
 
 
 class BankConnection(BaseModel):

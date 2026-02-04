@@ -75,6 +75,10 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
             # Use monto_aplicado for partial payments, otherwise use bank transaction amount
             monto_payment = reconciliation_data.monto_aplicado if reconciliation_data.monto_aplicado is not None else bank_txn.get('monto', 0)
             
+            # Use category from reconciliation request if provided, otherwise inherit from CFDI
+            category_id = reconciliation_data.categoria_id or cfdi.get('category_id')
+            subcategory = reconciliation_data.subcategoria or cfdi.get('subcategory_id') or ''
+            
             payment_doc = {
                 'id': str(uuid.uuid4()),
                 'company_id': company_id,
@@ -94,9 +98,9 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
                 'bank_transaction_id': bank_txn.get('id'),
                 'created_at': datetime.now(timezone.utc).isoformat(),
                 'auto_created_from_reconciliation': True,
-                # INHERIT CATEGORY AND SUBCATEGORY FROM CFDI
-                'category_id': cfdi.get('category_id'),
-                'subcategory_id': cfdi.get('subcategory_id'),
+                # Use category from reconciliation request (user-selected) or fallback to CFDI
+                'category_id': category_id,
+                'subcategory_id': subcategory,
                 'cfdi_uuid': cfdi.get('uuid'),
                 'cfdi_emisor': cfdi.get('emisor_nombre'),
                 'cfdi_receptor': cfdi.get('receptor_nombre')
