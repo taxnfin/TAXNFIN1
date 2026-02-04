@@ -324,7 +324,19 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ### Completed in This Session ✅
 
-**P0 - Mejoras Módulo CFDI/SAT**
+**Nuevas mejoras implementadas (sesión actual)**
+
+1. ✅ **Sincronización de movimientos bancarios de Alegra** - Endpoint POST /api/alegra/sync/payments funcional
+2. ✅ **Tipos de cambio de Alegra guardados automáticamente** - Al sincronizar facturas con moneda extranjera, el tipo de cambio se guarda en fx_rates con `fuente: 'alegra'`
+3. ✅ **Botón de eliminar CFDI ya existe** - En la última columna de cada fila de la tabla hay un botón rojo de basura que abre diálogo de confirmación
+
+**Código modificado:**
+- `backend/routes/alegra.py` - Función `save_alegra_exchange_rate()` agregada, tipos de cambio extraídos de facturas CxC y CxP
+- Los payments ahora incluyen `tipo_cambio_historico` cuando la moneda no es MXN
+
+---
+
+**P0 - Mejoras Módulo CFDI/SAT** (sesión anterior)
 - ✅ **Filtros Emisor/Receptor**: Inputs de texto para buscar por nombre o RFC
 - ✅ **Exportar Excel**: Botón para descargar CFDIs filtrados a archivo Excel
 - ✅ **Filtros de fecha**: Desde/Hasta para filtrar por fecha de emisión
