@@ -226,6 +226,77 @@ async def get_cfdi_payment_history(cfdi_id: str, request: Request, current_user:
     }
 
 
+@router.delete("/bulk-delete")
+async def bulk_delete_cfdis(
+    request: Request, 
+    current_user: Dict = Depends(get_current_user),
+    category_id: Optional[str] = Query(None, description="Filter by category"),
+    estado_conciliacion: Optional[str] = Query(None, description="Filter by reconciliation status"),
+    fecha_desde: Optional[str] = Query(None, description="Filter from date (YYYY-MM-DD)"),
+    fecha_hasta: Optional[str] = Query(None, description="Filter to date (YYYY-MM-DD)"),
+    emisor: Optional[str] = Query(None, description="Filter by emisor name/RFC"),
+    receptor: Optional[str] = Query(None, description="Filter by receptor name/RFC")
+):
+    """Delete multiple CFDIs based on filters"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Build query filter
+    query = {'company_id': company_id}
+    
+    if category_id:
+        query['category_id'] = category_id
+    
+    if estado_conciliacion:
+        query['estado_conciliacion'] = estado_conciliacion
+    
+    if fecha_desde:
+        query['fecha_emision'] = {'$gte': fecha_desde}
+    
+    if fecha_hasta:
+        if 'fecha_emision' in query:
+            query['fecha_emision']['$lte'] = fecha_hasta + 'T23:59:59'
+        else:
+            query['fecha_emision'] = {'$lte': fecha_hasta + 'T23:59:59'}
+    
+    if emisor:
+        query['$or'] = query.get('$or', [])
+        query['$or'].extend([
+            {'emisor_nombre': {'$regex': emisor, '$options': 'i'}},
+            {'emisor_rfc': {'$regex': emisor, '$options': 'i'}}
+        ])
+    
+    if receptor:
+        if '$or' not in query:
+            query['$or'] = []
+        query['$or'].extend([
+            {'receptor_nombre': {'$regex': receptor, '$options': 'i'}},
+            {'receptor_rfc': {'$regex': receptor, '$options': 'i'}}
+        ])
+    
+    # Get CFDIs to delete
+    cfdis_to_delete = await db.cfdis.find(query, {'id': 1, '_id': 0}).to_list(10000)
+    cfdi_ids = [c['id'] for c in cfdis_to_delete]
+    
+    if not cfdi_ids:
+        return {'status': 'success', 'message': 'No hay CFDIs para eliminar', 'deleted': 0}
+    
+    # Delete associated payments and reconciliations
+    await db.payments.delete_many({'cfdi_id': {'$in': cfdi_ids}, 'company_id': company_id})
+    await db.reconciliations.delete_many({'cfdi_id': {'$in': cfdi_ids}, 'company_id': company_id})
+    
+    # Delete CFDIs
+    result = await db.cfdis.delete_many(query)
+    
+    # Audit log
+    await audit_log(company_id, 'CFDI', f'bulk_delete_{len(cfdi_ids)}', 'BULK_DELETE', current_user['id'])
+    
+    return {
+        'status': 'success', 
+        'message': f'Se eliminaron {result.deleted_count} CFDIs correctamente',
+        'deleted': result.deleted_count
+    }
+
+
 @router.delete("/{cfdi_id}")
 async def delete_cfdi(cfdi_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
     """Delete a CFDI"""
