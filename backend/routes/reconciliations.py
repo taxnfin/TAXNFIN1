@@ -62,14 +62,22 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
         
         if not payment_exists:
             # Auto-create payment from reconciliation
-            tipo_pago = 'cobro' if cfdi.get('tipo_cfdi') == 'ingreso' else 'pago'
+            tipo_cfdi = cfdi.get('tipo_cfdi', '')
+            tipo_pago = 'cobro' if tipo_cfdi == 'ingreso' else 'pago'
             moneda = bank_txn.get('moneda') or cfdi.get('moneda', 'MXN')
             
-            # For COBRO: beneficiary is the CUSTOMER (receptor_nombre from ingreso CFDI)
-            # For PAGO: beneficiary is the VENDOR (emisor_nombre from egreso CFDI)
-            if tipo_pago == 'cobro':
+            # Determine beneficiario based on CFDI type:
+            # - INGRESO (sales): beneficiario = receptor (customer who pays you)
+            # - EGRESO (expenses): beneficiario = emisor (vendor you pay)
+            # - NOMINA (payroll): beneficiario = receptor (employee you pay)
+            if tipo_cfdi == 'ingreso':
+                # Your company is the emisor, the customer is the receptor
+                beneficiario_nombre = cfdi.get('receptor_nombre', '') or cfdi.get('emisor_nombre', '')
+            elif tipo_cfdi == 'nomina':
+                # Your company is the emisor, the employee is the receptor
                 beneficiario_nombre = cfdi.get('receptor_nombre', '') or cfdi.get('emisor_nombre', '')
             else:
+                # Egreso: the vendor is the emisor, your company is the receptor
                 beneficiario_nombre = cfdi.get('emisor_nombre', '') or cfdi.get('receptor_nombre', '')
             
             # Use monto_aplicado for partial payments, otherwise use bank transaction amount
