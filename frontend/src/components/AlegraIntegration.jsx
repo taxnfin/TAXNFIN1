@@ -109,7 +109,7 @@ export default function AlegraIntegration() {
     setSyncing(true);
     setSyncResults(null);
     try {
-      const response = await api.post('/api/alegra/sync/all');
+      const response = await api.post('/alegra/sync/all');
       setSyncResults(response.data.results);
       toast.success('Sincronización completada');
       fetchStatus();
