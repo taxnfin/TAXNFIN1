@@ -300,7 +300,7 @@ async def sync_alegra_invoices(
     # Fetch all invoices from Alegra
     all_invoices = []
     start = 0
-    limit = 100
+    limit = 30  # Alegra API max limit is 30
     
     while True:
         params = {"start": start, "limit": limit, "order_direction": "DESC", "order_field": "id"}
