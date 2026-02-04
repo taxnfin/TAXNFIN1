@@ -11,7 +11,8 @@ import {
   Calendar,
   Hash,
   ArrowDownCircle,
-  ArrowUpCircle
+  ArrowUpCircle,
+  AlertCircle
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Button } from '../components/ui/button';
