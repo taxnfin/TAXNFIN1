@@ -1559,6 +1559,19 @@ const CFDIModule = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* PDF Invoice Uploader Modal */}
+      <PDFInvoiceUploader
+        isOpen={pdfInvoiceUploaderOpen}
+        onClose={() => setPdfInvoiceUploaderOpen(false)}
+        onSuccess={() => {
+          loadData();
+          setPdfInvoiceUploaderOpen(false);
+          toast.success('Factura importada exitosamente');
+        }}
+        categories={categories}
+        bankAccounts={bankAccounts}
+      />
     </div>
   );
 };
