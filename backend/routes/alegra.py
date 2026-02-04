@@ -166,7 +166,7 @@ async def sync_alegra_contacts(
     # Fetch all contacts from Alegra with pagination
     all_contacts = []
     start = 0
-    limit = 100
+    limit = 30  # Alegra API max limit is 30
     
     while True:
         params = {"start": start, "limit": limit, "order_direction": "ASC", "order_field": "id"}
