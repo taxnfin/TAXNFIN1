@@ -2480,6 +2480,47 @@ const BankStatementsModule = () => {
                             </div>
                           </div>
                           
+                          {/* Category and Subcategory selection */}
+                          <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100">
+                            <div>
+                              <Label className="text-xs text-gray-600">Categoría *</Label>
+                              <Select
+                                value={cfdiCategories[cfdi.id]?.categoria_id || ''}
+                                onValueChange={(value) => {
+                                  setCfdiCategories(prev => ({
+                                    ...prev,
+                                    [cfdi.id]: { ...prev[cfdi.id], categoria_id: value, subcategoria: '' }
+                                  }));
+                                }}
+                              >
+                                <SelectTrigger className="h-8 text-sm mt-1" data-testid={`categoria-${cfdi.id}`}>
+                                  <SelectValue placeholder="Seleccionar categoría" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {getAllCategories().map(cat => (
+                                    <SelectItem key={cat.id} value={cat.id}>{cat.nombre}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-gray-600">Subcategoría</Label>
+                              <Input
+                                type="text"
+                                placeholder="Ej: Materiales, Servicios..."
+                                value={cfdiCategories[cfdi.id]?.subcategoria || ''}
+                                onChange={(e) => {
+                                  setCfdiCategories(prev => ({
+                                    ...prev,
+                                    [cfdi.id]: { ...prev[cfdi.id], subcategoria: e.target.value }
+                                  }));
+                                }}
+                                className="h-8 text-sm mt-1"
+                                data-testid={`subcategoria-${cfdi.id}`}
+                              />
+                            </div>
+                          </div>
+                          
                           {/* Remaining after this payment */}
                           {montoAplicar < saldoPendiente && montoAplicar > 0 && (
                             <div className="mt-2 text-xs text-blue-600 bg-blue-50 p-1 rounded text-center">
