@@ -103,12 +103,12 @@
   ],
   "action_items": [],
   "critical_code_review_comments": [
-    "CFDIModule.js line 122: api.get('/api/bank-accounts') should be api.get('/bank-accounts') - axios instance already has /api prefix",
     "Chart components show dimension warnings - consider adding minWidth/minHeight props",
     "Alegra sync endpoints work but are slow due to large data volumes - consider adding progress indicators"
   ],
   "updated_files": [
-    "/app/backend/tests/test_cfdi_alegra_features.py"
+    "/app/backend/tests/test_cfdi_alegra_features.py",
+    "/app/frontend/src/pages/CFDIModule.js"
   ],
   "success_rate": {
     "backend": "100% (all tested endpoints working)",
