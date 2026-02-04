@@ -593,6 +593,17 @@ const CFDIModule = () => {
             className="hidden"
             onChange={handleFileUpload}
           />
+          
+          {/* PDF Invoice Importer Button */}
+          <Button 
+            variant="outline" 
+            className="gap-2 border-purple-300 text-purple-700 hover:bg-purple-50"
+            onClick={() => setPdfInvoiceUploaderOpen(true)}
+            data-testid="import-factura-pdf-btn"
+          >
+            <FilePlus size={16} />
+            Importar Factura PDF
+          </Button>
         </div>
       </div>
 
