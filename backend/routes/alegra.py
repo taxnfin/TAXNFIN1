@@ -52,29 +52,63 @@ def get_alegra_headers(email: str, token: str) -> Dict[str, str]:
 
 
 async def alegra_request(method: str, endpoint: str, email: str, token: str, params: dict = None, json_data: dict = None) -> dict:
-    """Make a request to Alegra API"""
+    """Make a request to Alegra API with retries"""
     headers = get_alegra_headers(email, token)
     url = f"{ALEGRA_BASE_URL}/{endpoint}"
+    max_retries = 3
     
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            if method == "GET":
-                response = await client.get(url, headers=headers, params=params)
-            elif method == "POST":
-                response = await client.post(url, headers=headers, json=json_data)
-            elif method == "PUT":
-                response = await client.put(url, headers=headers, json=json_data)
-            else:
-                raise ValueError(f"Unsupported HTTP method: {method}")
-            
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Alegra API error: {e.response.status_code} - {e.response.text}")
-            raise HTTPException(status_code=e.response.status_code, detail=f"Alegra API error: {e.response.text}")
-        except Exception as e:
-            logger.error(f"Alegra request failed: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Error connecting to Alegra: {str(e)}")
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for attempt in range(max_retries):
+            try:
+                if method == "GET":
+                    response = await client.get(url, headers=headers, params=params)
+                elif method == "POST":
+                    response = await client.post(url, headers=headers, json=json_data)
+                elif method == "PUT":
+                    response = await client.put(url, headers=headers, json=json_data)
+                else:
+                    raise ValueError(f"Unsupported HTTP method: {method}")
+                
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                error_text = e.response.text
+                status_code = e.response.status_code
+                
+                # If it's a 500 error from Alegra, retry
+                if status_code == 500 and attempt < max_retries - 1:
+                    logger.warning(f"Alegra API error 500, retrying ({attempt + 1}/{max_retries})...")
+                    import asyncio
+                    await asyncio.sleep(2 * (attempt + 1))  # Exponential backoff
+                    continue
+                
+                # Parse error message for better display
+                try:
+                    error_json = e.response.json()
+                    error_msg = error_json.get('message', error_text)
+                except:
+                    error_msg = error_text
+                
+                logger.error(f"Alegra API error: {status_code} - {error_msg}")
+                
+                # Return None instead of raising for 500 errors (temporary server issues)
+                if status_code == 500:
+                    return None
+                    
+                raise HTTPException(status_code=status_code, detail=f"Error de Alegra: {error_msg}")
+            except httpx.TimeoutException:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Alegra API timeout, retrying ({attempt + 1}/{max_retries})...")
+                    continue
+                logger.error(f"Alegra API timeout after {max_retries} attempts")
+                return None
+            except Exception as e:
+                logger.error(f"Alegra request failed: {str(e)}")
+                if attempt < max_retries - 1:
+                    continue
+                return None
+    
+    return None
 
 
 async def save_alegra_exchange_rate(company_id: str, moneda: str, tipo_cambio: float, fecha: str):
