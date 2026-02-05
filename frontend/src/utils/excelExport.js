@@ -116,25 +116,37 @@ export const exportCFDIs = (cfdis, categories) => {
     return sub?.nombre || '';
   };
 
-  const data = cfdis.map(cfdi => ({
-    'Fecha Emisión': cfdi.fecha_emision ? format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy') : '',
-    'UUID': cfdi.uuid || '',
-    'Tipo': cfdi.tipo_cfdi === 'ingreso' ? 'Ingreso' : 'Egreso',
-    'Emisor RFC': cfdi.emisor_rfc || '',
-    'Emisor Nombre': cfdi.emisor_nombre || '',
-    'Receptor RFC': cfdi.receptor_rfc || '',
-    'Receptor Nombre': cfdi.receptor_nombre || '',
-    'Categoría': getCategoryName(cfdi.category_id),
-    'Subcategoría': getSubcategoryName(cfdi.category_id, cfdi.subcategory_id),
-    'Subtotal': cfdi.subtotal || 0,
-    'IVA': cfdi.iva || 0,
-    'Total': cfdi.total || 0,
-    'Moneda': cfdi.moneda || 'MXN',
-    'Método Pago': cfdi.metodo_pago || '',
-    'Forma Pago': cfdi.forma_pago || '',
-    'Uso CFDI': cfdi.uso_cfdi || '',
-    'Estado': cfdi.estado_conciliacion || 'pendiente'
-  }));
+  const data = cfdis.map(cfdi => {
+    const moneda = cfdi.moneda || 'MXN';
+    const tipoCambio = cfdi.tipo_cambio || 1;
+    const totalMonedaOriginal = cfdi.total_moneda_original || cfdi.total || 0;
+    const totalMXN = cfdi.total || 0;
+    
+    return {
+      'Fecha Emisión': cfdi.fecha_emision ? format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy') : '',
+      'Fecha Timbrado': cfdi.fecha_timbrado ? format(new Date(cfdi.fecha_timbrado), 'dd/MM/yyyy HH:mm') : '',
+      'UUID': cfdi.uuid || '',
+      'Folio Alegra': cfdi.folio_alegra || cfdi.referencia || '',
+      'Tipo': cfdi.tipo_cfdi === 'ingreso' ? 'Ingreso' : 'Egreso',
+      'Emisor RFC': cfdi.emisor_rfc || '',
+      'Emisor Nombre': cfdi.emisor_nombre || '',
+      'Receptor RFC': cfdi.receptor_rfc || '',
+      'Receptor Nombre': cfdi.receptor_nombre || '',
+      'Categoría': getCategoryName(cfdi.category_id),
+      'Subcategoría': getSubcategoryName(cfdi.category_id, cfdi.subcategory_id),
+      'Moneda': moneda,
+      'Total Moneda Original': moneda !== 'MXN' ? totalMonedaOriginal : '',
+      'Tipo de Cambio': moneda !== 'MXN' ? tipoCambio : '',
+      'Total MXN': totalMXN,
+      'Subtotal MXN': cfdi.subtotal || 0,
+      'IVA MXN': cfdi.iva_trasladado || cfdi.iva || 0,
+      'Método Pago': cfdi.metodo_pago || '',
+      'Forma Pago': cfdi.forma_pago || '',
+      'Uso CFDI': cfdi.uso_cfdi || '',
+      'Estado Conciliación': cfdi.estado_conciliacion || 'pendiente',
+      'Fuente': cfdi.source || 'manual'
+    };
+  });
 
   return exportToExcel(data, 'CFDIs', 'CFDIs');
 };
