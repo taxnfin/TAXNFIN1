@@ -5,16 +5,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { 
   Plus, CheckCircle, Building2, Trash2, DollarSign, 
   Upload, Download, Link2, RefreshCw, FileSpreadsheet,
   ArrowUpCircle, ArrowDownCircle, Search, Filter, X,
-  AlertCircle, Clock, Check, FileText, ArrowRightLeft, Pencil, Sparkles, RotateCcw, History, PlusCircle
+  AlertCircle, Clock, Check, FileText, ArrowRightLeft, Pencil, Sparkles, RotateCcw, History, PlusCircle, Loader2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
