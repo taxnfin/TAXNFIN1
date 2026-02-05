@@ -324,6 +324,32 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ### Completed in This Session ✅
 
+**P0 - Cambio de Flujo Alegra → CFDI/SAT (COMPLETADO)**
+
+El usuario solicitó cambiar el flujo de sincronización de Alegra:
+1. ✅ **Las facturas de Alegra ahora van al módulo CFDI/SAT** (antes iban a Cobranza y Pagos)
+2. ✅ **Prevención de duplicados mejorada**:
+   - Al subir un XML, si ya existe un CFDI de Alegra con los mismos datos (RFC emisor, RFC receptor, Total, Fecha), se **fusiona** en lugar de duplicar
+   - El CFDI fusionado obtiene el UUID real del XML y se marca como `source: 'alegra+xml'`
+3. ✅ **Badges visuales para identificar el origen**:
+   - `Alegra` (púrpura) - Sincronizado desde Alegra
+   - `Alegra+XML` (azul) - Fusionado de Alegra + XML real
+   - `XML` (gris) - Subido manualmente
+
+**Archivos modificados:**
+- `backend/routes/alegra.py` - `sync_alegra_invoices()` y `sync_alegra_bills()` ahora guardan en colección `cfdis`
+- `backend/server.py` - Lógica de detección de duplicados mejorada en `/cfdi/upload`
+- `backend/models/cfdi.py` - Nuevos campos: `source`, `alegra_id`, `referencia`, `fecha_vencimiento`
+- `frontend/src/pages/CFDIModule.js` - Badges de origen agregados
+
+**Datos verificados:**
+- 84 CFDIs de Alegra (sin XML)
+- 3 CFDIs fusionados (Alegra + XML)
+- 8 CFDIs de otras fuentes
+- 0 registros en Cobranza y Pagos (correcto - solo se llenan al conciliar)
+
+---
+
 **P0 - Verificación Filtro de Fechas Alegra (COMPLETADO)**
 
 1. ✅ **Corrección del filtro de fechas verificada** - La sincronización ahora filtra correctamente por:
