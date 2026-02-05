@@ -401,10 +401,11 @@ async def sync_alegra_invoices(
         
         start += limit
     
-    # Process and save invoices as payments (cobros pendientes)
+    # Process and save invoices as CFDIs (facturas de venta = ingreso)
     created = 0
     updated = 0
     skipped = 0
+    duplicates = 0
     errors = 0
     
     for invoice in all_invoices:
@@ -414,12 +415,14 @@ async def sync_alegra_invoices(
             # Get client info
             client = invoice.get('client', {})
             client_name = ""
+            client_rfc = ""
             if isinstance(client, dict):
                 name_obj = client.get('name', {})
                 if isinstance(name_obj, dict):
                     client_name = name_obj.get('fullName') or f"{name_obj.get('firstName', '')} {name_obj.get('lastName', '')}".strip()
                 else:
                     client_name = str(name_obj) if name_obj else ''
+                client_rfc = client.get('identification', '')
             
             # Calculate balance
             total = float(invoice.get('total', 0) or 0)
@@ -429,11 +432,11 @@ async def sync_alegra_invoices(
             # Determine status
             inv_status = invoice.get('status', 'open')
             if balance <= 0:
-                payment_status = 'completado'
+                estado_conciliacion = 'conciliado'
             elif total_paid > 0:
-                payment_status = 'parcial'
+                estado_conciliacion = 'parcial'
             else:
-                payment_status = 'pendiente'
+                estado_conciliacion = 'pendiente'
             
             # Parse dates
             fecha = invoice.get('date', '')
@@ -451,12 +454,12 @@ async def sync_alegra_invoices(
                             fecha_pago = pmt_date
             
             # Apply date filter logic:
-            # - For PAID invoices (completado): filter by payment date
+            # - For PAID invoices (conciliado): filter by payment date
             # - For PENDING invoices: filter by due date
             if date_from or date_to:
                 should_include = False
                 
-                if payment_status == 'completado' and fecha_pago:
+                if estado_conciliacion == 'conciliado' and fecha_pago:
                     # Paid invoice: check if payment date is in range
                     if date_from and date_to:
                         should_include = date_from <= fecha_pago[:10] <= date_to
@@ -487,38 +490,63 @@ async def sync_alegra_invoices(
             if moneda != 'MXN' and tipo_cambio and tipo_cambio != 1:
                 await save_alegra_exchange_rate(company_id, moneda, tipo_cambio, fecha)
             
-            payment_doc = {
+            # Generate a pseudo-UUID from Alegra ID for CFDI compatibility
+            invoice_number = f"{invoice.get('numberTemplate', {}).get('prefix', '')}{invoice.get('number', alegra_id)}"
+            pseudo_uuid = f"ALEGRA-INV-{alegra_id}"
+            
+            # Calculate taxes (estimate from total)
+            subtotal = total / 1.16 if total > 0 else 0  # Assuming 16% IVA
+            impuestos = total - subtotal
+            
+            cfdi_doc = {
                 'alegra_id': alegra_id,
-                'alegra_type': 'invoice',
                 'company_id': company_id,
-                'tipo': 'cobro',
-                'concepto': f"Factura {invoice.get('numberTemplate', {}).get('prefix', '')}{invoice.get('number', alegra_id)}",
-                'monto': total,
-                'monto_pagado': total_paid,
-                'saldo_pendiente': balance,
-                'moneda': moneda,
-                'tipo_cambio_historico': tipo_cambio if moneda != 'MXN' else None,
-                'metodo_pago': 'transferencia',
+                'uuid': pseudo_uuid,
+                'tipo_cfdi': 'ingreso',  # Sales invoice = ingreso
+                'emisor_rfc': company.get('rfc', 'XAXX010101000'),
+                'emisor_nombre': company.get('razon_social', company.get('nombre', '')),
+                'receptor_rfc': client_rfc or 'XAXX010101000',
+                'receptor_nombre': client_name,
+                'fecha_emision': fecha + 'T00:00:00' if fecha and 'T' not in fecha else fecha,
+                'fecha_timbrado': fecha + 'T00:00:00' if fecha and 'T' not in fecha else fecha,
                 'fecha_vencimiento': fecha_vencimiento,
-                'fecha_pago': None if payment_status != 'completado' else fecha,
-                'estatus': payment_status,
-                'referencia': f"{invoice.get('numberTemplate', {}).get('prefix', '')}{invoice.get('number', '')}",
-                'beneficiario': client_name,
-                'es_real': True,
+                'moneda': moneda,
+                'tipo_cambio': tipo_cambio if moneda != 'MXN' else 1,
+                'subtotal': round(subtotal, 2),
+                'descuento': 0,
+                'impuestos': round(impuestos, 2),
+                'total': total,
+                'iva_trasladado': round(impuestos, 2),
+                'isr_retenido': 0,
+                'iva_retenido': 0,
+                'metodo_pago': 'PPD' if estado_conciliacion == 'pendiente' else 'PUE',
+                'estatus': 'vigente',
+                'estado_conciliacion': estado_conciliacion,
+                'monto_cobrado': total_paid,
+                'monto_pagado': 0,
+                'referencia': invoice_number,
                 'source': 'alegra',
                 'alegra_status': inv_status,
                 'updated_at': datetime.now(timezone.utc).isoformat()
             }
             
-            # Check if exists
-            existing = await db.payments.find_one({'company_id': company_id, 'alegra_id': alegra_id, 'alegra_type': 'invoice'})
+            # Check if exists by alegra_id OR by pseudo_uuid (prevent duplicates)
+            existing = await db.cfdis.find_one({
+                'company_id': company_id,
+                '$or': [
+                    {'alegra_id': alegra_id},
+                    {'uuid': pseudo_uuid}
+                ]
+            })
+            
             if existing:
-                await db.payments.update_one({'_id': existing['_id']}, {'$set': payment_doc})
+                # Update existing CFDI
+                await db.cfdis.update_one({'_id': existing['_id']}, {'$set': cfdi_doc})
                 updated += 1
             else:
-                payment_doc['id'] = str(uuid.uuid4())
-                payment_doc['created_at'] = datetime.now(timezone.utc).isoformat()
-                await db.payments.insert_one(payment_doc)
+                cfdi_doc['id'] = str(uuid.uuid4())
+                cfdi_doc['created_at'] = datetime.now(timezone.utc).isoformat()
+                await db.cfdis.insert_one(cfdi_doc)
                 created += 1
                 
         except Exception as e:
@@ -527,12 +555,13 @@ async def sync_alegra_invoices(
     
     return {
         "success": True,
-        "message": f"Facturas de venta (CxC) sincronizadas desde Alegra",
+        "message": f"Facturas de venta (CxC) sincronizadas al módulo CFDI/SAT",
         "stats": {
             "total": len(all_invoices),
             "created": created,
             "updated": updated,
             "skipped": skipped,
+            "duplicates": duplicates,
             "errors": errors
         }
     }
