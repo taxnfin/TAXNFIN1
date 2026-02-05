@@ -370,6 +370,8 @@ const BankStatementsModule = () => {
   const [transferFromAccount, setTransferFromAccount] = useState('');
   const [transferToAccount, setTransferToAccount] = useState('');
   const [transferring, setTransferring] = useState(false);
+  const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   
   // Highlight state for auto-selected CFDI
   const [highlightedCfdiId, setHighlightedCfdiId] = useState(null);
