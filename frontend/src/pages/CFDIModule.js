@@ -1230,8 +1230,8 @@ const CFDIModule = () => {
                   <div className="bg-orange-50 border border-orange-200 rounded p-2 text-sm">
                     <strong>Filtros activos:</strong>
                     <ul className="list-disc list-inside mt-1">
-                      {filterEmisor && <li>Emisor: "{filterEmisor}"</li>}
-                      {filterReceptor && <li>Receptor: "{filterReceptor}"</li>}
+                      {filterEmisor && <li>Emisor: &ldquo;{filterEmisor}&rdquo;</li>}
+                      {filterReceptor && <li>Receptor: &ldquo;{filterReceptor}&rdquo;</li>}
                       {filterCategory !== 'all' && <li>Categoría aplicada</li>}
                       {filterDateFrom && <li>Desde: {filterDateFrom}</li>}
                       {filterDateTo && <li>Hasta: {filterDateTo}</li>}
