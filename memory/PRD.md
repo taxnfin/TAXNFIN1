@@ -324,6 +324,43 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ### Completed in This Session ✅
 
+**P0 - Botón "Vincular XML" y Prevención de Duplicados Mejorada (COMPLETADO)**
+
+El usuario reportó que seguían apareciendo duplicados porque Alegra no proporciona el UUID/folio fiscal real del SAT.
+
+**Solución implementada:**
+1. ✅ **Botón "Vincular XML"** - Aparece solo en CFDIs de Alegra (sin XML vinculado)
+   - Permite al usuario subir el XML del SAT para un CFDI específico de Alegra
+   - Actualiza el UUID con el folio fiscal real
+   - Marca el CFDI como `source: 'alegra+xml'`
+   
+2. ✅ **Endpoint `/api/cfdi/{cfdi_id}/link-xml`** - Backend para vincular XML
+   - Valida que el UUID del XML no exista en otro CFDI
+   - Actualiza el CFDI con los datos del XML (UUID, método de pago, etc.)
+   - Registra en logs la fusión
+
+3. ✅ **Diálogo de Vinculación** - UI clara con:
+   - Información del CFDI actual (UUID de Alegra, monto, fecha)
+   - Selector de archivo XML
+   - Mensaje explicativo del proceso
+
+**Badges visuales:**
+- `Alegra` (púrpura) - Sincronizado desde Alegra, sin XML
+- `Alegra+XML` (azul) - Fusionado de Alegra + XML real del SAT
+- `XML` (gris) - Subido manualmente
+
+**Estado actual verificado:**
+- 83 CFDIs de Alegra
+- 4 CFDIs fusionados (Alegra + XML)
+- 9 CFDIs de otras fuentes
+- Total: 96 CFDIs
+
+**Archivos modificados:**
+- `backend/server.py` - Nuevo endpoint `/cfdi/{cfdi_id}/link-xml`
+- `frontend/src/pages/CFDIModule.js` - Botón y diálogo de vinculación
+
+---
+
 **P0 - Cambio de Flujo Alegra → CFDI/SAT (COMPLETADO)**
 
 El usuario solicitó cambiar el flujo de sincronización de Alegra:
