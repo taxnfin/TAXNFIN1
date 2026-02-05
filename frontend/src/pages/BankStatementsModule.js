@@ -607,6 +607,29 @@ const BankStatementsModule = () => {
     }
   };
 
+  // Delete all bank transactions
+  const handleDeleteAllTransactions = async () => {
+    setDeletingAll(true);
+    try {
+      // Build query params for filtered deletion
+      const params = new URLSearchParams();
+      if (filterAccount !== 'all') params.append('bank_account_id', filterAccount);
+      if (filterStatus !== 'all') params.append('estado_conciliacion', filterStatus);
+      
+      const queryString = params.toString();
+      const url = queryString ? `/bank-transactions/bulk-delete?${queryString}` : '/bank-transactions/bulk-delete';
+      
+      const response = await api.delete(url);
+      toast.success(`Se eliminaron ${response.data.deleted} movimientos correctamente`);
+      loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error eliminando movimientos');
+    } finally {
+      setDeleteAllDialogOpen(false);
+      setDeletingAll(false);
+    }
+  };
+
   // Toggle CFDI selection for multi-reconciliation
   const toggleCfdiSelection = (cfdi) => {
     setSelectedCfdis(prev => {
