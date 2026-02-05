@@ -1308,7 +1308,7 @@ const CFDIModule = () => {
                   data-testid="link-xml-input"
                 />
                 <p className="text-xs text-gray-500">
-                  El UUID del XML reemplazará el pseudo-UUID de Alegra. El CFDI se marcará como "Alegra+XML".
+                  El UUID del XML reemplazará el pseudo-UUID de Alegra. El CFDI se marcará como &ldquo;Alegra+XML&rdquo;.
                 </p>
               </div>
 
