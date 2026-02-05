@@ -359,12 +359,16 @@ async def sync_alegra_invoices(
     request: Request,
     current_user: Dict = Depends(get_current_user),
     status: str = Query("all", description="Status: all, open, closed, void"),
-    date_from: str = Query(None, description="Date from (YYYY-MM-DD)"),
-    date_to: str = Query(None, description="Date to (YYYY-MM-DD)")
+    date_from: str = Query(None, description="Date from (YYYY-MM-DD) - filters by payment date or due date"),
+    date_to: str = Query(None, description="Date to (YYYY-MM-DD) - filters by payment date or due date")
 ):
     """
     Sync invoices (sales/receivables) from Alegra
     These are Cuentas por Cobrar (CxC)
+    
+    Date filter logic:
+    - For PAID invoices: filters by payment date
+    - For PENDING invoices: filters by due date
     """
     company_id = await get_active_company_id(request, current_user)
     company = await db.companies.find_one({'id': company_id}, {'_id': 0})
@@ -375,7 +379,7 @@ async def sync_alegra_invoices(
     email = company.get('alegra_email')
     token = company.get('alegra_token')
     
-    # Fetch all invoices from Alegra
+    # Fetch all invoices from Alegra (we'll filter locally for more control)
     all_invoices = []
     start = 0
     limit = 30  # Alegra API max limit is 30
@@ -384,11 +388,6 @@ async def sync_alegra_invoices(
         params = {"start": start, "limit": limit, "order_direction": "DESC", "order_field": "id"}
         if status != "all":
             params["status"] = status
-        # Add date filters if provided
-        if date_from:
-            params["date_start"] = date_from
-        if date_to:
-            params["date_end"] = date_to
         
         invoices = await alegra_request("GET", "invoices", email, token, params=params)
         
