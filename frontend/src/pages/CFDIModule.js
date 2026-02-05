@@ -1036,11 +1036,19 @@ const CFDIModule = () => {
                         <div className="text-xs text-[#94A3B8] mono">{cfdi.receptor_rfc}</div>
                       </TableCell>
                       <TableCell className="mono text-sm">{format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy')}</TableCell>
-                      <TableCell className={`mono font-semibold ${
+                      <TableCell className={`mono ${
                         cfdi.tipo_cfdi === 'ingreso' ? 'text-green-600' : 'text-red-600'
                       }`}>
-                        {cfdi.tipo_cfdi === 'ingreso' ? '+' : '-'}${converted.toLocaleString('es-MX', {minimumFractionDigits: 2})}
-                        {moneda !== viewCurrency && <span className="text-xs text-[#94A3B8] ml-1">({moneda})</span>}
+                        <div className="font-semibold">
+                          {cfdi.tipo_cfdi === 'ingreso' ? '+' : '-'}${converted.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                        </div>
+                        {/* Show original amount and exchange rate for foreign currency */}
+                        {cfdi.moneda && cfdi.moneda !== 'MXN' && cfdi.total_moneda_original && (
+                          <div className="text-[10px] text-gray-500 mt-0.5">
+                            <span className="font-medium">{cfdi.moneda} ${cfdi.total_moneda_original?.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+                            {cfdi.tipo_cambio && <span className="ml-1">@ {cfdi.tipo_cambio.toFixed(4)}</span>}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         {cfdi.category_id || cfdi.customer_id || cfdi.vendor_id ? (
