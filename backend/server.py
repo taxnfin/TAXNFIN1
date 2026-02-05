@@ -1823,9 +1823,50 @@ async def upload_cfdi(request: Request, file: UploadFile = File(...), current_us
     
     parsed = parse_cfdi_xml(xml_str)
     
+    # Check for duplicate by exact UUID
     existing = await db.cfdis.find_one({'company_id': company_id, 'uuid': parsed['uuid']}, {'_id': 0})
     if existing:
-        raise HTTPException(status_code=400, detail="CFDI ya existe")
+        raise HTTPException(status_code=400, detail="CFDI ya existe (UUID duplicado)")
+    
+    # Also check for potential duplicate from Alegra by matching key fields
+    # This catches cases where the same invoice was synced from Alegra with a pseudo-UUID
+    fecha_emision_str = parsed['fecha_emision'][:10] if parsed['fecha_emision'] else ''
+    potential_duplicate = await db.cfdis.find_one({
+        'company_id': company_id,
+        'emisor_rfc': parsed['emisor_rfc'],
+        'receptor_rfc': parsed['receptor_rfc'],
+        'total': parsed['total'],
+        'fecha_emision': {'$regex': f'^{fecha_emision_str}'},
+        'source': 'alegra'  # Only check Alegra records to avoid false positives
+    }, {'_id': 0, 'id': 1, 'uuid': 1, 'referencia': 1, 'alegra_id': 1})
+    
+    if potential_duplicate:
+        # Update the Alegra record with the real UUID from the XML
+        await db.cfdis.update_one(
+            {'id': potential_duplicate['id']},
+            {'$set': {
+                'uuid': parsed['uuid'],
+                'xml_original': xml_str,
+                'source': 'alegra+xml',  # Mark as merged
+                'metodo_pago': parsed.get('metodo_pago', ''),
+                'forma_pago': parsed.get('forma_pago', ''),
+                'uso_cfdi': parsed.get('uso_cfdi', ''),
+                'iva_trasladado': parsed.get('iva_trasladado', 0),
+                'isr_retenido': parsed.get('isr_retenido', 0),
+                'iva_retenido': parsed.get('iva_retenido', 0),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        logger.info(f"CFDI de Alegra actualizado con UUID real: {parsed['uuid']} (Alegra ref: {potential_duplicate.get('referencia')})")
+        
+        # Return the updated CFDI
+        updated_cfdi = await db.cfdis.find_one({'id': potential_duplicate['id']}, {'_id': 0, 'xml_original': 0})
+        return {
+            "success": True,
+            "message": f"CFDI actualizado - ya existía de Alegra (Ref: {potential_duplicate.get('referencia', 'N/A')})",
+            "cfdi": updated_cfdi,
+            "merged_with_alegra": True
+        }
     
     # Get company RFC to determine if this is income or expense
     company = await db.companies.find_one({'id': company_id}, {'_id': 0, 'rfc': 1, 'nombre': 1})
@@ -1873,7 +1914,8 @@ async def upload_cfdi(request: Request, file: UploadFile = File(...), current_us
         iva_retenido=parsed.get('iva_retenido', 0),
         ieps=parsed.get('ieps', 0),
         estado_cancelacion='vigente',
-        xml_original=xml_str
+        xml_original=xml_str,
+        source='xml'  # Mark as uploaded from XML
     )
     
     doc = cfdi.model_dump()
