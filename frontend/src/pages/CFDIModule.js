@@ -1003,7 +1003,7 @@ const CFDIModule = () => {
                     <TableRow key={cfdi.id} data-testid={`cfdi-row-${cfdi.id}`}>
                       <TableCell className="mono text-xs">
                         <div className="flex items-center gap-2">
-                          <span>{cfdi.uuid.substring(0, 13)}...</span>
+                          <span title={cfdi.uuid}>{cfdi.uuid.substring(0, 13)}...</span>
                           {cfdi.source === 'alegra' && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">Alegra</span>
                           )}
@@ -1014,7 +1014,12 @@ const CFDIModule = () => {
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-medium">XML</span>
                           )}
                         </div>
-                        {cfdi.referencia && (
+                        {/* Show folio from Alegra */}
+                        {cfdi.folio_alegra && (
+                          <div className="text-[10px] text-purple-600 font-medium">Folio: {cfdi.folio_alegra}</div>
+                        )}
+                        {/* Show reference if different from folio */}
+                        {cfdi.referencia && !cfdi.folio_alegra && (
                           <div className="text-[10px] text-[#64748B]">Ref: {cfdi.referencia}</div>
                         )}
                       </TableCell>
