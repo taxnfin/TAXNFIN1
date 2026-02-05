@@ -731,13 +731,35 @@ async def sync_alegra_bills(
             if moneda != 'MXN' and tipo_cambio and tipo_cambio != 1:
                 await save_alegra_exchange_rate(company_id, moneda, tipo_cambio, fecha)
             
-            # Generate a pseudo-UUID from Alegra ID for CFDI compatibility
-            bill_number = f"{bill.get('numberTemplate', {}).get('prefix', '')}{bill.get('number', alegra_id)}"
+            # Get bill folio - prefix + number (e.g., BILL123)
+            number_template = bill.get('numberTemplate', {})
+            prefix = number_template.get('prefix', '') if isinstance(number_template, dict) else ''
+            number = str(bill.get('number', alegra_id))
+            folio_alegra = f"{prefix}{number}"  # Full folio
+            
             pseudo_uuid = f"ALEGRA-BILL-{alegra_id}"
             
-            # Calculate taxes (estimate from total)
-            subtotal = total / 1.16 if total > 0 else 0  # Assuming 16% IVA
-            impuestos = total - subtotal
+            # Calculate totals - Alegra gives total in original currency
+            total_moneda_original = total  # Amount in original currency
+            
+            # Convert to MXN if foreign currency
+            if moneda != 'MXN' and tipo_cambio > 0:
+                total_mxn = total * tipo_cambio
+                total_paid_mxn = total_paid * tipo_cambio
+            else:
+                total_mxn = total
+                total_paid_mxn = total_paid
+                total_moneda_original = None
+            
+            # Calculate taxes (estimate from total MXN)
+            subtotal = total_mxn / 1.16 if total_mxn > 0 else 0
+            impuestos = total_mxn - subtotal
+            
+            # Determine payment method
+            if estado_conciliacion == 'conciliado':
+                metodo_pago = 'PUE'
+            else:
+                metodo_pago = 'PPD'
             
             cfdi_doc = {
                 'alegra_id': alegra_id,
@@ -756,16 +778,18 @@ async def sync_alegra_bills(
                 'subtotal': round(subtotal, 2),
                 'descuento': 0,
                 'impuestos': round(impuestos, 2),
-                'total': total,
+                'total': round(total_mxn, 2),  # Total in MXN
+                'total_moneda_original': round(total_moneda_original, 2) if total_moneda_original else None,
                 'iva_trasladado': round(impuestos, 2),
                 'isr_retenido': 0,
                 'iva_retenido': 0,
-                'metodo_pago': 'PPD' if estado_conciliacion == 'pendiente' else 'PUE',
+                'metodo_pago': metodo_pago,
                 'estatus': 'vigente',
                 'estado_conciliacion': estado_conciliacion,
                 'monto_cobrado': 0,
-                'monto_pagado': total_paid,
-                'referencia': bill_number,
+                'monto_pagado': round(total_paid_mxn, 2),
+                'referencia': folio_alegra,
+                'folio_alegra': folio_alegra,
                 'source': 'alegra',
                 'alegra_status': bill_status,
                 'updated_at': datetime.now(timezone.utc).isoformat()
