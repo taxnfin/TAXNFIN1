@@ -539,14 +539,14 @@ async def sync_alegra_invoices(
             cfdi_doc = {
                 'alegra_id': alegra_id,
                 'company_id': company_id,
-                'uuid': pseudo_uuid,
+                'uuid': uuid_value,  # Real SAT UUID or pseudo-UUID
                 'tipo_cfdi': 'ingreso',  # Sales invoice = ingreso
                 'emisor_rfc': company.get('rfc', 'XAXX010101000'),
                 'emisor_nombre': company.get('razon_social', company.get('nombre', '')),
                 'receptor_rfc': client_rfc or 'XAXX010101000',
                 'receptor_nombre': client_name,
                 'fecha_emision': fecha + 'T00:00:00' if fecha and 'T' not in fecha else fecha,
-                'fecha_timbrado': fecha + 'T00:00:00' if fecha and 'T' not in fecha else fecha,
+                'fecha_timbrado': fecha_timbrado if fecha_timbrado else (fecha + 'T00:00:00' if fecha and 'T' not in fecha else fecha),
                 'fecha_vencimiento': fecha_vencimiento,
                 'moneda': moneda,
                 'tipo_cambio': tipo_cambio if moneda != 'MXN' else 1,
