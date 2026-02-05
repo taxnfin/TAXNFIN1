@@ -1050,7 +1050,7 @@ const CFDIModule = () => {
                         cfdi.tipo_cfdi === 'ingreso' ? 'text-green-600' : 'text-red-600'
                       }`}>
                         <div className="font-semibold">
-                          {cfdi.tipo_cfdi === 'ingreso' ? '+' : '-'}${converted.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                          {cfdi.tipo_cfdi === 'ingreso' ? '+' : '-'}${displayTotal.toLocaleString('es-MX', {minimumFractionDigits: 2})}
                         </div>
                         {/* Show original amount and exchange rate for foreign currency */}
                         {cfdi.moneda && cfdi.moneda !== 'MXN' && cfdi.total_moneda_original && (
