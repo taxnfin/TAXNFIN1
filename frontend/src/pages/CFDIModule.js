@@ -1683,8 +1683,11 @@ const CFDIModule = () => {
               {/* Document Info */}
               <div className="grid grid-cols-4 gap-4">
                 <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
-                  <Label className="text-xs text-[#94A3B8]">UUID</Label>
+                  <Label className="text-xs text-[#94A3B8]">UUID / FOLIO FISCAL</Label>
                   <div className="font-mono text-xs text-[#0F172A] break-all">{cfdiDetail.uuid}</div>
+                  {cfdiDetail.folio_alegra && (
+                    <div className="text-xs text-purple-600 font-medium mt-1">Folio Alegra: {cfdiDetail.folio_alegra}</div>
+                  )}
                 </div>
                 <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
                   <Label className="text-xs text-[#94A3B8]">TIPO DE FACTURA</Label>
@@ -1694,7 +1697,11 @@ const CFDIModule = () => {
                 </div>
                 <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
                   <Label className="text-xs text-[#94A3B8]">MÉTODO DE PAGO</Label>
-                  <div className="font-medium text-[#0F172A]">{cfdiDetail.metodo_pago || 'PUE'}</div>
+                  <div className="font-medium text-[#0F172A]">
+                    {cfdiDetail.metodo_pago === 'PPD' ? 'PPD (Pago en parcialidades)' : 
+                     cfdiDetail.metodo_pago === 'PUE' ? 'PUE (Pago en una exhibición)' : 
+                     cfdiDetail.metodo_pago || 'N/A'}
+                  </div>
                 </div>
                 <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
                   <Label className="text-xs text-[#94A3B8]">FORMA DE PAGO</Label>
