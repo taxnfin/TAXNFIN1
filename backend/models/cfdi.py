@@ -43,6 +43,10 @@ class CFDI(BaseModel):
     customer_id: Optional[str] = None
     vendor_id: Optional[str] = None
     notas: Optional[str] = None
+    source: Optional[str] = None  # 'alegra', 'sat', 'manual', etc.
+    alegra_id: Optional[str] = None  # ID from Alegra if synced
+    referencia: Optional[str] = None  # Reference number from source
+    fecha_vencimiento: Optional[str] = None  # Due date
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
