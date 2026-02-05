@@ -1668,11 +1668,21 @@ const BankStatementsModule = () => {
           <Button 
             variant="outline" 
             onClick={handleDeleteAllReconciliations} 
-            className="gap-2 text-red-600 border-red-300 hover:bg-red-50" 
+            className="gap-2 text-orange-600 border-orange-300 hover:bg-orange-50" 
             data-testid="delete-all-reconciliations-btn"
           >
-            <Trash2 size={16} />
+            <RotateCcw size={16} />
             Borrar Conciliaciones
+          </Button>
+          <Button 
+            variant="destructive" 
+            onClick={() => setDeleteAllDialogOpen(true)} 
+            className="gap-2" 
+            disabled={filteredTransactions.length === 0}
+            data-testid="delete-all-transactions-btn"
+          >
+            <Trash2 size={16} />
+            Eliminar {filteredTransactions.length === bankTransactions.length ? 'Todos' : `(${filteredTransactions.length})`}
           </Button>
           
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
