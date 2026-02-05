@@ -624,6 +624,45 @@ async def sync_alegra_bills(
             fecha = bill.get('date', '')
             fecha_vencimiento = bill.get('dueDate', fecha)
             
+            # Get payment date from payments array if available
+            fecha_pago = None
+            payments_list = bill.get('payments', [])
+            if payments_list and isinstance(payments_list, list):
+                # Get the most recent payment date
+                for pmt in payments_list:
+                    if isinstance(pmt, dict) and pmt.get('date'):
+                        pmt_date = pmt.get('date')
+                        if not fecha_pago or pmt_date > fecha_pago:
+                            fecha_pago = pmt_date
+            
+            # Apply date filter logic:
+            # - For PAID bills (completado): filter by payment date
+            # - For PENDING bills: filter by due date
+            if date_from or date_to:
+                should_include = False
+                
+                if payment_status == 'completado' and fecha_pago:
+                    # Paid bill: check if payment date is in range
+                    if date_from and date_to:
+                        should_include = date_from <= fecha_pago[:10] <= date_to
+                    elif date_from:
+                        should_include = fecha_pago[:10] >= date_from
+                    elif date_to:
+                        should_include = fecha_pago[:10] <= date_to
+                else:
+                    # Pending/Partial bill: check if due date is in range
+                    if fecha_vencimiento:
+                        if date_from and date_to:
+                            should_include = date_from <= fecha_vencimiento[:10] <= date_to
+                        elif date_from:
+                            should_include = fecha_vencimiento[:10] >= date_from
+                        elif date_to:
+                            should_include = fecha_vencimiento[:10] <= date_to
+                
+                if not should_include:
+                    skipped += 1
+                    continue
+            
             # Extract currency and exchange rate
             currency_data = bill.get('currency', {})
             moneda = currency_data.get('code', 'MXN') if isinstance(currency_data, dict) else 'MXN'
@@ -646,7 +685,7 @@ async def sync_alegra_bills(
                 'tipo_cambio_historico': tipo_cambio if moneda != 'MXN' else None,
                 'metodo_pago': 'transferencia',
                 'fecha_vencimiento': fecha_vencimiento,
-                'fecha_pago': None if payment_status != 'completado' else fecha,
+                'fecha_pago': fecha_pago if payment_status == 'completado' else None,
                 'estatus': payment_status,
                 'referencia': f"{bill.get('numberTemplate', {}).get('prefix', '')}{bill.get('number', '')}",
                 'beneficiario': vendor_name,
