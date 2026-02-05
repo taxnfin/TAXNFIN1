@@ -967,6 +967,12 @@ const CFDIModule = () => {
                           {cfdi.source === 'alegra' && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">Alegra</span>
                           )}
+                          {cfdi.source === 'alegra+xml' && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">Alegra+XML</span>
+                          )}
+                          {cfdi.source === 'xml' && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-medium">XML</span>
+                          )}
                         </div>
                         {cfdi.referencia && (
                           <div className="text-[10px] text-[#64748B]">Ref: {cfdi.referencia}</div>
