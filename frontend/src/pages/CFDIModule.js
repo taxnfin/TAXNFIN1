@@ -298,6 +298,43 @@ const CFDIModule = () => {
     }
   };
 
+  // Link XML to Alegra CFDI
+  const handleLinkXmlClick = (cfdi) => {
+    setLinkXmlDialog({ open: true, cfdi });
+  };
+
+  const handleLinkXmlFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !linkXmlDialog.cfdi) return;
+
+    if (!file.name.endsWith('.xml')) {
+      toast.error('Solo se aceptan archivos XML');
+      return;
+    }
+
+    setLinkingXml(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await api.post(`/cfdi/${linkXmlDialog.cfdi.id}/link-xml`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      toast.success(`XML vinculado. UUID actualizado: ${response.data.new_uuid.substring(0, 13)}...`);
+      setLinkXmlDialog({ open: false, cfdi: null });
+      loadData();
+    } catch (error) {
+      const msg = error.response?.data?.detail || 'Error vinculando XML';
+      toast.error(msg);
+    } finally {
+      setLinkingXml(false);
+      if (linkXmlInputRef.current) {
+        linkXmlInputRef.current.value = '';
+      }
+    }
+  };
+
   // Create customer/vendor from new RFC
   const handleCreateParty = async () => {
     if (!newRfcDialog.data) return;
