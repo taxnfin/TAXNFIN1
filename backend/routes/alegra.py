@@ -570,12 +570,12 @@ async def sync_alegra_invoices(
                 'updated_at': datetime.now(timezone.utc).isoformat()
             }
             
-            # Check if exists by alegra_id OR by pseudo_uuid (prevent duplicates)
+            # Check if exists by alegra_id OR by UUID (real or pseudo) to prevent duplicates
             existing = await db.cfdis.find_one({
                 'company_id': company_id,
                 '$or': [
                     {'alegra_id': alegra_id},
-                    {'uuid': pseudo_uuid}
+                    {'uuid': uuid_value}
                 ]
             })
             
