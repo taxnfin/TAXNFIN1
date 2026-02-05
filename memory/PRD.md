@@ -320,11 +320,29 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
-## Latest Updates (February 4, 2026)
+## Latest Updates (February 5, 2026)
 
 ### Completed in This Session ✅
 
-**Nuevas mejoras implementadas (sesión actual)**
+**P0 - Verificación Filtro de Fechas Alegra (COMPLETADO)**
+
+1. ✅ **Corrección del filtro de fechas verificada** - La sincronización ahora filtra correctamente por:
+   - **Facturas pagadas**: Se filtran por fecha de pago
+   - **Facturas pendientes**: Se filtran por fecha de vencimiento
+2. ✅ **Pruebas con curl exitosas**:
+   - `POST /api/alegra/sync/invoices?date_from=2026-01-01&date_to=2026-01-31`
+     - Total en Alegra: 687 | Sincronizadas: 30 | Omitidas: 657
+   - `POST /api/alegra/sync/bills?date_from=2026-01-01&date_to=2026-01-31`
+     - Total en Alegra: 2060 | Sincronizadas: 57 | Omitidas: 2003
+3. ✅ **Backend reiniciado y funcionando correctamente**
+
+---
+
+## Previous Updates (February 4, 2026)
+
+### Completed Previously ✅
+
+**Nuevas mejoras implementadas (sesión anterior)**
 
 1. ✅ **Sincronización de movimientos bancarios de Alegra** - Endpoint POST /api/alegra/sync/payments funcional
 2. ✅ **Tipos de cambio de Alegra guardados automáticamente** - Al sincronizar facturas con moneda extranjera, el tipo de cambio se guarda en fx_rates con `fuente: 'alegra'`
