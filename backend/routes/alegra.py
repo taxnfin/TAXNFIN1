@@ -490,13 +490,38 @@ async def sync_alegra_invoices(
             if moneda != 'MXN' and tipo_cambio and tipo_cambio != 1:
                 await save_alegra_exchange_rate(company_id, moneda, tipo_cambio, fecha)
             
-            # Generate a pseudo-UUID from Alegra ID for CFDI compatibility
-            invoice_number = f"{invoice.get('numberTemplate', {}).get('prefix', '')}{invoice.get('number', alegra_id)}"
+            # Get invoice folio - prefix + number (e.g., CUSTINVC859)
+            number_template = invoice.get('numberTemplate', {})
+            prefix = number_template.get('prefix', '') if isinstance(number_template, dict) else ''
+            number = str(invoice.get('number', alegra_id))
+            folio_alegra = f"{prefix}{number}"  # Full folio like CUSTINVC859
+            
             pseudo_uuid = f"ALEGRA-INV-{alegra_id}"
             
-            # Calculate taxes (estimate from total)
-            subtotal = total / 1.16 if total > 0 else 0  # Assuming 16% IVA
-            impuestos = total - subtotal
+            # Calculate totals - Alegra gives total in original currency
+            # total is the amount IN THE ORIGINAL CURRENCY (USD, MXN, etc.)
+            total_moneda_original = total  # This is the amount in USD/EUR/etc.
+            
+            # Convert to MXN if foreign currency
+            if moneda != 'MXN' and tipo_cambio > 0:
+                total_mxn = total * tipo_cambio  # Convert to MXN
+                total_paid_mxn = total_paid * tipo_cambio
+            else:
+                total_mxn = total
+                total_paid_mxn = total_paid
+                total_moneda_original = None  # No need to store if already MXN
+            
+            # Calculate taxes (estimate from total MXN)
+            subtotal = total_mxn / 1.16 if total_mxn > 0 else 0  # Assuming 16% IVA
+            impuestos = total_mxn - subtotal
+            
+            # Determine payment method based on payment status
+            # PPD = Pago en Parcialidades o Diferido (pendiente)
+            # PUE = Pago en Una sola Exhibición (pagado completamente)
+            if estado_conciliacion == 'conciliado':
+                metodo_pago = 'PUE'
+            else:
+                metodo_pago = 'PPD'
             
             cfdi_doc = {
                 'alegra_id': alegra_id,
@@ -515,16 +540,18 @@ async def sync_alegra_invoices(
                 'subtotal': round(subtotal, 2),
                 'descuento': 0,
                 'impuestos': round(impuestos, 2),
-                'total': total,
+                'total': round(total_mxn, 2),  # Total in MXN
+                'total_moneda_original': round(total_moneda_original, 2) if total_moneda_original else None,
                 'iva_trasladado': round(impuestos, 2),
                 'isr_retenido': 0,
                 'iva_retenido': 0,
-                'metodo_pago': 'PPD' if estado_conciliacion == 'pendiente' else 'PUE',
+                'metodo_pago': metodo_pago,
                 'estatus': 'vigente',
                 'estado_conciliacion': estado_conciliacion,
-                'monto_cobrado': total_paid,
+                'monto_cobrado': round(total_paid_mxn, 2),
                 'monto_pagado': 0,
-                'referencia': invoice_number,
+                'referencia': folio_alegra,  # Full folio CUSTINVC859
+                'folio_alegra': folio_alegra,
                 'source': 'alegra',
                 'alegra_status': inv_status,
                 'updated_at': datetime.now(timezone.utc).isoformat()
