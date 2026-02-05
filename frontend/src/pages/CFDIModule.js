@@ -1791,9 +1791,23 @@ const CFDIModule = () => {
                     <TableRow className="bg-[#0F172A] text-white">
                       <TableCell className="font-bold text-lg">TOTAL</TableCell>
                       <TableCell className="text-right font-mono font-bold text-lg">
-                        ${(cfdiDetail.total || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                        ${(cfdiDetail.total || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
                       </TableCell>
                     </TableRow>
+                    {/* Show original amount if foreign currency */}
+                    {cfdiDetail.moneda && cfdiDetail.moneda !== 'MXN' && cfdiDetail.total_moneda_original && (
+                      <TableRow className="bg-purple-50">
+                        <TableCell className="font-medium text-purple-700">
+                          TOTAL EN {cfdiDetail.moneda}
+                          <div className="text-xs font-normal text-purple-500">
+                            Tipo de cambio: {cfdiDetail.tipo_cambio?.toFixed(4) || 'N/A'}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-bold text-purple-700">
+                          ${(cfdiDetail.total_moneda_original || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} {cfdiDetail.moneda}
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </div>
