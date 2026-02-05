@@ -2177,6 +2177,76 @@ async def upload_cfdi(request: Request, file: UploadFile = File(...), current_us
         'nomina_auto_reconciled': nomina_auto_reconciled
     }
 
+
+@api_router.post("/cfdi/{cfdi_id}/link-xml")
+async def link_xml_to_cfdi(
+    cfdi_id: str,
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Link an XML file to an existing CFDI (typically from Alegra).
+    This updates the CFDI with the real UUID from the XML and stores the XML content.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Find the existing CFDI
+    existing_cfdi = await db.cfdis.find_one({'id': cfdi_id, 'company_id': company_id}, {'_id': 0})
+    if not existing_cfdi:
+        raise HTTPException(status_code=404, detail="CFDI no encontrado")
+    
+    if not file.filename.endswith('.xml'):
+        raise HTTPException(status_code=400, detail="Solo se aceptan archivos XML")
+    
+    xml_content = await file.read()
+    xml_str = xml_content.decode('utf-8')
+    
+    parsed = parse_cfdi_xml(xml_str)
+    
+    # Check if this UUID already exists in another CFDI
+    uuid_exists = await db.cfdis.find_one({
+        'company_id': company_id, 
+        'uuid': parsed['uuid'],
+        'id': {'$ne': cfdi_id}  # Exclude current CFDI
+    }, {'_id': 0, 'id': 1})
+    
+    if uuid_exists:
+        raise HTTPException(status_code=400, detail=f"El UUID {parsed['uuid']} ya existe en otro CFDI")
+    
+    # Update the CFDI with XML data
+    old_source = existing_cfdi.get('source', 'unknown')
+    new_source = f"{old_source}+xml" if old_source and old_source != 'unknown' else 'xml'
+    
+    update_data = {
+        'uuid': parsed['uuid'],
+        'xml_original': xml_str,
+        'source': new_source,
+        'metodo_pago': parsed.get('metodo_pago') or existing_cfdi.get('metodo_pago'),
+        'forma_pago': parsed.get('forma_pago') or existing_cfdi.get('forma_pago'),
+        'uso_cfdi': parsed.get('uso_cfdi') or existing_cfdi.get('uso_cfdi'),
+        'iva_trasladado': parsed.get('iva_trasladado', 0),
+        'isr_retenido': parsed.get('isr_retenido', 0),
+        'iva_retenido': parsed.get('iva_retenido', 0),
+        'updated_at': datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.cfdis.update_one({'id': cfdi_id}, {'$set': update_data})
+    
+    logger.info(f"XML vinculado a CFDI {cfdi_id}: {existing_cfdi.get('uuid', 'N/A')} -> {parsed['uuid']}")
+    
+    # Get updated CFDI
+    updated_cfdi = await db.cfdis.find_one({'id': cfdi_id}, {'_id': 0, 'xml_original': 0})
+    
+    return {
+        "success": True,
+        "message": f"XML vinculado exitosamente. UUID actualizado: {parsed['uuid']}",
+        "cfdi": updated_cfdi,
+        "old_uuid": existing_cfdi.get('uuid'),
+        "new_uuid": parsed['uuid']
+    }
+
+
 @api_router.get("/cfdi", response_model=List[CFDI])
 async def list_cfdis(
     request: Request,
