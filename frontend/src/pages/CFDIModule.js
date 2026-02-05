@@ -995,7 +995,12 @@ const CFDIModule = () => {
               ) : (
                 filteredCfdis.map((cfdi) => {
                   const moneda = cfdi.moneda || 'MXN';
-                  const converted = convertAmount(cfdi.total, moneda);
+                  // If cfdi.total is already in MXN (from Alegra or SAT), don't convert again
+                  // Only convert if the source doesn't pre-convert (e.g., manual entries)
+                  // Alegra CFDIs have total already in MXN, so we use it directly
+                  const displayTotal = cfdi.source === 'alegra' || cfdi.source === 'alegra+xml' 
+                    ? cfdi.total  // Already in MXN from backend
+                    : convertAmount(cfdi.total, moneda);  // Convert if needed
                   const reconciliationStatus = cfdi.estado_conciliacion || 'pendiente';
                   const ReconciliationIcon = RECONCILIATION_STATUS[reconciliationStatus]?.icon || Clock;
                   
