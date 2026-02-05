@@ -985,7 +985,8 @@ async def clear_alegra_data(
     current_user: Dict = Depends(get_current_user),
     clear_customers: bool = Query(True, description="Clear customers from Alegra"),
     clear_vendors: bool = Query(True, description="Clear vendors from Alegra"),
-    clear_payments: bool = Query(True, description="Clear payments from Alegra")
+    clear_payments: bool = Query(True, description="Clear payments from Alegra"),
+    clear_cfdis: bool = Query(True, description="Clear CFDIs from Alegra")
 ):
     """
     Clear all data synced from Alegra for the active company
@@ -996,7 +997,8 @@ async def clear_alegra_data(
     results = {
         "customers_deleted": 0,
         "vendors_deleted": 0,
-        "payments_deleted": 0
+        "payments_deleted": 0,
+        "cfdis_deleted": 0
     }
     
     # Delete customers sourced from Alegra
@@ -1023,13 +1025,21 @@ async def clear_alegra_data(
         })
         results['payments_deleted'] = delete_result.deleted_count
     
+    # Delete CFDIs sourced from Alegra
+    if clear_cfdis:
+        delete_result = await db.cfdis.delete_many({
+            'company_id': company_id,
+            'source': 'alegra'
+        })
+        results['cfdis_deleted'] = delete_result.deleted_count
+    
     # Reset last sync time
     await db.companies.update_one(
         {'id': company_id},
         {'$set': {'alegra_last_sync': None}}
     )
     
-    total_deleted = results['customers_deleted'] + results['vendors_deleted'] + results['payments_deleted']
+    total_deleted = results['customers_deleted'] + results['vendors_deleted'] + results['payments_deleted'] + results['cfdis_deleted']
     
     return {
         "success": True,
