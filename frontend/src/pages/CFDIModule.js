@@ -1092,6 +1092,19 @@ const CFDIModule = () => {
                           >
                             <Tag size={16} className="text-[#0EA5E9]" />
                           </Button>
+                          {/* Botón Vincular XML - solo para CFDIs de Alegra sin XML */}
+                          {cfdi.source === 'alegra' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleLinkXmlClick(cfdi)}
+                              title="Vincular XML del SAT"
+                              className="text-purple-600 hover:text-purple-800 hover:bg-purple-50"
+                              data-testid={`link-xml-cfdi-${cfdi.id}`}
+                            >
+                              <FilePlus size={16} />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
