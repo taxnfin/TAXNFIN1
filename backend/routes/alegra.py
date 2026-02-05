@@ -750,7 +750,20 @@ async def sync_alegra_bills(
             number = str(bill.get('number', alegra_id))
             folio_alegra = f"{prefix}{number}"  # Full folio
             
-            pseudo_uuid = f"ALEGRA-BILL-{alegra_id}"
+            # Get the REAL UUID from SAT stamp if available
+            stamp = bill.get('stamp', {})
+            sat_uuid = stamp.get('uuid') if isinstance(stamp, dict) else None
+            
+            # Use the real SAT UUID if available, otherwise use a pseudo-UUID
+            if sat_uuid:
+                uuid_value = sat_uuid
+                logger.info(f"Bill {alegra_id} has real SAT UUID: {sat_uuid}")
+            else:
+                uuid_value = f"ALEGRA-BILL-{alegra_id}"
+                logger.info(f"Bill {alegra_id} has no SAT stamp, using pseudo-UUID")
+            
+            # Also get the stamp date as the timbrado date
+            fecha_timbrado = stamp.get('stampDate') or stamp.get('datetime') or fecha if isinstance(stamp, dict) else fecha
             
             # Calculate totals - Alegra gives total in original currency
             total_moneda_original = total  # Amount in original currency
