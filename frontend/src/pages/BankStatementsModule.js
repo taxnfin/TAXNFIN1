@@ -3639,6 +3639,70 @@ const BankStatementsModule = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete All Transactions Dialog */}
+      <AlertDialog open={deleteAllDialogOpen} onOpenChange={setDeleteAllDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-red-600 flex items-center gap-2">
+              <Trash2 size={20} />
+              ¿Eliminar {filteredTransactions.length} movimientos bancarios?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <div className="space-y-3">
+                <p>
+                  Estás a punto de eliminar <strong>{filteredTransactions.length}</strong> movimientos bancarios
+                  {filteredTransactions.length !== bankTransactions.length && (
+                    <span className="text-orange-600"> (de {bankTransactions.length} totales, basado en los filtros activos)</span>
+                  )}
+                </p>
+                
+                {(filterAccount !== 'all' || filterStatus !== 'all') && (
+                  <Alert className="bg-orange-50 border-orange-200">
+                    <AlertCircle className="h-4 w-4 text-orange-600" />
+                    <AlertDescription>
+                      <strong>Filtros activos:</strong>
+                      <ul className="list-disc list-inside mt-1">
+                        {filterAccount !== 'all' && (
+                          <li>Cuenta: {bankAccounts.find(a => a.id === filterAccount)?.nombre || filterAccount}</li>
+                        )}
+                        {filterStatus !== 'all' && (
+                          <li>Estado: {filterStatus}</li>
+                        )}
+                      </ul>
+                    </AlertDescription>
+                  </Alert>
+                )}
+                
+                <p className="text-red-600 font-semibold">
+                  ⚠️ Esta acción eliminará los movimientos y sus conciliaciones asociadas. No se puede deshacer.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingAll}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteAllTransactions}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deletingAll}
+              data-testid="confirm-delete-all-transactions-btn"
+            >
+              {deletingAll ? (
+                <>
+                  <Loader2 size={14} className="mr-1 animate-spin" />
+                  Eliminando...
+                </>
+              ) : (
+                <>
+                  <Trash2 size={14} className="mr-1" />
+                  Eliminar {filteredTransactions.length} Movimientos
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
