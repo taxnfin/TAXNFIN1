@@ -1269,6 +1269,65 @@ const CFDIModule = () => {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Link XML Dialog */}
+      <Dialog open={linkXmlDialog.open} onOpenChange={(open) => setLinkXmlDialog({ open, cfdi: open ? linkXmlDialog.cfdi : null })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FilePlus size={20} className="text-purple-600" />
+              Vincular XML del SAT
+            </DialogTitle>
+            <DialogDescription>
+              Sube el archivo XML para vincular el folio fiscal real a este CFDI de Alegra
+            </DialogDescription>
+          </DialogHeader>
+          {linkXmlDialog.cfdi && (
+            <div className="space-y-4">
+              <div className="p-3 bg-purple-50 rounded-md border border-purple-200">
+                <div className="text-sm font-medium">{linkXmlDialog.cfdi.emisor_nombre || linkXmlDialog.cfdi.emisor_rfc}</div>
+                <div className="text-xs text-purple-600 mono flex items-center gap-2">
+                  <span>UUID actual: {linkXmlDialog.cfdi.uuid}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">Alegra</span>
+                </div>
+                <div className="text-sm font-semibold mt-1">
+                  ${linkXmlDialog.cfdi.total?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {linkXmlDialog.cfdi.moneda || 'MXN'}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  Fecha: {linkXmlDialog.cfdi.fecha_emision ? format(new Date(linkXmlDialog.cfdi.fecha_emision), 'dd/MM/yyyy') : 'N/A'}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Archivo XML del SAT</Label>
+                <Input
+                  ref={linkXmlInputRef}
+                  type="file"
+                  accept=".xml"
+                  onChange={handleLinkXmlFileSelect}
+                  disabled={linkingXml}
+                  data-testid="link-xml-input"
+                />
+                <p className="text-xs text-gray-500">
+                  El UUID del XML reemplazará el pseudo-UUID de Alegra. El CFDI se marcará como "Alegra+XML".
+                </p>
+              </div>
+
+              {linkingXml && (
+                <div className="flex items-center justify-center gap-2 text-purple-600">
+                  <Loader2 size={16} className="animate-spin" />
+                  <span className="text-sm">Vinculando XML...</span>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkXmlDialog({ open: false, cfdi: null })} disabled={linkingXml}>
+              Cancelar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Categorize Dialog */}
       <Dialog open={categorizeDialogOpen} onOpenChange={setCategorizeDialogOpen}>
         <DialogContent>
