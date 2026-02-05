@@ -790,14 +790,14 @@ async def sync_alegra_bills(
             cfdi_doc = {
                 'alegra_id': alegra_id,
                 'company_id': company_id,
-                'uuid': pseudo_uuid,
+                'uuid': uuid_value,  # Real SAT UUID or pseudo-UUID
                 'tipo_cfdi': 'egreso',  # Purchase bill = egreso
                 'emisor_rfc': vendor_rfc or 'XAXX010101000',
                 'emisor_nombre': vendor_name,
                 'receptor_rfc': company.get('rfc', 'XAXX010101000'),
                 'receptor_nombre': company.get('razon_social', company.get('nombre', '')),
                 'fecha_emision': fecha + 'T00:00:00' if fecha and 'T' not in fecha else fecha,
-                'fecha_timbrado': fecha + 'T00:00:00' if fecha and 'T' not in fecha else fecha,
+                'fecha_timbrado': fecha_timbrado if fecha_timbrado else (fecha + 'T00:00:00' if fecha and 'T' not in fecha else fecha),
                 'fecha_vencimiento': fecha_vencimiento,
                 'moneda': moneda,
                 'tipo_cambio': tipo_cambio if moneda != 'MXN' else 1,
@@ -821,12 +821,12 @@ async def sync_alegra_bills(
                 'updated_at': datetime.now(timezone.utc).isoformat()
             }
             
-            # Check if exists by alegra_id OR by pseudo_uuid (prevent duplicates)
+            # Check if exists by alegra_id OR by UUID (real or pseudo) to prevent duplicates
             existing = await db.cfdis.find_one({
                 'company_id': company_id,
                 '$or': [
                     {'alegra_id': alegra_id},
-                    {'uuid': pseudo_uuid}
+                    {'uuid': uuid_value}
                 ]
             })
             
