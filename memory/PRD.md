@@ -324,7 +324,47 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ### Completed in This Session ✅
 
-**P0 - Botón "Vincular XML" y Prevención de Duplicados Mejorada (COMPLETADO)**
+**P0 - Correcciones Múltiples de CFDIs de Alegra (COMPLETADO)**
+
+El usuario reportó varios problemas con la sincronización de Alegra:
+
+**Correcciones implementadas:**
+
+1. ✅ **Método de pago corregido**:
+   - `PPD` (Pago en parcialidades) → Para facturas pendientes
+   - `PUE` (Pago en una exhibición) → Para facturas pagadas/conciliadas
+   
+2. ✅ **Monto en moneda original y tipo de cambio**:
+   - Tabla: Debajo del monto en MXN, muestra `USD $27,460.16 @ 17.8905`
+   - Detalle: Fila adicional mostrando "TOTAL EN USD" con tipo de cambio
+
+3. ✅ **UUID y Folio de Alegra correctos**:
+   - UUID: `ALEGRA-INV-664`
+   - Folio Alegra: `CUSTINVC664` (prefix + number correcto)
+
+4. ✅ **Conversión de moneda correcta**:
+   - `total` guarda el monto en MXN (convertido)
+   - `total_moneda_original` guarda el monto en USD/EUR/etc.
+   - `tipo_cambio` guarda el tipo de cambio usado en la factura
+
+**Campos nuevos agregados al modelo CFDI:**
+- `total_moneda_original`: Monto en la moneda original de la factura
+- `tipo_cambio`: Tipo de cambio usado en la factura
+- `folio_alegra`: Folio completo de Alegra (prefix + number)
+
+**Archivos modificados:**
+- `backend/models/cfdi.py` - Nuevos campos para moneda original
+- `backend/routes/alegra.py` - Lógica de conversión y folio corregida
+- `frontend/src/pages/CFDIModule.js` - Tabla y detalle muestran USD y tipo de cambio
+
+**Estado actual:**
+- 129 facturas de venta (ingresos) sincronizadas
+- 294 facturas de proveedor (egresos) sincronizadas
+- Total: 423 CFDIs
+
+---
+
+**P0 - Botón "Vincular XML" (COMPLETADO)**
 
 El usuario reportó que seguían apareciendo duplicados porque Alegra no proporciona el UUID/folio fiscal real del SAT.
 
