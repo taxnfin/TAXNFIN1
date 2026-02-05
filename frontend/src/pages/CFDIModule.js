@@ -961,7 +961,17 @@ const CFDIModule = () => {
                   
                   return (
                     <TableRow key={cfdi.id} data-testid={`cfdi-row-${cfdi.id}`}>
-                      <TableCell className="mono text-xs">{cfdi.uuid.substring(0, 13)}...</TableCell>
+                      <TableCell className="mono text-xs">
+                        <div className="flex items-center gap-2">
+                          <span>{cfdi.uuid.substring(0, 13)}...</span>
+                          {cfdi.source === 'alegra' && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">Alegra</span>
+                          )}
+                        </div>
+                        {cfdi.referencia && (
+                          <div className="text-[10px] text-[#64748B]">Ref: {cfdi.referencia}</div>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <span className={`text-xs px-2 py-1 rounded ${
                           cfdi.tipo_cfdi === 'ingreso' 
