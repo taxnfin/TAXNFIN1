@@ -68,7 +68,7 @@ const CFDIModule = () => {
   const [exporting, setExporting] = useState(false);
   const [linkXmlDialog, setLinkXmlDialog] = useState({ open: false, cfdi: null });
   const [linkingXml, setLinkingXml] = useState(false);
-  const linkXmlInputRef = React.useRef(null);
+  const linkXmlInputRef = useRef(null);
 
   useEffect(() => {
     loadData();
