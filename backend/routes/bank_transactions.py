@@ -486,3 +486,47 @@ async def delete_all_bank_transactions(
         'message': f'Se eliminaron {result.deleted_count} movimientos bancarios',
         'deleted_count': result.deleted_count
     }
+
+
+@router.delete("/bulk-delete")
+async def bulk_delete_bank_transactions(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    bank_account_id: Optional[str] = Query(None, description="Filter by bank account"),
+    estado_conciliacion: Optional[str] = Query(None, description="Filter by reconciliation status")
+):
+    """Delete bank transactions with optional filters"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Build query filter
+    query = {'company_id': company_id}
+    
+    if bank_account_id:
+        query['bank_account_id'] = bank_account_id
+    
+    if estado_conciliacion:
+        query['estado_conciliacion'] = estado_conciliacion
+    
+    # Get transaction IDs to delete
+    transactions_to_delete = await db.bank_transactions.find(query, {'id': 1, '_id': 0}).to_list(50000)
+    transaction_ids = [t['id'] for t in transactions_to_delete]
+    
+    if not transaction_ids:
+        return {'status': 'success', 'message': 'No hay movimientos para eliminar', 'deleted': 0}
+    
+    # Delete associated reconciliations
+    await db.reconciliations.delete_many({
+        'company_id': company_id,
+        'bank_transaction_id': {'$in': transaction_ids}
+    })
+    
+    # Delete bank transactions
+    result = await db.bank_transactions.delete_many(query)
+    
+    await audit_log(company_id, 'BankTransaction', f'bulk_delete_{len(transaction_ids)}', 'BULK_DELETE', current_user['id'])
+    
+    return {
+        'status': 'success',
+        'message': f'Se eliminaron {result.deleted_count} movimientos bancarios',
+        'deleted': result.deleted_count
+    }
