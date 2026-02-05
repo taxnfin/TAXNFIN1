@@ -138,10 +138,22 @@ export default function AlegraIntegration() {
       
       const response = await api.post(url);
       setSyncResults(response.data.results);
-      toast.success('Sincronización completada');
+      
+      // Check if any sync had errors
+      const hasErrors = Object.values(response.data.results || {}).some(r => r.error);
+      if (hasErrors) {
+        toast.warning('Sincronización parcial: algunos elementos tuvieron errores temporales de Alegra');
+      } else {
+        toast.success('Sincronización completada');
+      }
       fetchStatus();
     } catch (error) {
-      toast.error('Error en sincronización: ' + (error.response?.data?.detail || error.message));
+      const errorMsg = error.response?.data?.detail || error.message;
+      if (errorMsg.includes('500') || errorMsg.includes('error')) {
+        toast.error('Alegra está experimentando problemas temporales. Intenta de nuevo en unos minutos.');
+      } else {
+        toast.error('Error en sincronización: ' + errorMsg);
+      }
     } finally {
       setSyncing(false);
     }
@@ -158,10 +170,20 @@ export default function AlegraIntegration() {
       if (params.toString()) url += '?' + params.toString();
       
       const response = await api.post(url);
-      toast.success(`${entity} sincronizados: ${response.data.stats?.created || 0} nuevos, ${response.data.stats?.updated || 0} actualizados`);
+      const stats = response.data.stats || {};
+      if (stats.error) {
+        toast.warning(`${entity}: Error temporal de Alegra. Intenta de nuevo.`);
+      } else {
+        toast.success(`${entity} sincronizados: ${stats.created || 0} nuevos, ${stats.updated || 0} actualizados`);
+      }
       fetchStatus();
     } catch (error) {
-      toast.error('Error sincronizando ' + entity + ': ' + (error.response?.data?.detail || error.message));
+      const errorMsg = error.response?.data?.detail || error.message;
+      if (errorMsg.includes('500') || errorMsg.includes('error')) {
+        toast.error(`Alegra está experimentando problemas temporales. Intenta de nuevo en unos minutos.`);
+      } else {
+        toast.error('Error sincronizando ' + entity + ': ' + errorMsg);
+      }
     } finally {
       setSyncing(false);
     }
