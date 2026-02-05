@@ -20,10 +20,12 @@ class CFDI(BaseModel):
     fecha_emision: datetime
     fecha_timbrado: datetime
     moneda: str = "MXN"
+    tipo_cambio: float = 1.0  # Exchange rate used in invoice
     subtotal: float
     descuento: float = 0.0
     impuestos: float
-    total: float
+    total: float  # Total in MXN (converted if foreign currency)
+    total_moneda_original: Optional[float] = None  # Total in original currency (USD, EUR, etc.)
     metodo_pago: Optional[str] = None  # PUE or PPD
     forma_pago: Optional[str] = None   # 01, 02, 03, etc.
     uso_cfdi: Optional[str] = None     # G01, G02, G03, etc.
@@ -45,7 +47,8 @@ class CFDI(BaseModel):
     notas: Optional[str] = None
     source: Optional[str] = None  # 'alegra', 'sat', 'manual', etc.
     alegra_id: Optional[str] = None  # ID from Alegra if synced
-    referencia: Optional[str] = None  # Reference number from source
+    referencia: Optional[str] = None  # Reference number from source (folio)
+    folio_alegra: Optional[str] = None  # Full folio from Alegra (prefix + number)
     fecha_vencimiento: Optional[str] = None  # Due date
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
