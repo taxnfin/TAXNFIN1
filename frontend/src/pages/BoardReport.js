@@ -304,78 +304,120 @@ const BoardReport = () => {
     ];
   }, [currentMetrics, t]);
 
-  // Export to Excel
+  // Export to Excel - Complete with all metrics and AI analysis
   const exportToExcel = () => {
     try {
       const wb = XLSX.utils.book_new();
       
-      // Summary
+      // 1. RESUMEN EJECUTIVO con análisis de IA
       if (currentMetrics) {
         const inc = currentMetrics.income_statement || {};
         const bal = currentMetrics.balance_sheet || {};
+        
         const summaryData = [
-          { [t.keyMetrics]: t.revenue, Value: inc.ingresos || 0 },
-          { [t.keyMetrics]: t.grossProfit, Value: inc.utilidad_bruta || 0 },
-          { [t.keyMetrics]: t.ebitda, Value: inc.ebitda || inc.utilidad_operativa || 0 },
-          { [t.keyMetrics]: t.netProfit, Value: inc.utilidad_neta || 0 },
-          { [t.keyMetrics]: t.totalAssets, Value: bal.activo_total || 0 },
-          { [t.keyMetrics]: t.totalLiabilities, Value: bal.pasivo_total || 0 },
-          { [t.keyMetrics]: t.equity, Value: bal.capital_contable || 0 },
+          { Concepto: t.revenue, Valor: inc.ingresos || 0, Porcentaje: '100%' },
+          { Concepto: t.costOfSales, Valor: inc.costo_ventas || 0, Porcentaje: `${((inc.costo_ventas || 0) / (inc.ingresos || 1) * 100).toFixed(1)}%` },
+          { Concepto: t.grossProfit, Valor: inc.utilidad_bruta || 0, Porcentaje: `${((inc.utilidad_bruta || 0) / (inc.ingresos || 1) * 100).toFixed(1)}%` },
+          { Concepto: t.operatingExpenses, Valor: (inc.gastos_venta || 0) + (inc.gastos_administracion || 0) + (inc.gastos_generales || 0), Porcentaje: '' },
+          { Concepto: t.ebitda, Valor: inc.ebitda || inc.utilidad_operativa || 0, Porcentaje: `${((inc.ebitda || inc.utilidad_operativa || 0) / (inc.ingresos || 1) * 100).toFixed(1)}%` },
+          { Concepto: t.netProfit, Valor: inc.utilidad_neta || 0, Porcentaje: `${((inc.utilidad_neta || 0) / (inc.ingresos || 1) * 100).toFixed(1)}%` },
+          { Concepto: '', Valor: '', Porcentaje: '' },
+          { Concepto: t.totalAssets, Valor: bal.activo_total || 0, Porcentaje: '' },
+          { Concepto: t.currentAssets, Valor: bal.activo_circulante || 0, Porcentaje: '' },
+          { Concepto: t.fixedAssets, Valor: bal.activo_fijo || 0, Porcentaje: '' },
+          { Concepto: t.totalLiabilities, Valor: bal.pasivo_total || 0, Porcentaje: '' },
+          { Concepto: t.equity, Valor: bal.capital_contable || 0, Porcentaje: '' },
         ];
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryData), t.tabSummary);
       }
       
-      // Margins
+      // 2. ANÁLISIS DE IA
+      if (aiAnalysis) {
+        const aiData = [
+          { Sección: t.executiveSummary || 'Resumen Ejecutivo', Análisis: aiAnalysis.executive_summary || '' },
+          { Sección: t.profitabilityAnalysis || 'Análisis de Rentabilidad', Análisis: aiAnalysis.profitability_analysis || '' },
+          { Sección: t.returnsAnalysis || 'Análisis de Retornos', Análisis: aiAnalysis.returns_analysis || '' },
+          { Sección: t.liquidityAnalysisAI || 'Análisis de Liquidez', Análisis: aiAnalysis.liquidity_analysis || '' },
+          { Sección: t.solvencyAnalysisAI || 'Análisis de Solvencia', Análisis: aiAnalysis.solvency_analysis || '' },
+          { Sección: t.strategicRecommendations || 'Recomendaciones', Análisis: aiAnalysis.recommendations || '' },
+        ];
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(aiData), t.aiAnalysis || 'Análisis IA');
+      }
+      
+      // 3. MÁRGENES
       if (currentMetrics?.metrics?.margins) {
-        const marginsData = Object.entries(currentMetrics.metrics.margins).map(([key, val]) => ({
-          Metric: val.label || key,
-          Value: val.value || 0,
-          Interpretation: val.interpretation || ''
-        }));
+        const metrics = currentMetrics.metrics;
+        const marginsData = [
+          { Métrica: t.grossMargin, Valor: `${(metrics.margins?.gross_margin?.value || 0).toFixed(1)}%`, Estado: metrics.margins?.gross_margin?.value >= 30 ? 'Bueno' : metrics.margins?.gross_margin?.value >= 15 ? 'Atención' : 'Crítico' },
+          { Métrica: t.ebitdaMargin, Valor: `${(metrics.margins?.ebitda_margin?.value || 0).toFixed(1)}%`, Estado: metrics.margins?.ebitda_margin?.value >= 20 ? 'Bueno' : metrics.margins?.ebitda_margin?.value >= 10 ? 'Atención' : 'Crítico' },
+          { Métrica: t.operatingMargin, Valor: `${(metrics.margins?.operating_margin?.value || 0).toFixed(1)}%`, Estado: metrics.margins?.operating_margin?.value >= 15 ? 'Bueno' : metrics.margins?.operating_margin?.value >= 5 ? 'Atención' : 'Crítico' },
+          { Métrica: t.netMargin, Valor: `${(metrics.margins?.net_margin?.value || 0).toFixed(1)}%`, Estado: metrics.margins?.net_margin?.value >= 10 ? 'Bueno' : metrics.margins?.net_margin?.value >= 3 ? 'Atención' : 'Crítico' },
+          { Métrica: t.nopatMargin, Valor: `${(metrics.margins?.nopat_margin?.value || 0).toFixed(1)}%`, Estado: '' },
+        ];
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(marginsData), t.tabMargins);
       }
       
-      // Returns
+      // 4. RETORNOS
       if (currentMetrics?.metrics?.returns) {
-        const returnsData = Object.entries(currentMetrics.metrics.returns).map(([key, val]) => ({
-          Metric: val.label || key,
-          Value: val.value || 0,
-          Interpretation: val.interpretation || ''
-        }));
+        const metrics = currentMetrics.metrics;
+        const returnsData = [
+          { Métrica: 'ROIC', Valor: `${(metrics.returns?.roic?.value || 0).toFixed(1)}%`, Estado: metrics.returns?.roic?.value >= 15 ? 'Bueno' : metrics.returns?.roic?.value >= 8 ? 'Atención' : 'Crítico' },
+          { Métrica: 'ROE', Valor: `${(metrics.returns?.roe?.value || 0).toFixed(1)}%`, Estado: metrics.returns?.roe?.value >= 15 ? 'Bueno' : metrics.returns?.roe?.value >= 8 ? 'Atención' : 'Crítico' },
+          { Métrica: 'ROCE', Valor: `${(metrics.returns?.roce?.value || 0).toFixed(1)}%`, Estado: metrics.returns?.roce?.value >= 12 ? 'Bueno' : metrics.returns?.roce?.value >= 6 ? 'Atención' : 'Crítico' },
+          { Métrica: 'ROA', Valor: `${(metrics.returns?.roa?.value || 0).toFixed(1)}%`, Estado: metrics.returns?.roa?.value >= 8 ? 'Bueno' : metrics.returns?.roa?.value >= 4 ? 'Atención' : 'Crítico' },
+          { Métrica: 'RONIC', Valor: `${(metrics.returns?.ronic?.value || 0).toFixed(1)}%`, Estado: '' },
+          { Métrica: 'GMROI', Valor: `${(metrics.returns?.gmroi?.value || 0).toFixed(2)}x`, Estado: '' },
+        ];
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(returnsData), t.tabReturns);
       }
       
-      // Efficiency
+      // 5. EFICIENCIA
       if (currentMetrics?.metrics?.efficiency) {
-        const efficiencyData = Object.entries(currentMetrics.metrics.efficiency).map(([key, val]) => ({
-          Metric: val.label || key,
-          Value: val.value || 0,
-          Interpretation: val.interpretation || ''
-        }));
+        const metrics = currentMetrics.metrics;
+        const efficiencyData = [
+          { Métrica: t.assetTurnover, Valor: `${(metrics.efficiency?.asset_turnover?.value || 0).toFixed(2)}x` },
+          { Métrica: t.receivablesTurnover, Valor: `${(metrics.efficiency?.receivables_turnover?.value || 0).toFixed(2)}x` },
+          { Métrica: t.inventoryTurnover, Valor: `${(metrics.efficiency?.inventory_turnover?.value || 0).toFixed(2)}x` },
+          { Métrica: t.payablesTurnover, Valor: `${(metrics.efficiency?.payables_turnover?.value || 0).toFixed(2)}x` },
+          { Métrica: t.dso, Valor: `${(metrics.efficiency?.dso?.value || 0).toFixed(0)} ${t.days}` },
+          { Métrica: t.dpo, Valor: `${(metrics.efficiency?.dpo?.value || 0).toFixed(0)} ${t.days}` },
+          { Métrica: t.dio, Valor: `${(metrics.efficiency?.dio?.value || 0).toFixed(0)} ${t.days}` },
+          { Métrica: t.cashConversionCycle, Valor: `${(metrics.efficiency?.cash_conversion_cycle?.value || 0).toFixed(0)} ${t.days}` },
+        ];
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(efficiencyData), t.tabEfficiency);
       }
       
-      // Liquidity
+      // 6. LIQUIDEZ
       if (currentMetrics?.metrics?.liquidity) {
-        const liquidityData = Object.entries(currentMetrics.metrics.liquidity).map(([key, val]) => ({
-          Metric: val.label || key,
-          Value: val.value || 0,
-          Interpretation: val.interpretation || ''
-        }));
+        const metrics = currentMetrics.metrics;
+        const liquidityData = [
+          { Métrica: t.currentRatio, Valor: `${(metrics.liquidity?.current_ratio?.value || 0).toFixed(2)}x`, Estado: metrics.liquidity?.current_ratio?.value >= 2 ? 'Bueno' : metrics.liquidity?.current_ratio?.value >= 1 ? 'Atención' : 'Crítico' },
+          { Métrica: t.quickRatio, Valor: `${(metrics.liquidity?.quick_ratio?.value || 0).toFixed(2)}x`, Estado: metrics.liquidity?.quick_ratio?.value >= 1 ? 'Bueno' : metrics.liquidity?.quick_ratio?.value >= 0.5 ? 'Atención' : 'Crítico' },
+          { Métrica: t.cashRatio, Valor: `${(metrics.liquidity?.cash_ratio?.value || 0).toFixed(2)}x`, Estado: metrics.liquidity?.cash_ratio?.value >= 0.5 ? 'Bueno' : metrics.liquidity?.cash_ratio?.value >= 0.2 ? 'Atención' : 'Crítico' },
+          { Métrica: t.workingCapital, Valor: formatCurrency(metrics.liquidity?.working_capital?.value || 0), Estado: (metrics.liquidity?.working_capital?.value || 0) >= 0 ? 'Bueno' : 'Crítico' },
+          { Métrica: t.cashRunway, Valor: `${(metrics.liquidity?.cash_runway?.value || 0).toFixed(1)} meses`, Estado: metrics.liquidity?.cash_runway?.value >= 6 ? 'Bueno' : metrics.liquidity?.cash_runway?.value >= 3 ? 'Atención' : 'Crítico' },
+          { Métrica: t.cashEfficiency, Valor: `${(metrics.liquidity?.cash_efficiency?.value || 0).toFixed(1)}%`, Estado: '' },
+        ];
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(liquidityData), t.tabLiquidity);
       }
       
-      // Solvency
+      // 7. SOLVENCIA
       if (currentMetrics?.metrics?.solvency) {
-        const solvencyData = Object.entries(currentMetrics.metrics.solvency).map(([key, val]) => ({
-          Metric: val.label || key,
-          Value: val.value || 0,
-          Interpretation: val.interpretation || ''
-        }));
+        const metrics = currentMetrics.metrics;
+        const solvencyData = [
+          { Métrica: t.debtToEquity, Valor: `${(metrics.solvency?.debt_to_equity?.value || 0).toFixed(2)}x`, Estado: metrics.solvency?.debt_to_equity?.value <= 1 ? 'Bueno' : metrics.solvency?.debt_to_equity?.value <= 2 ? 'Atención' : 'Crítico' },
+          { Métrica: t.debtToAssets, Valor: `${(metrics.solvency?.debt_to_assets?.value || 0).toFixed(1)}%`, Estado: metrics.solvency?.debt_to_assets?.value <= 40 ? 'Bueno' : metrics.solvency?.debt_to_assets?.value <= 60 ? 'Atención' : 'Crítico' },
+          { Métrica: t.debtToEbitda, Valor: `${(metrics.solvency?.debt_to_ebitda?.value || 0).toFixed(2)}x`, Estado: metrics.solvency?.debt_to_ebitda?.value <= 3 ? 'Bueno' : metrics.solvency?.debt_to_ebitda?.value <= 5 ? 'Atención' : 'Crítico' },
+          { Métrica: t.interestCoverage, Valor: `${(metrics.solvency?.interest_coverage?.value || 0).toFixed(2)}x`, Estado: metrics.solvency?.interest_coverage?.value >= 5 ? 'Bueno' : metrics.solvency?.interest_coverage?.value >= 2 ? 'Atención' : 'Crítico' },
+          { Métrica: t.financialLeverage, Valor: `${(metrics.solvency?.financial_leverage?.value || 0).toFixed(2)}x`, Estado: '' },
+          { Métrica: t.netDebtToEbitda, Valor: `${(metrics.solvency?.net_debt_to_ebitda?.value || 0).toFixed(2)}x`, Estado: metrics.solvency?.net_debt_to_ebitda?.value <= 2 ? 'Bueno' : metrics.solvency?.net_debt_to_ebitda?.value <= 3.5 ? 'Atención' : 'Crítico' },
+          { Métrica: t.equityRatio, Valor: `${(metrics.solvency?.equity_ratio?.value || 0).toFixed(1)}%`, Estado: metrics.solvency?.equity_ratio?.value >= 40 ? 'Bueno' : metrics.solvency?.equity_ratio?.value >= 20 ? 'Atención' : 'Crítico' },
+          { Métrica: language === 'es' ? 'Costo de Deuda' : 'Cost of Debt', Valor: `${(metrics.solvency?.cost_of_debt?.value || 0).toFixed(1)}%`, Estado: '' },
+        ];
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(solvencyData), t.tabSolvency);
       }
       
-      // Trends
+      // 8. TENDENCIAS MENSUALES
       if (trendsData.length > 0) {
         const trendsExport = trendsData.map(p => ({
           [t.period]: p.periodo,
@@ -383,10 +425,10 @@ const BoardReport = () => {
           [t.grossProfit]: p.income_statement?.utilidad_bruta || 0,
           [t.ebitda]: p.income_statement?.utilidad_operativa || 0,
           [t.netProfit]: p.income_statement?.utilidad_neta || 0,
-          [t.grossMargin + ' %']: p.metrics?.margins?.gross_margin?.value || 0,
-          [t.netMargin + ' %']: p.metrics?.margins?.net_margin?.value || 0,
-          ['ROE %']: p.metrics?.returns?.roe?.value || 0,
-          ['ROIC %']: p.metrics?.returns?.roic?.value || 0,
+          [t.grossMargin]: `${(p.metrics?.margins?.gross_margin?.value || 0).toFixed(1)}%`,
+          [t.netMargin]: `${(p.metrics?.margins?.net_margin?.value || 0).toFixed(1)}%`,
+          ['ROE']: `${(p.metrics?.returns?.roe?.value || 0).toFixed(1)}%`,
+          ['ROIC']: `${(p.metrics?.returns?.roic?.value || 0).toFixed(1)}%`,
         }));
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(trendsExport), t.tabTrends);
       }
@@ -397,6 +439,7 @@ const BoardReport = () => {
       saveAs(new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fileName);
       toast.success(language === 'es' ? 'Excel exportado exitosamente' : language === 'pt' ? 'Excel exportado com sucesso' : 'Excel exported successfully');
     } catch (error) {
+      console.error('Error exporting Excel:', error);
       toast.error('Error exporting Excel');
     }
   };
