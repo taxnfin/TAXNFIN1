@@ -20,7 +20,8 @@ import {
   FileSpreadsheet,
   Receipt,
   Lightbulb,
-  Calculator
+  Calculator,
+  Presentation
 } from 'lucide-react';
 import {
   DropdownMenu,
