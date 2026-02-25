@@ -4,6 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { 
@@ -11,7 +14,7 @@ import {
   BarChart3, PieChart, DollarSign, Building2, Target, Activity, Scale,
   Wallet, RefreshCw, Globe, ArrowUpRight, ArrowDownRight, CheckCircle,
   AlertTriangle, XCircle, Percent, Calculator, Calendar, Clock, Brain,
-  Sparkles, Lightbulb
+  Sparkles, Lightbulb, Settings
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, 
