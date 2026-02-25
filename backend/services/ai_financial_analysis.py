@@ -20,7 +20,8 @@ async def generate_financial_analysis(
     balance_sheet: Dict,
     company_name: str,
     period: str,
-    language: str = 'es'
+    language: str = 'es',
+    trends_data: list = None
 ) -> Dict:
     """
     Generate AI-powered financial analysis for executive reports
@@ -33,6 +34,7 @@ async def generate_financial_analysis(
         company_name: Name of the company
         period: Period being analyzed (e.g., "Q1 2024", "2024-01")
         language: Language for the analysis ('es', 'en', 'pt')
+        trends_data: Optional list of historical period data for trends analysis
     
     Returns:
         Dictionary with analysis sections
