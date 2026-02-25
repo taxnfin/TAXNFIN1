@@ -701,24 +701,39 @@ const Reports = () => {
     };
   }, [sankeyData]);
 
-  if (loading) return <div className="p-8">Cargando...</div>;
+  if (loading) return <div className="p-8">{t.loading}</div>;
 
   return (
     <div className="p-8 space-y-6" data-testid="reports-page">
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{fontFamily: 'Manrope'}}>Reportes</h1>
-          <p className="text-[#64748B]">Análisis financiero y flujo de efectivo</p>
+          <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{fontFamily: 'Manrope'}}>{t.reports}</h1>
+          <p className="text-[#64748B]">{t.financialAnalysisAndCashflow}</p>
         </div>
         <div className="flex gap-2 items-center">
+          {/* Language Selector */}
+          <Select value={language} onValueChange={setLanguage}>
+            <SelectTrigger className="w-36" data-testid="language-selector">
+              <Globe className="w-4 h-4 mr-2" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {languages.map(lang => (
+                <SelectItem key={lang.code} value={lang.code}>
+                  {lang.flag} {lang.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
           <Button variant="outline" onClick={exportToExcel} className="gap-2" data-testid="export-excel-btn">
             <FileSpreadsheet size={16} />
             Excel
           </Button>
           <Button variant="outline" onClick={exportToPDF} disabled={exporting} className="gap-2" data-testid="export-pdf-btn">
             <FileText size={16} />
-            {exporting ? 'Exportando...' : 'PDF'}
+            {exporting ? t.exporting : 'PDF'}
           </Button>
           <Button variant="outline" size="icon" onClick={() => { loadData(); loadFinancialData(); }}>
             <RefreshCw size={16} />
@@ -730,10 +745,10 @@ const Reports = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3 lg:w-[600px]">
           <TabsTrigger value="cashflow" className="gap-2" data-testid="tab-cashflow">
-            <Wallet size={16} /> Flujo de Efectivo
+            <Wallet size={16} /> {t.cashflow}
           </TabsTrigger>
           <TabsTrigger value="financial" className="gap-2" data-testid="tab-financial">
-            <BarChart3 size={16} /> Estados Financieros
+            <BarChart3 size={16} /> {t.financialStatements}
           </TabsTrigger>
           <TabsTrigger value="sankey" className="gap-2" data-testid="tab-sankey">
             <PieChart size={16} /> Sankey P&L
