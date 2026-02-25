@@ -648,28 +648,49 @@ const BoardReport = () => {
           // Add logo centered at top
           const logoSize = 40;
           const logoX = (pageWidth - logoSize) / 2;
-          pdf.addImage(company.logo_url, 'PNG', logoX, 30, logoSize, logoSize);
-          y = 85;
+          pdf.addImage(company.logo_url, 'PNG', logoX, 35, logoSize, logoSize);
+          y = 90;
         } catch (logoErr) {
           console.warn('Could not add logo to PDF:', logoErr);
-          y = 50;
+          y = 60;
         }
       } else {
-        y = 50;
+        y = 70;
       }
       
-      // Company name - large and centered
-      pdf.setFontSize(32);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(255, 255, 255);
+      // Company name - large and centered (handle long names)
       const companyName = company?.nombre || 'Company';
-      const companyNameWidth = pdf.getTextWidth(companyName);
-      pdf.text(companyName, (pageWidth - companyNameWidth) / 2, y);
-      y += 20;
+      pdf.setFont(fontFamily, 'bold');
+      pdf.setTextColor(255, 255, 255);
+      
+      // Adjust font size based on name length
+      let nameFontSize = titleSize;
+      pdf.setFontSize(nameFontSize);
+      let companyNameWidth = pdf.getTextWidth(companyName);
+      
+      // Reduce font size if name is too wide
+      while (companyNameWidth > contentWidth - 20 && nameFontSize > 14) {
+        nameFontSize -= 2;
+        pdf.setFontSize(nameFontSize);
+        companyNameWidth = pdf.getTextWidth(companyName);
+      }
+      
+      // If still too wide, split into lines
+      if (companyNameWidth > contentWidth - 20) {
+        const nameLines = pdf.splitTextToSize(companyName, contentWidth - 20);
+        nameLines.forEach((line, idx) => {
+          const lineWidth = pdf.getTextWidth(line);
+          pdf.text(line, (pageWidth - lineWidth) / 2, y + (idx * (nameFontSize * 0.4)));
+        });
+        y += nameLines.length * (nameFontSize * 0.4) + 10;
+      } else {
+        pdf.text(companyName, (pageWidth - companyNameWidth) / 2, y);
+        y += 20;
+      }
       
       // Report title
-      pdf.setFontSize(18);
-      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(subtitleSize);
+      pdf.setFont(fontFamily, 'normal');
       pdf.setTextColor(148, 163, 184);
       const titleText = t.title || 'Executive Board Report';
       const titleWidth = pdf.getTextWidth(titleText);
@@ -688,16 +709,16 @@ const BoardReport = () => {
       
       // Period type and value
       const periodTypeLabels = { monthly: t.monthly, quarterly: t.quarterly, annual: t.annual };
-      pdf.setFontSize(12);
-      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(sectionHeaderSize);
+      pdf.setFont(fontFamily, 'normal');
       pdf.setTextColor(148, 163, 184);
       const periodLabel = periodTypeLabels[periodType] || periodType;
       const periodLabelText = `${periodLabel}`;
       const periodLabelWidth = pdf.getTextWidth(periodLabelText);
       pdf.text(periodLabelText, (pageWidth - periodLabelWidth) / 2, y + 8);
       
-      pdf.setFontSize(20);
-      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(subtitleSize + 2);
+      pdf.setFont(fontFamily, 'bold');
       pdf.setTextColor(255, 255, 255);
       const periodValueWidth = pdf.getTextWidth(selectedPeriod);
       pdf.text(selectedPeriod, (pageWidth - periodValueWidth) / 2, y + 23);
@@ -706,8 +727,8 @@ const BoardReport = () => {
       
       // Periods included (if aggregated)
       if (periodsIncluded.length > 1) {
-        pdf.setFontSize(9);
-        pdf.setFont('helvetica', 'italic');
+        pdf.setFontSize(smallSize + 1);
+        pdf.setFont(fontFamily, 'italic');
         pdf.setTextColor(100, 116, 139);
         const periodsText = `${t.periodsIncluded}: ${periodsIncluded.join(', ')}`;
         const periodsTextWidth = pdf.getTextWidth(periodsText);
@@ -716,8 +737,8 @@ const BoardReport = () => {
       }
       
       // Generation date at bottom
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(bodySize);
+      pdf.setFont(fontFamily, 'normal');
       pdf.setTextColor(100, 116, 139);
       const dateText = `${t.generatedOn}: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`;
       const dateWidth = pdf.getTextWidth(dateText);
