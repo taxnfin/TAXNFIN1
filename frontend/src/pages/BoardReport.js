@@ -388,7 +388,7 @@ const BoardReport = () => {
     }
   };
 
-  // Export to PDF - Complete Multi-Page Report
+  // Export to PDF - Complete Multi-Page Report with AI Analysis
   const exportToPDF = async () => {
     setExporting(true);
     toast.info(t.pdfGenerating || 'Generando PDF completo...');
@@ -400,20 +400,33 @@ const BoardReport = () => {
       const margin = 15;
       const contentWidth = pageWidth - (margin * 2);
       let y = margin;
-      let pageNumber = 1;
+      let currentPage = 1;
       
-      const addPageNumber = () => {
-        pdf.setFontSize(8);
-        pdf.setTextColor(150, 150, 150);
-        pdf.text(`${t.page || 'Página'} ${pageNumber}`, pageWidth - margin - 15, pageHeight - 8);
-        pdf.text(`${company?.nombre || 'Company'} - ${t.title}`, margin, pageHeight - 8);
+      // Helper function to wrap text
+      const wrapText = (text, maxWidth, fontSize = 9) => {
+        pdf.setFontSize(fontSize);
+        const words = text.split(' ');
+        const lines = [];
+        let currentLine = '';
+        
+        words.forEach(word => {
+          const testLine = currentLine ? currentLine + ' ' + word : word;
+          const textWidth = pdf.getTextWidth(testLine);
+          if (textWidth > maxWidth) {
+            if (currentLine) lines.push(currentLine);
+            currentLine = word;
+          } else {
+            currentLine = testLine;
+          }
+        });
+        if (currentLine) lines.push(currentLine);
+        return lines;
       };
       
       const addNewPageIfNeeded = (requiredSpace = 30) => {
-        if (y + requiredSpace > pageHeight - margin - 15) {
-          addPageNumber();
+        if (y + requiredSpace > pageHeight - 20) {
           pdf.addPage();
-          pageNumber++;
+          currentPage++;
           y = margin;
           return true;
         }
@@ -423,45 +436,51 @@ const BoardReport = () => {
       const drawSectionHeader = (title, color = [15, 23, 42]) => {
         addNewPageIfNeeded(25);
         pdf.setFillColor(...color);
-        pdf.rect(margin, y - 2, contentWidth, 10, 'F');
-        pdf.setFontSize(11);
+        pdf.rect(margin, y, contentWidth, 8, 'F');
+        pdf.setFontSize(10);
         pdf.setFont('helvetica', 'bold');
         pdf.setTextColor(255, 255, 255);
-        pdf.text(title, margin + 3, y + 5);
+        pdf.text(title, margin + 3, y + 5.5);
         pdf.setTextColor(0, 0, 0);
-        y += 15;
+        y += 12;
       };
       
-      const drawTableHeader = (columns) => {
-        pdf.setFillColor(240, 240, 240);
-        pdf.rect(margin, y - 3, contentWidth, 7, 'F');
-        pdf.setFontSize(8);
-        pdf.setFont('helvetica', 'bold');
-        columns.forEach(([text, x]) => {
-          pdf.text(text, margin + x, y);
+      const drawAnalysisText = (text) => {
+        if (!text) return;
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9);
+        pdf.setTextColor(60, 60, 60);
+        const lines = wrapText(text, contentWidth - 4);
+        lines.forEach(line => {
+          addNewPageIfNeeded(6);
+          pdf.text(line, margin + 2, y);
+          y += 5;
         });
-        y += 8;
+        pdf.setTextColor(0, 0, 0);
+        y += 3;
       };
       
-      const drawMetricRow = (label, value, status = null, xPos = 0) => {
+      const drawMetricRow = (label, value, status = null) => {
+        addNewPageIfNeeded(7);
         pdf.setFontSize(9);
         pdf.setFont('helvetica', 'normal');
-        pdf.text(label, margin + 2 + xPos, y);
+        pdf.text(label, margin + 2, y);
         pdf.setFont('helvetica', 'bold');
-        pdf.text(String(value), margin + 75 + xPos, y);
+        pdf.text(String(value), margin + 80, y);
         
         if (status) {
-          pdf.setFont('helvetica', 'normal');
           if (status === 'good') pdf.setTextColor(34, 197, 94);
           else if (status === 'warning') pdf.setTextColor(245, 158, 11);
           else if (status === 'critical') pdf.setTextColor(239, 68, 68);
-          pdf.text(status === 'good' ? '✓' : status === 'warning' ? '!' : '✗', margin + 115 + xPos, y);
+          const statusText = status === 'good' ? 'Bueno' : status === 'warning' ? 'Atención' : 'Crítico';
+          pdf.text(statusText, margin + 130, y);
           pdf.setTextColor(0, 0, 0);
         }
         y += 6;
       };
       
       const getStatus = (value, goodThreshold, warningThreshold, inverse = false) => {
+        if (value === undefined || value === null) return null;
         const isGood = inverse ? value <= goodThreshold : value >= goodThreshold;
         const isWarning = inverse ? value <= warningThreshold : value >= warningThreshold;
         if (isGood) return 'good';
@@ -471,34 +490,31 @@ const BoardReport = () => {
       
       // ====== PAGE 1: COVER ======
       pdf.setFillColor(15, 23, 42);
-      pdf.rect(0, 0, pageWidth, 60, 'F');
+      pdf.rect(0, 0, pageWidth, 55, 'F');
       
-      pdf.setFontSize(28);
+      pdf.setFontSize(24);
       pdf.setFont('helvetica', 'bold');
       pdf.setTextColor(255, 255, 255);
-      pdf.text(company?.nombre || 'Company', margin, 28);
+      pdf.text(company?.nombre || 'Company', margin, 25);
       
-      pdf.setFontSize(16);
+      pdf.setFontSize(14);
       pdf.setFont('helvetica', 'normal');
       pdf.setTextColor(148, 163, 184);
-      pdf.text(t.title, margin, 42);
+      pdf.text(t.title, margin, 38);
       
-      // Period info
       const periodTypeLabels = { monthly: t.monthly, quarterly: t.quarterly, annual: t.annual };
-      const periodLabel = `${periodTypeLabels[periodType] || periodType}: ${selectedPeriod}`;
       pdf.setFontSize(10);
-      pdf.text(`${t.period}: ${periodLabel}`, margin, 52);
+      pdf.text(`${periodTypeLabels[periodType] || periodType}: ${selectedPeriod}`, margin, 48);
       
       pdf.setTextColor(0, 0, 0);
-      y = 75;
+      y = 65;
       
-      // Periods included info
       if (periodsIncluded.length > 1) {
         pdf.setFontSize(9);
         pdf.setFont('helvetica', 'italic');
         pdf.setTextColor(100, 100, 100);
-        pdf.text(`${t.periodsIncluded || 'Períodos incluidos'}: ${periodsIncluded.join(', ')}`, margin, y);
-        y += 10;
+        pdf.text(`${t.periodsIncluded}: ${periodsIncluded.join(', ')}`, margin, y);
+        y += 8;
       }
       
       pdf.setFontSize(9);
@@ -506,18 +522,36 @@ const BoardReport = () => {
       pdf.setTextColor(100, 100, 100);
       pdf.text(`${t.generatedOn}: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, margin, y);
       pdf.setTextColor(0, 0, 0);
-      y += 15;
+      y += 12;
       
       if (currentMetrics) {
         const inc = currentMetrics.income_statement || {};
         const bal = currentMetrics.balance_sheet || {};
         const metrics = currentMetrics.metrics || {};
         
-        // ====== EXECUTIVE SUMMARY ======
-        drawSectionHeader(t.executiveSummary);
+        // ====== AI EXECUTIVE SUMMARY ======
+        drawSectionHeader(t.executiveSummary, [99, 102, 241]);
         
-        // Two columns: Income Statement | Balance Sheet
-        const col1X = 0;
+        if (aiAnalysis?.executive_summary) {
+          pdf.setFillColor(249, 250, 251);
+          const summaryLines = wrapText(aiAnalysis.executive_summary, contentWidth - 8);
+          const boxHeight = Math.max(summaryLines.length * 5 + 8, 20);
+          pdf.rect(margin, y - 2, contentWidth, boxHeight, 'F');
+          
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(9);
+          pdf.setTextColor(55, 65, 81);
+          summaryLines.forEach((line, idx) => {
+            pdf.text(line, margin + 4, y + 4 + (idx * 5));
+          });
+          y += boxHeight + 5;
+          pdf.setTextColor(0, 0, 0);
+        }
+        
+        // ====== FINANCIAL SUMMARY ======
+        drawSectionHeader(t.financialSummary || 'Resumen Financiero', [59, 130, 246]);
+        
+        // Two columns layout
         const col2X = contentWidth / 2;
         const startY = y;
         
@@ -525,27 +559,25 @@ const BoardReport = () => {
         pdf.setFontSize(10);
         pdf.setFont('helvetica', 'bold');
         pdf.setTextColor(59, 130, 246);
-        pdf.text(t.incomeStatement || 'Estado de Resultados', margin, y);
+        pdf.text(t.incomeStatement, margin, y);
         pdf.setTextColor(0, 0, 0);
-        y += 7;
+        y += 6;
         
         const incomeItems = [
           [t.revenue, formatCurrency(inc.ingresos)],
-          [t.costOfSales || 'Costo de Ventas', formatCurrency(inc.costo_ventas)],
+          [t.costOfSales, formatCurrency(inc.costo_ventas)],
           [t.grossProfit, formatCurrency(inc.utilidad_bruta)],
           [t.ebitda, formatCurrency(inc.ebitda || inc.utilidad_operativa)],
           [t.netProfit, formatCurrency(inc.utilidad_neta)],
         ];
         
         incomeItems.forEach(([label, value], idx) => {
-          pdf.setFontSize(9);
+          pdf.setFontSize(8);
           pdf.setFont('helvetica', 'normal');
           pdf.text(label + ':', margin, y);
           pdf.setFont('helvetica', 'bold');
-          if (idx === incomeItems.length - 1) {
-            pdf.setTextColor(16, 185, 129);
-          }
-          pdf.text(value, margin + 45, y);
+          if (idx === incomeItems.length - 1) pdf.setTextColor(16, 185, 129);
+          pdf.text(value, margin + 40, y);
           pdf.setTextColor(0, 0, 0);
           y += 5;
         });
@@ -555,277 +587,239 @@ const BoardReport = () => {
         pdf.setFontSize(10);
         pdf.setFont('helvetica', 'bold');
         pdf.setTextColor(34, 197, 94);
-        pdf.text(t.balanceSheet || 'Balance General', margin + col2X, y);
+        pdf.text(t.balanceSheet, margin + col2X, y);
         pdf.setTextColor(0, 0, 0);
-        y += 7;
+        y += 6;
         
         const balanceItems = [
           [t.totalAssets, formatCurrency(bal.activo_total)],
-          [t.currentAssets || 'Activo Circulante', formatCurrency(bal.activo_circulante)],
-          [t.fixedAssets || 'Activo Fijo', formatCurrency(bal.activo_fijo)],
+          [t.currentAssets, formatCurrency(bal.activo_circulante)],
           [t.totalLiabilities, formatCurrency(bal.pasivo_total)],
           [t.equity, formatCurrency(bal.capital_contable)],
         ];
         
         balanceItems.forEach(([label, value]) => {
-          pdf.setFontSize(9);
+          pdf.setFontSize(8);
           pdf.setFont('helvetica', 'normal');
           pdf.text(label + ':', margin + col2X, y);
           pdf.setFont('helvetica', 'bold');
-          pdf.text(value, margin + col2X + 45, y);
+          pdf.text(value, margin + col2X + 40, y);
           y += 5;
         });
         
-        y += 12;
+        y = Math.max(y, startY + incomeItems.length * 5 + 6) + 8;
         
         // ====== MARGINS SECTION ======
+        addNewPageIfNeeded(50);
         drawSectionHeader(t.marginsAnalysis, [34, 197, 94]);
         
-        drawTableHeader([
-          ['Métrica', 0],
-          ['Valor', 75],
-          ['Estado', 115]
-        ]);
+        if (aiAnalysis?.profitability_analysis) {
+          drawAnalysisText(aiAnalysis.profitability_analysis);
+        }
         
-        const marginsData = [
+        const marginsItems = [
           [t.grossMargin, metrics.margins?.gross_margin?.value, 30, 15],
           [t.ebitdaMargin, metrics.margins?.ebitda_margin?.value, 20, 10],
           [t.operatingMargin, metrics.margins?.operating_margin?.value, 15, 5],
           [t.netMargin, metrics.margins?.net_margin?.value, 10, 3],
-          [t.nopatMargin, metrics.margins?.nopat_margin?.value, null, null],
         ];
         
-        marginsData.forEach(([label, value, good, warn]) => {
-          const status = good !== null ? getStatus(value, good, warn) : null;
-          drawMetricRow(label, formatPercent(value), status);
+        marginsItems.forEach(([label, value, good, warn]) => {
+          drawMetricRow(label, formatPercent(value), getStatus(value, good, warn));
         });
-        
-        y += 8;
+        y += 5;
         
         // ====== RETURNS SECTION ======
-        addNewPageIfNeeded(60);
+        addNewPageIfNeeded(50);
         drawSectionHeader(t.returnsOnInvestment, [139, 92, 246]);
         
-        drawTableHeader([
-          ['Métrica', 0],
-          ['Valor', 75],
-          ['Estado', 115]
-        ]);
+        if (aiAnalysis?.returns_analysis) {
+          drawAnalysisText(aiAnalysis.returns_analysis);
+        }
         
-        const returnsData = [
+        const returnsItems = [
           ['ROIC', metrics.returns?.roic?.value, 15, 8, '%'],
           ['ROE', metrics.returns?.roe?.value, 15, 8, '%'],
-          ['ROCE', metrics.returns?.roce?.value, 12, 6, '%'],
           ['ROA', metrics.returns?.roa?.value, 8, 4, '%'],
-          ['RONIC', metrics.returns?.ronic?.value, null, null, '%'],
-          ['GMROI', metrics.returns?.gmroi?.value, null, null, 'x'],
+          ['ROCE', metrics.returns?.roce?.value, 12, 6, '%'],
         ];
         
-        returnsData.forEach(([label, value, good, warn, unit]) => {
-          const status = good !== null ? getStatus(value, good, warn) : null;
-          const formatted = unit === 'x' ? formatNumber(value) + 'x' : formatPercent(value);
-          drawMetricRow(label, formatted, status);
+        returnsItems.forEach(([label, value, good, warn]) => {
+          drawMetricRow(label, formatPercent(value), getStatus(value, good, warn));
         });
-        
-        y += 8;
+        y += 5;
         
         // ====== EFFICIENCY SECTION ======
-        addNewPageIfNeeded(70);
+        addNewPageIfNeeded(50);
         drawSectionHeader(t.operationalEfficiency, [249, 115, 22]);
         
-        const efficiencyData = [
-          [t.assetTurnover, metrics.efficiency?.asset_turnover?.value, 'x'],
-          [t.receivablesTurnover || 'Rotación CxC', metrics.efficiency?.receivables_turnover?.value, 'x'],
-          [t.inventoryTurnover || 'Rotación Inventario', metrics.efficiency?.inventory_turnover?.value, 'x'],
-          [t.dso, metrics.efficiency?.dso?.value, t.days],
-          [t.dpo, metrics.efficiency?.dpo?.value, t.days],
-          [t.dio || 'DIO', metrics.efficiency?.dio?.value, t.days],
-          [t.cashConversionCycle, metrics.efficiency?.cash_conversion_cycle?.value, t.days],
+        const efficiencyItems = [
+          [t.assetTurnover, formatNumber(metrics.efficiency?.asset_turnover?.value) + 'x'],
+          [t.dso, formatNumber(metrics.efficiency?.dso?.value, 0) + ' ' + t.days],
+          [t.dpo, formatNumber(metrics.efficiency?.dpo?.value, 0) + ' ' + t.days],
+          [t.cashConversionCycle, formatNumber(metrics.efficiency?.cash_conversion_cycle?.value, 0) + ' ' + t.days],
         ];
         
-        efficiencyData.forEach(([label, value, unit]) => {
-          drawMetricRow(label, unit === 'x' ? formatNumber(value) + 'x' : formatNumber(value, 0) + ' ' + unit);
+        efficiencyItems.forEach(([label, value]) => {
+          drawMetricRow(label, value);
         });
-        
-        y += 8;
+        y += 5;
         
         // ====== LIQUIDITY SECTION ======
-        addNewPageIfNeeded(60);
+        addNewPageIfNeeded(50);
         drawSectionHeader(t.liquidityAnalysis, [6, 182, 212]);
         
-        drawTableHeader([
-          ['Métrica', 0],
-          ['Valor', 75],
-          ['Estado', 115]
-        ]);
+        if (aiAnalysis?.liquidity_analysis) {
+          drawAnalysisText(aiAnalysis.liquidity_analysis);
+        }
         
-        const liquidityData = [
+        const liquidityItems = [
           [t.currentRatio, metrics.liquidity?.current_ratio?.value, 2, 1, 'x'],
           [t.quickRatio, metrics.liquidity?.quick_ratio?.value, 1, 0.5, 'x'],
-          [t.cashRatio, metrics.liquidity?.cash_ratio?.value, 0.5, 0.2, 'x'],
           [t.workingCapital, metrics.liquidity?.working_capital?.value, 0, -Infinity, '$'],
-          [t.cashRunway, metrics.liquidity?.cash_runway?.value, 6, 3, 'meses'],
         ];
         
-        liquidityData.forEach(([label, value, good, warn, unit]) => {
-          const status = getStatus(value, good, warn);
-          let formatted;
-          if (unit === '$') formatted = formatCurrency(value);
-          else if (unit === 'x') formatted = formatNumber(value) + 'x';
-          else formatted = formatNumber(value, 1) + ' ' + unit;
-          drawMetricRow(label, formatted, status);
+        liquidityItems.forEach(([label, value, good, warn, unit]) => {
+          const formatted = unit === '$' ? formatCurrency(value) : formatNumber(value) + 'x';
+          drawMetricRow(label, formatted, getStatus(value, good, warn));
         });
-        
-        y += 8;
+        y += 5;
         
         // ====== SOLVENCY SECTION ======
-        addNewPageIfNeeded(70);
+        addNewPageIfNeeded(50);
         drawSectionHeader(t.solvencyAnalysis, [239, 68, 68]);
         
-        drawTableHeader([
-          ['Métrica', 0],
-          ['Valor', 75],
-          ['Estado', 115]
-        ]);
+        if (aiAnalysis?.solvency_analysis) {
+          drawAnalysisText(aiAnalysis.solvency_analysis);
+        }
         
-        const solvencyData = [
+        const solvencyItems = [
           [t.debtToEquity, metrics.solvency?.debt_to_equity?.value, 1, 2, 'x', true],
           [t.debtToAssets, metrics.solvency?.debt_to_assets?.value, 40, 60, '%', true],
-          [t.debtToEbitda, metrics.solvency?.debt_to_ebitda?.value, 3, 5, 'x', true],
-          [t.netDebtToEbitda, metrics.solvency?.net_debt_to_ebitda?.value, 2, 3.5, 'x', true],
           [t.interestCoverage, metrics.solvency?.interest_coverage?.value, 5, 2, 'x', false],
-          [t.financialLeverage, metrics.solvency?.financial_leverage?.value, null, null, 'x', null],
-          [t.equityRatio, metrics.solvency?.equity_ratio?.value, 40, 20, '%', false],
         ];
         
-        solvencyData.forEach(([label, value, good, warn, unit, inverse]) => {
-          const status = good !== null ? getStatus(value, good, warn, inverse) : null;
+        solvencyItems.forEach(([label, value, good, warn, unit, inverse]) => {
           const formatted = unit === '%' ? formatPercent(value) : formatNumber(value) + 'x';
-          drawMetricRow(label, formatted, status);
+          drawMetricRow(label, formatted, getStatus(value, good, warn, inverse));
         });
+        y += 5;
         
-        // ====== TRENDS PAGE ======
+        // ====== RECOMMENDATIONS ======
+        if (aiAnalysis?.recommendations) {
+          addNewPageIfNeeded(40);
+          drawSectionHeader(language === 'es' ? 'Recomendaciones Estratégicas' : 'Strategic Recommendations', [5, 150, 105]);
+          drawAnalysisText(aiAnalysis.recommendations);
+        }
+        
+        // ====== TRENDS TABLE ======
         if (trendsData.length > 1) {
           pdf.addPage();
-          pageNumber++;
+          currentPage++;
           y = margin;
           
-          drawSectionHeader(t.monthlyTrends + ' - ' + t.comparison, [99, 102, 241]);
+          drawSectionHeader(t.monthlyTrends, [99, 102, 241]);
           
           // Table header
           pdf.setFillColor(240, 240, 240);
-          pdf.rect(margin, y - 3, contentWidth, 7, 'F');
+          pdf.rect(margin, y, contentWidth, 7, 'F');
           pdf.setFontSize(7);
           pdf.setFont('helvetica', 'bold');
           
-          const trendCols = [
-            ['Período', 0],
-            ['Ingresos', 22],
-            ['Util. Bruta', 48],
-            ['EBITDA', 74],
-            ['Util. Neta', 96],
-            ['Mg. Bruto', 122],
-            ['Mg. Neto', 145],
+          const cols = [
+            [t.period, 0],
+            [t.revenue, 25],
+            [t.grossProfit, 55],
+            [t.netProfit, 85],
+            [t.grossMargin, 115],
+            [t.netMargin, 140],
           ];
-          trendCols.forEach(([text, x]) => {
-            pdf.text(text, margin + x, y);
-          });
-          y += 8;
+          cols.forEach(([text, x]) => pdf.text(text, margin + x, y + 5));
+          y += 10;
           
-          trendsData.forEach((p, idx) => {
-            addNewPageIfNeeded(12);
-            const prev = idx > 0 ? trendsData[idx - 1] : null;
-            const ingChange = prev ? ((p.income_statement?.ingresos || 0) - (prev.income_statement?.ingresos || 0)) / (prev.income_statement?.ingresos || 1) * 100 : 0;
-            
+          trendsData.forEach((p) => {
+            addNewPageIfNeeded(8);
             pdf.setFontSize(7);
             pdf.setFont('helvetica', 'normal');
             pdf.text(p.periodo, margin, y);
-            pdf.text(formatCurrency(p.income_statement?.ingresos).replace('$', ''), margin + 22, y);
-            pdf.text(formatCurrency(p.income_statement?.utilidad_bruta).replace('$', ''), margin + 48, y);
-            pdf.text(formatCurrency(p.income_statement?.utilidad_operativa).replace('$', ''), margin + 74, y);
+            pdf.text(formatCurrency(p.income_statement?.ingresos).replace('$', ''), margin + 25, y);
+            pdf.text(formatCurrency(p.income_statement?.utilidad_bruta).replace('$', ''), margin + 55, y);
             
-            if ((p.income_statement?.utilidad_neta || 0) >= 0) {
-              pdf.setTextColor(34, 197, 94);
-            } else {
-              pdf.setTextColor(239, 68, 68);
-            }
-            pdf.text(formatCurrency(p.income_statement?.utilidad_neta).replace('$', ''), margin + 96, y);
+            const netProfit = p.income_statement?.utilidad_neta || 0;
+            pdf.setTextColor(netProfit >= 0 ? 34 : 239, netProfit >= 0 ? 197 : 68, netProfit >= 0 ? 94 : 68);
+            pdf.text(formatCurrency(netProfit).replace('$', ''), margin + 85, y);
             pdf.setTextColor(0, 0, 0);
             
-            pdf.text(formatPercent(p.metrics?.margins?.gross_margin?.value), margin + 122, y);
-            pdf.text(formatPercent(p.metrics?.margins?.net_margin?.value), margin + 145, y);
-            
-            if (prev) {
-              pdf.setFontSize(5);
-              if (ingChange >= 0) pdf.setTextColor(34, 197, 94);
-              else pdf.setTextColor(239, 68, 68);
-              pdf.text(`${ingChange >= 0 ? '+' : ''}${ingChange.toFixed(1)}%`, margin + 22, y + 3);
-              pdf.setTextColor(0, 0, 0);
-            }
-            
-            y += 8;
+            pdf.text(formatPercent(p.metrics?.margins?.gross_margin?.value), margin + 115, y);
+            pdf.text(formatPercent(p.metrics?.margins?.net_margin?.value), margin + 140, y);
+            y += 6;
           });
         }
         
-        // ====== SANKEY SUMMARY PAGE ======
+        // ====== SANKEY BREAKDOWN ======
         if (sankeyData?.summary) {
           pdf.addPage();
-          pageNumber++;
+          currentPage++;
           y = margin;
           
           drawSectionHeader(t.sankeyTitle, [59, 130, 246]);
           
-          pdf.setFontSize(10);
-          pdf.setFont('helvetica', 'bold');
-          pdf.text('Desglose del Estado de Resultados', margin, y);
-          y += 8;
-          
           const sankeyItems = [
-            ['Ingresos', sankeyData.summary.ingresos, '100%', [59, 130, 246]],
-            ['(-) Costo de Ventas', sankeyData.summary.costo_ventas, ((sankeyData.summary.costo_ventas / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [239, 68, 68]],
-            ['= Utilidad Bruta', sankeyData.summary.utilidad_bruta, ((sankeyData.summary.utilidad_bruta / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [34, 197, 94]],
-            ['(-) Gastos Operativos', sankeyData.summary.gastos_operativos, ((sankeyData.summary.gastos_operativos / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [249, 115, 22]],
-            ['= Utilidad Operativa', sankeyData.summary.utilidad_operativa, ((sankeyData.summary.utilidad_operativa / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [16, 185, 129]],
-            ['(-) Otros Gastos', sankeyData.summary.otros_gastos, ((sankeyData.summary.otros_gastos / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [239, 68, 68]],
-            ['(-) Impuestos', sankeyData.summary.impuestos, ((sankeyData.summary.impuestos / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [168, 85, 247]],
-            ['= UTILIDAD NETA', sankeyData.summary.utilidad_neta, ((sankeyData.summary.utilidad_neta / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [5, 150, 105]],
+            [t.revenue, sankeyData.summary.ingresos, '100%', [59, 130, 246]],
+            ['(-) ' + t.costOfSales, sankeyData.summary.costo_ventas, ((sankeyData.summary.costo_ventas / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [239, 68, 68]],
+            ['= ' + t.grossProfit, sankeyData.summary.utilidad_bruta, ((sankeyData.summary.utilidad_bruta / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [34, 197, 94]],
+            ['(-) ' + t.operatingExpenses, sankeyData.summary.gastos_operativos, ((sankeyData.summary.gastos_operativos / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [249, 115, 22]],
+            ['= ' + t.operatingProfit, sankeyData.summary.utilidad_operativa, ((sankeyData.summary.utilidad_operativa / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [16, 185, 129]],
+            ['(-) ' + t.taxes, sankeyData.summary.impuestos, ((sankeyData.summary.impuestos / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [168, 85, 247]],
+            ['= ' + t.netProfit.toUpperCase(), sankeyData.summary.utilidad_neta, ((sankeyData.summary.utilidad_neta / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [5, 150, 105]],
           ];
           
-          sankeyItems.forEach(([label, value, pct, color], idx) => {
+          sankeyItems.forEach(([label, value, pct, color]) => {
             const isTotal = label.startsWith('=');
             if (isTotal) {
               pdf.setFillColor(240, 249, 255);
-              pdf.rect(margin, y - 3, contentWidth, 7, 'F');
+              pdf.rect(margin, y - 2, contentWidth, 7, 'F');
             }
             pdf.setFontSize(9);
             pdf.setFont('helvetica', isTotal ? 'bold' : 'normal');
             pdf.setTextColor(...color);
-            pdf.text(label, margin + 2, y);
+            pdf.text(label, margin + 2, y + 2);
             pdf.setTextColor(0, 0, 0);
-            pdf.text(formatCurrency(value), margin + 70, y);
-            pdf.text(pct, margin + 130, y);
-            y += 7;
+            pdf.text(formatCurrency(value), margin + 75, y + 2);
+            pdf.text(pct, margin + 135, y + 2);
+            y += 8;
           });
         }
+      }
+      
+      // Add footer to all pages
+      const totalPages = pdf.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        pdf.setPage(i);
+        pdf.setFontSize(7);
+        pdf.setTextColor(150, 150, 150);
+        pdf.setFont('helvetica', 'normal');
         
-        // Add page numbers to all pages
-        const totalPages = pdf.internal.getNumberOfPages();
-        for (let i = 1; i <= totalPages; i++) {
-          pdf.setPage(i);
-          pdf.setFontSize(8);
-          pdf.setTextColor(150, 150, 150);
-          pdf.text(`${company?.nombre || 'Company'} - ${t.title} - ${selectedPeriod}`, margin, pageHeight - 10);
-          pdf.text(`${t.page || 'Página'} ${i} ${t.of || 'de'} ${totalPages}`, pageWidth - margin - 25, pageHeight - 10);
+        // Footer line
+        pdf.setDrawColor(200, 200, 200);
+        pdf.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
+        
+        // Footer text
+        pdf.text(`${company?.nombre || 'Company'} | ${t.title} | ${selectedPeriod}`, margin, pageHeight - 7);
+        pdf.text(`${t.page} ${i} ${t.of} ${totalPages}`, pageWidth - margin - 20, pageHeight - 7);
+        
+        if (aiAnalysis?.generated_by === 'AI') {
+          pdf.text('Análisis generado por IA', pageWidth / 2 - 15, pageHeight - 7);
         }
       }
       
       const periodLabel2 = periodType === 'monthly' ? selectedPeriod : `${periodType}_${selectedPeriod}`;
       const fileName = `${t.title.replace(/\s/g, '_')}_${company?.nombre || 'Company'}_${periodLabel2}.pdf`;
       pdf.save(fileName);
-      toast.success(t.pdfSuccess || 'PDF generado exitosamente');
+      toast.success(t.pdfSuccess);
     } catch (error) {
       console.error('Error exporting PDF:', error);
-      toast.error(t.pdfError || 'Error al generar PDF');
+      toast.error(t.pdfError);
     } finally {
       setExporting(false);
     }
