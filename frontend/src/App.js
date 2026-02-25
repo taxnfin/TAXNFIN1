@@ -124,6 +124,7 @@ function App() {
             <Route path="categories" element={<CategoriesModule />} />
             <Route path="catalogs" element={<Catalogs />} />
             <Route path="reports" element={<Reports />} />
+            <Route path="board-report" element={<BoardReport />} />
             <Route path="projections" element={<CashflowProjections />} />
             <Route path="treasury" element={<TreasuryDecisions />} />
             <Route path="financial-metrics" element={<FinancialMetrics />} />
