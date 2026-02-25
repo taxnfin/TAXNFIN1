@@ -250,6 +250,7 @@ export const translations = {
     sankeyDesc: 'Flow visualization from Revenue to Net Profit',
     costOfSales: 'Cost of Sales',
     operatingExpenses: 'Operating Expenses',
+    operatingProfit: 'Operating Profit',
     otherExpenses: 'Other Expenses',
     taxes: 'Taxes',
     
