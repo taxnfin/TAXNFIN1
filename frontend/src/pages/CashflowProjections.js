@@ -11,13 +11,14 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { TrendingUp, TrendingDown, Calendar, Building2, User, FileText, ChevronDown, ChevronRight, Download, Plus, Trash2, Settings, AlertTriangle, BarChart3, Target, Activity, FileDown, ExternalLink, Check, X as XIcon, Eye, ToggleLeft, ToggleRight, FileSpreadsheet, Layers, Filter, Search } from 'lucide-react';
+import { TrendingUp, TrendingDown, Calendar, Building2, User, FileText, ChevronDown, ChevronRight, Download, Plus, Trash2, Settings, AlertTriangle, BarChart3, Target, Activity, FileDown, ExternalLink, Check, X as XIcon, Eye, ToggleLeft, ToggleRight, FileSpreadsheet, Layers, Filter, Search, Globe } from 'lucide-react';
 import { format, addWeeks, startOfWeek, addMonths, startOfMonth } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { es, enUS, ptBR } from 'date-fns/locale';
 import { exportProjections, exportToExcel } from '@/utils/excelExport';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, ReferenceLine } from 'recharts';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { financialTranslations, languages } from '../utils/financialTranslations';
 
 const DIAS_SEMANA = [
   { value: 0, label: 'Domingo' },
