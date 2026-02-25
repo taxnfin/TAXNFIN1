@@ -413,6 +413,7 @@ export const translations = {
     sankeyDesc: 'Visualização do fluxo da Receita ao Lucro Líquido',
     costOfSales: 'Custo das Vendas',
     operatingExpenses: 'Despesas Operacionais',
+    operatingProfit: 'Lucro Operacional',
     otherExpenses: 'Outras Despesas',
     taxes: 'Impostos',
     
