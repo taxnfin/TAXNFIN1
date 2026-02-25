@@ -869,3 +869,181 @@ async def delete_financial_statements(
         "deleted": result.deleted_count,
         "message": f"Se eliminaron {result.deleted_count} registros para {periodo}"
     }
+
+
+@router.get("/trends")
+async def get_financial_trends(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    limit: int = Query(12, description="Número de períodos a incluir")
+):
+    """Get trends data for all available periods"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get all periods sorted descending
+    pipeline = [
+        {'$match': {'company_id': company_id}},
+        {'$group': {
+            '_id': '$periodo',
+            'tipos': {'$addToSet': '$tipo'},
+            'updated_at': {'$max': '$updated_at'}
+        }},
+        {'$sort': {'_id': -1}},
+        {'$limit': limit}
+    ]
+    
+    period_results = await db.financial_statements.aggregate(pipeline).to_list(limit)
+    
+    # Sort ascending for chronological order
+    period_results.sort(key=lambda x: x['_id'])
+    
+    trends_data = []
+    
+    for period_info in period_results:
+        periodo = period_info['_id']
+        
+        # Get income statement
+        income_stmt = await db.financial_statements.find_one({
+            'company_id': company_id,
+            'tipo': 'estado_resultados',
+            'periodo': periodo
+        })
+        
+        # Get balance sheet
+        balance_sheet = await db.financial_statements.find_one({
+            'company_id': company_id,
+            'tipo': 'balance_general',
+            'periodo': periodo
+        })
+        
+        if not income_stmt and not balance_sheet:
+            continue
+        
+        income_data = income_stmt.get('datos', {}) if income_stmt else {}
+        balance_data = balance_sheet.get('datos', {}) if balance_sheet else {}
+        
+        metrics = calculate_financial_metrics(income_data, balance_data)
+        
+        trends_data.append({
+            'periodo': periodo,
+            'has_income_statement': income_stmt is not None,
+            'has_balance_sheet': balance_sheet is not None,
+            'metrics': metrics,
+            'income_statement': income_data,
+            'balance_sheet': balance_data
+        })
+    
+    return {
+        "periods_count": len(trends_data),
+        "data": trends_data
+    }
+
+
+@router.get("/sankey/{periodo}")
+async def get_sankey_data(
+    request: Request,
+    periodo: str,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Get data formatted for Sankey diagram of income statement"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get income statement
+    income_stmt = await db.financial_statements.find_one({
+        'company_id': company_id,
+        'tipo': 'estado_resultados',
+        'periodo': periodo
+    })
+    
+    if not income_stmt:
+        raise HTTPException(status_code=404, detail=f"No hay estado de resultados para {periodo}")
+    
+    data = income_stmt.get('datos', {})
+    
+    ingresos = abs(data.get('ingresos', 0))
+    costo_ventas = abs(data.get('costo_ventas', 0))
+    utilidad_bruta = abs(data.get('utilidad_bruta', 0))
+    gastos_venta = abs(data.get('gastos_venta', 0))
+    gastos_admin = abs(data.get('gastos_administracion', 0))
+    gastos_generales = abs(data.get('gastos_generales', 0))
+    otros_gastos = abs(data.get('otros_gastos', 0))
+    gastos_financieros = abs(data.get('gastos_financieros', 0))
+    utilidad_operativa = abs(data.get('utilidad_operativa', 0))
+    impuestos = abs(data.get('impuestos', 0))
+    utilidad_neta = abs(data.get('utilidad_neta', 0))
+    otros_ingresos = abs(data.get('otros_ingresos', 0))
+    
+    # Total de gastos operativos
+    total_gastos_operativos = gastos_venta + gastos_admin + gastos_generales
+    
+    # Calcular otros gastos no operativos
+    total_otros_gastos = otros_gastos + gastos_financieros
+    
+    # Build Sankey nodes
+    nodes = [
+        {"name": "Ingresos"},           # 0
+        {"name": "Costo de Ventas"},    # 1
+        {"name": "Utilidad Bruta"},     # 2
+        {"name": "Gastos de Venta"},    # 3
+        {"name": "Gastos Admin"},       # 4
+        {"name": "Gastos Generales"},   # 5
+        {"name": "Utilidad Operativa"}, # 6
+        {"name": "Otros Gastos"},       # 7
+        {"name": "Impuestos"},          # 8
+        {"name": "Utilidad Neta"},      # 9
+    ]
+    
+    # Build Sankey links
+    links = []
+    
+    # Ingresos -> Costo de Ventas
+    if costo_ventas > 0:
+        links.append({"source": 0, "target": 1, "value": costo_ventas, "color": "#ef4444"})
+    
+    # Ingresos -> Utilidad Bruta
+    if utilidad_bruta > 0:
+        links.append({"source": 0, "target": 2, "value": utilidad_bruta, "color": "#22c55e"})
+    
+    # Utilidad Bruta -> Gastos de Venta
+    if gastos_venta > 0:
+        links.append({"source": 2, "target": 3, "value": gastos_venta, "color": "#f97316"})
+    
+    # Utilidad Bruta -> Gastos Admin
+    if gastos_admin > 0:
+        links.append({"source": 2, "target": 4, "value": gastos_admin, "color": "#f97316"})
+    
+    # Utilidad Bruta -> Gastos Generales
+    if gastos_generales > 0:
+        links.append({"source": 2, "target": 5, "value": gastos_generales, "color": "#f97316"})
+    
+    # Utilidad Bruta -> Utilidad Operativa
+    if utilidad_operativa > 0:
+        links.append({"source": 2, "target": 6, "value": utilidad_operativa, "color": "#22c55e"})
+    
+    # Utilidad Operativa -> Otros Gastos
+    if total_otros_gastos > 0:
+        links.append({"source": 6, "target": 7, "value": total_otros_gastos, "color": "#ef4444"})
+    
+    # Utilidad Operativa -> Impuestos
+    if impuestos > 0:
+        links.append({"source": 6, "target": 8, "value": impuestos, "color": "#a855f7"})
+    
+    # Utilidad Operativa -> Utilidad Neta
+    if utilidad_neta > 0:
+        links.append({"source": 6, "target": 9, "value": utilidad_neta, "color": "#10b981"})
+    
+    return {
+        "periodo": periodo,
+        "nodes": nodes,
+        "links": links,
+        "summary": {
+            "ingresos": ingresos,
+            "costo_ventas": costo_ventas,
+            "utilidad_bruta": utilidad_bruta,
+            "gastos_operativos": total_gastos_operativos,
+            "utilidad_operativa": utilidad_operativa,
+            "otros_gastos": total_otros_gastos,
+            "impuestos": impuestos,
+            "utilidad_neta": utilidad_neta
+        }
+    }
