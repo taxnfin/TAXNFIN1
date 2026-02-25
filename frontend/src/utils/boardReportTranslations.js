@@ -87,6 +87,7 @@ export const translations = {
     sankeyDesc: 'Visualización del flujo desde Ingresos hasta Utilidad Neta',
     costOfSales: 'Costo de Ventas',
     operatingExpenses: 'Gastos Operativos',
+    operatingProfit: 'Utilidad Operativa',
     otherExpenses: 'Otros Gastos',
     taxes: 'Impuestos',
     
