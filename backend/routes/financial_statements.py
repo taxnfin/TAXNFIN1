@@ -534,16 +534,46 @@ def calculate_financial_metrics(income: Dict, balance: Dict) -> Dict:
                 'interpretation': 'Porcentaje de activos financiados con deuda'
             },
             'debt_to_ebitda': {
-                'value': safe_div(deuda_total, ebitda),
+                'value': safe_div(deuda_total, ebitda) if ebitda > 0 else safe_div(pasivo_total - capital_contable, ebitda),
                 'label': 'Deuda / EBITDA',
                 'formula': 'Deuda Total / EBITDA',
                 'interpretation': 'Años para pagar deuda con EBITDA'
             },
+            'net_debt_to_ebitda': {
+                'value': safe_div(deuda_total - efectivo, ebitda) if ebitda > 0 else 0,
+                'label': 'Deuda Neta / EBITDA',
+                'formula': '(Deuda Total - Efectivo) / EBITDA',
+                'interpretation': 'Años para pagar deuda neta con EBITDA'
+            },
             'interest_coverage': {
-                'value': safe_div(utilidad_operativa, intereses),
+                'value': safe_div(ebitda, intereses) if intereses > 0 else 999,
                 'label': 'Cobertura de Intereses',
-                'formula': 'EBIT / Intereses',
+                'formula': 'EBITDA / Intereses',
                 'interpretation': 'Veces que se pueden pagar los intereses'
+            },
+            'financial_leverage': {
+                'value': safe_div(activo_total, capital_contable),
+                'label': 'Apalancamiento Financiero',
+                'formula': 'Activos Totales / Capital Contable',
+                'interpretation': 'Multiplicador del capital'
+            },
+            'liability_ratio': {
+                'value': safe_div(pasivo_total, capital_contable),
+                'label': 'Razón de Pasivo',
+                'formula': 'Pasivo Total / Capital Contable',
+                'interpretation': 'Proporción pasivo vs capital'
+            },
+            'debt_ratio': {
+                'value': safe_pct(deuda_total, activo_total),
+                'label': 'Razón de Deuda',
+                'formula': 'Deuda Total / Activos Totales',
+                'interpretation': 'Porcentaje de activos financiados con deuda'
+            },
+            'cost_of_debt': {
+                'value': safe_pct(intereses, deuda_total) if deuda_total > 0 else 0,
+                'label': 'Costo de Deuda',
+                'formula': 'Intereses / Deuda Total',
+                'interpretation': 'Tasa efectiva de interés'
             },
             'equity_ratio': {
                 'value': safe_pct(capital_contable, activo_total),
