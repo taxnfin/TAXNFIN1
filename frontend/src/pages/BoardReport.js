@@ -1224,6 +1224,14 @@ const BoardReport = () => {
                 <FileSpreadsheet className="w-4 h-4 mr-2" />
                 Excel
               </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setPdfConfigOpen(true)} 
+                className="bg-white/10 border-white/20 text-white hover:bg-white/20" 
+                data-testid="pdf-config-btn"
+              >
+                <Settings className="w-4 h-4" />
+              </Button>
               <Button onClick={exportToPDF} disabled={exporting} className="bg-blue-600 hover:bg-blue-700" data-testid="export-pdf-btn">
                 <FileText className="w-4 h-4 mr-2" />
                 {exporting ? t.exporting : 'PDF'}
@@ -1232,6 +1240,114 @@ const BoardReport = () => {
           </div>
         </div>
       </div>
+      
+      {/* PDF Configuration Dialog */}
+      <Dialog open={pdfConfigOpen} onOpenChange={setPdfConfigOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="w-5 h-5" />
+              {language === 'es' ? 'Configuración del PDF' : 'PDF Settings'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Font Family */}
+            <div className="space-y-2">
+              <Label>{language === 'es' ? 'Fuente' : 'Font Family'}</Label>
+              <Select value={pdfConfig.fontFamily} onValueChange={(v) => setPdfConfig({...pdfConfig, fontFamily: v})}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="helvetica">Helvetica</SelectItem>
+                  <SelectItem value="times">Times</SelectItem>
+                  <SelectItem value="courier">Courier</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* Font Sizes */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{language === 'es' ? 'Título Portada' : 'Cover Title'}</Label>
+                <Input 
+                  type="number" 
+                  min="14" 
+                  max="48" 
+                  value={pdfConfig.titleSize}
+                  onChange={(e) => setPdfConfig({...pdfConfig, titleSize: parseInt(e.target.value) || 28})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{language === 'es' ? 'Subtítulos' : 'Subtitles'}</Label>
+                <Input 
+                  type="number" 
+                  min="10" 
+                  max="24" 
+                  value={pdfConfig.subtitleSize}
+                  onChange={(e) => setPdfConfig({...pdfConfig, subtitleSize: parseInt(e.target.value) || 16})}
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{language === 'es' ? 'Encabezados Sección' : 'Section Headers'}</Label>
+                <Input 
+                  type="number" 
+                  min="8" 
+                  max="14" 
+                  value={pdfConfig.sectionHeaderSize}
+                  onChange={(e) => setPdfConfig({...pdfConfig, sectionHeaderSize: parseInt(e.target.value) || 11})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{language === 'es' ? 'Texto Normal' : 'Body Text'}</Label>
+                <Input 
+                  type="number" 
+                  min="7" 
+                  max="12" 
+                  value={pdfConfig.bodySize}
+                  onChange={(e) => setPdfConfig({...pdfConfig, bodySize: parseInt(e.target.value) || 10})}
+                />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>{language === 'es' ? 'Texto Pequeño (footer, notas)' : 'Small Text (footer, notes)'}</Label>
+              <Input 
+                type="number" 
+                min="6" 
+                max="10" 
+                value={pdfConfig.smallSize}
+                onChange={(e) => setPdfConfig({...pdfConfig, smallSize: parseInt(e.target.value) || 8})}
+              />
+            </div>
+            
+            {/* Preview */}
+            <div className="border rounded-lg p-4 bg-gray-50">
+              <p className="text-xs text-gray-500 mb-2">{language === 'es' ? 'Vista previa:' : 'Preview:'}</p>
+              <p style={{fontFamily: pdfConfig.fontFamily === 'times' ? 'Times New Roman' : pdfConfig.fontFamily === 'courier' ? 'Courier New' : 'Arial', fontSize: `${pdfConfig.titleSize * 0.5}px`, fontWeight: 'bold'}}>
+                {company?.nombre || 'Company Name'}
+              </p>
+              <p style={{fontFamily: pdfConfig.fontFamily === 'times' ? 'Times New Roman' : pdfConfig.fontFamily === 'courier' ? 'Courier New' : 'Arial', fontSize: `${pdfConfig.bodySize * 0.9}px`}} className="mt-2">
+                {language === 'es' ? 'Este es el texto normal del reporte' : 'This is the normal body text'}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPdfConfigOpen(false)}>
+              {language === 'es' ? 'Cerrar' : 'Close'}
+            </Button>
+            <Button onClick={() => {
+              setPdfConfigOpen(false);
+              exportToPDF();
+            }}>
+              {language === 'es' ? 'Generar PDF' : 'Generate PDF'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
