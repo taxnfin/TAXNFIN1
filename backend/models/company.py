@@ -14,6 +14,7 @@ class Company(BaseModel):
     pais: str = "México"
     activo: bool = True
     inicio_semana: int = 1  # 0=Domingo, 1=Lunes, 2=Martes, etc. Default: Lunes
+    logo_url: Optional[str] = None  # URL or base64 of company logo
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -23,6 +24,7 @@ class CompanyCreate(BaseModel):
     moneda_base: str = "MXN"
     pais: str = "México"
     inicio_semana: int = 1
+    logo_url: Optional[str] = None
 
 
 class CompanyUpdate(BaseModel):
@@ -31,3 +33,4 @@ class CompanyUpdate(BaseModel):
     moneda_base: Optional[str] = None
     pais: Optional[str] = None
     inicio_semana: Optional[int] = None
+    logo_url: Optional[str] = None
