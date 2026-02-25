@@ -43,6 +43,7 @@ from routes.sat import router as sat_router
 from routes.pdf_invoices import router as pdf_invoices_router
 from routes.alegra import router as alegra_router
 from routes.treasury import router as treasury_router
+from routes.financial_statements import router as financial_statements_router
 
 # Include modular routers in api_router
 api_router.include_router(auth_router)
@@ -60,6 +61,7 @@ api_router.include_router(sat_router)
 api_router.include_router(pdf_invoices_router)
 api_router.include_router(alegra_router)
 api_router.include_router(treasury_router)
+api_router.include_router(financial_statements_router)
 
 JWT_SECRET = os.environ.get('JWT_SECRET', 'taxnfin-secret-key-change-in-production')
 JWT_ALGORITHM = 'HS256'
