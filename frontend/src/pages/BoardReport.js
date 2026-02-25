@@ -95,7 +95,7 @@ const BoardReport = () => {
     // Only reload if language actually changed and we have period data
     if (prevLanguageRef.current !== language && selectedPeriod && periodType && currentMetrics) {
       prevLanguageRef.current = language;
-      loadAIAnalysis(selectedPeriod, periodType);
+      loadAIAnalysis(selectedPeriod, periodType, language);
     }
   }, [language, selectedPeriod, periodType, currentMetrics]);
 
