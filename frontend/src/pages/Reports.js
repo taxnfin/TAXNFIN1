@@ -1175,7 +1175,7 @@ const Reports = () => {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card className="bg-blue-50 border-blue-200">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm text-blue-800">Ingresos</CardTitle>
+                    <CardTitle className="text-sm text-blue-800">{t.revenue}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-2xl font-bold text-blue-700">{formatMXN(sankeyData.summary?.ingresos)}</p>
@@ -1184,7 +1184,7 @@ const Reports = () => {
                 </Card>
                 <Card className="bg-red-50 border-red-200">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm text-red-800">Costo de Ventas</CardTitle>
+                    <CardTitle className="text-sm text-red-800">{t.salesCost}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-2xl font-bold text-red-700">{formatMXN(sankeyData.summary?.costo_ventas)}</p>
@@ -1195,7 +1195,7 @@ const Reports = () => {
                 </Card>
                 <Card className="bg-green-50 border-green-200">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm text-green-800">Utilidad Bruta</CardTitle>
+                    <CardTitle className="text-sm text-green-800">{t.grossProfit}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-2xl font-bold text-green-700">{formatMXN(sankeyData.summary?.utilidad_bruta)}</p>
@@ -1206,7 +1206,7 @@ const Reports = () => {
                 </Card>
                 <Card className="bg-emerald-50 border-emerald-200">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm text-emerald-800">Utilidad Neta</CardTitle>
+                    <CardTitle className="text-sm text-emerald-800">{t.netProfit}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-2xl font-bold text-emerald-700">{formatMXN(sankeyData.summary?.utilidad_neta)}</p>
@@ -1220,40 +1220,40 @@ const Reports = () => {
               {/* Detailed Breakdown */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Desglose del Estado de Resultados</CardTitle>
+                  <CardTitle className="text-base">{t.detailedBreakdown}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     <div className="flex items-center justify-between py-3 border-b">
-                      <span className="font-medium text-blue-700">Ingresos</span>
+                      <span className="font-medium text-blue-700">{t.revenue}</span>
                       <span className="font-bold text-blue-700">{formatMXN(sankeyData.summary?.ingresos)}</span>
                     </div>
                     <div className="flex items-center justify-between py-2 pl-4">
-                      <span className="text-red-600">(-) Costo de Ventas</span>
+                      <span className="text-red-600">(-) {t.salesCost}</span>
                       <span className="text-red-600">{formatMXN(sankeyData.summary?.costo_ventas)}</span>
                     </div>
                     <div className="flex items-center justify-between py-3 border-b bg-green-50 px-2 rounded">
-                      <span className="font-medium text-green-700">= Utilidad Bruta</span>
+                      <span className="font-medium text-green-700">= {t.grossProfit}</span>
                       <span className="font-bold text-green-700">{formatMXN(sankeyData.summary?.utilidad_bruta)}</span>
                     </div>
                     <div className="flex items-center justify-between py-2 pl-4">
-                      <span className="text-orange-600">(-) Gastos Operativos</span>
+                      <span className="text-orange-600">(-) {t.operatingExpensesLabel}</span>
                       <span className="text-orange-600">{formatMXN(sankeyData.summary?.gastos_operativos)}</span>
                     </div>
                     <div className="flex items-center justify-between py-3 border-b bg-blue-50 px-2 rounded">
-                      <span className="font-medium text-blue-700">= Utilidad Operativa</span>
+                      <span className="font-medium text-blue-700">= {t.operatingProfitLabel}</span>
                       <span className="font-bold text-blue-700">{formatMXN(sankeyData.summary?.utilidad_operativa)}</span>
                     </div>
                     <div className="flex items-center justify-between py-2 pl-4">
-                      <span className="text-red-600">(-) Otros Gastos</span>
+                      <span className="text-red-600">(-) {t.otherExpenses}</span>
                       <span className="text-red-600">{formatMXN(sankeyData.summary?.otros_gastos)}</span>
                     </div>
                     <div className="flex items-center justify-between py-2 pl-4">
-                      <span className="text-purple-600">(-) Impuestos</span>
+                      <span className="text-purple-600">(-) {t.taxes}</span>
                       <span className="text-purple-600">{formatMXN(sankeyData.summary?.impuestos)}</span>
                     </div>
                     <div className="flex items-center justify-between py-3 border-t-2 bg-emerald-100 px-2 rounded">
-                      <span className="font-bold text-emerald-800">= UTILIDAD NETA</span>
+                      <span className="font-bold text-emerald-800">= {t.netProfit.toUpperCase()}</span>
                       <span className="font-bold text-emerald-800 text-xl">{formatMXN(sankeyData.summary?.utilidad_neta)}</span>
                     </div>
                   </div>
