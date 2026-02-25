@@ -203,6 +203,23 @@ export const financialTranslations = {
     conceptType: 'Tipo',
     amount: 'Monto',
     recurring: 'Recurrente',
+    
+    // Financial Metrics - Raw Data Section
+    periodData: 'Datos del Período',
+    hasIncomeStatement: 'Estado de Resultados',
+    hasBalanceSheet: 'Balance General',
+    missingIncomeStatement: 'Falta Estado de Resultados',
+    missingBalanceSheet: 'Falta Balance General',
+    costOfSales: 'Costo de Ventas',
+    operatingExpenses: 'Gastos Operativos',
+    cash: 'Efectivo',
+    accountsReceivable: 'Cuentas por Cobrar',
+    inventory: 'Inventarios',
+    currentAssets: 'Activo Circulante',
+    shortTermPaymentCapacity: 'Capacidad de pago a corto plazo',
+    capitalStructure: 'Estructura de capital y deuda',
+    rotationAndCycles: 'Rotación y ciclos',
+    capitalEfficiency: 'Eficiencia del capital',
   },
   
   en: {
@@ -407,6 +424,23 @@ export const financialTranslations = {
     conceptType: 'Type',
     amount: 'Amount',
     recurring: 'Recurring',
+    
+    // Financial Metrics - Raw Data Section
+    periodData: 'Period Data',
+    hasIncomeStatement: 'Income Statement',
+    hasBalanceSheet: 'Balance Sheet',
+    missingIncomeStatement: 'Missing Income Statement',
+    missingBalanceSheet: 'Missing Balance Sheet',
+    costOfSales: 'Cost of Sales',
+    operatingExpenses: 'Operating Expenses',
+    cash: 'Cash',
+    accountsReceivable: 'Accounts Receivable',
+    inventory: 'Inventory',
+    currentAssets: 'Current Assets',
+    shortTermPaymentCapacity: 'Short-term payment capacity',
+    capitalStructure: 'Capital structure and debt',
+    rotationAndCycles: 'Rotation and cycles',
+    capitalEfficiency: 'Capital efficiency',
   },
   
   pt: {
@@ -611,6 +645,23 @@ export const financialTranslations = {
     conceptType: 'Tipo',
     amount: 'Valor',
     recurring: 'Recorrente',
+    
+    // Financial Metrics - Raw Data Section
+    periodData: 'Dados do Período',
+    hasIncomeStatement: 'Demonstração de Resultados',
+    hasBalanceSheet: 'Balanço Patrimonial',
+    missingIncomeStatement: 'Falta Demonstração de Resultados',
+    missingBalanceSheet: 'Falta Balanço Patrimonial',
+    costOfSales: 'Custo das Vendas',
+    operatingExpenses: 'Despesas Operacionais',
+    cash: 'Caixa',
+    accountsReceivable: 'Contas a Receber',
+    inventory: 'Estoques',
+    currentAssets: 'Ativo Circulante',
+    shortTermPaymentCapacity: 'Capacidade de pagamento a curto prazo',
+    capitalStructure: 'Estrutura de capital e dívida',
+    rotationAndCycles: 'Rotação e ciclos',
+    capitalEfficiency: 'Eficiência do capital',
   }
 };
 
