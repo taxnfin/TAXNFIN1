@@ -136,7 +136,7 @@ const FXRatesModule = () => {
           <p className="text-[#64748B]">Gestión de tasas de cambio para conversión de monedas</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={loadData} className="gap-2">
+          <Button variant="outline" onClick={handleSync} className="gap-2" data-testid="sync-fx-rates-button">
             <RefreshCw size={16} />
             Actualizar
           </Button>
