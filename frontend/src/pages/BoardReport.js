@@ -528,29 +528,27 @@ const BoardReport = () => {
       let y = margin;
       let currentPage = 1;
       
-      // Helper function to wrap text
-      const wrapText = (text, maxWidth, fontSize = 9) => {
+      // Use PDF config for font sizes
+      const { fontFamily, titleSize, subtitleSize, sectionHeaderSize, bodySize, smallSize } = pdfConfig;
+      
+      // Set default font
+      pdf.setFont(fontFamily, 'normal');
+      
+      // Helper function to wrap text - fixed to avoid character spacing issues
+      const wrapText = (text, maxWidth, fontSize = bodySize) => {
+        if (!text) return [];
+        pdf.setFont(fontFamily, 'normal');
         pdf.setFontSize(fontSize);
-        const words = text.split(' ');
-        const lines = [];
-        let currentLine = '';
         
-        words.forEach(word => {
-          const testLine = currentLine ? currentLine + ' ' + word : word;
-          const textWidth = pdf.getTextWidth(testLine);
-          if (textWidth > maxWidth) {
-            if (currentLine) lines.push(currentLine);
-            currentLine = word;
-          } else {
-            currentLine = testLine;
-          }
-        });
-        if (currentLine) lines.push(currentLine);
+        // Use jsPDF's built-in text splitting
+        const lines = pdf.splitTextToSize(String(text), maxWidth);
         return lines;
       };
       
       const addNewPageIfNeeded = (requiredSpace = 30) => {
-        if (y + requiredSpace > pageHeight - 20) {
+        if (y + requiredSpace > pageHeight - 25) {
+          // Add footer before new page
+          addPageFooter();
           pdf.addPage();
           currentPage++;
           y = margin;
@@ -559,24 +557,44 @@ const BoardReport = () => {
         return false;
       };
       
+      const addPageFooter = () => {
+        pdf.setFontSize(smallSize);
+        pdf.setFont(fontFamily, 'normal');
+        pdf.setTextColor(128, 128, 128);
+        const footerY = pageHeight - 10;
+        
+        // Left: Company name
+        pdf.text(company?.nombre || '', margin, footerY);
+        
+        // Center: Page number
+        const pageText = `${currentPage}`;
+        const pageTextWidth = pdf.getTextWidth(pageText);
+        pdf.text(pageText, (pageWidth - pageTextWidth) / 2, footerY);
+        
+        // Right: Report type
+        pdf.text(t.title || 'Reporte Ejecutivo', pageWidth - margin - pdf.getTextWidth(t.title || 'Reporte Ejecutivo'), footerY);
+        
+        pdf.setTextColor(0, 0, 0);
+      };
+      
       const drawSectionHeader = (title, color = [15, 23, 42]) => {
         addNewPageIfNeeded(25);
         pdf.setFillColor(...color);
-        pdf.rect(margin, y, contentWidth, 8, 'F');
-        pdf.setFontSize(10);
-        pdf.setFont('helvetica', 'bold');
+        pdf.roundedRect(margin, y, contentWidth, 8, 1, 1, 'F');
+        pdf.setFontSize(sectionHeaderSize);
+        pdf.setFont(fontFamily, 'bold');
         pdf.setTextColor(255, 255, 255);
-        pdf.text(title, margin + 3, y + 5.5);
+        pdf.text(title, margin + 4, y + 5.5);
         pdf.setTextColor(0, 0, 0);
         y += 12;
       };
       
       const drawAnalysisText = (text) => {
         if (!text) return;
-        pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(9);
+        pdf.setFont(fontFamily, 'normal');
+        pdf.setFontSize(bodySize);
         pdf.setTextColor(60, 60, 60);
-        const lines = wrapText(text, contentWidth - 4);
+        const lines = wrapText(text, contentWidth - 6, bodySize);
         lines.forEach(line => {
           addNewPageIfNeeded(6);
           pdf.text(line, margin + 2, y);
