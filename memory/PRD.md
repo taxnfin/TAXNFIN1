@@ -320,7 +320,38 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
-## Latest Updates (February 25, 2026 - Session 6)
+## Latest Updates (February 25, 2026 - Session 7)
+
+### Completed in This Session ✅
+
+**Configuración de Fuente y Tamaño del PDF (COMPLETADO)**
+
+El usuario ahora puede personalizar el PDF antes de generarlo:
+
+**Implementación:**
+1. **Nuevo botón de configuración (⚙)**: Junto al botón PDF, aparece un icono de engranaje que abre el diálogo de configuración.
+
+2. **Diálogo de Configuración del PDF** con opciones para:
+   - **Fuente**: Helvetica (default), Times, Courier
+   - **Título Portada**: Tamaño del título de la empresa (default: 28)
+   - **Subtítulos**: Tamaño de subtítulos (default: 16)
+   - **Encabezados Sección**: Tamaño de headers de sección (default: 11)
+   - **Texto Normal**: Tamaño del cuerpo del texto (default: 10)
+   - **Texto Pequeño**: Tamaño de footer y notas (default: 8)
+   - **Vista previa** en vivo de cómo se verá el texto
+
+3. **Correcciones al PDF**:
+   - Arreglado el espaciado de caracteres (problema de "P r i o r i z a r")
+   - Mejorado el manejo de nombres de empresa largos (se ajusta el tamaño o divide en líneas)
+   - Agregado footer en cada página con número de página
+   - Usada la función `splitTextToSize()` de jsPDF para evitar problemas de word wrap
+
+**Archivos modificados:**
+- `frontend/src/pages/BoardReport.js`: Agregado estado `pdfConfig`, diálogo de configuración, y actualizada función `exportToPDF()`
+
+---
+
+## Previous Updates (February 25, 2026 - Session 6)
 
 ### Completed in This Session ✅
 
