@@ -1,0 +1,621 @@
+// Shared translations for financial pages (FinancialMetrics, Reports, CashflowProjections)
+
+export const financialTranslations = {
+  es: {
+    // Common
+    language: 'Idioma',
+    loading: 'Cargando...',
+    noData: 'Sin datos',
+    period: 'Período',
+    export: 'Exportar',
+    download: 'Descargar',
+    cancel: 'Cancelar',
+    save: 'Guardar',
+    delete: 'Eliminar',
+    add: 'Agregar',
+    edit: 'Editar',
+    search: 'Buscar',
+    filter: 'Filtrar',
+    all: 'Todos',
+    
+    // Financial Metrics Page
+    financialMetrics: 'Métricas Financieras',
+    financialAnalysis: 'Análisis de Estados Financieros',
+    uploadExcel: 'Cargar Excel',
+    loadExcel: 'Cargar Excel',
+    refresh: 'Actualizar',
+    noFinancialData: 'Sin datos financieros',
+    uploadIncomeStatement: 'Carga Estados Financieros desde el módulo de carga',
+    
+    // Metrics labels
+    revenue: 'Ingresos',
+    ebitda: 'EBITDA',
+    netProfit: 'Utilidad Neta',
+    totalAssets: 'Activo Total',
+    totalLiabilities: 'Pasivo Total',
+    equity: 'Capital Contable',
+    grossProfit: 'Utilidad Bruta',
+    operatingProfit: 'Utilidad Operativa',
+    
+    // Margins
+    margins: 'Márgenes',
+    profitabilityOnSales: 'Rentabilidad sobre ventas',
+    grossMargin: 'Margen Bruto',
+    ebitdaMargin: 'Margen EBITDA',
+    operatingMargin: 'Margen Operativo',
+    netMargin: 'Margen Neto',
+    nopatMargin: 'Margen NOPAT',
+    grossMarginDesc: 'Porcentaje de ingresos que queda después de costos directos',
+    ebitdaMarginDesc: 'Rentabilidad operativa antes de intereses, impuestos, depreciación y amortización',
+    operatingMarginDesc: 'Porcentaje de ingresos que queda después de gastos operativos',
+    netMarginDesc: 'Porcentaje de ingresos que se convierte en utilidad',
+    nopatMarginDesc: 'Utilidad operativa después de impuestos',
+    
+    // Returns
+    returns: 'Retornos',
+    returnOnInvestment: 'Retorno sobre inversión',
+    roic: 'ROIC',
+    roe: 'ROE',
+    roa: 'ROA',
+    roce: 'ROCE',
+    ronic: 'RONIC',
+    gmroi: 'GMROI',
+    roicDesc: 'Retorno sobre el capital invertido total',
+    roeDesc: 'Retorno generado sobre el capital de los accionistas',
+    roaDesc: 'Eficiencia en el uso de activos para generar utilidades',
+    roceDesc: 'Retorno sobre capital empleado',
+    ronicDesc: 'Retorno sobre nuevo capital invertido',
+    gmroiDesc: 'Retorno sobre inversión en inventario',
+    
+    // Efficiency
+    efficiency: 'Eficiencia',
+    operationalEfficiency: 'Eficiencia Operativa',
+    assetTurnover: 'Rotación de Activos',
+    receivablesTurnover: 'Rotación de CxC',
+    inventoryTurnover: 'Rotación de Inventario',
+    payablesTurnover: 'Rotación de CxP',
+    dso: 'DSO',
+    dpo: 'DPO',
+    dio: 'DIO',
+    cashConversionCycle: 'Ciclo de Conversión',
+    assetTurnoverDesc: 'Veces que los activos generan ventas al año',
+    receivablesTurnoverDesc: 'Veces que se cobra cartera al año',
+    inventoryTurnoverDesc: 'Veces que rota el inventario al año',
+    payablesTurnoverDesc: 'Veces que se paga a proveedores al año',
+    dsoDesc: 'Días promedio para cobrar',
+    dpoDesc: 'Días promedio para pagar',
+    dioDesc: 'Días de inventario',
+    cashConversionCycleDesc: 'Días entre pago y cobro',
+    
+    // Liquidity
+    liquidity: 'Liquidez',
+    liquidityAnalysis: 'Análisis de Liquidez',
+    currentRatio: 'Razón Circulante',
+    quickRatio: 'Prueba Ácida',
+    cashRatio: 'Razón de Efectivo',
+    workingCapital: 'Capital de Trabajo',
+    cashRunway: 'Cash Runway',
+    cashEfficiency: 'Eficiencia de Efectivo',
+    currentRatioDesc: 'Capacidad de pagar pasivos a corto plazo',
+    quickRatioDesc: 'Liquidez sin depender de inventario',
+    cashRatioDesc: 'Capacidad de pagar solo con efectivo',
+    workingCapitalDesc: 'Capital disponible para operaciones',
+    cashRunwayDesc: 'Meses de operación con efectivo actual',
+    cashEfficiencyDesc: 'Eficiencia en conversión de efectivo',
+    
+    // Solvency
+    solvency: 'Solvencia',
+    solvencyAnalysis: 'Análisis de Solvencia',
+    debtToEquity: 'Deuda/Capital',
+    debtToAssets: 'Deuda/Activos',
+    debtToEbitda: 'Deuda/EBITDA',
+    interestCoverage: 'Cobertura de Intereses',
+    financialLeverage: 'Apalancamiento',
+    netDebtToEbitda: 'Deuda Neta/EBITDA',
+    equityRatio: 'Razón de Capital',
+    costOfDebt: 'Costo de Deuda',
+    debtToEquityDesc: 'Proporción de deuda vs capital propio',
+    debtToAssetsDesc: 'Porcentaje de activos financiados con deuda',
+    debtToEbitdaDesc: 'Años para pagar deuda con EBITDA',
+    interestCoverageDesc: 'Veces que EBITDA cubre intereses',
+    financialLeverageDesc: 'Multiplicador de capital',
+    netDebtToEbitdaDesc: 'Deuda neta sobre EBITDA',
+    equityRatioDesc: 'Porcentaje de activos financiados por capital',
+    costOfDebtDesc: 'Tasa efectiva de interés sobre deuda',
+    
+    // Chart labels
+    profitabilityMargins: 'Márgenes de Rentabilidad',
+    generalOverview: 'Visión General',
+    
+    // Status
+    good: 'Bueno',
+    warning: 'Atención',
+    critical: 'Crítico',
+    times: 'veces',
+    days: 'días',
+    months: 'meses',
+    years: 'años',
+    
+    // Upload dialog
+    uploadStatement: 'Cargar Estado Financiero',
+    selectPeriod: 'Seleccionar Período',
+    selectFile: 'Seleccionar Archivo',
+    uploadInstructions: 'Sube un archivo Excel exportado de Alegra',
+    incomeStatement: 'Estado de Resultados',
+    balanceSheet: 'Balance General',
+    
+    // Reports Page
+    reports: 'Reportes',
+    cashflowReport: 'Reporte de Flujo de Efectivo',
+    profitLossReport: 'Estado de Resultados',
+    trendsAnalysis: 'Análisis de Tendencias',
+    sankeyTitle: 'Flujo del Estado de Resultados',
+    sankeyDesc: 'Visualización del flujo desde Ingresos hasta Utilidad Neta',
+    
+    // Cashflow Projections Page
+    projections: 'Proyecciones',
+    cashflowProjections: 'Proyecciones de Flujo de Efectivo',
+    weeklyView: 'Vista Semanal',
+    monthlyView: 'Vista Mensual',
+    week: 'Semana',
+    month: 'Mes',
+    inflows: 'Ingresos',
+    outflows: 'Egresos',
+    netFlow: 'Flujo Neto',
+    balance: 'Saldo',
+    openingBalance: 'Saldo Inicial',
+    closingBalance: 'Saldo Final',
+    accumulated: 'Acumulado',
+    
+    // Categories
+    categories: 'Categorías',
+    customers: 'Clientes',
+    vendors: 'Proveedores',
+    
+    // Actions
+    exportPdf: 'Exportar PDF',
+    exportExcel: 'Exportar Excel',
+    configure: 'Configurar',
+    
+    // KPIs
+    kpis: 'KPIs',
+    minimumCashThreshold: 'Umbral Mínimo de Caja',
+    weekStartDay: 'Día de Inicio de Semana',
+    
+    // Days of week
+    sunday: 'Domingo',
+    monday: 'Lunes',
+    tuesday: 'Martes',
+    wednesday: 'Miércoles',
+    thursday: 'Jueves',
+    friday: 'Viernes',
+    saturday: 'Sábado',
+    
+    // Trends
+    trends: 'Tendencias',
+    revenueAndProfit: 'Ingresos y Utilidades',
+    marginsTrend: 'Evolución de Márgenes',
+    comparison: 'Comparativo',
+    
+    // Custom concepts
+    customConcepts: 'Conceptos Personalizados',
+    conceptName: 'Nombre del Concepto',
+    conceptType: 'Tipo',
+    amount: 'Monto',
+    recurring: 'Recurrente',
+  },
+  
+  en: {
+    // Common
+    language: 'Language',
+    loading: 'Loading...',
+    noData: 'No data',
+    period: 'Period',
+    export: 'Export',
+    download: 'Download',
+    cancel: 'Cancel',
+    save: 'Save',
+    delete: 'Delete',
+    add: 'Add',
+    edit: 'Edit',
+    search: 'Search',
+    filter: 'Filter',
+    all: 'All',
+    
+    // Financial Metrics Page
+    financialMetrics: 'Financial Metrics',
+    financialAnalysis: 'Financial Statement Analysis',
+    uploadExcel: 'Upload Excel',
+    loadExcel: 'Load Excel',
+    refresh: 'Refresh',
+    noFinancialData: 'No financial data',
+    uploadIncomeStatement: 'Upload Financial Statements from the upload module',
+    
+    // Metrics labels
+    revenue: 'Revenue',
+    ebitda: 'EBITDA',
+    netProfit: 'Net Profit',
+    totalAssets: 'Total Assets',
+    totalLiabilities: 'Total Liabilities',
+    equity: 'Shareholders\' Equity',
+    grossProfit: 'Gross Profit',
+    operatingProfit: 'Operating Profit',
+    
+    // Margins
+    margins: 'Margins',
+    profitabilityOnSales: 'Profitability on sales',
+    grossMargin: 'Gross Margin',
+    ebitdaMargin: 'EBITDA Margin',
+    operatingMargin: 'Operating Margin',
+    netMargin: 'Net Margin',
+    nopatMargin: 'NOPAT Margin',
+    grossMarginDesc: 'Percentage of revenue remaining after direct costs',
+    ebitdaMarginDesc: 'Operating profitability before interest, taxes, depreciation and amortization',
+    operatingMarginDesc: 'Percentage of revenue remaining after operating expenses',
+    netMarginDesc: 'Percentage of revenue converted to profit',
+    nopatMarginDesc: 'Operating profit after taxes',
+    
+    // Returns
+    returns: 'Returns',
+    returnOnInvestment: 'Return on investment',
+    roic: 'ROIC',
+    roe: 'ROE',
+    roa: 'ROA',
+    roce: 'ROCE',
+    ronic: 'RONIC',
+    gmroi: 'GMROI',
+    roicDesc: 'Return on total invested capital',
+    roeDesc: 'Return generated on shareholders\' equity',
+    roaDesc: 'Efficiency in using assets to generate profits',
+    roceDesc: 'Return on capital employed',
+    ronicDesc: 'Return on new invested capital',
+    gmroiDesc: 'Return on inventory investment',
+    
+    // Efficiency
+    efficiency: 'Efficiency',
+    operationalEfficiency: 'Operational Efficiency',
+    assetTurnover: 'Asset Turnover',
+    receivablesTurnover: 'Receivables Turnover',
+    inventoryTurnover: 'Inventory Turnover',
+    payablesTurnover: 'Payables Turnover',
+    dso: 'DSO',
+    dpo: 'DPO',
+    dio: 'DIO',
+    cashConversionCycle: 'Cash Conversion Cycle',
+    assetTurnoverDesc: 'Times assets generate sales per year',
+    receivablesTurnoverDesc: 'Times receivables are collected per year',
+    inventoryTurnoverDesc: 'Times inventory turns over per year',
+    payablesTurnoverDesc: 'Times payables are paid per year',
+    dsoDesc: 'Average days to collect',
+    dpoDesc: 'Average days to pay',
+    dioDesc: 'Days of inventory',
+    cashConversionCycleDesc: 'Days between payment and collection',
+    
+    // Liquidity
+    liquidity: 'Liquidity',
+    liquidityAnalysis: 'Liquidity Analysis',
+    currentRatio: 'Current Ratio',
+    quickRatio: 'Quick Ratio',
+    cashRatio: 'Cash Ratio',
+    workingCapital: 'Working Capital',
+    cashRunway: 'Cash Runway',
+    cashEfficiency: 'Cash Efficiency',
+    currentRatioDesc: 'Ability to pay short-term liabilities',
+    quickRatioDesc: 'Liquidity without depending on inventory',
+    cashRatioDesc: 'Ability to pay with cash only',
+    workingCapitalDesc: 'Capital available for operations',
+    cashRunwayDesc: 'Months of operation with current cash',
+    cashEfficiencyDesc: 'Cash conversion efficiency',
+    
+    // Solvency
+    solvency: 'Solvency',
+    solvencyAnalysis: 'Solvency Analysis',
+    debtToEquity: 'Debt/Equity',
+    debtToAssets: 'Debt/Assets',
+    debtToEbitda: 'Debt/EBITDA',
+    interestCoverage: 'Interest Coverage',
+    financialLeverage: 'Financial Leverage',
+    netDebtToEbitda: 'Net Debt/EBITDA',
+    equityRatio: 'Equity Ratio',
+    costOfDebt: 'Cost of Debt',
+    debtToEquityDesc: 'Proportion of debt vs own capital',
+    debtToAssetsDesc: 'Percentage of assets financed with debt',
+    debtToEbitdaDesc: 'Years to pay debt with EBITDA',
+    interestCoverageDesc: 'Times EBITDA covers interest',
+    financialLeverageDesc: 'Capital multiplier',
+    netDebtToEbitdaDesc: 'Net debt over EBITDA',
+    equityRatioDesc: 'Percentage of assets financed by equity',
+    costOfDebtDesc: 'Effective interest rate on debt',
+    
+    // Chart labels
+    profitabilityMargins: 'Profitability Margins',
+    generalOverview: 'General Overview',
+    
+    // Status
+    good: 'Good',
+    warning: 'Warning',
+    critical: 'Critical',
+    times: 'times',
+    days: 'days',
+    months: 'months',
+    years: 'years',
+    
+    // Upload dialog
+    uploadStatement: 'Upload Financial Statement',
+    selectPeriod: 'Select Period',
+    selectFile: 'Select File',
+    uploadInstructions: 'Upload an Excel file exported from Alegra',
+    incomeStatement: 'Income Statement',
+    balanceSheet: 'Balance Sheet',
+    
+    // Reports Page
+    reports: 'Reports',
+    cashflowReport: 'Cash Flow Report',
+    profitLossReport: 'Income Statement',
+    trendsAnalysis: 'Trends Analysis',
+    sankeyTitle: 'Income Statement Flow',
+    sankeyDesc: 'Flow visualization from Revenue to Net Profit',
+    
+    // Cashflow Projections Page
+    projections: 'Projections',
+    cashflowProjections: 'Cash Flow Projections',
+    weeklyView: 'Weekly View',
+    monthlyView: 'Monthly View',
+    week: 'Week',
+    month: 'Month',
+    inflows: 'Inflows',
+    outflows: 'Outflows',
+    netFlow: 'Net Flow',
+    balance: 'Balance',
+    openingBalance: 'Opening Balance',
+    closingBalance: 'Closing Balance',
+    accumulated: 'Accumulated',
+    
+    // Categories
+    categories: 'Categories',
+    customers: 'Customers',
+    vendors: 'Vendors',
+    
+    // Actions
+    exportPdf: 'Export PDF',
+    exportExcel: 'Export Excel',
+    configure: 'Configure',
+    
+    // KPIs
+    kpis: 'KPIs',
+    minimumCashThreshold: 'Minimum Cash Threshold',
+    weekStartDay: 'Week Start Day',
+    
+    // Days of week
+    sunday: 'Sunday',
+    monday: 'Monday',
+    tuesday: 'Tuesday',
+    wednesday: 'Wednesday',
+    thursday: 'Thursday',
+    friday: 'Friday',
+    saturday: 'Saturday',
+    
+    // Trends
+    trends: 'Trends',
+    revenueAndProfit: 'Revenue and Profit',
+    marginsTrend: 'Margins Evolution',
+    comparison: 'Comparison',
+    
+    // Custom concepts
+    customConcepts: 'Custom Concepts',
+    conceptName: 'Concept Name',
+    conceptType: 'Type',
+    amount: 'Amount',
+    recurring: 'Recurring',
+  },
+  
+  pt: {
+    // Common
+    language: 'Idioma',
+    loading: 'Carregando...',
+    noData: 'Sem dados',
+    period: 'Período',
+    export: 'Exportar',
+    download: 'Baixar',
+    cancel: 'Cancelar',
+    save: 'Salvar',
+    delete: 'Excluir',
+    add: 'Adicionar',
+    edit: 'Editar',
+    search: 'Buscar',
+    filter: 'Filtrar',
+    all: 'Todos',
+    
+    // Financial Metrics Page
+    financialMetrics: 'Métricas Financeiras',
+    financialAnalysis: 'Análise de Demonstrações Financeiras',
+    uploadExcel: 'Carregar Excel',
+    loadExcel: 'Carregar Excel',
+    refresh: 'Atualizar',
+    noFinancialData: 'Sem dados financeiros',
+    uploadIncomeStatement: 'Carregue Demonstrações Financeiras do módulo de upload',
+    
+    // Metrics labels
+    revenue: 'Receita',
+    ebitda: 'EBITDA',
+    netProfit: 'Lucro Líquido',
+    totalAssets: 'Ativo Total',
+    totalLiabilities: 'Passivo Total',
+    equity: 'Patrimônio Líquido',
+    grossProfit: 'Lucro Bruto',
+    operatingProfit: 'Lucro Operacional',
+    
+    // Margins
+    margins: 'Margens',
+    profitabilityOnSales: 'Rentabilidade sobre vendas',
+    grossMargin: 'Margem Bruta',
+    ebitdaMargin: 'Margem EBITDA',
+    operatingMargin: 'Margem Operacional',
+    netMargin: 'Margem Líquida',
+    nopatMargin: 'Margem NOPAT',
+    grossMarginDesc: 'Percentual de receita após custos diretos',
+    ebitdaMarginDesc: 'Rentabilidade operacional antes de juros, impostos, depreciação e amortização',
+    operatingMarginDesc: 'Percentual de receita após despesas operacionais',
+    netMarginDesc: 'Percentual de receita convertida em lucro',
+    nopatMarginDesc: 'Lucro operacional após impostos',
+    
+    // Returns
+    returns: 'Retornos',
+    returnOnInvestment: 'Retorno sobre investimento',
+    roic: 'ROIC',
+    roe: 'ROE',
+    roa: 'ROA',
+    roce: 'ROCE',
+    ronic: 'RONIC',
+    gmroi: 'GMROI',
+    roicDesc: 'Retorno sobre capital total investido',
+    roeDesc: 'Retorno gerado sobre patrimônio dos acionistas',
+    roaDesc: 'Eficiência no uso de ativos para gerar lucros',
+    roceDesc: 'Retorno sobre capital empregado',
+    ronicDesc: 'Retorno sobre novo capital investido',
+    gmroiDesc: 'Retorno sobre investimento em estoque',
+    
+    // Efficiency
+    efficiency: 'Eficiência',
+    operationalEfficiency: 'Eficiência Operacional',
+    assetTurnover: 'Giro de Ativos',
+    receivablesTurnover: 'Giro de Recebíveis',
+    inventoryTurnover: 'Giro de Estoque',
+    payablesTurnover: 'Giro de Contas a Pagar',
+    dso: 'PMR',
+    dpo: 'PMP',
+    dio: 'PME',
+    cashConversionCycle: 'Ciclo de Conversão',
+    assetTurnoverDesc: 'Vezes que ativos geram vendas por ano',
+    receivablesTurnoverDesc: 'Vezes que recebíveis são cobrados por ano',
+    inventoryTurnoverDesc: 'Vezes que estoque gira por ano',
+    payablesTurnoverDesc: 'Vezes que contas são pagas por ano',
+    dsoDesc: 'Dias médios para receber',
+    dpoDesc: 'Dias médios para pagar',
+    dioDesc: 'Dias de estoque',
+    cashConversionCycleDesc: 'Dias entre pagamento e recebimento',
+    
+    // Liquidity
+    liquidity: 'Liquidez',
+    liquidityAnalysis: 'Análise de Liquidez',
+    currentRatio: 'Liquidez Corrente',
+    quickRatio: 'Liquidez Seca',
+    cashRatio: 'Liquidez Imediata',
+    workingCapital: 'Capital de Giro',
+    cashRunway: 'Cash Runway',
+    cashEfficiency: 'Eficiência de Caixa',
+    currentRatioDesc: 'Capacidade de pagar passivos de curto prazo',
+    quickRatioDesc: 'Liquidez sem depender de estoque',
+    cashRatioDesc: 'Capacidade de pagar apenas com caixa',
+    workingCapitalDesc: 'Capital disponível para operações',
+    cashRunwayDesc: 'Meses de operação com caixa atual',
+    cashEfficiencyDesc: 'Eficiência na conversão de caixa',
+    
+    // Solvency
+    solvency: 'Solvência',
+    solvencyAnalysis: 'Análise de Solvência',
+    debtToEquity: 'Dívida/Patrimônio',
+    debtToAssets: 'Dívida/Ativos',
+    debtToEbitda: 'Dívida/EBITDA',
+    interestCoverage: 'Cobertura de Juros',
+    financialLeverage: 'Alavancagem',
+    netDebtToEbitda: 'Dívida Líquida/EBITDA',
+    equityRatio: 'Razão de Capital',
+    costOfDebt: 'Custo da Dívida',
+    debtToEquityDesc: 'Proporção de dívida vs capital próprio',
+    debtToAssetsDesc: 'Percentual de ativos financiados com dívida',
+    debtToEbitdaDesc: 'Anos para pagar dívida com EBITDA',
+    interestCoverageDesc: 'Vezes que EBITDA cobre juros',
+    financialLeverageDesc: 'Multiplicador de capital',
+    netDebtToEbitdaDesc: 'Dívida líquida sobre EBITDA',
+    equityRatioDesc: 'Percentual de ativos financiados por patrimônio',
+    costOfDebtDesc: 'Taxa efetiva de juros sobre dívida',
+    
+    // Chart labels
+    profitabilityMargins: 'Margens de Rentabilidade',
+    generalOverview: 'Visão Geral',
+    
+    // Status
+    good: 'Bom',
+    warning: 'Atenção',
+    critical: 'Crítico',
+    times: 'vezes',
+    days: 'dias',
+    months: 'meses',
+    years: 'anos',
+    
+    // Upload dialog
+    uploadStatement: 'Carregar Demonstração Financeira',
+    selectPeriod: 'Selecionar Período',
+    selectFile: 'Selecionar Arquivo',
+    uploadInstructions: 'Carregue um arquivo Excel exportado do Alegra',
+    incomeStatement: 'Demonstração de Resultados',
+    balanceSheet: 'Balanço Patrimonial',
+    
+    // Reports Page
+    reports: 'Relatórios',
+    cashflowReport: 'Relatório de Fluxo de Caixa',
+    profitLossReport: 'Demonstração de Resultados',
+    trendsAnalysis: 'Análise de Tendências',
+    sankeyTitle: 'Fluxo da DRE',
+    sankeyDesc: 'Visualização do fluxo da Receita ao Lucro Líquido',
+    
+    // Cashflow Projections Page
+    projections: 'Projeções',
+    cashflowProjections: 'Projeções de Fluxo de Caixa',
+    weeklyView: 'Visão Semanal',
+    monthlyView: 'Visão Mensal',
+    week: 'Semana',
+    month: 'Mês',
+    inflows: 'Entradas',
+    outflows: 'Saídas',
+    netFlow: 'Fluxo Líquido',
+    balance: 'Saldo',
+    openingBalance: 'Saldo Inicial',
+    closingBalance: 'Saldo Final',
+    accumulated: 'Acumulado',
+    
+    // Categories
+    categories: 'Categorias',
+    customers: 'Clientes',
+    vendors: 'Fornecedores',
+    
+    // Actions
+    exportPdf: 'Exportar PDF',
+    exportExcel: 'Exportar Excel',
+    configure: 'Configurar',
+    
+    // KPIs
+    kpis: 'KPIs',
+    minimumCashThreshold: 'Limite Mínimo de Caixa',
+    weekStartDay: 'Dia de Início da Semana',
+    
+    // Days of week
+    sunday: 'Domingo',
+    monday: 'Segunda',
+    tuesday: 'Terça',
+    wednesday: 'Quarta',
+    thursday: 'Quinta',
+    friday: 'Sexta',
+    saturday: 'Sábado',
+    
+    // Trends
+    trends: 'Tendências',
+    revenueAndProfit: 'Receita e Lucro',
+    marginsTrend: 'Evolução de Margens',
+    comparison: 'Comparativo',
+    
+    // Custom concepts
+    customConcepts: 'Conceitos Personalizados',
+    conceptName: 'Nome do Conceito',
+    conceptType: 'Tipo',
+    amount: 'Valor',
+    recurring: 'Recorrente',
+  }
+};
+
+export const languages = [
+  { code: 'es', name: 'Español', flag: '🇲🇽' },
+  { code: 'en', name: 'English', flag: '🇺🇸' },
+  { code: 'pt', name: 'Português', flag: '🇧🇷' },
+];
