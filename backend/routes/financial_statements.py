@@ -1161,7 +1161,28 @@ async def get_ai_financial_analysis(
     balance_data = latest_balance or {}
     metrics = calculate_financial_metrics(aggregated_income, balance_data)
     
-    # Generate AI analysis
+    # Get trends data for AI analysis
+    trends_data = []
+    all_periods = await db.financial_statements.distinct('periodo', {
+        'company_id': company_id,
+        'tipo': 'estado_resultados'
+    })
+    all_periods = sorted(all_periods)[-12:]  # Last 12 periods
+    
+    for p in all_periods:
+        p_income = await db.financial_statements.find_one({
+            'company_id': company_id,
+            'tipo': 'estado_resultados',
+            'periodo': p
+        }, {'_id': 0, 'datos': 1, 'periodo': 1})
+        
+        if p_income:
+            trends_data.append({
+                'periodo': p,
+                'income_statement': p_income.get('datos', {})
+            })
+    
+    # Generate AI analysis with trends
     period_label = f"{period_type}: {period_value}"
     if len(periods_found) > 1:
         period_label = f"{period_value} ({', '.join(periods_found)})"
@@ -1172,7 +1193,8 @@ async def get_ai_financial_analysis(
         balance_sheet=balance_data,
         company_name=company_name,
         period=period_label,
-        language=language
+        language=language,
+        trends_data=trends_data if len(trends_data) > 1 else None
     )
     
     return {
