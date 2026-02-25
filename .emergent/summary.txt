@@ -1,192 +1,158 @@
 <analysis>**original_problem_statement:**
-The user's primary goal is to build a comprehensive cash flow management tool named TaxnFin.
+The user's primary goal is to build a comprehensive cash flow management tool named TaxnFin. The project initially focused on integrating with Alegra and SAT to manage CFDIs (Mexican electronic invoices), but has evolved significantly.
 
-Initial requirements included:
-1.  **SAT Integration**: Download CFDIs using FIEL credentials.
-2.  **Catalog Management**: CRUD for Companies, Vendors, and Customers.
-3.  **Advanced Reporting**: Cash flow projections and aging reports.
-4.  **Reconciliation Module**: Match bank transactions with CFDIs.
-5.  **PDF Invoice Processing**: Extract data from PDF invoices using AI.
-6.  **Alegra Integration**: Sync Clients, Vendors, Invoices, and Payments.
-
-During this session, the user added several new requirements that have been implemented:
-*   **CFDI Module Enhancements**:
-    *   Export to Excel.
-    *   Filters for Emisor and Receptor.
-    *   Button to delete a single CFDI.
-    *   Button to delete all (or filtered) CFDIs.
-*   **Alegra Integration Enhancements**:
-    *   Prevent duplicate records on re-sync.
-    *   Allow users to select a date range for synchronization.
-    *   Add a button to clear all data synced from Alegra.
-    *   Sync bank transactions and update the application's exchange rate table.
-    *   Correct the filtering logic to fetch invoices based on their *payment/due date* within the selected range, not their *emission date*.
-*   **Bank Reconciliation Module Enhancements**:
-    *   Add a button to delete all bank transactions for a company.
-*   **New Feature: Treasury Decisions Module**:
-    *   A new dashboard with actionable alerts, financial recommendations, a treasury calendar, and KPIs for customer/provider concentration.
-    *   A Working Capital Intelligence section calculating and displaying DSO, DPO, and the Cash Conversion Cycle.
-*   **New Integration Investigation**:
-    *   User inquired about integrations with other accounting software, specifically CONTPAQi and CONTALink.
+Recent major requirements implemented include:
+*   **Alegra Sync Overhaul**: The core workflow was changed. Instead of syncing to a separate payments module, all Alegra invoices (sales) and bills (purchases) are now saved directly into the main  collection. This allows for unified management and deduplication against manually uploaded XML files.
+*   **Advanced Duplicate Handling**: A multi-stage process was implemented to prevent duplicate invoices. The system now first tries to match an incoming Alegra invoice/bill using its real SAT UUID (if available in the Alegra  data). If an XML is uploaded, it checks for an existing UUID or merges with an existing Alegra record based on a composite key (RFCs, total, date).
+*   **Manual Linking Feature**: A Vincular XML button was added to the UI, allowing the user to manually associate an uploaded XML file with a CFDI that was synced from Alegra, resolving cases where automatic detection fails.
+*   **Data Accuracy and UI Fixes**: A series of critical fixes were implemented based on detailed user feedback:
+    *   Correctly setting the payment method ( to PUE/PPD) based on the invoice status in Alegra.
+    *   Displaying amounts in their original currency (e.g., USD) alongside the MXN equivalent and the exchange rate used.
+    *   Correcting a major currency conversion bug where MXN totals were being inflated.
+    *   Using the proper invoice folio from Alegra () instead of an internal ID.
+    *   Enhancing the Excel export to include columns for original currency amount, exchange rate, and total in MXN.
+*   **New Feature Request (In Progress)**: The user has requested a new module for **Financial Metrics**. The goal is to import Income Statements and Balance Sheets (exported from Alegra as Excel files) and generate a dashboard with key financial ratios like Gross Margin, EBITDA Margin, ROIC, ROE, etc.
 
 **User's preferred language**: Spanish. The user exclusively communicates in Spanish. The next agent **MUST** respond in Spanish and ensure all UI text is also in Spanish.
 
 **what currently exists?**
 The application is a full-stack React/FastAPI/MongoDB tool.
-*   **Frontend**: The UI now includes a full-featured **Decisiones de Tesorería (Treasury Decisions)** page. The  and  pages have been significantly enhanced with new filters and bulk deletion capabilities. The  component has been updated to support date range selection and data clearing.
-*   **Backend**: The Alegra integration () is complete and now includes logic for date-based filtering (payment/due date), duplicate prevention, and robust error handling with retries. New bulk deletion endpoints have been added to  and . A new route and service () have been created to calculate and serve the data for the Treasury Decisions module. A bug in  was fixed by adding a dedicated  endpoint.
-*   **Database**: The  collection is now correctly updated from Alegra syncs and manual syncs, storing the source of the rate. All data queries are confirmed to be multi-tenant, filtered by .
+*   **Frontend**:  serves as the central hub for viewing all invoices, whether from manual XML uploads or Alegra syncs. The UI now displays detailed, corrected data, including badges for data source (, ), original currency amounts, exchange rates, and the correct invoice folio. It also contains the UI for the new Vincular XML feature. The Excel export utility () has been updated with new columns.
+*   **Backend**:  contains the heavily modified sync logic that populates the  collection, correctly handling currency conversions, payment methods, and fetching the real SAT UUID from Alegra's  object.  includes the endpoints for advanced duplicate detection and manual XML linking. The  model has been expanded with new fields to support these features (, , , , , etc.).
+*   **Database**: The  collection is now the single source of truth for all invoices and bills, with a  field (, , ) to identify the origin of each record.
 
 **Last working item**:
--   **Last item agent was working**: Correcting the Alegra synchronization logic. The user reported that the date filter was pulling in old, irrelevant invoices. The agent modified  to first fetch all invoices/bills from Alegra without a date filter, and then filter them within the backend logic based on two criteria:
-    1.  The invoice/bill was **paid** within the user-selected date range.
-    2.  The invoice/bill is **pending** and its **due date** falls within the user-selected date range.
+-   **Last item agent was working**: The agent was beginning the implementation of the new **Financial Metrics Dashboard**. After the user confirmed they would provide data via Excel files from Alegra, the agent successfully analyzed the structure of the Estado de resultados (Income Statement) and Estado de situación financiera (Balance Sheet) Excel files.
 -   **Status**: IN PROGRESS
--   **Agent Testing Done**: N (The code was written, but the backend was not restarted or tested after the final change).
--   **Which testing method agent to use?**: backend testing agent. The agent must first restart the backend service. Then, use  to test the  and  endpoints, providing a date range. Verify from the backend logs or command output that only relevant invoices (paid or pending within the range) are processed and that old ones are skipped.
+-   **Agent Testing Done**: N
+-   **Which testing method agent to use?**: This is a large feature. The agent should use the backend testing agent to test the new Excel parsing logic and database models. The frontend testing agent should be used to test the new file upload UI and the metrics dashboard.
 -   **User Testing Done**: N
 
 **All Pending/In progress Issue list**:
--   **Issue 1: (P0) Test and Verify Alegra Date Filter Fix.**
--   **Issue 2: (P1) Decide on Next Accounting Software Integration.**
+-   **Issue 1: (P0) Implement Financial Metrics Dashboard.**
+-   **Issue 2: (P1) Verify Reconciliation Flow Post-Refactor.**
 -   **Issue 3: (P2) Reconciliation Cancellation Fix Verification.**
+-   **Issue 4: (P3) Test Payroll Auto-Reconciliation.**
 
 Issues Detail:
--   **Issue 1: (P0) Test and Verify Alegra Date Filter Fix.**
-    -   **Description**: The logic in  for syncing invoices and bills was changed to filter by payment/due date instead of emission date. This change has not been tested.
-    -   **Attempted fixes**: The agent successfully identified the flawed logic and rewrote the filtering mechanism inside the  and  functions.
+-   **Issue 1: (P0) Implement Financial Metrics Dashboard**
+    -   **Description**: The user wants to import Income Statements and Balance Sheets from Alegra-exported Excel files to calculate and display key financial metrics (Margins, ROE, ROIC, etc.) on a monthly basis.
+    -   **Attempted fixes**: The agent analyzed the structure of the two user-provided Excel files to understand the data layout.
     -   **Next debug checklist**:
-        1.  Restart the backend server: backend: stopped
-backend: started.
-        2.  Use  to call  with a specific date range (e.g., January 2026).
-        3.  Observe the backend logs and the JSON response to confirm that invoices from previous years (e.g., 2025) are skipped and only invoices relevant to the January 2026 period are processed.
-        4.  Repeat steps 2-3 for .
-    -   **Why fix this issue and what will be achieved with the fix?**: This is critical for data accuracy. It ensures the cash flow projection only includes relevant transactions for the selected period, which was the user's primary requirement.
+        1.  **Backend**:
+            -   Create new DB models (e.g., , ) in .
+            -   Create a new route file (e.g., ) with an endpoint to upload and parse the Alegra Excel files. The parser must be robust for Alegra's specific format.
+            -   Implement services to calculate all requested financial ratios (Gross Margin, EBITDA Margin, Net Margin, ROIC, ROE, etc.).
+            -   Create an endpoint to retrieve the calculated ratios for dashboard display.
+        2.  **Frontend**:
+            -   Create a new page (e.g., ).
+            -   Add a file upload component for the Excel reports.
+            -   Design and build a dashboard to display the calculated metrics using charts and tables.
+    -   **Why fix this issue and what will be achieved with the fix?**: This is a major new feature requested by the user to add significant analytical value to the application.
     -   **Status**: IN PROGRESS
     -   **Is recurring issue?**: N
-    -   **Should Test frontend/backend/both after fix?**: Backend
-    -   **Blocked on other issue**: None
+    -   **Should Test frontend/backend/both after fix?**: Both
 
--   **Issue 2: (P1) Decide on Next Accounting Software Integration.**
-    -   **Description**: The user has asked about integrations beyond Alegra, specifically mentioning CONTPAQi and CONTALink. The agent provided a detailed breakdown of integration possibilities. The user needs to decide which software they use and provide the necessary credentials/access.
-    -   **Status**: BLOCKED (Waiting on user input)
-    -   **Next step**: Ask the user to confirm which accounting software they use and if they can provide the required credentials (e.g., API Key for CONTALink, database access for Aspel, or intermediary service for CONTPAQi).
+-   **Issue 2: (P1) Verify Reconciliation Flow Post-Refactor.**
+    -   **Description**: The user noted that if a CFDI is marked conciliado (paid), it should be linked to its corresponding payment/collection in the reconciliation table. The current logic correctly sets the CFDI status based on Alegra data, but it's unconfirmed if it also creates the necessary record in the  or reconciliation module for matching with bank transactions.
+    -   **Next debug checklist**:
+        1.  Review  and the reconciliation logic.
+        2.  Trace the sync process for a paid invoice from Alegra.
+        3.  If a payment/receivable record is not being created, modify the sync logic to create one when an invoice/bill is synced with a paid status.
+    -   **Why fix this issue and what will be achieved with the fix?**: It completes the user's requested workflow by connecting the CFDI module to the bank reconciliation module.
+    -   **Status**: NOT STARTED
+    -   **Is recurring issue?**: N
+    -   **Should Test frontend/backend/both after fix?**: Both
 
 -   **Issue 3: (P2) Reconciliation Cancellation Fix Verification.**
-    -   **Description**: A fix was implemented in a previous session to correctly restore a CFDI's balance when a reconciliation is canceled.
+    -   **Description**: A fix was implemented in a previous session to correctly restore a CFDI's balance when a reconciliation is canceled. This has been pending user testing for some time.
     -   **Status**: USER VERIFICATION PENDING
-    -   **Why fix this issue and what will be achieved with the fix?**: Ensures data integrity by allowing users to undo reconciliations without leaving CFDIs in an incorrect paid state.
     -   **Is recurring issue?**: Y
-    -   **Should Test frontend/backend/both after fix?**: Frontend. Guide the user to test the flow.
+    -   **Should Test frontend/backend/both after fix?**: Frontend
+
+-   **Issue 4: (P3) Test Payroll Auto-Reconciliation.**
+    -   **Description**: An older, untested feature due to a lack of Nómina (payroll) CFDI test data.
+    -   **Status**: BLOCKED
 
 **In progress Task List**:
--   **Task 1: (P0) Test and Finalize Alegra Date Filter Fix**
-    -   **Where to resume**: Restart the backend service and then proceed with  testing of the Alegra sync endpoints as described in Issue 1.
-    -   **What will be achieved with this?**: A fully functional and accurate data synchronization pipeline from Alegra.
+-   **Task 1: (P0) Build Financial Metrics Module Backend**
+    -   **Where to resume**: Create the database models and the backend route/service for parsing the Alegra Excel files. The file structure analysis is complete.
+    -   **What will be achieved with this?**: The backend capability to store and process financial statement data.
     -   **Status**: IN PROGRESS
     -   **Should Test frontend/backend/both after fix?**: Backend
-    -   **Blocked on something**: None
 
 **Upcoming and Future Tasks**
 *   **Upcoming Tasks**:
-    *   **P0 - Implement Next Accounting Integration (CONTALink/CONTPAQi/etc.)**: Begin this as soon as the user provides credentials and makes a choice.
-    *   **P1 - Extract address from CFDI XMLs**: Populate Customer/Vendor address fields from CFDI data.
-    *   **P2 - Test and verify Payroll auto-reconciliation**: Requires Nómina CFDI test data.
+    *   **P0 - Build Financial Metrics Module Frontend**: Create the UI for uploading files and displaying the metrics dashboard.
+    *   **P1 - Verify/Implement Reconciliation Flow**: Ensure reconciled CFDIs from Alegra appear correctly in the reconciliation module for matching.
 *   **Future Tasks**:
-    *   **P2 - Automatic Notifications**: Based on KPIs from the new Treasury Decisions module.
-    *   **P3 - Align Payments module UI**: Further UI/UX simplification.
-    *   **P4 - Finalize Belvo Bank Integration**: Still blocked on user credentials.
+    *   **P2 - Implement Next Accounting Integration (CONTALink/CONTPAQi)**: Blocked on user decision.
+    -   **P3 - Automatic KPI-based Notifications**: A backlog item.
+    -   **P4 - Refactor **: A long-standing technical debt item.
 
 **Completed work in this session**
--   **Alegra Integration (v1)**: Completed the initial end-to-end integration.
--   **CFDI Module Features**: Added Export to Excel, Emisor/Receptor filters, and both single and bulk delete functionality.
--   **Alegra Enhancements**: Implemented duplicate prevention, date range selection, data clearing, and fixed the core data filtering logic to use payment/due dates.
--   **Bank Statements Module Feature**: Added a Delete All button for bank movements.
--   **New Module: Treasury Decisions**: Created a comprehensive new page from scratch with KPIs, actionable alerts, and a Working Capital Intelligence section (DSO, DPO, CCC).
--   **Bug Fix: FX Rate Sync**: Fixed a bug where manual exchange rate updates were not saving with the correct timestamp by creating a new  endpoint.
--   **Error Handling**: Improved Alegra API error handling to include automatic retries and more user-friendly error messages.
--   **Research**: Investigated and provided the user with a detailed summary of integration options for CONTPAQi, CONTALink, Aspel, and other Mexican accounting software.
-
-**Earlier issues found/mentioned but not fixed**
--   The payroll auto-reconciliation feature remains untested due to a lack of Nómina CFDI test data.
--   The long-standing task to refactor  remains incomplete.
-
-**Known issue recurrence from previous fork**
--   **Issue recurrence in previous fork**: The  refactoring task.
--   **Recurrence count**: 11
--   **Status**: NOT STARTED
+-   **Alegra Sync Workflow Refactor**: Changed the core logic to sync Alegra invoices/bills to the main  collection.
+-   **Advanced Duplicate Handling**: Implemented logic to merge uploaded XMLs with existing Alegra CFDIs, prioritizing the real SAT UUID.
+-   **Manual XML Linking Feature**: Added a Vincular XML button and backend to allow manual association of files.
+-   **Critical UI/Data Corrections**:
+    -   Fixed a major currency double-conversion bug.
+    -   Correctly set and displayed payment methods (PUE/PPD).
+    -   Displayed amounts in original currency (e.g., USD) with the exchange rate.
+    -   Fetched and displayed the correct Alegra invoice folio and the real SAT UUID.
+-   **Excel Export Enhancement**: Added columns for original currency amount, exchange rate, and MXN total to the CFDI Excel export.
+-   **Financial Metrics Feature Planning**: Analyzed user-provided Excel files to prepare for the new module.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-*   **Financial KPI Calculation**: Implemented backend logic for Days Sales Outstanding (DSO), Days Payable Outstanding (DPO), and Cash Conversion Cycle (CCC).
-*   **Dashboarding**: Created a new, multi-tab dashboard for Treasury Decisions using existing UI components.
-*   **Bulk Data Operations**: Added secure endpoints and confirmation dialogs for deleting large sets of data (all CFDIs, all bank transactions).
-*   **Advanced API Error Handling**: Implemented a request wrapper with automatic retries and exponential backoff to handle transient API errors from third parties (Alegra).
-*   **Complex Business Logic Filtering**: Refactored data sync logic to filter records based on multiple conditions (status, payment date, due date) in the application layer rather than at the API source.
-
-**key DB schema**
--   **fx_rates**: Now contains records with  to track the origin of exchange rates. The timestamping issue was resolved, ensuring  is current.
--   **cfdis** & **bank_transactions**: No schema changes, but are now subject to new bulk delete operations.
+-   **Data Model Refactoring**: Changed the primary data flow to use the  collection as the single source of truth for all invoices.
+-   **Advanced Data Deduplication & Merging**: Implemented a multi-stage process for handling duplicates, first by a composite key and then by the authoritative SAT UUID.
+-   **Manual Data Association UI**: Created a user-facing workflow to manually correct data associations.
+-   **Data Parsing from Excel (In-progress)**: Started the process of building a parser for structured data from user-uploaded Excel files.
+-   **Complex Frontend Conditional Rendering**: The UI now handles and displays different data states (Alegra-only, XML-only, merged) and formats data conditionally (e.g., showing original currency only for non-MXN transactions).
 
 **All files of reference**
-*   : **CRITICAL**. Contains the recently modified (but untested) filtering logic.
-*   : **CRITICAL**. New file containing all logic for the Treasury Decisions module.
-*   : **CRITICAL**. New page for the Treasury Decisions module.
-*   : Heavily modified with new filters and bulk delete functionality.
-*   : Modified to include bulk delete functionality.
-*   : Modified with a new  endpoint.
-*   : Modified with a new  endpoint.
-*   : Modified with a new  endpoint to fix a bug.
+*    (Contains the main sync logic)
+*    (Contains upload and linking logic)
+*    (Main UI for CFDIs)
+*    (Defines the structure of a CFDI document)
+*    (Logic for generating Excel reports)
+*   The two user-uploaded Excel files in chat history for financial statement parsing.
 
 **Critical Info for New Agent**
 *   **MUST RESPOND IN SPANISH.**
-*   **Immediate Priority (P0)**: Test the Alegra date filter fix in . Do not proceed until this core data sync logic is verified.
-*   **Next Priority (P1)**: Follow up with the user about their choice of accounting software for the next integration (CONTALink, CONTPAQi, etc.). You have already provided the research; now you need a decision and credentials.
-*   A major new feature, **Decisiones de Tesorería**, has been built and is ready for user feedback. Be prepared to discuss it.
-*   The user is very hands-on and provides rapid feedback. Expect to work on multiple small-to-medium feature requests in a single session.
-
-**documents and test reports created in this job**
-*    (updated)
-*   
-*   
+*   The immediate priority (P0) is to build the **Financial Metrics Dashboard**. The agent has already analyzed the user-provided Excel files. The next step is to implement the backend parsing and storage logic.
+*   The core data flow has changed significantly. All invoices now reside in the  collection. Be aware of the  field (, , ).
+*   The user is highly detail-oriented. Double-check all data points, especially currency conversions, IDs/folios, and payment methods (PUE/PPD), before presenting them.
+*   The database might be empty upon starting. The agent may need to re-sync data from Alegra using the established  commands from the chat history to get a working dataset.
 
 **Last 10 User Messages and any pending HUMAN messages**
-10. **Latest**: User reports that the Alegra sync is bringing in invoices from the wrong period (e.g., 2025 when 2026 was requested). **Status: In Progress (Fix implemented, needs testing)**.
-9.  Agent confirms the fix for the Alegra 500 error is complete and asks the user to specify which accounting software they use. **Status: Pending user response**.
-8.  User reports a 500 error from Alegra during synchronization. **Status: Completed (Error handling improved)**.
-7.  User asks which accounting software can be integrated, specifically mentioning CONTPAQ. **Status: Completed (Agent provided a detailed summary)**.
-6.  User requests a button to delete all bank transactions in the reconciliation module. **Status: Completed**.
-5.  User requests a comprehensive Treasury Decisions module with KPIs, alerts, and working capital analysis. **Status: Completed**.
-4.  User requests a Delete All button for CFDIs, in addition to the single delete button. **Status: Completed**.
-3.  User asks for clarification on what is needed to integrate with CONTALink and reports the delete button for individual CFDIs is not visible. **Status: Completed (Button made more visible, CONTALink info provided)**.
-2.  User reports the delete CFDI button is not visible and asks what is needed to sync with CONTALink. **Status: Completed**.
-1.  Agent provides a summary of completed work and asks for next steps.
+10. **Latest**: Confirmed the plan to import financial data from Alegra via Excel for a new metrics dashboard (monthly analysis).
+9.  Agent asked for clarification on how to get financial statement data; user replied they can import from Excel and provided the files.
+8.  User requested to build a new financial metrics dashboard, providing screenshots of desired metrics.
+7.  User requested that the Excel export include columns for original currency amount and the converted MXN amount.
+6.  User pointed out that the agent was not using the correct invoice number from Alegra and provided a PDF example showing the real SAT UUID is available within Alegra's data.
+5.  User reported a critical bug where USD amounts were being incorrectly converted to massively inflated MXN values.
+4.  User provided a list of 6 detailed issues/requests regarding data correctness (payment method, USD display, folio number, duplicates, exchange rates, reconciliation flow).
+3.  User confirmed they want the Link XML button and reported that duplicates were still occurring.
+2.  Agent proposed adding a Link XML button to solve stubborn duplicate cases.
+1.  User reported that an uploaded XML and an Alegra entry for the same invoice were still being duplicated after the initial fix.
 
 **Project Health Check:**
-*   **Broken**: Yes. A core data pipeline (Alegra sync) was just significantly modified to fix a critical logic bug and has not been tested. The accuracy of the entire application's cash flow projection depends on this fix working correctly.
-*   **Mocked**: The Belvo integration is still pending user credentials.
+*   **Broken**: No. The last set of fixes for the Alegra sync and data display are working correctly. The next major feature is in the initial development phase.
+*   **Mocked**: Belvo integration remains blocked. The Alegra financial reports API is inaccessible with current permissions, so the new feature will rely on user-uploaded Excel files.
 
 **3rd Party Integrations**
-*   **Alegra API**: **Completed (Verification Pending)**. Syncs contacts, invoices, bills, and payments.
-*   **SAT Web Service (SOAP)**: **User Verification Pending**. Awaiting user testing with real FIEL credentials.
-*   **Emergent LLM Key (Gemini)**: Used for PDF invoice data extraction.
-*   **Belvo**: (Open Banking) Blocked, requires User API Key.
-*   **Banxico / Open Exchange Rates**: Used for exchange rates.
-*   **CONTALink / CONTPAQi / Aspel**: **Pending Investigation**. User has expressed interest; awaiting decision and credentials.
+*   **Alegra API**: Heavily used. Syncs invoices/bills with detailed data including real SAT UUIDs (when available). Financial report endpoints are inaccessible, requiring a workaround.
+*   **SAT Web Service (SOAP)**: Implemented but pending user verification with real credentials.
+*   **Excel Files (from Alegra)**: A new integration method for importing financial statements.
 
 **Testing status**
--   **Testing agent used after significant changes**: YES, twice in this session for the Alegra v1 and CFDI enhancements.
--   **Troubleshoot agent used after agent stuck in loop**: NO
+-   **Testing agent used after significant changes**: NO (The session involved many small, iterative fixes verified with screenshots and curl commands based on rapid user feedback).
 -   **Test files created**: None.
--   **Known regressions**: None identified.
-
-**Credentials to test flow:**
-*   **Email**: 
-*   **Password**: 
-*   **Alegra Credentials**: Available in  as  and .
+-   **Known regressions**: None.
 
 **What agent forgot to execute**
--   The agent implemented the critical fix for the Alegra date filtering logic in  but did not restart the backend or run any tests to verify the fix. This is the most important immediate action for the next agent.
--   The long-standing task to refactor  was not addressed.</analysis>
+*   The agent has not fully implemented or verified the second part of the user's reconciliation workflow request: ensuring that a CFDI marked as conciliado (paid) in Alegra automatically creates a corresponding transaction in the reconciliation module, ready to be matched with a bank statement line. This is captured as a pending issue.
+*   The long-standing  refactoring task remains unaddressed.</analysis>

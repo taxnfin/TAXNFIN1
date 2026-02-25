@@ -8,7 +8,7 @@ import requests
 import os
 from datetime import datetime
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://finmaster-15.preview.emergentagent.com').rstrip('/')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://financial-dashboard-62.preview.emergentagent.com').rstrip('/')
 
 class TestAuth:
     """Authentication tests"""
