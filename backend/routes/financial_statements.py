@@ -1075,6 +1075,115 @@ async def get_aggregated_metrics(
     }
 
 
+@router.get("/ai-analysis")
+async def get_ai_financial_analysis(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    period_type: str = Query(..., description="Tipo de período: monthly, quarterly, annual"),
+    period_value: str = Query(..., description="Valor del período"),
+    language: str = Query("es", description="Language: es, en, pt")
+):
+    """Get AI-generated financial analysis for a specific period"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get company info
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0})
+    company_name = company.get('nombre', 'Empresa') if company else 'Empresa'
+    
+    # Get aggregated data for the period
+    # Determine which months to aggregate
+    months_to_aggregate = []
+    
+    if period_type == "monthly":
+        months_to_aggregate = [period_value]
+    elif period_type == "quarterly":
+        if period_value.startswith("Q"):
+            parts = period_value.split("-")
+            quarter = int(parts[0][1])
+            year = parts[1]
+            quarter_months = {
+                1: ["01", "02", "03"],
+                2: ["04", "05", "06"],
+                3: ["07", "08", "09"],
+                4: ["10", "11", "12"]
+            }
+            months_to_aggregate = [f"{year}-{m}" for m in quarter_months.get(quarter, [])]
+    elif period_type == "annual":
+        year = period_value
+        months_to_aggregate = [f"{year}-{str(m).zfill(2)}" for m in range(1, 13)]
+    
+    # Fetch and aggregate data
+    aggregated_income = {
+        'ingresos': 0, 'costo_ventas': 0, 'utilidad_bruta': 0,
+        'gastos_venta': 0, 'gastos_administracion': 0, 'gastos_generales': 0,
+        'utilidad_operativa': 0, 'otros_ingresos': 0, 'gastos_financieros': 0,
+        'otros_gastos': 0, 'utilidad_antes_impuestos': 0, 'impuestos': 0,
+        'utilidad_neta': 0, 'depreciacion': 0, 'amortizacion': 0, 'intereses': 0, 'ebitda': 0
+    }
+    
+    latest_balance = None
+    periods_found = []
+    
+    for periodo in months_to_aggregate:
+        income_stmt = await db.financial_statements.find_one({
+            'company_id': company_id,
+            'tipo': 'estado_resultados',
+            'periodo': periodo
+        })
+        
+        if income_stmt:
+            periods_found.append(periodo)
+            data = income_stmt.get('datos', {})
+            for key in aggregated_income:
+                if key in data:
+                    aggregated_income[key] += data.get(key, 0)
+        
+        balance_sheet = await db.financial_statements.find_one({
+            'company_id': company_id,
+            'tipo': 'balance_general',
+            'periodo': periodo
+        })
+        
+        if balance_sheet:
+            latest_balance = balance_sheet.get('datos', {})
+    
+    if not periods_found:
+        raise HTTPException(status_code=404, detail="No hay datos financieros para el período solicitado")
+    
+    # Calculate EBITDA
+    aggregated_income['ebitda'] = (
+        aggregated_income['utilidad_operativa'] + 
+        aggregated_income['depreciacion'] + 
+        aggregated_income['amortizacion']
+    )
+    
+    # Calculate metrics
+    balance_data = latest_balance or {}
+    metrics = calculate_financial_metrics(aggregated_income, balance_data)
+    
+    # Generate AI analysis
+    period_label = f"{period_type}: {period_value}"
+    if len(periods_found) > 1:
+        period_label = f"{period_value} ({', '.join(periods_found)})"
+    
+    analysis = await generate_financial_analysis(
+        metrics=metrics,
+        income_statement=aggregated_income,
+        balance_sheet=balance_data,
+        company_name=company_name,
+        period=period_label,
+        language=language
+    )
+    
+    return {
+        "period_type": period_type,
+        "period_value": period_value,
+        "periods_included": periods_found,
+        "company_name": company_name,
+        "analysis": analysis
+    }
+
+
 @router.get("/available-periods")
 async def get_available_periods_detailed(
     request: Request,
