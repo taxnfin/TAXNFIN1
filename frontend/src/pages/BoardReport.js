@@ -150,9 +150,31 @@ const BoardReport = () => {
       } catch (e) {
         console.log('Sankey not available for this period');
       }
+      
+      // Load AI Analysis
+      loadAIAnalysis(periodo, type);
     } catch (error) {
       console.error('Error loading period data:', error);
       toast.error('Error al cargar datos del período');
+    }
+  };
+
+  const loadAIAnalysis = async (periodo, type) => {
+    setLoadingAnalysis(true);
+    try {
+      const res = await api.get('/financial-statements/ai-analysis', {
+        params: {
+          period_type: type,
+          period_value: periodo,
+          language: language
+        }
+      });
+      setAiAnalysis(res.data?.analysis || null);
+    } catch (error) {
+      console.error('Error loading AI analysis:', error);
+      setAiAnalysis(null);
+    } finally {
+      setLoadingAnalysis(false);
     }
   };
 
