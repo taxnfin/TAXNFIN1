@@ -18,7 +18,14 @@ router = APIRouter(prefix="/financial-statements", tags=["Financial Statements"]
 
 
 def parse_alegra_income_statement(df: pd.DataFrame) -> Dict:
-    """Parse Alegra Income Statement Excel format"""
+    """Parse Alegra Income Statement Excel format
+    
+    Alegra format:
+    - Row 0-4: Header (company name, RFC, period, currency)
+    - Row 5: Column headers (Código, Cuenta contable, Mes/Año, %, ...)
+    - Row 6+: Data rows with code in col 0, name in col 1, value in col 2
+    - Special rows without code contain totals (Utilidad bruta, Utilidad operativa, Utilidad neta)
+    """
     result = {
         'ingresos': 0,
         'costo_ventas': 0,
@@ -33,100 +40,131 @@ def parse_alegra_income_statement(df: pd.DataFrame) -> Dict:
         'utilidad_antes_impuestos': 0,
         'impuestos': 0,
         'utilidad_neta': 0,
-        'depreciacion': 0,  # For EBITDA calculation
+        'depreciacion': 0,
         'amortizacion': 0,
         'intereses': 0,
         'raw_data': []
     }
     
-    # Find the column with values (usually the first numeric column after account code)
-    value_col = None
-    for col in df.columns:
-        if df[col].dtype in ['float64', 'int64'] or 'Ene' in str(col) or '2024' in str(col) or '2025' in str(col) or '2026' in str(col):
-            # Check if it has numeric values
-            try:
-                test_vals = pd.to_numeric(df[col], errors='coerce')
-                if test_vals.notna().any():
-                    value_col = col
-                    break
-            except:
-                continue
+    # Find header row and value column
+    header_row = None
+    value_col_idx = 2  # Default: column index 2 (third column)
     
-    if value_col is None:
-        # Try second column
-        if len(df.columns) > 1:
-            value_col = df.columns[1]
-    
-    # Process each row
     for idx, row in df.iterrows():
-        account_code = str(row.iloc[0]) if pd.notna(row.iloc[0]) else ''
-        account_name = str(row.iloc[1]) if len(row) > 1 and pd.notna(row.iloc[1]) else account_code
+        cell0 = str(row.iloc[0]) if pd.notna(row.iloc[0]) else ''
+        if 'Código' in cell0 or 'codigo' in cell0.lower():
+            header_row = idx
+            # Find the value column (first column with year/month data)
+            for col_idx in range(2, len(row)):
+                col_val = str(row.iloc[col_idx]) if pd.notna(row.iloc[col_idx]) else ''
+                if any(month in col_val for month in ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']) or any(str(yr) in col_val for yr in range(2020, 2030)):
+                    value_col_idx = col_idx
+                    break
+            break
+    
+    if header_row is None:
+        header_row = 5  # Default for Alegra
+    
+    # Process data rows (after header)
+    for idx, row in df.iterrows():
+        if idx <= header_row:
+            continue
+            
+        codigo = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ''
+        cuenta = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ''
         
         try:
-            value = float(row[value_col]) if pd.notna(row[value_col]) else 0
-        except:
-            value = 0
+            valor = float(row.iloc[value_col_idx]) if pd.notna(row.iloc[value_col_idx]) else 0
+        except (ValueError, TypeError):
+            valor = 0
         
-        # Map accounts to categories based on code patterns
-        code_clean = account_code.replace('-', '').replace(' ', '')
+        # Skip rows without meaningful data
+        if not cuenta and not codigo:
+            continue
         
-        # Store raw data
-        result['raw_data'].append({
-            'codigo': account_code,
-            'cuenta': account_name,
-            'valor': value
-        })
+        # Store raw data for debugging
+        if cuenta or codigo:
+            result['raw_data'].append({
+                'codigo': codigo,
+                'cuenta': cuenta,
+                'valor': valor
+            })
         
-        # Map to standard categories
-        if '400' in code_clean or 'Ingreso' in account_name or 'Venta' in account_name:
-            if 'Utilidad' not in account_name and value > 0:
-                result['ingresos'] += value
+        cuenta_lower = cuenta.lower().strip()
+        codigo_clean = codigo.replace('-', '').replace(' ', '')
         
-        elif '500' in code_clean or 'Costo' in account_name:
-            result['costo_ventas'] += abs(value)
+        # === TOTALES (filas sin código, solo nombre) ===
+        if not codigo or codigo == 'nan':
+            if cuenta_lower == 'utilidad bruta':
+                result['utilidad_bruta'] = valor
+            elif cuenta_lower == 'utilidad operativa':
+                result['utilidad_operativa'] = valor
+            elif cuenta_lower == 'utilidad neta':
+                result['utilidad_neta'] = valor
+            elif 'utilidad antes de impuestos' in cuenta_lower:
+                result['utilidad_antes_impuestos'] = valor
+            continue
         
-        elif 'Utilidad bruta' in account_name:
-            result['utilidad_bruta'] = value
+        # === INGRESOS (400-xx-xxx) ===
+        if codigo_clean.startswith('400') or codigo_clean.startswith('401'):
+            # Solo tomar el total principal de ingresos
+            if codigo_clean == '40001000' or codigo == '400-01-000':
+                result['ingresos'] = abs(valor)
         
-        elif '601' in code_clean or 'Gasto' in account_name and 'venta' in account_name.lower():
-            result['gastos_venta'] += abs(value)
+        # === COSTOS DE VENTAS (500-xx-xxx) ===
+        elif codigo_clean.startswith('500') or codigo_clean.startswith('501'):
+            # Solo tomar el total principal de costos
+            if codigo_clean == '50001000' or codigo == '500-01-000':
+                result['costo_ventas'] = abs(valor)
         
-        elif '602' in code_clean or 'administraci' in account_name.lower():
-            result['gastos_administracion'] += abs(value)
+        # === GASTOS DE VENTA (601-xx-xxx) ===
+        elif codigo_clean.startswith('601'):
+            if codigo_clean == '60100000' or codigo == '601-00-000':
+                result['gastos_venta'] = abs(valor)
         
-        elif '603' in code_clean or 'general' in account_name.lower():
-            result['gastos_generales'] += abs(value)
+        # === GASTOS DE ADMINISTRACIÓN (602-xx-xxx) ===
+        elif codigo_clean.startswith('602'):
+            if codigo_clean == '60200000' or codigo == '602-00-000':
+                result['gastos_administracion'] = abs(valor)
         
-        elif 'Utilidad operativa' in account_name:
-            result['utilidad_operativa'] = value
+        # === GASTOS GENERALES (603-xx-xxx) ===
+        elif codigo_clean.startswith('603'):
+            if codigo_clean == '60300000' or codigo == '603-00-000':
+                result['gastos_generales'] = abs(valor)
         
-        elif '404' in code_clean or 'Otros ingresos' in account_name or 'financiero' in account_name.lower() and 'ingreso' in account_name.lower():
-            result['otros_ingresos'] += value
+        # === OTROS INGRESOS (404-xx-xxx) ===
+        elif codigo_clean.startswith('404'):
+            if codigo_clean == '40400000' or codigo == '404-00-000':
+                result['otros_ingresos'] = abs(valor)
         
-        elif '604' in code_clean or 'Gasto' in account_name and 'financiero' in account_name.lower():
-            result['gastos_financieros'] += abs(value)
-            result['intereses'] += abs(value)
+        # === GASTOS FINANCIEROS (604-xx-xxx) ===
+        elif codigo_clean.startswith('604'):
+            if codigo_clean == '60400000' or codigo == '604-00-000':
+                result['gastos_financieros'] = abs(valor)
+                result['intereses'] = abs(valor)
         
-        elif '605' in code_clean or 'Otros gastos' in account_name:
-            result['otros_gastos'] += abs(value)
+        # === OTROS GASTOS (605-xx-xxx) ===
+        elif codigo_clean.startswith('605'):
+            if codigo_clean == '60500000' or codigo == '605-00-000':
+                result['otros_gastos'] = abs(valor)
         
-        elif 'Utilidad antes de impuestos' in account_name:
-            result['utilidad_antes_impuestos'] = value
+        # === IMPUESTOS (606-xx-xxx) ===
+        elif codigo_clean.startswith('606'):
+            if codigo_clean == '60600000' or codigo == '606-00-000':
+                result['impuestos'] = abs(valor)
         
-        elif '606' in code_clean or 'impuesto' in account_name.lower():
-            result['impuestos'] += abs(value)
-        
-        elif 'Utilidad neta' in account_name:
-            result['utilidad_neta'] = value
-        
-        elif 'deprecia' in account_name.lower():
-            result['depreciacion'] += abs(value)
-        
-        elif 'amortiza' in account_name.lower():
-            result['amortizacion'] += abs(value)
+        # === DEPRECIACIÓN Y AMORTIZACIÓN ===
+        if 'deprecia' in cuenta_lower:
+            result['depreciacion'] += abs(valor)
+        elif 'amortiza' in cuenta_lower:
+            result['amortizacion'] += abs(valor)
     
-    # Calculate EBITDA if not directly available
+    # Calculate EBITDA (Utilidad operativa + Depreciación + Amortización)
     result['ebitda'] = result['utilidad_operativa'] + result['depreciacion'] + result['amortizacion']
+    
+    # Si no se encontró utilidad bruta como total, calcularla
+    if result['utilidad_bruta'] == 0 and result['ingresos'] > 0:
+        result['utilidad_bruta'] = result['ingresos'] - result['costo_ventas']
     
     return result
 
