@@ -781,7 +781,7 @@ const Reports = () => {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-blue-800 flex items-center gap-2">
                   <Wallet size={16} />
-                  Saldo Inicial Bancos
+                  {t.initialBankBalance}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -795,7 +795,7 @@ const Reports = () => {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-gray-800 flex items-center gap-2">
                   {(totals.cobrosReales - totals.pagosReales) >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-                  Flujo Neto Real (S1-S5)
+                  {t.realNetFlow} (S1-S5)
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -809,7 +809,7 @@ const Reports = () => {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-gray-800 flex items-center gap-2">
                   <Calendar size={16} />
-                  Saldo Proyectado S18
+                  {t.projectedBalance} S18
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -825,7 +825,7 @@ const Reports = () => {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Calendar size={20} />
-                Flujo de Efectivo con Saldo de Bancos
+                {t.cashflowWithBankBalance}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -833,21 +833,21 @@ const Reports = () => {
                 <Table className="text-sm">
                   <TableHeader>
                     <TableRow className="bg-gray-50">
-                      <TableHead className="w-14 font-bold">Sem</TableHead>
-                      <TableHead className="w-28">Período</TableHead>
-                      <TableHead className="w-16 text-center">Tipo</TableHead>
-                      <TableHead className="text-right">Cobros Real</TableHead>
-                      <TableHead className="text-right">Pagos Real</TableHead>
-                      <TableHead className="text-right bg-gray-100">Cobros Proy.</TableHead>
-                      <TableHead className="text-right bg-gray-100">Pagos Proy.</TableHead>
-                      <TableHead className="text-right font-bold">Flujo Neto</TableHead>
-                      <TableHead className="text-right font-bold bg-blue-50">Saldo Bancos</TableHead>
+                      <TableHead className="w-14 font-bold">{t.wk}</TableHead>
+                      <TableHead className="w-28">{t.period}</TableHead>
+                      <TableHead className="w-16 text-center">{t.type}</TableHead>
+                      <TableHead className="text-right">{t.realCollections}</TableHead>
+                      <TableHead className="text-right">{t.realPayments}</TableHead>
+                      <TableHead className="text-right bg-gray-100">{t.projCollections}</TableHead>
+                      <TableHead className="text-right bg-gray-100">{t.projPayments}</TableHead>
+                      <TableHead className="text-right font-bold">{t.netFlow}</TableHead>
+                      <TableHead className="text-right font-bold bg-blue-50">{t.bankBalance}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     <TableRow className="bg-blue-50 border-b-2 border-blue-200">
                       <TableCell colSpan={8} className="font-semibold text-blue-800">
-                        SALDO INICIAL DE BANCOS
+                        {t.initialBankBalanceRow}
                       </TableCell>
                       <TableCell className="mono text-right font-bold text-blue-700 bg-blue-100">
                         {formatCurrency(saldoInicialBancos)}
@@ -867,13 +867,13 @@ const Reports = () => {
                         <TableCell className="text-xs">{week.dateRange}</TableCell>
                         <TableCell className="text-center">
                           {week.type === 'REAL' && (
-                            <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-800 font-medium">Real</span>
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-800 font-medium">{t.real}</span>
                           )}
                           {week.type === 'ACTUAL' && (
-                            <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 text-blue-800 font-semibold">Actual</span>
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 text-blue-800 font-semibold">{t.current}</span>
                           )}
                           {week.type === 'PROYECTADO' && (
-                            <span className="px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-600">Proy</span>
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-600">{t.proj}</span>
                           )}
                         </TableCell>
                         <TableCell className="mono text-right text-green-600 font-semibold">
