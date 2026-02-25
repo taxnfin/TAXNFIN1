@@ -268,6 +268,34 @@ export const translations = {
     days: 'days',
     months: 'months',
     percentage: '%',
+    
+    // Period Selector
+    periodType: 'Period Type',
+    selectPeriod: 'Select Period',
+    monthly: 'Monthly',
+    quarterly: 'Quarterly',
+    annual: 'Annual',
+    generic: 'Generic',
+    lastMonth: 'Last Month',
+    lastQuarter: 'Last Quarter',
+    lastYear: 'Last Year',
+    periodsIncluded: 'Periods included',
+    
+    // PDF Export
+    pdfGenerating: 'Generating complete PDF...',
+    pdfSuccess: 'PDF generated successfully',
+    pdfError: 'Error generating PDF',
+    page: 'Page',
+    of: 'of',
+    confidential: 'CONFIDENTIAL',
+    preparedFor: 'Prepared for',
+    financialSummary: 'Financial Summary',
+    incomeStatement: 'Income Statement',
+    balanceSheet: 'Balance Sheet',
+    metricsDetail: 'Metrics Detail',
+    good: 'Good',
+    warning: 'Warning',
+    critical: 'Critical',
   },
   
   pt: {
