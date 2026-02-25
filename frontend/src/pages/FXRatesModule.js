@@ -79,6 +79,21 @@ const FXRatesModule = () => {
     }
   };
 
+  const handleSync = async () => {
+    try {
+      toast.info('Sincronizando tipos de cambio...');
+      const res = await api.post('/fx-rates/sync');
+      if (res.data.success) {
+        toast.success(res.data.message || `Se actualizaron ${res.data.updated} tasas`);
+        loadData();
+      } else {
+        toast.error('Error en la sincronización');
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error sincronizando tipos de cambio');
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
