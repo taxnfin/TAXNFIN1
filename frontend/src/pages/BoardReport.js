@@ -196,7 +196,14 @@ const BoardReport = () => {
           language: lang
         }
       });
-      setAiAnalysis(res.data?.analysis || null);
+      const analysis = res.data?.analysis || null;
+      console.log('AI Analysis loaded:', {
+        hasAnalysis: !!analysis,
+        keys: analysis ? Object.keys(analysis) : [],
+        income_flow: !!analysis?.income_flow_analysis,
+        trends: !!analysis?.trends_analysis
+      });
+      setAiAnalysis(analysis);
     } catch (error) {
       console.error('Error loading AI analysis:', error);
       // Don't clear analysis on error, keep the previous one
