@@ -1613,48 +1613,48 @@ const CashflowProjections = () => {
             data-testid="export-pdf-btn"
           >
             <FileDown size={16} />
-            {exportingPdf ? 'Generando...' : 'Exportar PDF'}
+            {exportingPdf ? (t.exporting || 'Generando...') : t.exportPdf}
           </Button>
           
           <Dialog open={conceptDialogOpen} onOpenChange={setConceptDialogOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2 bg-[#0F172A]" data-testid="add-concept-btn">
                 <Plus size={16} />
-                Agregar Concepto
+                {t.addConcept}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Agregar Concepto Manual</DialogTitle>
+                <DialogTitle>{t.addManualConcept}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Nombre del concepto</Label>
+                  <Label>{t.conceptName}</Label>
                   <Input 
                     value={newConcept.nombre}
                     onChange={(e) => setNewConcept({...newConcept, nombre: e.target.value})}
-                    placeholder="Ej: Nómina, Renta, Venta proyectada..."
+                    placeholder={language === 'es' ? 'Ej: Nómina, Renta, Venta proyectada...' : 'E.g.: Payroll, Rent, Projected sale...'}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Tipo</Label>
+                    <Label>{t.conceptType}</Label>
                     <Select value={newConcept.tipo} onValueChange={(v) => setNewConcept({...newConcept, tipo: v})}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="ingreso">
-                          <span className="flex items-center gap-2"><TrendingUp size={14} className="text-green-500" /> Ingreso</span>
+                          <span className="flex items-center gap-2"><TrendingUp size={14} className="text-green-500" /> {t.income}</span>
                         </SelectItem>
                         <SelectItem value="egreso">
-                          <span className="flex items-center gap-2"><TrendingDown size={14} className="text-red-500" /> Egreso</span>
+                          <span className="flex items-center gap-2"><TrendingDown size={14} className="text-red-500" /> {t.expense}</span>
                         </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Monto</Label>
+                    <Label>{t.amount}</Label>
                     <Input 
                       type="number"
                       step="0.01"
@@ -1666,14 +1666,14 @@ const CashflowProjections = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Semana</Label>
+                    <Label>{t.week}</Label>
                     <Select value={String(newConcept.semana)} onValueChange={(v) => setNewConcept({...newConcept, semana: parseInt(v)})}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         {[1,2,3,4,5,6,7,8,9,10,11,12,13].map(s => (
-                          <SelectItem key={s} value={String(s)}>Semana {s}</SelectItem>
+                          <SelectItem key={s} value={String(s)}>{t.week} {s}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1686,14 +1686,14 @@ const CashflowProjections = () => {
                         onChange={(e) => setNewConcept({...newConcept, recurrente: e.target.checked})}
                         className="w-4 h-4"
                       />
-                      <span className="text-sm">Recurrente (todas las semanas)</span>
+                      <span className="text-sm">{t.recurring} ({language === 'es' ? 'todas las semanas' : 'all weeks'})</span>
                     </label>
                   </div>
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setConceptDialogOpen(false)}>Cancelar</Button>
-                <Button onClick={handleAddConcept}>Agregar</Button>
+                <Button variant="outline" onClick={() => setConceptDialogOpen(false)}>{t.cancel}</Button>
+                <Button onClick={handleAddConcept}>{t.add}</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
