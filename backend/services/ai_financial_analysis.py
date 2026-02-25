@@ -177,11 +177,16 @@ Responde SOLO con el JSON, sin markdown ni texto adicional."""
             # Ensure all keys exist
             required_keys = ['executive_summary', 'profitability_analysis', 'returns_analysis', 
                            'liquidity_analysis', 'solvency_analysis', 'recommendations']
+            
+            # Add trends_analysis if we had trends data
+            if trends_data and len(trends_data) > 1:
+                required_keys.append('trends_analysis')
+            
             defaults = get_default_analysis(language)
             
             for key in required_keys:
                 if key not in analysis_result or not analysis_result[key]:
-                    analysis_result[key] = defaults[key]
+                    analysis_result[key] = defaults.get(key, '')
             
             analysis_result["generated_by"] = "AI"
             analysis_result["model"] = "gpt-5.2"
