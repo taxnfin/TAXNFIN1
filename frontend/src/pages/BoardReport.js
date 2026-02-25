@@ -716,13 +716,17 @@ const BoardReport = () => {
         y += 5;
         
         // ====== EFFICIENCY SECTION ======
-        addNewPageIfNeeded(50);
+        addNewPageIfNeeded(60);
         drawSectionHeader(t.operationalEfficiency, [249, 115, 22]);
         
         const efficiencyItems = [
           [t.assetTurnover, formatNumber(metrics.efficiency?.asset_turnover?.value) + 'x'],
+          [t.receivablesTurnover, formatNumber(metrics.efficiency?.receivables_turnover?.value) + 'x'],
+          [t.inventoryTurnover, formatNumber(metrics.efficiency?.inventory_turnover?.value) + 'x'],
+          [t.payablesTurnover, formatNumber(metrics.efficiency?.payables_turnover?.value) + 'x'],
           [t.dso, formatNumber(metrics.efficiency?.dso?.value, 0) + ' ' + t.days],
           [t.dpo, formatNumber(metrics.efficiency?.dpo?.value, 0) + ' ' + t.days],
+          [t.dio, formatNumber(metrics.efficiency?.dio?.value, 0) + ' ' + t.days],
           [t.cashConversionCycle, formatNumber(metrics.efficiency?.cash_conversion_cycle?.value, 0) + ' ' + t.days],
         ];
         
@@ -732,7 +736,7 @@ const BoardReport = () => {
         y += 5;
         
         // ====== LIQUIDITY SECTION ======
-        addNewPageIfNeeded(50);
+        addNewPageIfNeeded(60);
         drawSectionHeader(t.liquidityAnalysis, [6, 182, 212]);
         
         if (aiAnalysis?.liquidity_analysis) {
@@ -742,17 +746,26 @@ const BoardReport = () => {
         const liquidityItems = [
           [t.currentRatio, metrics.liquidity?.current_ratio?.value, 2, 1, 'x'],
           [t.quickRatio, metrics.liquidity?.quick_ratio?.value, 1, 0.5, 'x'],
+          [t.cashRatio, metrics.liquidity?.cash_ratio?.value, 0.5, 0.2, 'x'],
           [t.workingCapital, metrics.liquidity?.working_capital?.value, 0, -Infinity, '$'],
+          [t.cashRunway, metrics.liquidity?.cash_runway?.value, 6, 3, 'months'],
+          [t.cashEfficiency, metrics.liquidity?.cash_efficiency?.value, null, null, '%'],
         ];
         
         liquidityItems.forEach(([label, value, good, warn, unit]) => {
-          const formatted = unit === '$' ? formatCurrency(value) : formatNumber(value) + 'x';
-          drawMetricRow(label, formatted, getStatus(value, good, warn));
+          let formatted;
+          if (unit === '$') formatted = formatCurrency(value);
+          else if (unit === 'x') formatted = formatNumber(value) + 'x';
+          else if (unit === '%') formatted = formatPercent(value);
+          else if (unit === 'months') formatted = formatNumber(value, 1) + ' ' + (language === 'es' ? 'meses' : 'months');
+          else formatted = formatNumber(value);
+          const status = good !== null ? getStatus(value, good, warn) : null;
+          drawMetricRow(label, formatted, status);
         });
         y += 5;
         
         // ====== SOLVENCY SECTION ======
-        addNewPageIfNeeded(50);
+        addNewPageIfNeeded(70);
         drawSectionHeader(t.solvencyAnalysis, [239, 68, 68]);
         
         if (aiAnalysis?.solvency_analysis) {
@@ -762,12 +775,18 @@ const BoardReport = () => {
         const solvencyItems = [
           [t.debtToEquity, metrics.solvency?.debt_to_equity?.value, 1, 2, 'x', true],
           [t.debtToAssets, metrics.solvency?.debt_to_assets?.value, 40, 60, '%', true],
+          [t.debtToEbitda, metrics.solvency?.debt_to_ebitda?.value, 3, 5, 'x', true],
           [t.interestCoverage, metrics.solvency?.interest_coverage?.value, 5, 2, 'x', false],
+          [t.financialLeverage, metrics.solvency?.financial_leverage?.value, null, null, 'x', null],
+          [t.netDebtToEbitda, metrics.solvency?.net_debt_to_ebitda?.value, 2, 3.5, 'x', true],
+          [t.equityRatio, metrics.solvency?.equity_ratio?.value, 40, 20, '%', false],
+          [language === 'es' ? 'Costo de Deuda' : 'Cost of Debt', metrics.solvency?.cost_of_debt?.value, null, null, '%', null],
         ];
         
         solvencyItems.forEach(([label, value, good, warn, unit, inverse]) => {
           const formatted = unit === '%' ? formatPercent(value) : formatNumber(value) + 'x';
-          drawMetricRow(label, formatted, getStatus(value, good, warn, inverse));
+          const status = good !== null ? getStatus(value, good, warn, inverse) : null;
+          drawMetricRow(label, formatted, status);
         });
         y += 5;
         
