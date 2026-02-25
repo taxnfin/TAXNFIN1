@@ -159,6 +159,8 @@ export const translations = {
     liquidityAnalysisAI: 'Análisis de Liquidez',
     solvencyAnalysisAI: 'Análisis de Solvencia',
     strategicRecommendations: 'Recomendaciones Estratégicas',
+    incomeFlowAnalysis: 'Análisis del Flujo del Estado de Resultados',
+    trendsAnalysis: 'Análisis de Tendencias Históricas',
     generatedByAI: 'Generado por IA',
     refreshAnalysis: 'Actualizar Análisis',
   },
