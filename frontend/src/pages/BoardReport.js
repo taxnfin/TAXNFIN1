@@ -996,6 +996,24 @@ const BoardReport = () => {
 
           {/* SUMMARY TAB */}
           <TabsContent value="summary" className="space-y-6">
+            {/* AI Executive Summary */}
+            {aiAnalysis && (
+              <Card className="border-2 border-indigo-100 bg-gradient-to-br from-indigo-50/50 to-purple-50/50">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-indigo-500" />
+                    <CardTitle className="text-indigo-900">{t.executiveSummary}</CardTitle>
+                    {aiAnalysis.generated_by === 'AI' && (
+                      <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">GPT-5.2</span>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-700 leading-relaxed">{aiAnalysis.executive_summary}</p>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Key Metrics */}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
               <MetricCard label={t.revenue} value={inc.ingresos} icon={DollarSign} color="blue" />
