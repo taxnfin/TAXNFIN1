@@ -320,7 +320,50 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
-## Latest Updates (February 25, 2026 - Session 5)
+## Latest Updates (February 25, 2026 - Session 6)
+
+### Completed in This Session ✅
+
+**1. Logo de Empresa Configurable (COMPLETADO)**
+
+El usuario puede ahora subir un logo para su empresa que aparecerá en los reportes PDF.
+
+**Implementación Backend:**
+- Agregado campo `logo_url` al modelo `Company` en `/backend/models/company.py`
+- Nuevo endpoint `POST /api/companies/{id}/logo` para subir logo (acepta hasta 2MB, convierte a base64)
+- Nuevo endpoint `DELETE /api/companies/{id}/logo` para eliminar logo
+- Validación de tipo de archivo (solo imágenes)
+
+**Implementación Frontend:**
+- Columna "Logo" agregada a la tabla de empresas en `/catalogs`
+- Sección "Logo de la Empresa" en el diálogo de edición con:
+  - Vista previa del logo actual
+  - Botón "Subir Logo" con upload de archivos
+  - Botón "X" para eliminar logo
+  - Indicación "PNG, JPG hasta 2MB"
+
+**2. Portada Profesional del PDF (COMPLETADO)**
+
+El PDF del Reporte Ejecutivo ahora tiene una portada de página completa estilo profesional:
+
+- Fondo oscuro (#0F172A) de página completa
+- Logo de la empresa centrado (si existe)
+- Nombre de la empresa en fuente grande centrado
+- Título "Reporte Ejecutivo" centrado
+- Box con el tipo de período y valor seleccionado
+- Períodos incluidos (si es agregado)
+- Fecha y hora de generación
+- RFC de la empresa
+
+**Testing:** 100% PASSED (backend y frontend verificados)
+- ✅ Endpoints de logo funcionando correctamente
+- ✅ Validación de archivos
+- ✅ UI de subida de logo
+- ✅ PDF generándose con portada profesional
+
+---
+
+## Previous Updates (February 25, 2026 - Session 5)
 
 ### Completed in This Session ✅
 
