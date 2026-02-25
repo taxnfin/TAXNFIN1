@@ -31,6 +31,7 @@ const DIAS_SEMANA = [
 ];
 
 const CashflowProjections = () => {
+  const [language, setLanguage] = useState('es');
   const [loading, setLoading] = useState(true);
   const [weeklyData, setWeeklyData] = useState([]);
   const [monthlyData, setMonthlyData] = useState([]);
@@ -42,6 +43,10 @@ const CashflowProjections = () => {
   const [expandedRows, setExpandedRows] = useState({});
   const [selectedPartyType, setSelectedPartyType] = useState('all');
   const [selectedParty, setSelectedParty] = useState('');
+  
+  // Translation helper
+  const t = financialTranslations[language];
+  const dateLocale = language === 'es' ? es : language === 'pt' ? ptBR : enUS;
   
   // Company config
   const [companyConfig, setCompanyConfig] = useState({ inicio_semana: 1 });
