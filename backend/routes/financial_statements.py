@@ -12,6 +12,7 @@ import re
 
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
+from services.ai_financial_analysis import generate_financial_analysis
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/financial-statements", tags=["Financial Statements"])
