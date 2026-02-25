@@ -320,9 +320,55 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
-## Latest Updates (February 5, 2026)
+## Latest Updates (February 25, 2026)
 
 ### Completed in This Session ✅
+
+**P0 - Dashboard de Métricas Financieras (COMPLETADO)**
+
+Nuevo módulo para análisis de estados financieros importados desde Alegra:
+
+**Backend implementado:**
+- `POST /api/financial-statements/upload/income-statement` - Cargar Estado de Resultados Excel
+- `POST /api/financial-statements/upload/balance-sheet` - Cargar Balance General Excel
+- `GET /api/financial-statements/metrics/{periodo}` - Obtener métricas calculadas
+- `GET /api/financial-statements/periods` - Listar períodos disponibles
+- `DELETE /api/financial-statements/{periodo}` - Eliminar período
+
+**Métricas calculadas:**
+1. **Márgenes**: Bruto, EBITDA, Operativo, Neto, NOPAT
+2. **Retorno**: ROIC, ROE, ROCE, ROA
+3. **Eficiencia**: Rotación de Activos, DSO, DPO, Ciclo de Conversión de Efectivo
+4. **Liquidez**: Razón Circulante, Prueba Ácida, Razón de Efectivo, Capital de Trabajo
+5. **Solvencia**: Deuda/Capital, Deuda/Activos, Deuda/EBITDA, Cobertura de Intereses
+
+**Frontend implementado:**
+- Nueva página `/financial-metrics` con navegación en sidebar
+- Selector de período con indicadores EdR (Estado de Resultados) y BG (Balance General)
+- Diálogo de carga de Excel con selector de tipo y período
+- Tarjetas de valores absolutos (Ingresos, EBITDA, Utilidad Neta, Activos, Pasivos, Capital)
+- Gráfico de barras de Márgenes de Rentabilidad
+- Gráfico de radar de Visión General
+- Secciones de métricas con indicadores de color (verde=bueno, amarillo=advertencia, rojo=malo)
+- Sección de datos del período con resumen de Estado de Resultados y Balance
+
+**Archivos creados/modificados:**
+- `backend/routes/financial_statements.py` - Nuevo módulo de 730 líneas
+- `backend/server.py` - Router registrado
+- `frontend/src/pages/FinancialMetrics.js` - Nuevo dashboard UI
+- `frontend/src/App.js` - Ruta agregada
+- `frontend/src/components/Layout.js` - Navegación agregada
+
+**Testing:**
+- Backend: 100% (16/16 tests pasados)
+- Frontend: 100% (todos los elementos UI verificados)
+- Test file: `/app/backend/tests/test_financial_statements.py`
+
+---
+
+## Previous Updates (February 5, 2026)
+
+### Completed Previously ✅
 
 **P0 - Correcciones Múltiples de CFDIs de Alegra (COMPLETADO)**
 
