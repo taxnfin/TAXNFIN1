@@ -1064,6 +1064,128 @@ const BoardReport = () => {
             </Card>
           </TabsContent>
 
+          {/* AI ANALYSIS TAB */}
+          <TabsContent value="analysis" className="space-y-6">
+            <Card className="border-2 border-indigo-100 bg-gradient-to-br from-indigo-50 to-purple-50">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-indigo-100 rounded-lg">
+                      <Brain className="w-6 h-6 text-indigo-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-indigo-900">{t.aiAnalysis}</CardTitle>
+                      <CardDescription>{t.aiAnalysisDesc}</CardDescription>
+                    </div>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => loadAIAnalysis(selectedPeriod, periodType)}
+                    disabled={loadingAnalysis}
+                    className="border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                  >
+                    <RefreshCw className={`w-4 h-4 mr-2 ${loadingAnalysis ? 'animate-spin' : ''}`} />
+                    {t.refreshAnalysis}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loadingAnalysis ? (
+                  <div className="flex items-center justify-center py-12">
+                    <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
+                    <span className="ml-3 text-indigo-600">{t.loadingAnalysis}</span>
+                  </div>
+                ) : aiAnalysis ? (
+                  <div className="space-y-6">
+                    {/* Executive Summary */}
+                    <div className="bg-white rounded-xl p-5 shadow-sm border border-indigo-100">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Sparkles className="w-5 h-5 text-indigo-500" />
+                        <h3 className="font-semibold text-lg text-indigo-900">{t.executiveSummaryAI}</h3>
+                      </div>
+                      <p className="text-gray-700 leading-relaxed">{aiAnalysis.executive_summary}</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Profitability Analysis */}
+                      <div className="bg-white rounded-xl p-5 shadow-sm border border-green-100">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="p-1.5 bg-green-100 rounded">
+                            <Percent className="w-4 h-4 text-green-600" />
+                          </div>
+                          <h3 className="font-semibold text-green-900">{t.profitabilityAnalysis}</h3>
+                        </div>
+                        <p className="text-gray-700 text-sm leading-relaxed">{aiAnalysis.profitability_analysis}</p>
+                      </div>
+
+                      {/* Returns Analysis */}
+                      <div className="bg-white rounded-xl p-5 shadow-sm border border-purple-100">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="p-1.5 bg-purple-100 rounded">
+                            <Target className="w-4 h-4 text-purple-600" />
+                          </div>
+                          <h3 className="font-semibold text-purple-900">{t.returnsAnalysis}</h3>
+                        </div>
+                        <p className="text-gray-700 text-sm leading-relaxed">{aiAnalysis.returns_analysis}</p>
+                      </div>
+
+                      {/* Liquidity Analysis */}
+                      <div className="bg-white rounded-xl p-5 shadow-sm border border-cyan-100">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="p-1.5 bg-cyan-100 rounded">
+                            <Wallet className="w-4 h-4 text-cyan-600" />
+                          </div>
+                          <h3 className="font-semibold text-cyan-900">{t.liquidityAnalysisAI}</h3>
+                        </div>
+                        <p className="text-gray-700 text-sm leading-relaxed">{aiAnalysis.liquidity_analysis}</p>
+                      </div>
+
+                      {/* Solvency Analysis */}
+                      <div className="bg-white rounded-xl p-5 shadow-sm border border-red-100">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="p-1.5 bg-red-100 rounded">
+                            <Scale className="w-4 h-4 text-red-600" />
+                          </div>
+                          <h3 className="font-semibold text-red-900">{t.solvencyAnalysisAI}</h3>
+                        </div>
+                        <p className="text-gray-700 text-sm leading-relaxed">{aiAnalysis.solvency_analysis}</p>
+                      </div>
+                    </div>
+
+                    {/* Strategic Recommendations */}
+                    <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl p-5 border border-emerald-200">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Lightbulb className="w-5 h-5 text-emerald-600" />
+                        <h3 className="font-semibold text-lg text-emerald-900">{t.strategicRecommendations}</h3>
+                      </div>
+                      <p className="text-gray-700 leading-relaxed">{aiAnalysis.recommendations}</p>
+                    </div>
+
+                    {aiAnalysis.generated_by === 'AI' && (
+                      <div className="text-center text-xs text-gray-400 flex items-center justify-center gap-1">
+                        <Sparkles className="w-3 h-3" />
+                        {t.generatedByAI} • GPT-5.2
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <Brain className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                    <p>No hay análisis disponible para este período</p>
+                    <Button 
+                      variant="outline" 
+                      className="mt-4"
+                      onClick={() => loadAIAnalysis(selectedPeriod, periodType)}
+                    >
+                      Generar Análisis
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           {/* MARGINS TAB */}
           <TabsContent value="margins" className="space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
