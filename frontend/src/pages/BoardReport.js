@@ -170,20 +170,22 @@ const BoardReport = () => {
     }
   };
 
-  const loadAIAnalysis = async (periodo, type) => {
+  const loadAIAnalysis = async (periodo, type, lang = language) => {
+    if (!periodo || !type) return;
+    
     setLoadingAnalysis(true);
     try {
       const res = await api.get('/financial-statements/ai-analysis', {
         params: {
           period_type: type,
           period_value: periodo,
-          language: language
+          language: lang
         }
       });
       setAiAnalysis(res.data?.analysis || null);
     } catch (error) {
       console.error('Error loading AI analysis:', error);
-      setAiAnalysis(null);
+      // Don't clear analysis on error, keep the previous one
     } finally {
       setLoadingAnalysis(false);
     }
