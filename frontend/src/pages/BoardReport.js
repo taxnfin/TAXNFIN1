@@ -77,6 +77,17 @@ const BoardReport = () => {
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const prevLanguageRef = useRef(language);
   
+  // PDF Configuration State
+  const [pdfConfigOpen, setPdfConfigOpen] = useState(false);
+  const [pdfConfig, setPdfConfig] = useState({
+    fontFamily: 'helvetica',
+    titleSize: 28,
+    subtitleSize: 16,
+    sectionHeaderSize: 11,
+    bodySize: 10,
+    smallSize: 8
+  });
+  
   const reportRef = useRef(null);
   const t = translations[language];
 
