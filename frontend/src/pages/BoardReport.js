@@ -1639,6 +1639,28 @@ const BoardReport = () => {
                       <p className="text-gray-700 leading-relaxed">{aiAnalysis.recommendations}</p>
                     </div>
 
+                    {/* Income Statement Flow Analysis */}
+                    {aiAnalysis.income_flow_analysis && (
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-5 border border-blue-200">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Activity className="w-5 h-5 text-blue-600" />
+                          <h3 className="font-semibold text-lg text-blue-900">{t.incomeFlowAnalysis || 'Análisis del Flujo del Estado de Resultados'}</h3>
+                        </div>
+                        <p className="text-gray-700 leading-relaxed">{aiAnalysis.income_flow_analysis}</p>
+                      </div>
+                    )}
+
+                    {/* Trends Analysis */}
+                    {aiAnalysis.trends_analysis && (
+                      <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-5 border border-amber-200">
+                        <div className="flex items-center gap-2 mb-3">
+                          <TrendingUp className="w-5 h-5 text-amber-600" />
+                          <h3 className="font-semibold text-lg text-amber-900">{t.trendsAnalysis || 'Análisis de Tendencias'}</h3>
+                        </div>
+                        <p className="text-gray-700 leading-relaxed">{aiAnalysis.trends_analysis}</p>
+                      </div>
+                    )}
+
                     {aiAnalysis.generated_by === 'AI' && (
                       <div className="text-center text-xs text-gray-400 flex items-center justify-center gap-1">
                         <Sparkles className="w-3 h-3" />
