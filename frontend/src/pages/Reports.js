@@ -900,7 +900,7 @@ const Reports = () => {
                     ))}
                     
                     <TableRow className="bg-[#0F172A] text-white font-bold">
-                      <TableCell colSpan={3} className="font-bold">TOTAL</TableCell>
+                      <TableCell colSpan={3} className="font-bold">{t.total}</TableCell>
                       <TableCell className="mono text-right text-green-400">{formatCurrency(totals.cobrosReales)}</TableCell>
                       <TableCell className="mono text-right text-red-400">{formatCurrency(totals.pagosReales)}</TableCell>
                       <TableCell className="mono text-right text-gray-400">{formatCurrency(totals.cobrosProyectados)}</TableCell>
