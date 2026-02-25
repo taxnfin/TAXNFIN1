@@ -533,6 +533,19 @@ const BoardReport = () => {
     setExporting(true);
     toast.info(t.pdfGenerating || 'Generando PDF completo...');
     
+    // Log AI analysis availability for debugging
+    console.log('PDF Export - AI Analysis available:', {
+      hasAiAnalysis: !!aiAnalysis,
+      executive_summary: !!aiAnalysis?.executive_summary,
+      profitability_analysis: !!aiAnalysis?.profitability_analysis,
+      returns_analysis: !!aiAnalysis?.returns_analysis,
+      liquidity_analysis: !!aiAnalysis?.liquidity_analysis,
+      solvency_analysis: !!aiAnalysis?.solvency_analysis,
+      recommendations: !!aiAnalysis?.recommendations,
+      income_flow_analysis: !!aiAnalysis?.income_flow_analysis,
+      trends_analysis: !!aiAnalysis?.trends_analysis
+    });
+    
     try {
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pageWidth = pdf.internal.pageSize.getWidth();
