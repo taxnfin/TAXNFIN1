@@ -238,6 +238,12 @@ export const financialTranslations = {
     finalBalanceVsMinThreshold: 'Saldo Final vs Umbral Mínimo (Cash Gap)',
     weeklyNetFlow: 'Flujo Neto Semanal',
     configureProjections: 'Configurar Proyecciones',
+    addConcept: 'Agregar Concepto',
+    addManualConcept: 'Agregar Concepto Manual',
+    income: 'Ingreso',
+    expense: 'Egreso',
+    add: 'Agregar',
+    cancel: 'Cancelar',
     
     // Categories
     categories: 'Categorías',
