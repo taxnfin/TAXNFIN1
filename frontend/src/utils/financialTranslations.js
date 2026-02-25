@@ -855,6 +855,12 @@ export const financialTranslations = {
     finalBalanceVsMinThreshold: 'Saldo Final vs Limite Mínimo (Cash Gap)',
     weeklyNetFlow: 'Fluxo Líquido Semanal',
     configureProjections: 'Configurar Projeções',
+    addConcept: 'Adicionar Conceito',
+    addManualConcept: 'Adicionar Conceito Manual',
+    income: 'Receita',
+    expense: 'Despesa',
+    add: 'Adicionar',
+    cancel: 'Cancelar',
     
     // Categories
     categories: 'Categorias',
