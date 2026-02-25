@@ -466,22 +466,28 @@ def calculate_financial_metrics(income: Dict, balance: Dict) -> Dict:
                 'interpretation': 'Eficiencia del capital invertido'
             },
             'dso': {
-                'value': safe_div(cuentas_por_cobrar * 365, ingresos),
+                'value': safe_div(cuentas_por_cobrar * 30, ingresos),  # 30 días para datos mensuales
                 'label': 'DSO (Días de Cobro)',
-                'formula': '(CxC × 365) / Ingresos',
+                'formula': '(CxC × 30) / Ingresos mensuales',
                 'interpretation': 'Días promedio para cobrar'
             },
             'dpo': {
-                'value': safe_div(cuentas_por_pagar * 365, costo_ventas),
+                'value': safe_div(cuentas_por_pagar * 30, costo_ventas) if costo_ventas > 0 else 0,  # 30 días para datos mensuales
                 'label': 'DPO (Días de Pago)',
-                'formula': '(CxP × 365) / Costo de Ventas',
+                'formula': '(CxP × 30) / Costo de Ventas mensual',
                 'interpretation': 'Días promedio para pagar'
             },
             'dio': {
-                'value': safe_div(inventarios * 365, costo_ventas),
+                'value': safe_div(inventarios * 30, costo_ventas) if costo_ventas > 0 else 0,  # 30 días para datos mensuales
                 'label': 'DIO (Días de Inventario)',
-                'formula': '(Inventarios × 365) / Costo de Ventas',
+                'formula': '(Inventarios × 30) / Costo de Ventas mensual',
                 'interpretation': 'Días promedio de inventario'
+            },
+            'cash_conversion_cycle': {
+                'value': safe_div(cuentas_por_cobrar * 30, ingresos) + safe_div(inventarios * 30, costo_ventas if costo_ventas > 0 else 1) - safe_div(cuentas_por_pagar * 30, costo_ventas if costo_ventas > 0 else 1),
+                'label': 'Ciclo de Conversión de Efectivo',
+                'formula': 'DSO + DIO - DPO',
+                'interpretation': 'Días para convertir inversión en efectivo'
             }
         },
         
