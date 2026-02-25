@@ -299,125 +299,470 @@ const BoardReport = () => {
     }
   };
 
-  // Export to PDF
+  // Export to PDF - Complete Report
   const exportToPDF = async () => {
     setExporting(true);
+    toast.info(t.exporting || 'Generando PDF...');
+    
     try {
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
       const margin = 15;
+      const contentWidth = pageWidth - (margin * 2);
       let y = margin;
       
-      // Header
-      pdf.setFontSize(24);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(15, 23, 42);
-      pdf.text(company?.nombre || 'Company', margin, y);
-      y += 10;
+      const addNewPageIfNeeded = (requiredSpace = 30) => {
+        if (y + requiredSpace > pageHeight - margin) {
+          pdf.addPage();
+          y = margin;
+          return true;
+        }
+        return false;
+      };
       
-      pdf.setFontSize(16);
-      pdf.setTextColor(100, 116, 139);
-      pdf.text(t.title, margin, y);
-      y += 7;
+      const drawLine = () => {
+        pdf.setDrawColor(200, 200, 200);
+        pdf.line(margin, y, pageWidth - margin, y);
+        y += 5;
+      };
+      
+      const drawSectionHeader = (title, color = [59, 130, 246]) => {
+        addNewPageIfNeeded(25);
+        pdf.setFillColor(...color);
+        pdf.rect(margin, y - 2, contentWidth, 10, 'F');
+        pdf.setFontSize(12);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(255, 255, 255);
+        pdf.text(title, margin + 3, y + 5);
+        pdf.setTextColor(0, 0, 0);
+        y += 15;
+      };
+      
+      const drawMetricRow = (label, value, isHighlight = false) => {
+        if (isHighlight) {
+          pdf.setFillColor(240, 249, 255);
+          pdf.rect(margin, y - 3, contentWidth, 7, 'F');
+        }
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        pdf.text(label, margin + 2, y);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(String(value), margin + 90, y);
+        pdf.setFont('helvetica', 'normal');
+        y += 7;
+      };
+      
+      // ====== PAGE 1: COVER & EXECUTIVE SUMMARY ======
+      
+      // Header with company branding
+      pdf.setFillColor(15, 23, 42);
+      pdf.rect(0, 0, pageWidth, 50, 'F');
+      
+      pdf.setFontSize(28);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(255, 255, 255);
+      pdf.text(company?.nombre || 'Company', margin, 25);
+      
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(148, 163, 184);
+      pdf.text(t.title, margin, 35);
       
       pdf.setFontSize(10);
-      pdf.text(`${t.period}: ${selectedPeriod} | ${t.generatedOn}: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, margin, y);
-      y += 15;
+      pdf.text(`${t.period}: ${selectedPeriod} | ${t.generatedOn}: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, margin, 45);
       
-      // Executive Summary
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(15, 23, 42);
-      pdf.text(t.executiveSummary, margin, y);
-      y += 8;
+      pdf.setTextColor(0, 0, 0);
+      y = 65;
       
       if (currentMetrics) {
         const inc = currentMetrics.income_statement || {};
         const bal = currentMetrics.balance_sheet || {};
         const metrics = currentMetrics.metrics || {};
         
-        pdf.setFontSize(10);
-        pdf.setFont('helvetica', 'normal');
+        // Key Metrics Summary (2 columns)
+        drawSectionHeader(t.executiveSummary, [15, 23, 42]);
         
-        const summaryItems = [
+        const col1X = margin;
+        const col2X = margin + contentWidth / 2;
+        const startY = y;
+        
+        // Column 1 - Income Statement
+        pdf.setFontSize(11);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(59, 130, 246);
+        pdf.text('Estado de Resultados', col1X, y);
+        pdf.setTextColor(0, 0, 0);
+        y += 8;
+        
+        const incomeItems = [
           [t.revenue, formatCurrency(inc.ingresos)],
+          [t.costOfSales || 'Costo de Ventas', formatCurrency(inc.costo_ventas)],
           [t.grossProfit, formatCurrency(inc.utilidad_bruta)],
+          [t.operatingExpenses || 'Gastos Operativos', formatCurrency((inc.gastos_venta || 0) + (inc.gastos_administracion || 0) + (inc.gastos_generales || 0))],
           [t.ebitda, formatCurrency(inc.ebitda || inc.utilidad_operativa)],
           [t.netProfit, formatCurrency(inc.utilidad_neta)],
-          [t.grossMargin, formatPercent(metrics.margins?.gross_margin?.value)],
-          [t.netMargin, formatPercent(metrics.margins?.net_margin?.value)],
+        ];
+        
+        incomeItems.forEach(([label, value], idx) => {
+          pdf.setFontSize(9);
+          pdf.setFont('helvetica', 'normal');
+          pdf.text(label + ':', col1X, y);
+          pdf.setFont('helvetica', 'bold');
+          if (idx === incomeItems.length - 1) {
+            pdf.setTextColor(16, 185, 129);
+          }
+          pdf.text(value, col1X + 50, y);
+          pdf.setTextColor(0, 0, 0);
+          y += 6;
+        });
+        
+        // Column 2 - Balance Sheet
+        y = startY;
+        pdf.setFontSize(11);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(34, 197, 94);
+        pdf.text('Balance General', col2X, y);
+        pdf.setTextColor(0, 0, 0);
+        y += 8;
+        
+        const balanceItems = [
           [t.totalAssets, formatCurrency(bal.activo_total)],
+          [t.currentAssets || 'Activo Circulante', formatCurrency(bal.activo_circulante)],
+          [t.fixedAssets || 'Activo Fijo', formatCurrency(bal.activo_fijo)],
+          [t.totalLiabilities, formatCurrency(bal.pasivo_total)],
           [t.equity, formatCurrency(bal.capital_contable)],
         ];
         
-        summaryItems.forEach(([label, value]) => {
-          pdf.text(label + ':', margin, y);
-          pdf.text(value, margin + 50, y);
-          y += 5;
+        balanceItems.forEach(([label, value]) => {
+          pdf.setFontSize(9);
+          pdf.setFont('helvetica', 'normal');
+          pdf.text(label + ':', col2X, y);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text(value, col2X + 50, y);
+          y += 6;
+        });
+        
+        y += 15;
+        
+        // ====== MARGINS SECTION ======
+        drawSectionHeader(t.marginsAnalysis, [34, 197, 94]);
+        
+        const marginsData = [
+          [t.grossMargin, metrics.margins?.gross_margin?.value, '%', metrics.margins?.gross_margin?.value >= 30 ? '✓' : metrics.margins?.gross_margin?.value >= 15 ? '!' : '✗'],
+          [t.ebitdaMargin, metrics.margins?.ebitda_margin?.value, '%', metrics.margins?.ebitda_margin?.value >= 20 ? '✓' : metrics.margins?.ebitda_margin?.value >= 10 ? '!' : '✗'],
+          [t.operatingMargin, metrics.margins?.operating_margin?.value, '%', metrics.margins?.operating_margin?.value >= 15 ? '✓' : metrics.margins?.operating_margin?.value >= 5 ? '!' : '✗'],
+          [t.netMargin, metrics.margins?.net_margin?.value, '%', metrics.margins?.net_margin?.value >= 10 ? '✓' : metrics.margins?.net_margin?.value >= 3 ? '!' : '✗'],
+          [t.nopatMargin, metrics.margins?.nopat_margin?.value, '%', '-'],
+        ];
+        
+        // Table header
+        pdf.setFillColor(240, 240, 240);
+        pdf.rect(margin, y - 3, contentWidth, 7, 'F');
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Métrica', margin + 2, y);
+        pdf.text('Valor', margin + 80, y);
+        pdf.text('Estado', margin + 120, y);
+        y += 8;
+        
+        marginsData.forEach(([label, value, unit, status]) => {
+          pdf.setFontSize(9);
+          pdf.setFont('helvetica', 'normal');
+          pdf.text(label, margin + 2, y);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text(formatPercent(value), margin + 80, y);
+          pdf.setFont('helvetica', 'normal');
+          if (status === '✓') pdf.setTextColor(34, 197, 94);
+          else if (status === '!') pdf.setTextColor(245, 158, 11);
+          else if (status === '✗') pdf.setTextColor(239, 68, 68);
+          pdf.text(status, margin + 125, y);
+          pdf.setTextColor(0, 0, 0);
+          y += 6;
         });
         
         y += 10;
         
-        // Returns Section
-        pdf.setFontSize(12);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text(t.returnsOnInvestment, margin, y);
-        y += 6;
+        // ====== RETURNS SECTION ======
+        drawSectionHeader(t.returnsOnInvestment, [139, 92, 246]);
         
-        pdf.setFontSize(10);
-        pdf.setFont('helvetica', 'normal');
-        
-        const returnItems = [
-          ['ROIC', formatPercent(metrics.returns?.roic?.value)],
-          ['ROE', formatPercent(metrics.returns?.roe?.value)],
-          ['ROA', formatPercent(metrics.returns?.roa?.value)],
+        const returnsData = [
+          ['ROIC', metrics.returns?.roic?.value, metrics.returns?.roic?.value >= 15 ? '✓' : metrics.returns?.roic?.value >= 8 ? '!' : '✗'],
+          ['ROE', metrics.returns?.roe?.value, metrics.returns?.roe?.value >= 15 ? '✓' : metrics.returns?.roe?.value >= 8 ? '!' : '✗'],
+          ['ROCE', metrics.returns?.roce?.value, metrics.returns?.roce?.value >= 12 ? '✓' : metrics.returns?.roce?.value >= 6 ? '!' : '✗'],
+          ['ROA', metrics.returns?.roa?.value, metrics.returns?.roa?.value >= 8 ? '✓' : metrics.returns?.roa?.value >= 4 ? '!' : '✗'],
+          ['RONIC', metrics.returns?.ronic?.value, '-'],
+          ['GMROI', metrics.returns?.gmroi?.value, '-', 'x'],
         ];
         
-        returnItems.forEach(([label, value]) => {
-          pdf.text(label + ':', margin, y);
-          pdf.text(value, margin + 30, y);
-          y += 5;
+        pdf.setFillColor(240, 240, 240);
+        pdf.rect(margin, y - 3, contentWidth, 7, 'F');
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Métrica', margin + 2, y);
+        pdf.text('Valor', margin + 80, y);
+        pdf.text('Estado', margin + 120, y);
+        y += 8;
+        
+        returnsData.forEach(([label, value, status, unit = '%']) => {
+          pdf.setFontSize(9);
+          pdf.setFont('helvetica', 'normal');
+          pdf.text(label, margin + 2, y);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text(unit === 'x' ? formatNumber(value) + 'x' : formatPercent(value), margin + 80, y);
+          pdf.setFont('helvetica', 'normal');
+          if (status === '✓') pdf.setTextColor(34, 197, 94);
+          else if (status === '!') pdf.setTextColor(245, 158, 11);
+          else if (status === '✗') pdf.setTextColor(239, 68, 68);
+          pdf.text(status, margin + 125, y);
+          pdf.setTextColor(0, 0, 0);
+          y += 6;
+        });
+        
+        // ====== PAGE 2: EFFICIENCY & LIQUIDITY ======
+        pdf.addPage();
+        y = margin;
+        
+        // Efficiency Section
+        drawSectionHeader(t.operationalEfficiency, [249, 115, 22]);
+        
+        const efficiencyData = [
+          [t.assetTurnover, metrics.efficiency?.asset_turnover?.value, 'x'],
+          [t.receivablesTurnover || 'Rotación CxC', metrics.efficiency?.receivables_turnover?.value, 'x'],
+          [t.inventoryTurnover || 'Rotación Inventario', metrics.efficiency?.inventory_turnover?.value, 'x'],
+          [t.dso, metrics.efficiency?.dso?.value, t.days],
+          [t.dpo, metrics.efficiency?.dpo?.value, t.days],
+          [t.dio || 'DIO', metrics.efficiency?.dio?.value, t.days],
+          [t.cashConversionCycle, metrics.efficiency?.cash_conversion_cycle?.value, t.days],
+        ];
+        
+        efficiencyData.forEach(([label, value, unit]) => {
+          drawMetricRow(label, unit === 'x' ? formatNumber(value) + 'x' : formatNumber(value, 0) + ' ' + unit);
         });
         
         y += 10;
         
         // Liquidity Section
-        pdf.setFontSize(12);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text(t.liquidityAnalysis, margin, y);
-        y += 6;
+        drawSectionHeader(t.liquidityAnalysis, [6, 182, 212]);
         
-        pdf.setFontSize(10);
-        pdf.setFont('helvetica', 'normal');
-        
-        const liquidityItems = [
-          [t.currentRatio, formatNumber(metrics.liquidity?.current_ratio?.value) + 'x'],
-          [t.quickRatio, formatNumber(metrics.liquidity?.quick_ratio?.value) + 'x'],
-          [t.workingCapital, formatCurrency(metrics.liquidity?.working_capital?.value)],
+        const liquidityData = [
+          [t.currentRatio, metrics.liquidity?.current_ratio?.value, 'x', metrics.liquidity?.current_ratio?.value >= 2 ? '✓' : metrics.liquidity?.current_ratio?.value >= 1 ? '!' : '✗'],
+          [t.quickRatio, metrics.liquidity?.quick_ratio?.value, 'x', metrics.liquidity?.quick_ratio?.value >= 1 ? '✓' : metrics.liquidity?.quick_ratio?.value >= 0.5 ? '!' : '✗'],
+          [t.cashRatio, metrics.liquidity?.cash_ratio?.value, 'x', metrics.liquidity?.cash_ratio?.value >= 0.5 ? '✓' : metrics.liquidity?.cash_ratio?.value >= 0.2 ? '!' : '✗'],
+          [t.workingCapital, metrics.liquidity?.working_capital?.value, '$', metrics.liquidity?.working_capital?.value >= 0 ? '✓' : '✗'],
+          [t.cashRunway, metrics.liquidity?.cash_runway?.value, 'meses', metrics.liquidity?.cash_runway?.value >= 6 ? '✓' : metrics.liquidity?.cash_runway?.value >= 3 ? '!' : '✗'],
         ];
         
-        liquidityItems.forEach(([label, value]) => {
-          pdf.text(label + ':', margin, y);
-          pdf.text(value, margin + 50, y);
-          y += 5;
+        pdf.setFillColor(240, 240, 240);
+        pdf.rect(margin, y - 3, contentWidth, 7, 'F');
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Métrica', margin + 2, y);
+        pdf.text('Valor', margin + 80, y);
+        pdf.text('Estado', margin + 120, y);
+        y += 8;
+        
+        liquidityData.forEach(([label, value, unit, status]) => {
+          pdf.setFontSize(9);
+          pdf.setFont('helvetica', 'normal');
+          pdf.text(label, margin + 2, y);
+          pdf.setFont('helvetica', 'bold');
+          if (unit === '$') {
+            pdf.text(formatCurrency(value), margin + 80, y);
+          } else if (unit === 'x') {
+            pdf.text(formatNumber(value) + 'x', margin + 80, y);
+          } else {
+            pdf.text(formatNumber(value, 1) + ' ' + unit, margin + 80, y);
+          }
+          pdf.setFont('helvetica', 'normal');
+          if (status === '✓') pdf.setTextColor(34, 197, 94);
+          else if (status === '!') pdf.setTextColor(245, 158, 11);
+          else if (status === '✗') pdf.setTextColor(239, 68, 68);
+          pdf.text(status, margin + 125, y);
+          pdf.setTextColor(0, 0, 0);
+          y += 6;
         });
         
         y += 10;
         
         // Solvency Section
-        pdf.setFontSize(12);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text(t.solvencyAnalysis, margin, y);
-        y += 6;
+        drawSectionHeader(t.solvencyAnalysis, [239, 68, 68]);
         
-        pdf.setFontSize(10);
-        pdf.setFont('helvetica', 'normal');
-        
-        const solvencyItems = [
-          [t.debtToEquity, formatNumber(metrics.solvency?.debt_to_equity?.value) + 'x'],
-          [t.debtToEbitda, formatNumber(metrics.solvency?.debt_to_ebitda?.value) + 'x'],
-          [t.interestCoverage, formatNumber(metrics.solvency?.interest_coverage?.value) + 'x'],
+        const solvencyData = [
+          [t.debtToEquity, metrics.solvency?.debt_to_equity?.value, 'x', metrics.solvency?.debt_to_equity?.value <= 1 ? '✓' : metrics.solvency?.debt_to_equity?.value <= 2 ? '!' : '✗'],
+          [t.debtToAssets, metrics.solvency?.debt_to_assets?.value, '%', metrics.solvency?.debt_to_assets?.value <= 40 ? '✓' : metrics.solvency?.debt_to_assets?.value <= 60 ? '!' : '✗'],
+          [t.debtToEbitda, metrics.solvency?.debt_to_ebitda?.value, 'x', metrics.solvency?.debt_to_ebitda?.value <= 3 ? '✓' : metrics.solvency?.debt_to_ebitda?.value <= 5 ? '!' : '✗'],
+          [t.netDebtToEbitda, metrics.solvency?.net_debt_to_ebitda?.value, 'x', metrics.solvency?.net_debt_to_ebitda?.value <= 2 ? '✓' : metrics.solvency?.net_debt_to_ebitda?.value <= 3.5 ? '!' : '✗'],
+          [t.interestCoverage, metrics.solvency?.interest_coverage?.value, 'x', metrics.solvency?.interest_coverage?.value >= 5 ? '✓' : metrics.solvency?.interest_coverage?.value >= 2 ? '!' : '✗'],
+          [t.financialLeverage, metrics.solvency?.financial_leverage?.value, 'x', '-'],
+          [t.equityRatio, metrics.solvency?.equity_ratio?.value, '%', metrics.solvency?.equity_ratio?.value >= 40 ? '✓' : metrics.solvency?.equity_ratio?.value >= 20 ? '!' : '✗'],
         ];
+        
+        pdf.setFillColor(240, 240, 240);
+        pdf.rect(margin, y - 3, contentWidth, 7, 'F');
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Métrica', margin + 2, y);
+        pdf.text('Valor', margin + 80, y);
+        pdf.text('Estado', margin + 120, y);
+        y += 8;
+        
+        solvencyData.forEach(([label, value, unit, status]) => {
+          pdf.setFontSize(9);
+          pdf.setFont('helvetica', 'normal');
+          pdf.text(label, margin + 2, y);
+          pdf.setFont('helvetica', 'bold');
+          if (unit === '%') {
+            pdf.text(formatPercent(value), margin + 80, y);
+          } else {
+            pdf.text(formatNumber(value) + 'x', margin + 80, y);
+          }
+          pdf.setFont('helvetica', 'normal');
+          if (status === '✓') pdf.setTextColor(34, 197, 94);
+          else if (status === '!') pdf.setTextColor(245, 158, 11);
+          else if (status === '✗') pdf.setTextColor(239, 68, 68);
+          pdf.text(status, margin + 125, y);
+          pdf.setTextColor(0, 0, 0);
+          y += 6;
+        });
+        
+        // ====== PAGE 3: TRENDS COMPARISON ======
+        if (trendsData.length > 1) {
+          pdf.addPage();
+          y = margin;
+          
+          drawSectionHeader(t.monthlyTrends + ' - ' + t.comparison, [99, 102, 241]);
+          
+          // Table header
+          pdf.setFillColor(240, 240, 240);
+          pdf.rect(margin, y - 3, contentWidth, 7, 'F');
+          pdf.setFontSize(8);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text('Período', margin + 2, y);
+          pdf.text('Ingresos', margin + 30, y);
+          pdf.text('Util. Bruta', margin + 60, y);
+          pdf.text('EBITDA', margin + 90, y);
+          pdf.text('Util. Neta', margin + 115, y);
+          pdf.text('Mg. Bruto', margin + 145, y);
+          pdf.text('Mg. Neto', margin + 170, y);
+          y += 8;
+          
+          trendsData.forEach((p, idx) => {
+            const prev = idx > 0 ? trendsData[idx - 1] : null;
+            const ingChange = prev ? ((p.income_statement?.ingresos || 0) - (prev.income_statement?.ingresos || 0)) / (prev.income_statement?.ingresos || 1) * 100 : 0;
+            
+            pdf.setFontSize(8);
+            pdf.setFont('helvetica', 'normal');
+            pdf.text(p.periodo, margin + 2, y);
+            pdf.text(formatCurrency(p.income_statement?.ingresos).replace('$', ''), margin + 30, y);
+            pdf.text(formatCurrency(p.income_statement?.utilidad_bruta).replace('$', ''), margin + 60, y);
+            pdf.text(formatCurrency(p.income_statement?.utilidad_operativa).replace('$', ''), margin + 90, y);
+            
+            if ((p.income_statement?.utilidad_neta || 0) >= 0) {
+              pdf.setTextColor(34, 197, 94);
+            } else {
+              pdf.setTextColor(239, 68, 68);
+            }
+            pdf.text(formatCurrency(p.income_statement?.utilidad_neta).replace('$', ''), margin + 115, y);
+            pdf.setTextColor(0, 0, 0);
+            
+            pdf.text(formatPercent(p.metrics?.margins?.gross_margin?.value), margin + 145, y);
+            pdf.text(formatPercent(p.metrics?.margins?.net_margin?.value), margin + 170, y);
+            
+            if (prev) {
+              pdf.setFontSize(6);
+              if (ingChange >= 0) pdf.setTextColor(34, 197, 94);
+              else pdf.setTextColor(239, 68, 68);
+              pdf.text(`${ingChange >= 0 ? '+' : ''}${ingChange.toFixed(1)}%`, margin + 30, y + 4);
+              pdf.setTextColor(0, 0, 0);
+            }
+            
+            y += 10;
+          });
+        }
+        
+        // ====== PAGE 4: SANKEY DIAGRAM (if available) ======
+        if (reportRef.current) {
+          pdf.addPage();
+          y = margin;
+          
+          drawSectionHeader(t.sankeyTitle, [59, 130, 246]);
+          
+          try {
+            const canvas = await html2canvas(reportRef.current, { 
+              scale: 2, 
+              backgroundColor: '#ffffff',
+              logging: false 
+            });
+            const imgData = canvas.toDataURL('image/png');
+            const imgWidth = contentWidth;
+            const imgHeight = Math.min((canvas.height * imgWidth) / canvas.width, 120);
+            pdf.addImage(imgData, 'PNG', margin, y, imgWidth, imgHeight);
+            y += imgHeight + 10;
+          } catch (e) {
+            pdf.setFontSize(10);
+            pdf.text('Diagrama no disponible en esta exportación', margin, y);
+            y += 10;
+          }
+          
+          // Sankey Summary
+          if (sankeyData?.summary) {
+            y += 5;
+            pdf.setFontSize(11);
+            pdf.setFont('helvetica', 'bold');
+            pdf.text('Desglose del Estado de Resultados', margin, y);
+            y += 8;
+            
+            const sankeyItems = [
+              ['Ingresos', sankeyData.summary.ingresos, '100%', [59, 130, 246]],
+              ['(-) Costo de Ventas', sankeyData.summary.costo_ventas, ((sankeyData.summary.costo_ventas / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [239, 68, 68]],
+              ['= Utilidad Bruta', sankeyData.summary.utilidad_bruta, ((sankeyData.summary.utilidad_bruta / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [34, 197, 94]],
+              ['(-) Gastos Operativos', sankeyData.summary.gastos_operativos, ((sankeyData.summary.gastos_operativos / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [249, 115, 22]],
+              ['= Utilidad Operativa', sankeyData.summary.utilidad_operativa, ((sankeyData.summary.utilidad_operativa / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [16, 185, 129]],
+              ['(-) Otros Gastos', sankeyData.summary.otros_gastos, ((sankeyData.summary.otros_gastos / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [239, 68, 68]],
+              ['(-) Impuestos', sankeyData.summary.impuestos, ((sankeyData.summary.impuestos / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [168, 85, 247]],
+              ['= UTILIDAD NETA', sankeyData.summary.utilidad_neta, ((sankeyData.summary.utilidad_neta / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [5, 150, 105]],
+            ];
+            
+            sankeyItems.forEach(([label, value, pct, color], idx) => {
+              const isTotal = label.startsWith('=');
+              if (isTotal) {
+                pdf.setFillColor(240, 249, 255);
+                pdf.rect(margin, y - 3, contentWidth, 7, 'F');
+              }
+              pdf.setFontSize(9);
+              pdf.setFont('helvetica', isTotal ? 'bold' : 'normal');
+              pdf.setTextColor(...color);
+              pdf.text(label, margin + 2, y);
+              pdf.setTextColor(0, 0, 0);
+              pdf.text(formatCurrency(value), margin + 70, y);
+              pdf.text(pct, margin + 130, y);
+              y += 7;
+            });
+          }
+        }
+        
+        // Footer on all pages
+        const totalPages = pdf.internal.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+          pdf.setPage(i);
+          pdf.setFontSize(8);
+          pdf.setTextColor(150, 150, 150);
+          pdf.text(`${company?.nombre || 'Company'} - ${t.title} - ${selectedPeriod}`, margin, pageHeight - 10);
+          pdf.text(`Página ${i} de ${totalPages}`, pageWidth - margin - 25, pageHeight - 10);
+        }
+      }
+      
+      const fileName = `${t.title.replace(/\s/g, '_')}_${company?.nombre || 'Company'}_${selectedPeriod}.pdf`;
+      pdf.save(fileName);
+      toast.success(language === 'es' ? 'PDF exportado exitosamente' : language === 'pt' ? 'PDF exportado com sucesso' : 'PDF exported successfully');
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      toast.error('Error exportando PDF');
+    } finally {
+      setExporting(false);
+    }
+  };
         
         solvencyItems.forEach(([label, value]) => {
           pdf.text(label + ':', margin, y);
