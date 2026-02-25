@@ -16,6 +16,7 @@ import CategoriesModule from './pages/CategoriesModule';
 import CashflowProjections from './pages/CashflowProjections';
 import DIOTModule from './pages/DIOTModule';
 import TreasuryDecisions from './pages/TreasuryDecisions';
+import FinancialMetrics from './pages/FinancialMetrics';
 import Layout from './components/Layout';
 import { Toaster } from './components/ui/sonner';
 import api from './api/axios';
@@ -124,6 +125,7 @@ function App() {
             <Route path="reports" element={<Reports />} />
             <Route path="projections" element={<CashflowProjections />} />
             <Route path="treasury" element={<TreasuryDecisions />} />
+            <Route path="financial-metrics" element={<FinancialMetrics />} />
             <Route path="diot" element={<DIOTModule />} />
             <Route path="advanced" element={<AdvancedFeatures />} />
             <Route path="admin" element={<Admin />} />
