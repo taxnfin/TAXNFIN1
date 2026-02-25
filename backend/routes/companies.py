@@ -1,7 +1,8 @@
 """Company routes"""
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from typing import Dict, List, Optional
 from datetime import datetime
+import base64
 
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
