@@ -235,10 +235,10 @@ const Reports = () => {
       const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const fileName = `Reportes_Financieros_${company?.nombre || 'Empresa'}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
       saveAs(data, fileName);
-      toast.success('Reporte Excel exportado exitosamente');
+      toast.success(t.excelExportSuccess);
     } catch (error) {
       console.error('Error exporting Excel:', error);
-      toast.error('Error exportando Excel');
+      toast.error(t.excelExportError);
     }
   };
 
