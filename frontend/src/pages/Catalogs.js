@@ -64,8 +64,10 @@ const Catalogs = () => {
   });
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, type: null, item: null });
   
-  const [companyForm, setCompanyForm] = useState({ nombre: '', rfc: '', moneda_base: 'MXN', pais: 'México' });
+  const [companyForm, setCompanyForm] = useState({ nombre: '', rfc: '', moneda_base: 'MXN', pais: 'México', logo_url: null });
   const [editingCompany, setEditingCompany] = useState(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef(null);
   const [accountForm, setAccountForm] = useState({ nombre: '', numero_cuenta: '', banco: '', moneda: 'MXN', saldo_inicial: 0, fecha_saldo: '' });
   const [editingAccount, setEditingAccount] = useState(null);
   const [vendorForm, setVendorForm] = useState({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_pago: '' });
