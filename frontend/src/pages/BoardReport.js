@@ -391,6 +391,11 @@ const BoardReport = () => {
 
   // Export to PDF - Complete Multi-Page Report with AI Analysis
   const exportToPDF = async () => {
+    if (!currentMetrics || !currentMetrics.income_statement) {
+      toast.error(language === 'es' ? 'No hay datos financieros para exportar' : 'No financial data to export');
+      return;
+    }
+    
     setExporting(true);
     toast.info(t.pdfGenerating || 'Generando PDF completo...');
     
