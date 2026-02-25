@@ -75,6 +75,7 @@ const BoardReport = () => {
   const [periodsIncluded, setPeriodsIncluded] = useState([]);
   const [aiAnalysis, setAiAnalysis] = useState(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  const prevLanguageRef = useRef(language);
   
   const reportRef = useRef(null);
   const t = translations[language];
@@ -89,12 +90,14 @@ const BoardReport = () => {
     }
   }, [selectedPeriod, periodType]);
 
-  // Reload AI analysis when language changes
+  // Reload AI analysis when language changes (only if we have data)
   useEffect(() => {
-    if (selectedPeriod && periodType) {
+    // Only reload if language actually changed and we have period data
+    if (prevLanguageRef.current !== language && selectedPeriod && periodType && currentMetrics) {
+      prevLanguageRef.current = language;
       loadAIAnalysis(selectedPeriod, periodType);
     }
-  }, [language]);
+  }, [language, selectedPeriod, periodType, currentMetrics]);
 
   const loadData = async () => {
     setLoading(true);
