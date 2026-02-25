@@ -516,6 +516,20 @@ const BoardReport = () => {
       return;
     }
     
+    // Check if AI analysis is still loading
+    if (loadingAnalysis) {
+      toast.warning(language === 'es' 
+        ? 'El análisis de IA aún está cargando. Espere a que termine para incluirlo en el PDF.' 
+        : 'AI analysis is still loading. Wait for it to complete to include it in the PDF.');
+    }
+    
+    // Inform if AI analysis is not available
+    if (!aiAnalysis) {
+      toast.info(language === 'es'
+        ? 'Generando PDF sin análisis de IA (no disponible).'
+        : 'Generating PDF without AI analysis (not available).');
+    }
+    
     setExporting(true);
     toast.info(t.pdfGenerating || 'Generando PDF completo...');
     
