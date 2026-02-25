@@ -488,6 +488,18 @@ def calculate_financial_metrics(income: Dict, balance: Dict) -> Dict:
                 'label': 'Ciclo de Conversión de Efectivo',
                 'formula': 'DSO + DIO - DPO',
                 'interpretation': 'Días para convertir inversión en efectivo'
+            },
+            'nwc_to_revenue': {
+                'value': safe_pct((activo_circulante - pasivo_circulante), ingresos) if ingresos > 0 else 0,
+                'label': 'NWC / Ingresos',
+                'formula': 'Capital de Trabajo / Ingresos',
+                'interpretation': 'Capital de trabajo como % de ingresos'
+            },
+            'capex_to_revenue': {
+                'value': 0,  # Requiere datos de CapEx del flujo de efectivo
+                'label': 'CapEx / Ingresos',
+                'formula': 'CapEx / Ingresos',
+                'interpretation': 'Inversión en activos como % de ingresos'
             }
         },
         
@@ -510,6 +522,24 @@ def calculate_financial_metrics(income: Dict, balance: Dict) -> Dict:
                 'label': 'Razón de Efectivo',
                 'formula': 'Efectivo / Pasivo Circulante',
                 'interpretation': 'Capacidad de pago inmediato con efectivo'
+            },
+            'cash_runway': {
+                'value': safe_div(efectivo, (income.get('gastos_venta', 0) + income.get('gastos_administracion', 0) + income.get('gastos_generales', 0))) if (income.get('gastos_venta', 0) + income.get('gastos_administracion', 0) + income.get('gastos_generales', 0)) > 0 else 999,
+                'label': 'Cash Runway',
+                'formula': 'Efectivo / Gastos Operativos Mensuales',
+                'interpretation': 'Meses de operación con efectivo actual'
+            },
+            'cash_efficiency': {
+                'value': safe_pct(utilidad_neta, efectivo) if efectivo > 0 else 0,
+                'label': 'Eficiencia de Efectivo',
+                'formula': 'Utilidad Neta / Efectivo',
+                'interpretation': 'Retorno sobre efectivo disponible'
+            },
+            'cash_cycle': {
+                'value': safe_div(cuentas_por_cobrar * 30, ingresos) + safe_div(inventarios * 30, costo_ventas if costo_ventas > 0 else 1) - safe_div(cuentas_por_pagar * 30, costo_ventas if costo_ventas > 0 else 1),
+                'label': 'Ciclo de Efectivo',
+                'formula': 'DSO + DIO - DPO',
+                'interpretation': 'Días del ciclo de conversión de efectivo'
             },
             'working_capital': {
                 'value': activo_circulante - pasivo_circulante,
