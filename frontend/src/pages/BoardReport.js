@@ -1193,6 +1193,10 @@ const BoardReport = () => {
       
       const periodLabel2 = periodType === 'monthly' ? selectedPeriod : `${periodType}_${selectedPeriod}`;
       const fileName = `${t.title.replace(/\s/g, '_')}_${company?.nombre || 'Company'}_${periodLabel2}.pdf`;
+      
+      // Log total pages generated
+      console.log('PDF Generated - Total pages:', currentPage, 'Trends data:', trendsData.length, 'Sankey available:', !!sankeyData?.summary);
+      
       pdf.save(fileName);
       toast.success(t.pdfSuccess);
     } catch (error) {
