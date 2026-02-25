@@ -105,7 +105,7 @@ const Catalogs = () => {
       toast.success('Empresa creada');
       setDialogs({ ...dialogs, company: false });
       loadData();
-      setCompanyForm({ nombre: '', rfc: '', moneda_base: 'MXN', pais: 'México' });
+      setCompanyForm({ nombre: '', rfc: '', moneda_base: 'MXN', pais: 'México', logo_url: null });
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error creando empresa');
     }
@@ -117,7 +117,8 @@ const Catalogs = () => {
       nombre: company.nombre,
       rfc: company.rfc,
       moneda_base: company.moneda_base || 'MXN',
-      pais: company.pais || 'México'
+      pais: company.pais || 'México',
+      logo_url: company.logo_url || null
     });
     setDialogs({ ...dialogs, editCompany: true });
   };
@@ -130,13 +131,59 @@ const Catalogs = () => {
       toast.success('Empresa actualizada');
       setDialogs({ ...dialogs, editCompany: false });
       setEditingCompany(null);
-      setCompanyForm({ nombre: '', rfc: '', moneda_base: 'MXN', pais: 'México' });
+      setCompanyForm({ nombre: '', rfc: '', moneda_base: 'MXN', pais: 'México', logo_url: null });
       // Refresh data immediately
       const companiesRes = await api.get('/companies');
       console.log('Companies refreshed:', companiesRes.data);
       setCompanies([...companiesRes.data]); // Force new array reference
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error actualizando empresa');
+    }
+  };
+
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingCompany) return;
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Por favor selecciona una imagen');
+      return;
+    }
+    
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('La imagen no debe exceder 2MB');
+      return;
+    }
+    
+    setUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await api.post(`/companies/${editingCompany.id}/logo`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
+      setCompanyForm({ ...companyForm, logo_url: response.data.logo_url });
+      toast.success('Logo subido correctamente');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error subiendo logo');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!editingCompany) return;
+    
+    try {
+      await api.delete(`/companies/${editingCompany.id}/logo`);
+      setCompanyForm({ ...companyForm, logo_url: null });
+      toast.success('Logo eliminado');
+    } catch (error) {
+      toast.error('Error eliminando logo');
     }
   };
 
