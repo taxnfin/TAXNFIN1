@@ -221,13 +221,28 @@ const FinancialMetrics = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Métricas Financieras</h1>
-          <p className="text-sm text-gray-500 mt-1">Análisis de Estados Financieros</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t.financialMetrics}</h1>
+          <p className="text-sm text-gray-500 mt-1">{t.financialAnalysis}</p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Language Selector */}
+          <Select value={language} onValueChange={setLanguage}>
+            <SelectTrigger className="w-36" data-testid="language-selector">
+              <Globe className="w-4 h-4 mr-2" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {languages.map(lang => (
+                <SelectItem key={lang.code} value={lang.code}>
+                  {lang.flag} {lang.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
           <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
             <SelectTrigger className="w-40" data-testid="period-selector">
-              <SelectValue placeholder="Período" />
+              <SelectValue placeholder={t.period} />
             </SelectTrigger>
             <SelectContent>
               {periods.map((p) => (
@@ -243,31 +258,31 @@ const FinancialMetrics = () => {
             <DialogTrigger asChild>
               <Button data-testid="upload-btn" className="gap-2">
                 <Upload className="w-4 h-4" />
-                Cargar Excel
+                {t.uploadExcel}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Cargar Estado Financiero</DialogTitle>
+                <DialogTitle>{t.uploadStatement}</DialogTitle>
                 <DialogDescription>
-                  Sube el archivo Excel exportado de Alegra
+                  {t.uploadInstructions}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label>Tipo de Reporte</Label>
+                  <Label>{t.conceptType}</Label>
                   <Select value={uploadType} onValueChange={setUploadType}>
                     <SelectTrigger data-testid="upload-type-selector">
-                      <SelectValue placeholder="Seleccionar tipo" />
+                      <SelectValue placeholder={t.selectPeriod} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="income">Estado de Resultados</SelectItem>
-                      <SelectItem value="balance">Balance General</SelectItem>
+                      <SelectItem value="income">{t.incomeStatement}</SelectItem>
+                      <SelectItem value="balance">{t.balanceSheet}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Período (YYYY-MM)</Label>
+                  <Label>{t.period} (YYYY-MM)</Label>
                   <Input 
                     type="month"
                     value={uploadPeriodo}
@@ -276,7 +291,7 @@ const FinancialMetrics = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Archivo Excel</Label>
+                  <Label>{t.selectFile}</Label>
                   <Input 
                     type="file" 
                     accept=".xlsx,.xls"
