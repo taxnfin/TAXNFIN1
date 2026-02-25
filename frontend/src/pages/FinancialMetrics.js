@@ -11,15 +11,17 @@ import {
   TrendingUp, TrendingDown, Upload, FileSpreadsheet, Calendar, 
   DollarSign, Percent, Activity, BarChart3, PieChart, RefreshCw,
   Target, Wallet, Building2, ChevronRight, Info, Trash2,
-  ArrowUpRight, ArrowDownRight, Minus, Calculator, Scale
+  ArrowUpRight, ArrowDownRight, Minus, Calculator, Scale, Globe
 } from 'lucide-react';
 import { 
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer, ComposedChart, Area,
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar
 } from 'recharts';
+import { financialTranslations, languages } from '../utils/financialTranslations';
 
 const FinancialMetrics = () => {
+  const [language, setLanguage] = useState('es');
   const [periods, setPeriods] = useState([]);
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [metrics, setMetrics] = useState(null);
@@ -28,6 +30,8 @@ const FinancialMetrics = () => {
   const [uploadType, setUploadType] = useState('');
   const [uploadPeriodo, setUploadPeriodo] = useState('');
   const [uploading, setUploading] = useState(false);
+  
+  const t = financialTranslations[language];
 
   useEffect(() => {
     loadPeriods();
