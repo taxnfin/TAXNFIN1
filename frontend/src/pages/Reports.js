@@ -1106,13 +1106,13 @@ const Reports = () => {
             <CardContent className="py-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-bold">{company?.nombre || 'Empresa'}</h2>
-                  <p className="text-slate-300 mt-1">Estado de Resultados - Diagrama Sankey</p>
+                  <h2 className="text-2xl font-bold">{company?.nombre || t.company}</h2>
+                  <p className="text-slate-300 mt-1">{t.incomeStatementSankeyDiagram}</p>
                 </div>
                 <div className="flex items-center gap-4">
                   <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
                     <SelectTrigger className="w-40 bg-white/10 border-white/20 text-white" data-testid="sankey-period-selector">
-                      <SelectValue placeholder="Período" />
+                      <SelectValue placeholder={t.period} />
                     </SelectTrigger>
                     <SelectContent>
                       {periods.map((p) => (
@@ -1131,9 +1131,9 @@ const Reports = () => {
             <Card>
               <CardContent className="py-12 text-center">
                 <PieChart className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                <h3 className="text-lg font-medium text-gray-900">Sin datos para Sankey</h3>
+                <h3 className="text-lg font-medium text-gray-900">{t.noData}</h3>
                 <p className="text-sm text-gray-500 mt-1">
-                  Selecciona un período con estado de resultados cargado
+                  {t.selectPeriod}
                 </p>
               </CardContent>
             </Card>
@@ -1144,10 +1144,10 @@ const Reports = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <PieChart className="w-5 h-5 text-blue-500" />
-                    Flujo del Estado de Resultados - {selectedPeriod}
+                    {t.sankeyTitle} - {selectedPeriod}
                   </CardTitle>
                   <CardDescription>
-                    Visualización del flujo desde Ingresos hasta Utilidad Neta
+                    {t.sankeyDesc}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
