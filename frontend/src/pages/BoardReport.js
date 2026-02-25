@@ -1076,6 +1076,20 @@ const BoardReport = () => {
           
           drawSectionHeader(t.sankeyTitle, [59, 130, 246]);
           
+          // Add AI analysis for income statement flow if available
+          if (aiAnalysis?.income_flow_analysis) {
+            pdf.setFont(fontFamily, 'normal');
+            pdf.setFontSize(bodySize);
+            pdf.setTextColor(60, 60, 60);
+            const flowLines = wrapText(aiAnalysis.income_flow_analysis, contentWidth - 6, bodySize);
+            flowLines.forEach(line => {
+              addNewPageIfNeeded(6);
+              pdf.text(line, margin + 3, y);
+              y += 5;
+            });
+            y += 8;
+          }
+          
           const sankeyItems = [
             [t.revenue, sankeyData.summary.ingresos, '100%', [59, 130, 246]],
             ['(-) ' + t.costOfSales, sankeyData.summary.costo_ventas, ((sankeyData.summary.costo_ventas / sankeyData.summary.ingresos) * 100).toFixed(1) + '%', [239, 68, 68]],
@@ -1092,13 +1106,13 @@ const BoardReport = () => {
               pdf.setFillColor(240, 249, 255);
               pdf.rect(margin, y - 2, contentWidth, 7, 'F');
             }
-            pdf.setFontSize(9);
-            pdf.setFont('helvetica', isTotal ? 'bold' : 'normal');
+            pdf.setFontSize(bodySize);
+            pdf.setFont(fontFamily, isTotal ? 'bold' : 'normal');
             pdf.setTextColor(...color);
             pdf.text(label, margin + 2, y + 2);
             pdf.setTextColor(0, 0, 0);
-            pdf.text(formatCurrency(value), margin + 75, y + 2);
-            pdf.text(pct, margin + 135, y + 2);
+            pdf.text(formatCurrency(value), margin + 80, y + 2);
+            pdf.text(pct, margin + 140, y + 2);
             y += 8;
           });
         }
