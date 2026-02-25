@@ -925,9 +925,9 @@ const Reports = () => {
             <Card>
               <CardContent className="py-12 text-center">
                 <FileSpreadsheet className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                <h3 className="text-lg font-medium text-gray-900">Sin datos financieros</h3>
+                <h3 className="text-lg font-medium text-gray-900">{t.noFinancialData}</h3>
                 <p className="text-sm text-gray-500 mt-1">
-                  Carga estados financieros desde el módulo de Métricas Financieras
+                  {t.uploadFromFinancialMetrics}
                 </p>
               </CardContent>
             </Card>
@@ -937,7 +937,7 @@ const Reports = () => {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm text-blue-800">Períodos</CardTitle>
+                    <CardTitle className="text-sm text-blue-800">{t.periods}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-3xl font-bold text-blue-700">{trendsData.length}</p>
@@ -945,7 +945,7 @@ const Reports = () => {
                 </Card>
                 <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm text-green-800">Ingresos Últ. Período</CardTitle>
+                    <CardTitle className="text-sm text-green-800">{t.revenueLastPeriod}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-2xl font-bold text-green-700">
@@ -955,7 +955,7 @@ const Reports = () => {
                 </Card>
                 <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm text-purple-800">Utilidad Neta Últ.</CardTitle>
+                    <CardTitle className="text-sm text-purple-800">{t.netProfitLast}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-2xl font-bold text-purple-700">
@@ -965,7 +965,7 @@ const Reports = () => {
                 </Card>
                 <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm text-amber-800">ROE Últ. Período</CardTitle>
+                    <CardTitle className="text-sm text-amber-800">{t.roeLastPeriod}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-2xl font-bold text-amber-700">
@@ -982,7 +982,7 @@ const Reports = () => {
                   <CardHeader>
                     <CardTitle className="text-base flex items-center gap-2">
                       <DollarSign className="w-5 h-5 text-blue-500" />
-                      Ingresos y Utilidades por Período
+                      {t.revenueAndProfitByPeriod}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -993,9 +993,9 @@ const Reports = () => {
                         <YAxis tickFormatter={(v) => `$${(v/1000000).toFixed(1)}M`} />
                         <Tooltip formatter={(value) => formatMXN(value)} />
                         <Legend />
-                        <Bar dataKey="ingresos" name="Ingresos" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="utilidadBruta" name="Utilidad Bruta" fill="#22C55E" radius={[4, 4, 0, 0]} />
-                        <Line type="monotone" dataKey="utilidadNeta" name="Utilidad Neta" stroke="#8B5CF6" strokeWidth={3} dot={{ fill: '#8B5CF6' }} />
+                        <Bar dataKey="ingresos" name={t.revenue} fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="utilidadBruta" name={t.grossProfit} fill="#22C55E" radius={[4, 4, 0, 0]} />
+                        <Line type="monotone" dataKey="utilidadNeta" name={t.netProfit} stroke="#8B5CF6" strokeWidth={3} dot={{ fill: '#8B5CF6' }} />
                       </ComposedChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -1006,7 +1006,7 @@ const Reports = () => {
                   <CardHeader>
                     <CardTitle className="text-base flex items-center gap-2">
                       <TrendingUp className="w-5 h-5 text-green-500" />
-                      Márgenes por Período
+                      {t.marginsByPeriod}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -1017,8 +1017,8 @@ const Reports = () => {
                         <YAxis unit="%" />
                         <Tooltip formatter={(value) => `${value.toFixed(1)}%`} />
                         <Legend />
-                        <Line type="monotone" dataKey="margenBruto" name="Margen Bruto" stroke="#22C55E" strokeWidth={2} dot={{ fill: '#22C55E' }} />
-                        <Line type="monotone" dataKey="margenNeto" name="Margen Neto" stroke="#3B82F6" strokeWidth={2} dot={{ fill: '#3B82F6' }} />
+                        <Line type="monotone" dataKey="margenBruto" name={t.grossMargin} stroke="#22C55E" strokeWidth={2} dot={{ fill: '#22C55E' }} />
+                        <Line type="monotone" dataKey="margenNeto" name={t.netMargin} stroke="#3B82F6" strokeWidth={2} dot={{ fill: '#3B82F6' }} />
                       </LineChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -1029,7 +1029,7 @@ const Reports = () => {
                   <CardHeader>
                     <CardTitle className="text-base flex items-center gap-2">
                       <Building2 className="w-5 h-5 text-purple-500" />
-                      Retorno sobre Inversión
+                      {t.returnOnInvestment}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
