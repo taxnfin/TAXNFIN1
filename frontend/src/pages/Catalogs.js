@@ -588,14 +588,64 @@ const Catalogs = () => {
             setDialogs({...dialogs, editCompany: open});
             if (!open) {
               setEditingCompany(null);
-              setCompanyForm({ nombre: '', rfc: '', moneda_base: 'MXN', pais: 'México' });
+              setCompanyForm({ nombre: '', rfc: '', moneda_base: 'MXN', pais: 'México', logo_url: null });
             }
           }}>
-            <DialogContent>
+            <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>Editar Empresa</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleUpdateCompany} className="space-y-4">
+                {/* Logo Section */}
+                <div className="space-y-2">
+                  <Label>Logo de la Empresa</Label>
+                  <div className="flex items-center gap-4">
+                    {companyForm.logo_url ? (
+                      <div className="relative">
+                        <img 
+                          src={companyForm.logo_url} 
+                          alt="Logo" 
+                          className="w-24 h-24 object-contain border rounded-lg bg-white p-2"
+                        />
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="absolute -top-2 -right-2 h-6 w-6"
+                          onClick={handleRemoveLogo}
+                        >
+                          <X size={14} />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="w-24 h-24 border-2 border-dashed rounded-lg flex items-center justify-center bg-gray-50">
+                        <Image size={32} className="text-gray-400" />
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-2">
+                      <input
+                        ref={logoInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        className="hidden"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => logoInputRef.current?.click()}
+                        disabled={uploadingLogo}
+                        className="gap-2"
+                      >
+                        <Upload size={14} />
+                        {uploadingLogo ? 'Subiendo...' : 'Subir Logo'}
+                      </Button>
+                      <p className="text-xs text-gray-500">PNG, JPG hasta 2MB</p>
+                    </div>
+                  </div>
+                </div>
+                
                 <div className="space-y-2">
                   <Label>Nombre de la Empresa</Label>
                   <Input 
