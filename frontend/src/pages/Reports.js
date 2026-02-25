@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import api from '@/api/axios';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -8,13 +8,17 @@ import { toast } from 'sonner';
 import { format, addWeeks, addDays } from 'date-fns';
 import { 
   TrendingUp, TrendingDown, Calendar, RefreshCw, Wallet, AlertTriangle,
-  BarChart3, PieChart, DollarSign, Building2, FileSpreadsheet
+  BarChart3, PieChart, DollarSign, Building2, FileSpreadsheet, Download, FileText
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, 
   CartesianGrid, Tooltip, Legend, ComposedChart, Area, Sankey, Layer
 } from 'recharts';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 // All available currencies
 const CURRENCIES = [
