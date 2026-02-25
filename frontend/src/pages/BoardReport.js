@@ -983,8 +983,9 @@ const BoardReport = () => {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-7 mb-8 bg-white shadow-sm">
+          <TabsList className="grid w-full grid-cols-8 mb-8 bg-white shadow-sm">
             <TabsTrigger value="summary" className="gap-2"><BarChart3 className="w-4 h-4" />{t.tabSummary}</TabsTrigger>
+            <TabsTrigger value="analysis" className="gap-2"><Brain className="w-4 h-4" />{t.aiAnalysis || 'IA'}</TabsTrigger>
             <TabsTrigger value="margins" className="gap-2"><Percent className="w-4 h-4" />{t.tabMargins}</TabsTrigger>
             <TabsTrigger value="returns" className="gap-2"><Target className="w-4 h-4" />{t.tabReturns}</TabsTrigger>
             <TabsTrigger value="efficiency" className="gap-2"><Activity className="w-4 h-4" />{t.tabEfficiency}</TabsTrigger>
