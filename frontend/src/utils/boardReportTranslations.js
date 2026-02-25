@@ -147,6 +147,19 @@ export const translations = {
     good: 'Bueno',
     warning: 'Atención',
     critical: 'Crítico',
+    
+    // AI Analysis
+    aiAnalysis: 'Análisis Inteligente',
+    aiAnalysisDesc: 'Análisis financiero generado por inteligencia artificial',
+    loadingAnalysis: 'Generando análisis...',
+    executiveSummaryAI: 'Resumen Ejecutivo',
+    profitabilityAnalysis: 'Análisis de Rentabilidad',
+    returnsAnalysis: 'Análisis de Retornos',
+    liquidityAnalysisAI: 'Análisis de Liquidez',
+    solvencyAnalysisAI: 'Análisis de Solvencia',
+    strategicRecommendations: 'Recomendaciones Estratégicas',
+    generatedByAI: 'Generado por IA',
+    refreshAnalysis: 'Actualizar Análisis',
   },
   
   en: {
