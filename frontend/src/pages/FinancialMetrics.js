@@ -387,12 +387,12 @@ const FinancialMetrics = () => {
         <>
           {/* Absolute Values - Summary */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            <ValueCard label="Ingresos" value={metrics.metrics?.absolute_values?.ingresos} icon={DollarSign} color="green" />
-            <ValueCard label="EBITDA" value={metrics.metrics?.absolute_values?.ebitda} icon={TrendingUp} color="blue" />
-            <ValueCard label="Utilidad Neta" value={metrics.metrics?.absolute_values?.utilidad_neta} icon={Target} color="purple" />
-            <ValueCard label="Activo Total" value={metrics.metrics?.absolute_values?.activo_total} icon={Building2} color="amber" />
-            <ValueCard label="Pasivo Total" value={metrics.metrics?.absolute_values?.pasivo_total} icon={Scale} color="red" />
-            <ValueCard label="Capital Contable" value={metrics.metrics?.absolute_values?.capital_contable} icon={Wallet} color="green" />
+            <ValueCard label={t.revenue} value={metrics.metrics?.absolute_values?.ingresos} icon={DollarSign} color="green" />
+            <ValueCard label={t.ebitda} value={metrics.metrics?.absolute_values?.ebitda} icon={TrendingUp} color="blue" />
+            <ValueCard label={t.netProfit} value={metrics.metrics?.absolute_values?.utilidad_neta} icon={Target} color="purple" />
+            <ValueCard label={t.totalAssets} value={metrics.metrics?.absolute_values?.activo_total} icon={Building2} color="amber" />
+            <ValueCard label={t.totalLiabilities} value={metrics.metrics?.absolute_values?.pasivo_total} icon={Scale} color="red" />
+            <ValueCard label={t.equity} value={metrics.metrics?.absolute_values?.capital_contable} icon={Wallet} color="green" />
           </div>
 
           {/* Charts Row */}
@@ -402,12 +402,17 @@ const FinancialMetrics = () => {
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <BarChart3 className="w-5 h-5 text-blue-500" />
-                  Márgenes de Rentabilidad
+                  {t.profitabilityMargins}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={marginsChartData}>
+                  <BarChart data={[
+                    { name: t.grossMargin, value: metrics.metrics?.margins?.gross_margin?.value || 0 },
+                    { name: t.ebitdaMargin, value: metrics.metrics?.margins?.ebitda_margin?.value || 0 },
+                    { name: t.operatingMargin, value: metrics.metrics?.margins?.operating_margin?.value || 0 },
+                    { name: t.netMargin, value: metrics.metrics?.margins?.net_margin?.value || 0 },
+                  ]}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                     <YAxis unit="%" />
@@ -423,12 +428,18 @@ const FinancialMetrics = () => {
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <PieChart className="w-5 h-5 text-purple-500" />
-                  Visión General
+                  {t.generalOverview}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={250}>
-                  <RadarChart data={radarData}>
+                  <RadarChart data={[
+                    { metric: t.grossMargin, value: Math.min(metrics.metrics?.margins?.gross_margin?.value || 0, 100) },
+                    { metric: 'ROE', value: Math.min(metrics.metrics?.returns?.roe?.value || 0, 100) },
+                    { metric: 'ROIC', value: Math.min(metrics.metrics?.returns?.roic?.value || 0, 100) },
+                    { metric: t.liquidity, value: Math.min((metrics.metrics?.liquidity?.current_ratio?.value || 0) * 50, 100) },
+                    { metric: t.interestCoverage, value: Math.min((metrics.metrics?.solvency?.interest_coverage?.value || 0) * 20, 100) },
+                  ]}>
                     <PolarGrid />
                     <PolarAngleAxis dataKey="metric" tick={{ fontSize: 10 }} />
                     <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 9 }} />
@@ -445,9 +456,9 @@ const FinancialMetrics = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Percent className="w-5 h-5 text-blue-500" />
-                Márgenes
+                {t.margins}
               </CardTitle>
-              <CardDescription>Rentabilidad sobre ventas</CardDescription>
+              <CardDescription>{t.profitabilityOnSales}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
