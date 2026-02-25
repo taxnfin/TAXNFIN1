@@ -220,6 +220,16 @@ export const financialTranslations = {
     capitalStructure: 'Estructura de capital y deuda',
     rotationAndCycles: 'Rotación y ciclos',
     capitalEfficiency: 'Eficiencia del capital',
+    
+    // Toast messages
+    errorLoadingMetrics: 'Error cargando métricas',
+    selectFileAndPeriod: 'Selecciona un archivo y período',
+    incomeStatementUploaded: 'Estado de Resultados cargado',
+    balanceSheetUploaded: 'Balance General cargado',
+    errorUploadingFile: 'Error al cargar archivo',
+    confirmDeletePeriod: '¿Eliminar todos los estados financieros de',
+    periodDeleted: 'Período eliminado',
+    errorDeleting: 'Error al eliminar',
   },
   
   en: {
@@ -441,6 +451,16 @@ export const financialTranslations = {
     capitalStructure: 'Capital structure and debt',
     rotationAndCycles: 'Rotation and cycles',
     capitalEfficiency: 'Capital efficiency',
+    
+    // Toast messages
+    errorLoadingMetrics: 'Error loading metrics',
+    selectFileAndPeriod: 'Select a file and period',
+    incomeStatementUploaded: 'Income Statement uploaded',
+    balanceSheetUploaded: 'Balance Sheet uploaded',
+    errorUploadingFile: 'Error uploading file',
+    confirmDeletePeriod: 'Delete all financial statements for',
+    periodDeleted: 'Period deleted',
+    errorDeleting: 'Error deleting',
   },
   
   pt: {
@@ -662,6 +682,16 @@ export const financialTranslations = {
     capitalStructure: 'Estrutura de capital e dívida',
     rotationAndCycles: 'Rotação e ciclos',
     capitalEfficiency: 'Eficiência do capital',
+    
+    // Toast messages
+    errorLoadingMetrics: 'Erro ao carregar métricas',
+    selectFileAndPeriod: 'Selecione um arquivo e período',
+    incomeStatementUploaded: 'DRE carregada',
+    balanceSheetUploaded: 'Balanço carregado',
+    errorUploadingFile: 'Erro ao carregar arquivo',
+    confirmDeletePeriod: 'Excluir todas as demonstrações financeiras de',
+    periodDeleted: 'Período excluído',
+    errorDeleting: 'Erro ao excluir',
   }
 };
 
