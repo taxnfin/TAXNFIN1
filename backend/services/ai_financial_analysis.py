@@ -132,6 +132,7 @@ Tu tarea es generar análisis financiero profesional, conciso y accionable.
   "returns_analysis": "Análisis de 2-3 oraciones sobre ROIC, ROE y ROA",
   "liquidity_analysis": "Análisis de 2-3 oraciones sobre liquidez (razón circulante, prueba ácida, capital de trabajo)",
   "solvency_analysis": "Análisis de 2-3 oraciones sobre solvencia (endeudamiento, cobertura de intereses)",
+  "income_flow_analysis": "Análisis de 3-4 oraciones interpretando el flujo del estado de resultados: explicar por qué el costo de ventas es alto/bajo (% sobre ingresos), si los gastos operativos son eficientes, y qué tan saludable es la conversión de ingresos a utilidad neta. Identificar áreas de oportunidad para mejorar márgenes",
   "recommendations": "2-3 recomendaciones estratégicas en un párrafo\""""
         
         # Add trends_analysis if we have historical data
