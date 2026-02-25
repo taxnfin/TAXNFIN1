@@ -108,6 +108,218 @@ const Reports = () => {
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [periods, setPeriods] = useState([]);
   const [company, setCompany] = useState(null);
+  const [exporting, setExporting] = useState(false);
+
+  // Refs for PDF export
+  const sankeyRef = useRef(null);
+  const financialRef = useRef(null);
+
+  // Export to Excel
+  const exportToExcel = () => {
+    try {
+      const wb = XLSX.utils.book_new();
+      
+      // Sheet 1: Cash Flow Summary
+      const cashflowData = weeksWithBalance.map(w => ({
+        'Semana': w.label,
+        'Período': w.dateRange,
+        'Tipo': w.type,
+        'Cobros Real': w.cobrosReales,
+        'Pagos Real': w.pagosReales,
+        'Cobros Proyectado': w.cobrosProyectados,
+        'Pagos Proyectado': w.pagosProyectados,
+        'Flujo Neto': w.flujoNeto,
+        'Saldo Bancos': w.saldoFinal
+      }));
+      const wsCashflow = XLSX.utils.json_to_sheet(cashflowData);
+      XLSX.utils.book_append_sheet(wb, wsCashflow, 'Flujo de Efectivo');
+      
+      // Sheet 2: Financial Trends
+      if (trendsData.length > 0) {
+        const financialData = trendsData.map(p => ({
+          'Período': p.periodo,
+          'Ingresos': p.income_statement?.ingresos || 0,
+          'Costo de Ventas': p.income_statement?.costo_ventas || 0,
+          'Utilidad Bruta': p.income_statement?.utilidad_bruta || 0,
+          'Gastos Operativos': (p.income_statement?.gastos_venta || 0) + (p.income_statement?.gastos_administracion || 0) + (p.income_statement?.gastos_generales || 0),
+          'Utilidad Operativa': p.income_statement?.utilidad_operativa || 0,
+          'Utilidad Neta': p.income_statement?.utilidad_neta || 0,
+          'Margen Bruto %': p.metrics?.margins?.gross_margin?.value || 0,
+          'Margen Neto %': p.metrics?.margins?.net_margin?.value || 0,
+          'ROE %': p.metrics?.returns?.roe?.value || 0,
+          'ROIC %': p.metrics?.returns?.roic?.value || 0,
+          'Activo Total': p.balance_sheet?.activo_total || 0,
+          'Pasivo Total': p.balance_sheet?.pasivo_total || 0,
+          'Capital Contable': p.balance_sheet?.capital_contable || 0,
+        }));
+        const wsFinancial = XLSX.utils.json_to_sheet(financialData);
+        XLSX.utils.book_append_sheet(wb, wsFinancial, 'Estados Financieros');
+      }
+      
+      // Sheet 3: Detailed Metrics (latest period)
+      if (trendsData.length > 0) {
+        const latest = trendsData[trendsData.length - 1];
+        const metricsData = [];
+        
+        // Margins
+        const margins = latest.metrics?.margins || {};
+        Object.keys(margins).forEach(key => {
+          metricsData.push({
+            'Categoría': 'Márgenes',
+            'Métrica': margins[key]?.label || key,
+            'Valor': margins[key]?.value || 0,
+            'Interpretación': margins[key]?.interpretation || ''
+          });
+        });
+        
+        // Returns
+        const returns = latest.metrics?.returns || {};
+        Object.keys(returns).forEach(key => {
+          metricsData.push({
+            'Categoría': 'Retorno',
+            'Métrica': returns[key]?.label || key,
+            'Valor': returns[key]?.value || 0,
+            'Interpretación': returns[key]?.interpretation || ''
+          });
+        });
+        
+        // Liquidity
+        const liquidity = latest.metrics?.liquidity || {};
+        Object.keys(liquidity).forEach(key => {
+          metricsData.push({
+            'Categoría': 'Liquidez',
+            'Métrica': liquidity[key]?.label || key,
+            'Valor': liquidity[key]?.value || 0,
+            'Interpretación': liquidity[key]?.interpretation || ''
+          });
+        });
+        
+        // Solvency
+        const solvency = latest.metrics?.solvency || {};
+        Object.keys(solvency).forEach(key => {
+          metricsData.push({
+            'Categoría': 'Solvencia',
+            'Métrica': solvency[key]?.label || key,
+            'Valor': solvency[key]?.value || 0,
+            'Interpretación': solvency[key]?.interpretation || ''
+          });
+        });
+        
+        const wsMetrics = XLSX.utils.json_to_sheet(metricsData);
+        XLSX.utils.book_append_sheet(wb, wsMetrics, 'Métricas Detalladas');
+      }
+      
+      // Sheet 4: Sankey Summary
+      if (sankeyData) {
+        const sankeyExport = [
+          { 'Concepto': 'Ingresos', 'Monto': sankeyData.summary?.ingresos || 0, '% Ingresos': '100%' },
+          { 'Concepto': 'Costo de Ventas', 'Monto': sankeyData.summary?.costo_ventas || 0, '% Ingresos': ((sankeyData.summary?.costo_ventas / sankeyData.summary?.ingresos) * 100).toFixed(1) + '%' },
+          { 'Concepto': 'Utilidad Bruta', 'Monto': sankeyData.summary?.utilidad_bruta || 0, '% Ingresos': ((sankeyData.summary?.utilidad_bruta / sankeyData.summary?.ingresos) * 100).toFixed(1) + '%' },
+          { 'Concepto': 'Gastos Operativos', 'Monto': sankeyData.summary?.gastos_operativos || 0, '% Ingresos': ((sankeyData.summary?.gastos_operativos / sankeyData.summary?.ingresos) * 100).toFixed(1) + '%' },
+          { 'Concepto': 'Utilidad Operativa', 'Monto': sankeyData.summary?.utilidad_operativa || 0, '% Ingresos': ((sankeyData.summary?.utilidad_operativa / sankeyData.summary?.ingresos) * 100).toFixed(1) + '%' },
+          { 'Concepto': 'Otros Gastos', 'Monto': sankeyData.summary?.otros_gastos || 0, '% Ingresos': ((sankeyData.summary?.otros_gastos / sankeyData.summary?.ingresos) * 100).toFixed(1) + '%' },
+          { 'Concepto': 'Impuestos', 'Monto': sankeyData.summary?.impuestos || 0, '% Ingresos': ((sankeyData.summary?.impuestos / sankeyData.summary?.ingresos) * 100).toFixed(1) + '%' },
+          { 'Concepto': 'Utilidad Neta', 'Monto': sankeyData.summary?.utilidad_neta || 0, '% Ingresos': ((sankeyData.summary?.utilidad_neta / sankeyData.summary?.ingresos) * 100).toFixed(1) + '%' },
+        ];
+        const wsSankey = XLSX.utils.json_to_sheet(sankeyExport);
+        XLSX.utils.book_append_sheet(wb, wsSankey, 'Estado de Resultados');
+      }
+      
+      // Generate file
+      const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const fileName = `Reportes_Financieros_${company?.nombre || 'Empresa'}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+      saveAs(data, fileName);
+      toast.success('Reporte Excel exportado exitosamente');
+    } catch (error) {
+      console.error('Error exporting Excel:', error);
+      toast.error('Error exportando Excel');
+    }
+  };
+
+  // Export to PDF
+  const exportToPDF = async () => {
+    setExporting(true);
+    try {
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 15;
+      let yPosition = margin;
+      
+      // Header
+      pdf.setFontSize(20);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(company?.nombre || 'Empresa', margin, yPosition);
+      yPosition += 8;
+      
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text('Reporte Financiero', margin, yPosition);
+      yPosition += 5;
+      
+      pdf.setFontSize(10);
+      pdf.setTextColor(100);
+      pdf.text(`Generado: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, margin, yPosition);
+      pdf.setTextColor(0);
+      yPosition += 15;
+      
+      // Sankey Section
+      if (sankeyRef.current && sankeyData) {
+        pdf.setFontSize(14);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(`Estado de Resultados - ${selectedPeriod}`, margin, yPosition);
+        yPosition += 10;
+        
+        // Capture Sankey as image
+        const canvas = await html2canvas(sankeyRef.current, { scale: 2, backgroundColor: '#ffffff' });
+        const imgData = canvas.toDataURL('image/png');
+        const imgWidth = pageWidth - (margin * 2);
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        
+        if (yPosition + imgHeight > pageHeight - margin) {
+          pdf.addPage();
+          yPosition = margin;
+        }
+        
+        pdf.addImage(imgData, 'PNG', margin, yPosition, imgWidth, Math.min(imgHeight, 100));
+        yPosition += Math.min(imgHeight, 100) + 10;
+        
+        // Sankey Summary Table
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        
+        const summaryData = [
+          ['Ingresos', formatMXN(sankeyData.summary?.ingresos), '100%'],
+          ['Costo de Ventas', formatMXN(sankeyData.summary?.costo_ventas), ((sankeyData.summary?.costo_ventas / sankeyData.summary?.ingresos) * 100).toFixed(1) + '%'],
+          ['Utilidad Bruta', formatMXN(sankeyData.summary?.utilidad_bruta), ((sankeyData.summary?.utilidad_bruta / sankeyData.summary?.ingresos) * 100).toFixed(1) + '%'],
+          ['Gastos Operativos', formatMXN(sankeyData.summary?.gastos_operativos), ((sankeyData.summary?.gastos_operativos / sankeyData.summary?.ingresos) * 100).toFixed(1) + '%'],
+          ['Utilidad Neta', formatMXN(sankeyData.summary?.utilidad_neta), ((sankeyData.summary?.utilidad_neta / sankeyData.summary?.ingresos) * 100).toFixed(1) + '%'],
+        ];
+        
+        summaryData.forEach(row => {
+          if (yPosition > pageHeight - margin) {
+            pdf.addPage();
+            yPosition = margin;
+          }
+          pdf.text(row[0], margin, yPosition);
+          pdf.text(row[1], margin + 60, yPosition);
+          pdf.text(row[2], margin + 110, yPosition);
+          yPosition += 6;
+        });
+      }
+      
+      // Save PDF
+      const fileName = `Reporte_Financiero_${company?.nombre || 'Empresa'}_${selectedPeriod}.pdf`;
+      pdf.save(fileName);
+      toast.success('Reporte PDF exportado exitosamente');
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      toast.error('Error exportando PDF');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     loadData();
