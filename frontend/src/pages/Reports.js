@@ -1052,17 +1052,17 @@ const Reports = () => {
                   <CardHeader>
                     <CardTitle className="text-base flex items-center gap-2">
                       <BarChart3 className="w-5 h-5 text-amber-500" />
-                      Comparativo de Períodos
+                      {t.periodComparison}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <Table className="text-sm">
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Período</TableHead>
-                          <TableHead className="text-right">Ingresos</TableHead>
-                          <TableHead className="text-right">Utilidad Neta</TableHead>
-                          <TableHead className="text-right">Margen %</TableHead>
+                          <TableHead>{t.period}</TableHead>
+                          <TableHead className="text-right">{t.revenue}</TableHead>
+                          <TableHead className="text-right">{t.netProfit}</TableHead>
+                          <TableHead className="text-right">{t.margin} %</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
