@@ -1759,6 +1759,22 @@ const BoardReport = () => {
 
           {/* TRENDS TAB */}
           <TabsContent value="trends" className="space-y-6">
+            {/* AI Analysis for Trends */}
+            {aiAnalysis?.trends_analysis && (
+              <Card className="border-l-4 border-l-purple-500 bg-gradient-to-r from-purple-50 to-white">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-purple-800">
+                    <Sparkles className="w-5 h-5" />
+                    {language === 'es' ? 'Análisis de Tendencias' : 'Trends Analysis'}
+                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full ml-2">GPT-5.2</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-700 leading-relaxed">{aiAnalysis.trends_analysis}</p>
+                </CardContent>
+              </Card>
+            )}
+            
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
