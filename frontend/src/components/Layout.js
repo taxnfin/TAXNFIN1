@@ -19,7 +19,8 @@ import {
   TrendingUp,
   FileSpreadsheet,
   Receipt,
-  Lightbulb
+  Lightbulb,
+  Calculator
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -34,6 +35,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
   const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
     { name: 'Proyecciones', href: '/projections', icon: TrendingUp, highlight: true },
+    { name: 'Métricas Financieras', href: '/financial-metrics', icon: Calculator, highlight: true },
     { name: 'Decisiones', href: '/treasury', icon: Lightbulb, highlight: true },
     { name: 'Aging CxC/CxP', href: '/transactions', icon: ArrowRightLeft },
     { name: 'CFDI / SAT', href: '/cfdi', icon: FileText },
