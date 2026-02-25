@@ -605,41 +605,106 @@ const BoardReport = () => {
         return 'critical';
       };
       
-      // ====== PAGE 1: COVER ======
+      // ====== PAGE 1: PROFESSIONAL COVER PAGE ======
+      // Full page dark background
       pdf.setFillColor(15, 23, 42);
-      pdf.rect(0, 0, pageWidth, 55, 'F');
+      pdf.rect(0, 0, pageWidth, pageHeight, 'F');
       
-      pdf.setFontSize(24);
+      // Add company logo if available (centered near top)
+      if (company?.logo_url) {
+        try {
+          // Add logo centered at top
+          const logoSize = 40;
+          const logoX = (pageWidth - logoSize) / 2;
+          pdf.addImage(company.logo_url, 'PNG', logoX, 30, logoSize, logoSize);
+          y = 85;
+        } catch (logoErr) {
+          console.warn('Could not add logo to PDF:', logoErr);
+          y = 50;
+        }
+      } else {
+        y = 50;
+      }
+      
+      // Company name - large and centered
+      pdf.setFontSize(32);
       pdf.setFont('helvetica', 'bold');
       pdf.setTextColor(255, 255, 255);
-      pdf.text(company?.nombre || 'Company', margin, 25);
+      const companyName = company?.nombre || 'Company';
+      const companyNameWidth = pdf.getTextWidth(companyName);
+      pdf.text(companyName, (pageWidth - companyNameWidth) / 2, y);
+      y += 20;
       
-      pdf.setFontSize(14);
+      // Report title
+      pdf.setFontSize(18);
       pdf.setFont('helvetica', 'normal');
       pdf.setTextColor(148, 163, 184);
-      pdf.text(t.title, margin, 38);
+      const titleText = t.title || 'Executive Board Report';
+      const titleWidth = pdf.getTextWidth(titleText);
+      pdf.text(titleText, (pageWidth - titleWidth) / 2, y);
+      y += 15;
       
+      // Decorative line
+      pdf.setDrawColor(59, 130, 246);
+      pdf.setLineWidth(1);
+      pdf.line(margin + 30, y, pageWidth - margin - 30, y);
+      y += 20;
+      
+      // Period information box
+      pdf.setFillColor(30, 41, 59);
+      pdf.roundedRect(margin + 20, y - 5, contentWidth - 40, 35, 3, 3, 'F');
+      
+      // Period type and value
       const periodTypeLabels = { monthly: t.monthly, quarterly: t.quarterly, annual: t.annual };
-      pdf.setFontSize(10);
-      pdf.text(`${periodTypeLabels[periodType] || periodType}: ${selectedPeriod}`, margin, 48);
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(148, 163, 184);
+      const periodLabel = periodTypeLabels[periodType] || periodType;
+      const periodLabelText = `${periodLabel}`;
+      const periodLabelWidth = pdf.getTextWidth(periodLabelText);
+      pdf.text(periodLabelText, (pageWidth - periodLabelWidth) / 2, y + 8);
       
-      pdf.setTextColor(0, 0, 0);
-      y = 65;
+      pdf.setFontSize(20);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(255, 255, 255);
+      const periodValueWidth = pdf.getTextWidth(selectedPeriod);
+      pdf.text(selectedPeriod, (pageWidth - periodValueWidth) / 2, y + 23);
       
+      y += 50;
+      
+      // Periods included (if aggregated)
       if (periodsIncluded.length > 1) {
         pdf.setFontSize(9);
         pdf.setFont('helvetica', 'italic');
-        pdf.setTextColor(100, 100, 100);
-        pdf.text(`${t.periodsIncluded}: ${periodsIncluded.join(', ')}`, margin, y);
-        y += 8;
+        pdf.setTextColor(100, 116, 139);
+        const periodsText = `${t.periodsIncluded}: ${periodsIncluded.join(', ')}`;
+        const periodsTextWidth = pdf.getTextWidth(periodsText);
+        pdf.text(periodsText, (pageWidth - periodsTextWidth) / 2, y);
+        y += 12;
       }
       
-      pdf.setFontSize(9);
+      // Generation date at bottom
+      pdf.setFontSize(10);
       pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(100, 100, 100);
-      pdf.text(`${t.generatedOn}: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, margin, y);
+      pdf.setTextColor(100, 116, 139);
+      const dateText = `${t.generatedOn}: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`;
+      const dateWidth = pdf.getTextWidth(dateText);
+      pdf.text(dateText, (pageWidth - dateWidth) / 2, pageHeight - 30);
+      
+      // RFC at very bottom
+      if (company?.rfc) {
+        pdf.setFontSize(9);
+        pdf.setTextColor(71, 85, 105);
+        const rfcText = `RFC: ${company.rfc}`;
+        const rfcWidth = pdf.getTextWidth(rfcText);
+        pdf.text(rfcText, (pageWidth - rfcWidth) / 2, pageHeight - 20);
+      }
+      
+      // ====== PAGE 2: EXECUTIVE SUMMARY ======
+      pdf.addPage();
+      currentPage++;
+      y = margin;
       pdf.setTextColor(0, 0, 0);
-      y += 12;
       
       if (currentMetrics) {
         const inc = currentMetrics.income_statement || {};
