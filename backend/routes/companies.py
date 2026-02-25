@@ -77,3 +77,50 @@ async def update_company(company_id: str, data: CompanyUpdate, current_user: Dic
     if isinstance(updated.get('created_at'), str):
         updated['created_at'] = datetime.fromisoformat(updated['created_at'])
     return updated
+
+
+@router.post("/{company_id}/logo")
+async def upload_company_logo(
+    company_id: str, 
+    file: UploadFile = File(...),
+    current_user: Dict = Depends(get_current_user)
+):
+    """Upload company logo as base64"""
+    company = await db.companies.find_one({'id': company_id, 'activo': True}, {'_id': 0})
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    
+    # Validate file type
+    if not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
+    
+    # Read file and convert to base64
+    contents = await file.read()
+    
+    # Limit file size (max 2MB)
+    if len(contents) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="El archivo no debe exceder 2MB")
+    
+    # Convert to base64 data URL
+    base64_data = base64.b64encode(contents).decode('utf-8')
+    logo_url = f"data:{file.content_type};base64,{base64_data}"
+    
+    # Update company with logo
+    await db.companies.update_one({'id': company_id}, {'$set': {'logo_url': logo_url}})
+    
+    return {"success": True, "logo_url": logo_url}
+
+
+@router.delete("/{company_id}/logo")
+async def delete_company_logo(
+    company_id: str,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Delete company logo"""
+    company = await db.companies.find_one({'id': company_id, 'activo': True}, {'_id': 0})
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    
+    await db.companies.update_one({'id': company_id}, {'$set': {'logo_url': None}})
+    
+    return {"success": True}
