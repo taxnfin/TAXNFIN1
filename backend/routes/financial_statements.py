@@ -430,6 +430,18 @@ def calculate_financial_metrics(income: Dict, balance: Dict) -> Dict:
                 'label': 'ROA',
                 'formula': 'Utilidad Neta / Activos Totales',
                 'interpretation': 'Retorno sobre activos totales'
+            },
+            'ronic': {
+                'value': safe_pct(nopat, capital_invertido) if capital_invertido > 0 else 0,
+                'label': 'RONIC',
+                'formula': 'NOPAT / Capital Invertido Nuevo',
+                'interpretation': 'Retorno sobre nuevo capital invertido'
+            },
+            'gmroi': {
+                'value': safe_div(utilidad_bruta, inventarios) if inventarios > 0 else 0,
+                'label': 'GMROI',
+                'formula': 'Utilidad Bruta / Inventarios',
+                'interpretation': 'Retorno de margen bruto sobre inventario'
             }
         },
         
