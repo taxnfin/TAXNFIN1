@@ -95,6 +95,7 @@ const SankeyLink = ({ sourceX, targetX, sourceY, targetY, sourceControlX, target
 };
 
 const Reports = () => {
+  const [language, setLanguage] = useState('es');
   const [activeTab, setActiveTab] = useState('cashflow');
   const [payments, setPayments] = useState([]);
   const [cfdis, setCfdis] = useState([]);
@@ -102,6 +103,9 @@ const Reports = () => {
   const [loading, setLoading] = useState(true);
   const [selectedCurrency, setSelectedCurrency] = useState('MXN');
   const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.4545 });
+  
+  // Translation helper
+  const t = financialTranslations[language];
   
   // Financial Reports State
   const [trendsData, setTrendsData] = useState([]);
