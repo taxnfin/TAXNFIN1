@@ -150,7 +150,14 @@ const AdvancedFeatures = () => {
       toast.success(`${res.data.modificaciones_aplicadas} modificaciones aplicadas. Mejora esperada: $${res.data.mejora_esperada.toLocaleString()}`);
       setOptimizationResult(null);
     } catch (error) {
-      toast.error('Error aplicando optimización');
+      // More descriptive error messages
+      if (error.response?.status === 404) {
+        toast.error('Optimización no encontrada. Por favor ejecute una nueva optimización primero.');
+      } else if (error.response?.status === 403) {
+        toast.error('No tiene permisos para aplicar optimizaciones. Se requiere rol Admin o CFO.');
+      } else {
+        toast.error('Error aplicando optimización: ' + (error.response?.data?.detail || 'Error desconocido'));
+      }
     }
   };
 
