@@ -707,6 +707,14 @@ const Reports = () => {
           <p className="text-[#64748B]">Análisis financiero y flujo de efectivo</p>
         </div>
         <div className="flex gap-2 items-center">
+          <Button variant="outline" onClick={exportToExcel} className="gap-2" data-testid="export-excel-btn">
+            <FileSpreadsheet size={16} />
+            Excel
+          </Button>
+          <Button variant="outline" onClick={exportToPDF} disabled={exporting} className="gap-2" data-testid="export-pdf-btn">
+            <FileText size={16} />
+            {exporting ? 'Exportando...' : 'PDF'}
+          </Button>
           <Button variant="outline" size="icon" onClick={() => { loadData(); loadFinancialData(); }}>
             <RefreshCw size={16} />
           </Button>
