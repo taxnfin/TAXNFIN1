@@ -203,7 +203,7 @@ const CashflowProjections = () => {
       
       processMonthlyData(cfdiRes.data, catRes.data);
     } catch (error) {
-      toast.error('Error cargando datos');
+      toast.error(t?.errorLoadingData || 'Error loading data');
     } finally {
       setLoading(false);
     }
