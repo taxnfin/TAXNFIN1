@@ -606,11 +606,11 @@ const BoardReport = () => {
       
       const drawMetricRow = (label, value, status = null) => {
         addNewPageIfNeeded(7);
-        pdf.setFontSize(9);
-        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(bodySize);
+        pdf.setFont(fontFamily, 'normal');
         pdf.text(label, margin + 2, y);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text(String(value), margin + 80, y);
+        pdf.setFont(fontFamily, 'bold');
+        pdf.text(String(value), margin + 85, y);
         
         if (status) {
           if (status === 'good') pdf.setTextColor(34, 197, 94);
