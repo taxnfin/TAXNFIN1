@@ -257,6 +257,7 @@ def get_default_analysis(language: str = 'es') -> Dict:
             "liquidity_analysis": "Los indicadores de liquidez muestran la capacidad de la empresa para cumplir con sus obligaciones de corto plazo.",
             "solvency_analysis": "La estructura de capital y el nivel de endeudamiento determinan el riesgo financiero de la empresa.",
             "recommendations": "Se recomienda realizar un análisis más detallado de las tendencias históricas y comparar con benchmarks de la industria para obtener conclusiones más específicas.",
+            "trends_analysis": "Las tendencias históricas muestran la evolución del desempeño financiero. Se recomienda analizar los factores que explican las variaciones significativas entre períodos.",
             "generated_by": "Default",
             "model": "N/A"
         },
@@ -267,6 +268,7 @@ def get_default_analysis(language: str = 'es') -> Dict:
             "liquidity_analysis": "Liquidity indicators show the company's ability to meet its short-term obligations.",
             "solvency_analysis": "The capital structure and level of indebtedness determine the company's financial risk.",
             "recommendations": "It is recommended to perform a more detailed analysis of historical trends and compare with industry benchmarks for more specific conclusions.",
+            "trends_analysis": "Historical trends show the evolution of financial performance. It is recommended to analyze the factors that explain significant variations between periods.",
             "generated_by": "Default",
             "model": "N/A"
         },
@@ -277,6 +279,7 @@ def get_default_analysis(language: str = 'es') -> Dict:
             "liquidity_analysis": "Os indicadores de liquidez mostram a capacidade da empresa de cumprir suas obrigações de curto prazo.",
             "solvency_analysis": "A estrutura de capital e o nível de endividamento determinam o risco financeiro da empresa.",
             "recommendations": "Recomenda-se realizar uma análise mais detalhada das tendências históricas e comparar com benchmarks do setor para obter conclusões mais específicas.",
+            "trends_analysis": "As tendências históricas mostram a evolução do desempenho financeiro. Recomenda-se analisar os fatores que explicam variações significativas entre períodos.",
             "generated_by": "Default",
             "model": "N/A"
         }
