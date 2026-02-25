@@ -89,6 +89,13 @@ const BoardReport = () => {
     }
   }, [selectedPeriod, periodType]);
 
+  // Reload AI analysis when language changes
+  useEffect(() => {
+    if (selectedPeriod && periodType) {
+      loadAIAnalysis(selectedPeriod, periodType);
+    }
+  }, [language]);
+
   const loadData = async () => {
     setLoading(true);
     try {
