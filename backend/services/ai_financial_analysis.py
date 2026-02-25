@@ -177,7 +177,7 @@ Responde SOLO con el JSON, sin markdown ni texto adicional."""
             
             # Ensure all keys exist
             required_keys = ['executive_summary', 'profitability_analysis', 'returns_analysis', 
-                           'liquidity_analysis', 'solvency_analysis', 'recommendations']
+                           'liquidity_analysis', 'solvency_analysis', 'income_flow_analysis', 'recommendations']
             
             # Add trends_analysis if we had trends data
             if trends_data and len(trends_data) > 1:
