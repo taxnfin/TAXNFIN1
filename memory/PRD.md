@@ -324,6 +324,11 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ### Completed in This Session ✅
 
+**Optimización de Análisis de IA (COMPLETADO)**
+- Antes: ~24 segundos (6 llamadas secuenciales a GPT-5.2)
+- Ahora: ~15-17 segundos (1 sola llamada con JSON estructurado)
+- **Mejora: ~37% más rápido**
+
 **P0 - Corrección PDF Export + Análisis Inteligente de IA (COMPLETADO)**
 
 El usuario reportó que el PDF tenía texto duplicado/superpuesto y solicitó agregar análisis de IA que explique los KPIs y la información financiera.
