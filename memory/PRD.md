@@ -324,6 +324,32 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ### Completed in This Session ✅
 
+**P0 - Exportación a Excel y PDF + Fix Tipos de Cambio (COMPLETADO)**
+
+**Exportación implementada:**
+- **Excel**: Exporta 4 hojas de cálculo:
+  1. Flujo de Efectivo (18 semanas rolling)
+  2. Estados Financieros (tendencias por período)
+  3. Métricas Detalladas (todas las métricas con interpretación)
+  4. Estado de Resultados (datos Sankey)
+- **PDF**: Exporta el diagrama Sankey con branding de la empresa y tabla resumen
+
+**Fix Tipos de Cambio:**
+- El botón "Actualizar" ahora llama al endpoint `/api/fx-rates/sync` correctamente
+- Antes solo recargaba datos locales, ahora sincroniza con Banxico y OpenExchange
+
+**Librerías agregadas:**
+- `xlsx` - Generación de archivos Excel
+- `file-saver` - Descarga de archivos
+- `html2canvas` - Captura de elementos para PDF
+- `jspdf` - Generación de PDF
+
+**Archivos modificados:**
+- `frontend/src/pages/Reports.js` - Funciones exportToExcel y exportToPDF, botones de exportación
+- `frontend/src/pages/FXRatesModule.js` - Función handleSync para sincronizar tipos de cambio
+
+---
+
 **P0 - Reportes Financieros con Sankey y Tendencias (COMPLETADO)**
 
 Se implementó el módulo completo de reportes financieros solicitado por el usuario:
