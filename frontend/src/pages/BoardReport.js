@@ -271,8 +271,59 @@ const BoardReport = () => {
 
   const sankeyChartData = useMemo(() => {
     if (!sankeyData) return null;
-    return { nodes: sankeyData.nodes, links: sankeyData.links };
-  }, [sankeyData]);
+    
+    // Translations for Sankey node names
+    const nodeTranslations = {
+      es: {
+        'Ingresos': 'Ingresos',
+        'Costo de Ventas': 'Costo de Ventas',
+        'Utilidad Bruta': 'Utilidad Bruta',
+        'Gastos de Venta': 'Gastos de Venta',
+        'Gastos Admin': 'Gastos Admin',
+        'Gastos Generales': 'Gastos Generales',
+        'Utilidad Operativa': 'Utilidad Operativa',
+        'Otros Gastos': 'Otros Gastos',
+        'Impuestos': 'Impuestos',
+        'Utilidad Neta': 'Utilidad Neta'
+      },
+      en: {
+        'Ingresos': 'Revenue',
+        'Costo de Ventas': 'Cost of Sales',
+        'Utilidad Bruta': 'Gross Profit',
+        'Gastos de Venta': 'Sales Expenses',
+        'Gastos Admin': 'Admin Expenses',
+        'Gastos Generales': 'General Expenses',
+        'Utilidad Operativa': 'Operating Profit',
+        'Otros Gastos': 'Other Expenses',
+        'Impuestos': 'Taxes',
+        'Utilidad Neta': 'Net Profit'
+      },
+      pt: {
+        'Ingresos': 'Receita',
+        'Costo de Ventas': 'Custo de Vendas',
+        'Utilidad Bruta': 'Lucro Bruto',
+        'Gastos de Venta': 'Despesas de Vendas',
+        'Gastos Admin': 'Despesas Admin',
+        'Gastos Generales': 'Despesas Gerais',
+        'Utilidad Operativa': 'Lucro Operacional',
+        'Otros Gastos': 'Outras Despesas',
+        'Impuestos': 'Impostos',
+        'Utilidad Neta': 'Lucro Líquido'
+      }
+    };
+    
+    const translateNode = (name) => {
+      return nodeTranslations[language]?.[name] || name;
+    };
+    
+    // Translate node names
+    const translatedNodes = sankeyData.nodes.map(node => ({
+      ...node,
+      name: translateNode(node.name)
+    }));
+    
+    return { nodes: translatedNodes, links: sankeyData.links };
+  }, [sankeyData, language]);
 
   // Waterfall data for margins
   const waterfallData = useMemo(() => {
