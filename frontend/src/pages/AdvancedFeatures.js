@@ -134,11 +134,23 @@ const AdvancedFeatures = () => {
         }
       });
       
+      // Check if we got insufficient data response
+      if (res.data.status === 'insufficient_data') {
+        toast.warning(res.data.message || 'Se necesitan al menos 5 transacciones proyectadas para optimizar. Primero cargue datos en el módulo de Proyecciones.');
+        setOptimizationDialog(false);
+        return;
+      }
+      
       setOptimizationResult(res.data);
       toast.success('¡Optimización completada! Encontradas mejores soluciones');
       setOptimizationDialog(false);
     } catch (error) {
-      toast.error('Error en optimización genética');
+      // More descriptive error messages
+      if (error.response?.status === 403) {
+        toast.error('No tiene permisos para ejecutar optimizaciones. Se requiere rol Admin o CFO.');
+      } else {
+        toast.error('Error en optimización genética: ' + (error.response?.data?.detail || 'Error desconocido'));
+      }
     } finally {
       setLoading(false);
     }
