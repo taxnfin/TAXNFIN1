@@ -1477,7 +1477,7 @@ const CashflowProjections = () => {
     }
   };
 
-  if (loading) return <div className="p-8">Cargando proyecciones...</div>;
+  if (loading) return <div className="p-8">{t.loading}</div>;
 
   const weeklyTotals = calculateRunningTotals();
   const cfoKPIs = calculateCFOKPIs(weeklyTotals);
@@ -1491,16 +1491,29 @@ const CashflowProjections = () => {
   const grandTotalFlujoDivisas = grandTotalVentaUSD - grandTotalCompraUSD;
   const grandTotalFlujo = grandTotalIngresos - grandTotalEgresos + grandTotalFlujoDivisas;
 
+  // Days of week translated
+  const DIAS_SEMANA_TR = [
+    { value: 0, label: t.sunday },
+    { value: 1, label: t.monday },
+    { value: 2, label: t.tuesday },
+    { value: 3, label: t.wednesday },
+    { value: 4, label: t.thursday },
+    { value: 5, label: t.friday },
+    { value: 6, label: t.saturday }
+  ];
+
   return (
     <div className="p-6 space-y-6 bg-[#F8FAFC] min-h-screen" data-testid="cashflow-projections-page">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-[#0F172A]" style={{fontFamily: 'Manrope'}}>
-            Proyección de Flujo de Efectivo
+            {t.cashflowProjections}
           </h1>
           <p className="text-[#64748B]">
-            Modelo Rolling 18 semanas (4 Real + 1 Actual + 13 Proyectado) | Inicio: {DIAS_SEMANA.find(d => d.value === companyConfig.inicio_semana)?.label || 'Lunes'}
+            {language === 'es' ? `Modelo Rolling 18 semanas (4 Real + 1 Actual + 13 Proyectado) | Inicio: ${DIAS_SEMANA_TR.find(d => d.value === companyConfig.inicio_semana)?.label || t.monday}` :
+             language === 'en' ? `18-week Rolling Model (4 Real + 1 Current + 13 Projected) | Start: ${DIAS_SEMANA_TR.find(d => d.value === companyConfig.inicio_semana)?.label || t.monday}` :
+             `Modelo Rolling 18 semanas (4 Real + 1 Atual + 13 Projetado) | Início: ${DIAS_SEMANA_TR.find(d => d.value === companyConfig.inicio_semana)?.label || t.monday}`}
             {selectedCurrency !== 'MXN' && (
               <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-sm">
                 TC: 1 {selectedCurrency} = ${fxRates[selectedCurrency]?.toFixed(4) || '?'} MXN
@@ -1509,51 +1522,60 @@ const CashflowProjections = () => {
           </p>
         </div>
         <div className="flex gap-2">
+          {/* Language Selector */}
+          <Select value={language} onValueChange={setLanguage}>
+            <SelectTrigger className="w-36" data-testid="language-selector">
+              <Globe className="w-4 h-4 mr-2" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {languages.map(lang => (
+                <SelectItem key={lang.code} value={lang.code}>
+                  {lang.flag} {lang.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
           {/* Config Dialog for Week Start */}
           <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" className="gap-2" data-testid="config-week-start-btn">
                 <Settings size={16} />
-                Configurar
+                {t.configure}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Configuración de Proyecciones</DialogTitle>
+                <DialogTitle>{t.configureProjections}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Inicio de Semana para esta Empresa</Label>
+                  <Label>{t.weekStartDay}</Label>
                   <Select 
                     value={companyConfig.inicio_semana?.toString()} 
                     onValueChange={(v) => handleSaveWeekStart(parseInt(v))}
                   >
                     <SelectTrigger data-testid="week-start-select">
-                      <SelectValue placeholder="Selecciona un día" />
+                      <SelectValue placeholder={t.selectPeriod} />
                     </SelectTrigger>
                     <SelectContent>
-                      {DIAS_SEMANA.map(dia => (
+                      {DIAS_SEMANA_TR.map(dia => (
                         <SelectItem key={dia.value} value={dia.value.toString()}>
                           {dia.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-sm text-gray-500">
-                    Este ajuste afecta cómo se agrupan las semanas en las proyecciones de flujo de efectivo.
-                  </p>
                 </div>
                 <div className="space-y-2 mt-4 pt-4 border-t">
-                  <Label>Umbral Mínimo de Caja (Cash Gap Analysis)</Label>
+                  <Label>{t.minimumCashThreshold}</Label>
                   <Input 
                     type="number"
                     value={umbralMinimoCaja}
                     onChange={(e) => setUmbralMinimoCaja(parseFloat(e.target.value) || 0)}
                     placeholder="Ej: 500000"
                   />
-                  <p className="text-sm text-gray-500">
-                    Monto mínimo de efectivo requerido. Se usará para calcular el Cash Gap.
-                  </p>
                 </div>
               </div>
             </DialogContent>
