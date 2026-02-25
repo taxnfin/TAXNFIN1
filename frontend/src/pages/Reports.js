@@ -3,10 +3,18 @@ import api from '@/api/axios';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { format, addWeeks, addDays } from 'date-fns';
-import { TrendingUp, TrendingDown, Calendar, RefreshCw, Wallet, AlertTriangle } from 'lucide-react';
+import { 
+  TrendingUp, TrendingDown, Calendar, RefreshCw, Wallet, AlertTriangle,
+  BarChart3, PieChart, DollarSign, Building2, FileSpreadsheet
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, 
+  CartesianGrid, Tooltip, Legend, ComposedChart, Area, Sankey, Layer
+} from 'recharts';
 
 // All available currencies
 const CURRENCIES = [
@@ -20,20 +28,105 @@ const CURRENCIES = [
   { code: 'CNY', name: 'Yuan Chino', symbol: '¥' },
 ];
 
-// Threshold for highlighting significant variances (percentage)
-const VARIANCE_THRESHOLD = 20; // 20% deviation from projected
+const VARIANCE_THRESHOLD = 20;
+
+// Custom Sankey Node Component
+const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => {
+  const isOut = x + width + 6 > containerWidth;
+  const colors = ['#3B82F6', '#EF4444', '#22C55E', '#F97316', '#F97316', '#F97316', '#10B981', '#EF4444', '#A855F7', '#059669'];
+  
+  return (
+    <Layer key={`CustomNode${index}`}>
+      <rect
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        fill={colors[index % colors.length]}
+        fillOpacity="0.9"
+        rx={4}
+      />
+      <text
+        textAnchor={isOut ? 'end' : 'start'}
+        x={isOut ? x - 6 : x + width + 6}
+        y={y + height / 2}
+        fontSize="12"
+        fontWeight="600"
+        fill="#374151"
+        dominantBaseline="middle"
+      >
+        {payload.name}
+      </text>
+    </Layer>
+  );
+};
+
+// Custom Sankey Link Component
+const SankeyLink = ({ sourceX, targetX, sourceY, targetY, sourceControlX, targetControlX, linkWidth, index, payload }) => {
+  const gradientId = `linkGradient${index}`;
+  const color = payload?.color || '#94A3B8';
+  
+  return (
+    <Layer key={`CustomLink${index}`}>
+      <defs>
+        <linearGradient id={gradientId}>
+          <stop offset="0%" stopColor={color} stopOpacity={0.5} />
+          <stop offset="100%" stopColor={color} stopOpacity={0.3} />
+        </linearGradient>
+      </defs>
+      <path
+        d={`
+          M${sourceX},${sourceY}
+          C${sourceControlX},${sourceY} ${targetControlX},${targetY} ${targetX},${targetY}
+          L${targetX},${targetY + linkWidth}
+          C${targetControlX},${targetY + linkWidth} ${sourceControlX},${sourceY + linkWidth} ${sourceX},${sourceY + linkWidth}
+          Z
+        `}
+        fill={`url(#${gradientId})`}
+        strokeWidth="0"
+      />
+    </Layer>
+  );
+};
 
 const Reports = () => {
+  const [activeTab, setActiveTab] = useState('cashflow');
   const [payments, setPayments] = useState([]);
   const [cfdis, setCfdis] = useState([]);
   const [bankSummary, setBankSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedCurrency, setSelectedCurrency] = useState('MXN');
-  const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.4545, EUR: 20.4852, GBP: 22.00, JPY: 0.13, CHF: 20.00, CAD: 13.00, CNY: 2.40 });
+  const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.4545 });
+  
+  // Financial Reports State
+  const [trendsData, setTrendsData] = useState([]);
+  const [sankeyData, setSankeyData] = useState(null);
+  const [selectedPeriod, setSelectedPeriod] = useState('');
+  const [periods, setPeriods] = useState([]);
+  const [company, setCompany] = useState(null);
 
   useEffect(() => {
     loadData();
+    loadFinancialData();
+    loadCompany();
   }, []);
+
+  useEffect(() => {
+    if (selectedPeriod) {
+      loadSankeyData(selectedPeriod);
+    }
+  }, [selectedPeriod]);
+
+  const loadCompany = async () => {
+    try {
+      const res = await api.get('/companies');
+      if (res.data && res.data.length > 0) {
+        setCompany(res.data[0]);
+      }
+    } catch (error) {
+      console.error('Error loading company:', error);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -48,7 +141,6 @@ const Reports = () => {
       setCfdis(cfdisRes.data || []);
       setBankSummary(bankRes.data || null);
       
-      // Use FX rates from bank summary (which uses fecha_saldo) as primary source
       if (bankRes.data?.tipos_cambio) {
         setFxRates(prev => ({ ...prev, ...bankRes.data.tipos_cambio }));
       } else if (fxRes.data?.rates) {
@@ -58,6 +150,34 @@ const Reports = () => {
       toast.error('Error cargando reportes');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadFinancialData = async () => {
+    try {
+      const [trendsRes, periodsRes] = await Promise.all([
+        api.get('/financial-statements/trends'),
+        api.get('/financial-statements/periods')
+      ]);
+      
+      setTrendsData(trendsRes.data?.data || []);
+      setPeriods(periodsRes.data || []);
+      
+      if (periodsRes.data?.length > 0) {
+        setSelectedPeriod(periodsRes.data[0].periodo);
+      }
+    } catch (error) {
+      console.error('Error loading financial data:', error);
+    }
+  };
+
+  const loadSankeyData = async (periodo) => {
+    try {
+      const res = await api.get(`/financial-statements/sankey/${periodo}`);
+      setSankeyData(res.data);
+    } catch (error) {
+      console.error('Error loading sankey:', error);
+      setSankeyData(null);
     }
   };
 
@@ -89,6 +209,10 @@ const Reports = () => {
     return `${symbol}${converted.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
   };
 
+  const formatMXN = (amount) => {
+    return `$${(amount || 0).toLocaleString('es-MX', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+  };
+
   // Helper to get Monday of a given date
   const getMonday = (date) => {
     const d = new Date(date);
@@ -97,10 +221,6 @@ const Reports = () => {
     return new Date(d.setDate(diff));
   };
 
-  // ROLLING CASH FLOW MODEL:
-  // - S1-S4: 4 semanas históricas (Real)
-  // - S5: Semana actual (Actual)  
-  // - S6-S18: 13 semanas futuras proyectadas (Proy)
   const HISTORICAL_WEEKS = 4;
   const FORECAST_WEEKS = 13;
   
@@ -131,7 +251,6 @@ const Reports = () => {
         pagosReales: 0,
         cobrosProyectados: 0,
         pagosProyectados: 0,
-        // Store original projections for variance calculation
         cobrosProyectadosOriginal: 0,
         pagosProyectadosOriginal: 0
       });
@@ -185,10 +304,9 @@ const Reports = () => {
       });
     }
     
-    // Track processed bank transactions to avoid duplicates
     const processedBankTxns = new Set();
     
-    // Process REAL payments (completed)
+    // Process REAL payments
     payments.forEach(payment => {
       if (payment.estatus !== 'completado') return;
       
@@ -222,7 +340,7 @@ const Reports = () => {
       }
     });
     
-    // Process PROJECTED data from pending CFDIs
+    // Process PROJECTED data
     cfdis.forEach(cfdi => {
       const total = cfdi.total || 0;
       const pagado = cfdi.monto_pagado || 0;
@@ -253,7 +371,6 @@ const Reports = () => {
       
       if (weekIdx === -1) return;
       
-      // Add projections to current and future weeks
       if (weeks[weekIdx].type === 'ACTUAL' || weeks[weekIdx].type === 'PROYECTADO') {
         if (cfdi.tipo_cfdi === 'ingreso') {
           weeks[weekIdx].cobrosProyectados += pendienteMXN;
@@ -264,7 +381,6 @@ const Reports = () => {
         }
       }
       
-      // For historical weeks, store what was projected (for variance)
       if (weeks[weekIdx].type === 'REAL') {
         if (cfdi.tipo_cfdi === 'ingreso') {
           weeks[weekIdx].cobrosProyectadosOriginal += pendienteMXN;
@@ -277,23 +393,18 @@ const Reports = () => {
     return weeks;
   }, [payments, cfdis, fxRates]);
 
-  // Calculate running bank balance for each week
   const weeksWithBalance = useMemo(() => {
     let runningBalance = saldoInicialBancos;
     
-    return weeksData.map((week, idx) => {
-      // For historical weeks, use real data
-      // For current/future, mix real + projected
+    return weeksData.map((week) => {
       const cobros = week.cobrosReales + (week.isFuture || week.isCurrent ? week.cobrosProyectados : 0);
       const pagos = week.pagosReales + (week.isFuture || week.isCurrent ? week.pagosProyectados : 0);
       const flujoNeto = cobros - pagos;
       
-      // Calculate balance at end of week
       const saldoInicial = runningBalance;
       const saldoFinal = runningBalance + flujoNeto;
       runningBalance = saldoFinal;
       
-      // Calculate variance (Real vs Projected) for historical weeks
       let variacionCobros = 0;
       let variacionPagos = 0;
       let variacionPorcentajeCobros = 0;
@@ -301,7 +412,6 @@ const Reports = () => {
       let hasSignificantVariance = false;
       
       if (week.isPast && (week.cobrosProyectadosOriginal > 0 || week.pagosProyectadosOriginal > 0)) {
-        // Cobros variance
         if (week.cobrosProyectadosOriginal > 0) {
           variacionCobros = week.cobrosReales - week.cobrosProyectadosOriginal;
           variacionPorcentajeCobros = ((week.cobrosReales - week.cobrosProyectadosOriginal) / week.cobrosProyectadosOriginal) * 100;
@@ -310,7 +420,6 @@ const Reports = () => {
           }
         }
         
-        // Pagos variance
         if (week.pagosProyectadosOriginal > 0) {
           variacionPagos = week.pagosReales - week.pagosProyectadosOriginal;
           variacionPorcentajePagos = ((week.pagosReales - week.pagosProyectadosOriginal) / week.pagosProyectadosOriginal) * 100;
@@ -334,7 +443,6 @@ const Reports = () => {
     });
   }, [weeksData, saldoInicialBancos]);
 
-  // Calculate totals
   const totals = useMemo(() => {
     return weeksWithBalance.reduce((acc, week) => {
       acc.cobrosReales += week.cobrosReales;
@@ -345,10 +453,32 @@ const Reports = () => {
     }, { cobrosReales: 0, pagosReales: 0, cobrosProyectados: 0, pagosProyectados: 0 });
   }, [weeksWithBalance]);
 
-  // Get final projected balance
   const saldoFinalProyectado = weeksWithBalance.length > 0 
     ? weeksWithBalance[weeksWithBalance.length - 1].saldoFinal 
     : saldoInicialBancos;
+
+  // Prepare trends chart data
+  const trendsChartData = useMemo(() => {
+    return trendsData.map(p => ({
+      periodo: p.periodo,
+      ingresos: p.income_statement?.ingresos || 0,
+      utilidadNeta: p.income_statement?.utilidad_neta || 0,
+      utilidadBruta: p.income_statement?.utilidad_bruta || 0,
+      margenBruto: p.metrics?.margins?.gross_margin?.value || 0,
+      margenNeto: p.metrics?.margins?.net_margin?.value || 0,
+      roe: p.metrics?.returns?.roe?.value || 0,
+      roic: p.metrics?.returns?.roic?.value || 0,
+    }));
+  }, [trendsData]);
+
+  // Prepare Sankey data for Recharts
+  const sankeyChartData = useMemo(() => {
+    if (!sankeyData) return null;
+    return {
+      nodes: sankeyData.nodes.map((n, i) => ({ ...n, fill: ['#3B82F6', '#EF4444', '#22C55E', '#F97316', '#F97316', '#F97316', '#10B981', '#EF4444', '#A855F7', '#059669'][i] })),
+      links: sankeyData.links
+    };
+  }, [sankeyData]);
 
   if (loading) return <div className="p-8">Cargando...</div>;
 
@@ -358,299 +488,537 @@ const Reports = () => {
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{fontFamily: 'Manrope'}}>Reportes</h1>
-          <p className="text-[#64748B]">Rolling Cash Flow - 18 Semanas (4 Real + 1 Actual + 13 Proy)</p>
-          <p className="text-xs text-[#94A3B8] mt-1">
-            S1-S4 = Historial • S5 = Semana actual • S6-S18 = Proyección 13 semanas
-          </p>
+          <p className="text-[#64748B]">Análisis financiero y flujo de efectivo</p>
         </div>
         <div className="flex gap-2 items-center">
-          <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
-            <SelectTrigger className="w-40" data-testid="currency-selector">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CURRENCIES.map(c => (
-                <SelectItem key={c.code} value={c.code}>
-                  {c.symbol} {c.code}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="icon" onClick={loadData}>
+          <Button variant="outline" size="icon" onClick={() => { loadData(); loadFinancialData(); }}>
             <RefreshCw size={16} />
           </Button>
         </div>
       </div>
 
-      {/* Bank Balance Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-blue-800 flex items-center gap-2">
-              <Wallet size={16} />
-              Saldo Inicial Bancos
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold mono text-blue-700">
-              {formatCurrency(saldoInicialBancos)}
-            </p>
-            <p className="text-xs text-blue-600 mt-1">
-              {bankSummary?.por_moneda ? Object.keys(bankSummary.por_moneda).length : 0} moneda(s) • 
-              {bankSummary?.total_cuentas || 0} cuenta(s)
-            </p>
-            {bankSummary?.por_moneda && Object.entries(bankSummary.por_moneda).length > 0 && (
-              <div className="mt-2 text-xs space-y-1">
-                {Object.entries(bankSummary.por_moneda).map(([moneda, info]) => {
-                  // Get the TC used from the accounts in por_banco
-                  let tcUsado = null;
-                  if (moneda !== 'MXN' && bankSummary.por_banco) {
-                    Object.values(bankSummary.por_banco).forEach(banco => {
-                      banco.cuentas?.forEach(cuenta => {
-                        if (cuenta.moneda === moneda && cuenta.tipo_cambio_usado) {
-                          tcUsado = cuenta.tipo_cambio_usado;
-                        }
-                      });
-                    });
-                  }
-                  return (
-                    <div key={moneda} className="flex justify-between text-blue-700">
-                      <span>{moneda}:</span>
-                      <span className="mono">{moneda === 'MXN' ? '$' : ''}{info.saldo?.toLocaleString('es-MX', {minimumFractionDigits: 2})} {moneda !== 'MXN' && tcUsado && `(TC: ${tcUsado})`}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-3 lg:w-[600px]">
+          <TabsTrigger value="cashflow" className="gap-2" data-testid="tab-cashflow">
+            <Wallet size={16} /> Flujo de Efectivo
+          </TabsTrigger>
+          <TabsTrigger value="financial" className="gap-2" data-testid="tab-financial">
+            <BarChart3 size={16} /> Estados Financieros
+          </TabsTrigger>
+          <TabsTrigger value="sankey" className="gap-2" data-testid="tab-sankey">
+            <PieChart size={16} /> Sankey P&L
+          </TabsTrigger>
+        </TabsList>
 
-        <Card className={`border-2 ${(totals.cobrosReales - totals.pagosReales) >= 0 ? 'border-green-400 bg-gradient-to-br from-green-50 to-green-100' : 'border-red-400 bg-gradient-to-br from-red-50 to-red-100'}`}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-800 flex items-center gap-2">
-              {(totals.cobrosReales - totals.pagosReales) >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-              Flujo Neto Real (S1-S5)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className={`text-2xl font-bold mono ${(totals.cobrosReales - totals.pagosReales) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-              {(totals.cobrosReales - totals.pagosReales) >= 0 ? '+' : ''}{formatCurrency(totals.cobrosReales - totals.pagosReales)}
+        {/* CASH FLOW TAB */}
+        <TabsContent value="cashflow" className="space-y-6">
+          <div className="flex justify-between items-center">
+            <p className="text-xs text-[#94A3B8]">
+              S1-S4 = Historial • S5 = Semana actual • S6-S18 = Proyección 13 semanas
             </p>
-          </CardContent>
-        </Card>
+            <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
+              <SelectTrigger className="w-40" data-testid="currency-selector">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CURRENCIES.map(c => (
+                  <SelectItem key={c.code} value={c.code}>
+                    {c.symbol} {c.code}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <Card className={`border-2 ${saldoFinalProyectado >= 0 ? 'border-emerald-400 bg-gradient-to-br from-emerald-50 to-emerald-100' : 'border-red-400 bg-gradient-to-br from-red-50 to-red-100'}`}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-800 flex items-center gap-2">
-              <Calendar size={16} />
-              Saldo Proyectado S18
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className={`text-2xl font-bold mono ${saldoFinalProyectado >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-              {formatCurrency(saldoFinalProyectado)}
-            </p>
-            <p className="text-xs text-gray-600 mt-1">
-              Al {weeksWithBalance.length > 0 ? format(weeksWithBalance[weeksWithBalance.length - 1].weekEnd, 'dd/MM/yyyy') : '-'}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+          {/* Bank Balance Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-blue-800 flex items-center gap-2">
+                  <Wallet size={16} />
+                  Saldo Inicial Bancos
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold mono text-blue-700">
+                  {formatCurrency(saldoInicialBancos)}
+                </p>
+              </CardContent>
+            </Card>
 
-      {/* FX Rate notice */}
-      {selectedCurrency !== 'MXN' && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-          <strong>TC:</strong> 1 {selectedCurrency} = ${fxRates[selectedCurrency]?.toFixed(4) || '?'} MXN
-        </div>
-      )}
+            <Card className={`border-2 ${(totals.cobrosReales - totals.pagosReales) >= 0 ? 'border-green-400 bg-gradient-to-br from-green-50 to-green-100' : 'border-red-400 bg-gradient-to-br from-red-50 to-red-100'}`}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-gray-800 flex items-center gap-2">
+                  {(totals.cobrosReales - totals.pagosReales) >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                  Flujo Neto Real (S1-S5)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className={`text-2xl font-bold mono ${(totals.cobrosReales - totals.pagosReales) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                  {(totals.cobrosReales - totals.pagosReales) >= 0 ? '+' : ''}{formatCurrency(totals.cobrosReales - totals.pagosReales)}
+                </p>
+              </CardContent>
+            </Card>
 
-      {/* Main Table */}
-      <Card className="border-[#E2E8F0]">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Calendar size={20} />
-            Flujo de Efectivo con Saldo de Bancos
-          </CardTitle>
-          <CardDescription className="flex flex-wrap gap-4">
-            <span className="inline-flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-green-500"></span> Cobrado (Real)
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-red-500"></span> Pagado (Real)
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-gray-400"></span> Proyectado
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <AlertTriangle size={12} className="text-amber-500" /> Variación &gt;{VARIANCE_THRESHOLD}%
-            </span>
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table className="text-sm">
-              <TableHeader>
-                <TableRow className="bg-gray-50">
-                  <TableHead className="w-14 font-bold">Sem</TableHead>
-                  <TableHead className="w-28">Período</TableHead>
-                  <TableHead className="w-16 text-center">Tipo</TableHead>
-                  <TableHead className="text-right">Cobros Real</TableHead>
-                  <TableHead className="text-right">Pagos Real</TableHead>
-                  <TableHead className="text-right bg-gray-100">Cobros Proy.</TableHead>
-                  <TableHead className="text-right bg-gray-100">Pagos Proy.</TableHead>
-                  <TableHead className="text-right font-bold">Flujo Neto</TableHead>
-                  <TableHead className="text-right font-bold bg-blue-50">Saldo Bancos</TableHead>
-                  <TableHead className="text-center">Variación</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {/* Initial Balance Row */}
-                <TableRow className="bg-blue-50 border-b-2 border-blue-200">
-                  <TableCell colSpan={8} className="font-semibold text-blue-800">
-                    SALDO INICIAL DE BANCOS
-                  </TableCell>
-                  <TableCell className="mono text-right font-bold text-blue-700 bg-blue-100">
-                    {formatCurrency(saldoInicialBancos)}
-                  </TableCell>
-                  <TableCell></TableCell>
-                </TableRow>
-                
-                {weeksWithBalance.map((week) => {
-                  const isNegativeBalance = week.saldoFinal < 0;
-                  
-                  return (
-                    <TableRow 
-                      key={week.label} 
-                      className={`
-                        ${week.isCurrent ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''} 
-                        ${week.isPast ? '' : 'bg-gray-50/50'}
-                        ${week.hasSignificantVariance ? 'bg-amber-50' : ''}
-                        ${isNegativeBalance ? 'bg-red-50' : ''}
-                      `}
-                    >
-                      <TableCell className="mono font-bold">{week.label}</TableCell>
-                      <TableCell className="text-xs">{week.dateRange}</TableCell>
-                      <TableCell className="text-center">
-                        {week.type === 'REAL' && (
-                          <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-800 font-medium">Real</span>
-                        )}
-                        {week.type === 'ACTUAL' && (
-                          <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 text-blue-800 font-semibold">Actual</span>
-                        )}
-                        {week.type === 'PROYECTADO' && (
-                          <span className="px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-600">Proy</span>
-                        )}
+            <Card className={`border-2 ${saldoFinalProyectado >= 0 ? 'border-emerald-400 bg-gradient-to-br from-emerald-50 to-emerald-100' : 'border-red-400 bg-gradient-to-br from-red-50 to-red-100'}`}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-gray-800 flex items-center gap-2">
+                  <Calendar size={16} />
+                  Saldo Proyectado S18
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className={`text-2xl font-bold mono ${saldoFinalProyectado >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                  {formatCurrency(saldoFinalProyectado)}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Main Table */}
+          <Card className="border-[#E2E8F0]">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Calendar size={20} />
+                Flujo de Efectivo con Saldo de Bancos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table className="text-sm">
+                  <TableHeader>
+                    <TableRow className="bg-gray-50">
+                      <TableHead className="w-14 font-bold">Sem</TableHead>
+                      <TableHead className="w-28">Período</TableHead>
+                      <TableHead className="w-16 text-center">Tipo</TableHead>
+                      <TableHead className="text-right">Cobros Real</TableHead>
+                      <TableHead className="text-right">Pagos Real</TableHead>
+                      <TableHead className="text-right bg-gray-100">Cobros Proy.</TableHead>
+                      <TableHead className="text-right bg-gray-100">Pagos Proy.</TableHead>
+                      <TableHead className="text-right font-bold">Flujo Neto</TableHead>
+                      <TableHead className="text-right font-bold bg-blue-50">Saldo Bancos</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow className="bg-blue-50 border-b-2 border-blue-200">
+                      <TableCell colSpan={8} className="font-semibold text-blue-800">
+                        SALDO INICIAL DE BANCOS
                       </TableCell>
-                      <TableCell className="mono text-right text-green-600 font-semibold">
-                        {week.cobrosReales > 0 ? formatCurrency(week.cobrosReales) : '-'}
-                      </TableCell>
-                      <TableCell className="mono text-right text-red-600 font-semibold">
-                        {week.pagosReales > 0 ? formatCurrency(week.pagosReales) : '-'}
-                      </TableCell>
-                      <TableCell className="mono text-right text-gray-500 bg-gray-50">
-                        {week.cobrosProyectados > 0 ? formatCurrency(week.cobrosProyectados) : '-'}
-                      </TableCell>
-                      <TableCell className="mono text-right text-gray-500 bg-gray-50">
-                        {week.pagosProyectados > 0 ? formatCurrency(week.pagosProyectados) : '-'}
-                      </TableCell>
-                      <TableCell className={`mono text-right font-bold ${week.flujoNeto >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                        {week.flujoNeto !== 0 ? (
-                          <>{week.flujoNeto >= 0 ? '+' : ''}{formatCurrency(week.flujoNeto)}</>
-                        ) : '-'}
-                      </TableCell>
-                      <TableCell className={`mono text-right font-bold bg-blue-50 ${isNegativeBalance ? 'text-red-700 bg-red-100' : 'text-blue-700'}`}>
-                        {formatCurrency(week.saldoFinal)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {week.isPast && week.hasSignificantVariance && (
-                          <div className="flex flex-col items-center gap-1">
-                            <AlertTriangle size={14} className="text-amber-500" />
-                            {week.variacionPorcentajeCobros !== 0 && Math.abs(week.variacionPorcentajeCobros) > VARIANCE_THRESHOLD && (
-                              <span className={`text-xs px-1 py-0.5 rounded ${week.variacionPorcentajeCobros > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                C: {week.variacionPorcentajeCobros > 0 ? '+' : ''}{week.variacionPorcentajeCobros.toFixed(0)}%
-                              </span>
-                            )}
-                            {week.variacionPorcentajePagos !== 0 && Math.abs(week.variacionPorcentajePagos) > VARIANCE_THRESHOLD && (
-                              <span className={`text-xs px-1 py-0.5 rounded ${week.variacionPorcentajePagos < 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                P: {week.variacionPorcentajePagos > 0 ? '+' : ''}{week.variacionPorcentajePagos.toFixed(0)}%
-                              </span>
-                            )}
-                          </div>
-                        )}
+                      <TableCell className="mono text-right font-bold text-blue-700 bg-blue-100">
+                        {formatCurrency(saldoInicialBancos)}
                       </TableCell>
                     </TableRow>
-                  );
-                })}
-                
-                {/* TOTALS */}
-                <TableRow className="bg-[#0F172A] text-white font-bold">
-                  <TableCell colSpan={3} className="font-bold">TOTAL</TableCell>
-                  <TableCell className="mono text-right text-green-400">{formatCurrency(totals.cobrosReales)}</TableCell>
-                  <TableCell className="mono text-right text-red-400">{formatCurrency(totals.pagosReales)}</TableCell>
-                  <TableCell className="mono text-right text-gray-400">{formatCurrency(totals.cobrosProyectados)}</TableCell>
-                  <TableCell className="mono text-right text-gray-400">{formatCurrency(totals.pagosProyectados)}</TableCell>
-                  <TableCell className={`mono text-right font-bold ${(totals.cobrosReales + totals.cobrosProyectados - totals.pagosReales - totals.pagosProyectados) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {formatCurrency(totals.cobrosReales + totals.cobrosProyectados - totals.pagosReales - totals.pagosProyectados)}
-                  </TableCell>
-                  <TableCell className={`mono text-right font-bold ${saldoFinalProyectado >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
-                    {formatCurrency(saldoFinalProyectado)}
-                  </TableCell>
-                  <TableCell></TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                    
+                    {weeksWithBalance.map((week) => (
+                      <TableRow 
+                        key={week.label} 
+                        className={`
+                          ${week.isCurrent ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''} 
+                          ${week.isPast ? '' : 'bg-gray-50/50'}
+                          ${week.saldoFinal < 0 ? 'bg-red-50' : ''}
+                        `}
+                      >
+                        <TableCell className="mono font-bold">{week.label}</TableCell>
+                        <TableCell className="text-xs">{week.dateRange}</TableCell>
+                        <TableCell className="text-center">
+                          {week.type === 'REAL' && (
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-800 font-medium">Real</span>
+                          )}
+                          {week.type === 'ACTUAL' && (
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 text-blue-800 font-semibold">Actual</span>
+                          )}
+                          {week.type === 'PROYECTADO' && (
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-600">Proy</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="mono text-right text-green-600 font-semibold">
+                          {week.cobrosReales > 0 ? formatCurrency(week.cobrosReales) : '-'}
+                        </TableCell>
+                        <TableCell className="mono text-right text-red-600 font-semibold">
+                          {week.pagosReales > 0 ? formatCurrency(week.pagosReales) : '-'}
+                        </TableCell>
+                        <TableCell className="mono text-right text-gray-500 bg-gray-50">
+                          {week.cobrosProyectados > 0 ? formatCurrency(week.cobrosProyectados) : '-'}
+                        </TableCell>
+                        <TableCell className="mono text-right text-gray-500 bg-gray-50">
+                          {week.pagosProyectados > 0 ? formatCurrency(week.pagosProyectados) : '-'}
+                        </TableCell>
+                        <TableCell className={`mono text-right font-bold ${week.flujoNeto >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                          {week.flujoNeto !== 0 ? (
+                            <>{week.flujoNeto >= 0 ? '+' : ''}{formatCurrency(week.flujoNeto)}</>
+                          ) : '-'}
+                        </TableCell>
+                        <TableCell className={`mono text-right font-bold bg-blue-50 ${week.saldoFinal < 0 ? 'text-red-700 bg-red-100' : 'text-blue-700'}`}>
+                          {formatCurrency(week.saldoFinal)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    
+                    <TableRow className="bg-[#0F172A] text-white font-bold">
+                      <TableCell colSpan={3} className="font-bold">TOTAL</TableCell>
+                      <TableCell className="mono text-right text-green-400">{formatCurrency(totals.cobrosReales)}</TableCell>
+                      <TableCell className="mono text-right text-red-400">{formatCurrency(totals.pagosReales)}</TableCell>
+                      <TableCell className="mono text-right text-gray-400">{formatCurrency(totals.cobrosProyectados)}</TableCell>
+                      <TableCell className="mono text-right text-gray-400">{formatCurrency(totals.pagosProyectados)}</TableCell>
+                      <TableCell className={`mono text-right font-bold ${(totals.cobrosReales + totals.cobrosProyectados - totals.pagosReales - totals.pagosProyectados) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {formatCurrency(totals.cobrosReales + totals.cobrosProyectados - totals.pagosReales - totals.pagosProyectados)}
+                      </TableCell>
+                      <TableCell className={`mono text-right font-bold ${saldoFinalProyectado >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                        {formatCurrency(saldoFinalProyectado)}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-green-200 bg-green-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-green-800 flex items-center gap-2">
-              <TrendingUp size={16} />
-              Total Cobrado (Real)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold mono text-green-700">
-              {formatCurrency(totals.cobrosReales)}
-            </p>
-          </CardContent>
-        </Card>
+        {/* FINANCIAL STATEMENTS TAB */}
+        <TabsContent value="financial" className="space-y-6">
+          {trendsData.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <FileSpreadsheet className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900">Sin datos financieros</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Carga estados financieros desde el módulo de Métricas Financieras
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-blue-800">Períodos</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-3xl font-bold text-blue-700">{trendsData.length}</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-green-800">Ingresos Últ. Período</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold text-green-700">
+                      {formatMXN(trendsData[trendsData.length - 1]?.income_statement?.ingresos)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-purple-800">Utilidad Neta Últ.</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold text-purple-700">
+                      {formatMXN(trendsData[trendsData.length - 1]?.income_statement?.utilidad_neta)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-amber-800">ROE Últ. Período</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold text-amber-700">
+                      {(trendsData[trendsData.length - 1]?.metrics?.returns?.roe?.value || 0).toFixed(1)}%
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
 
-        <Card className="border-red-200 bg-red-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-red-800 flex items-center gap-2">
-              <TrendingDown size={16} />
-              Total Pagado (Real)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold mono text-red-700">
-              {formatCurrency(totals.pagosReales)}
-            </p>
-          </CardContent>
-        </Card>
+              {/* Trends Charts */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Revenue & Profit Chart */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <DollarSign className="w-5 h-5 text-blue-500" />
+                      Ingresos y Utilidades por Período
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <ComposedChart data={trendsChartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="periodo" tick={{ fontSize: 11 }} />
+                        <YAxis tickFormatter={(v) => `$${(v/1000000).toFixed(1)}M`} />
+                        <Tooltip formatter={(value) => formatMXN(value)} />
+                        <Legend />
+                        <Bar dataKey="ingresos" name="Ingresos" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="utilidadBruta" name="Utilidad Bruta" fill="#22C55E" radius={[4, 4, 0, 0]} />
+                        <Line type="monotone" dataKey="utilidadNeta" name="Utilidad Neta" stroke="#8B5CF6" strokeWidth={3} dot={{ fill: '#8B5CF6' }} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
 
-        <Card className="border-blue-200 bg-blue-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-blue-800">Por Cobrar (Proy.)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold mono text-green-600">+{formatCurrency(totals.cobrosProyectados)}</p>
-          </CardContent>
-        </Card>
+                {/* Margins Chart */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <TrendingUp className="w-5 h-5 text-green-500" />
+                      Márgenes por Período
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={trendsChartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="periodo" tick={{ fontSize: 11 }} />
+                        <YAxis unit="%" />
+                        <Tooltip formatter={(value) => `${value.toFixed(1)}%`} />
+                        <Legend />
+                        <Line type="monotone" dataKey="margenBruto" name="Margen Bruto" stroke="#22C55E" strokeWidth={2} dot={{ fill: '#22C55E' }} />
+                        <Line type="monotone" dataKey="margenNeto" name="Margen Neto" stroke="#3B82F6" strokeWidth={2} dot={{ fill: '#3B82F6' }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
 
-        <Card className="border-orange-200 bg-orange-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-orange-800">Por Pagar (Proy.)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold mono text-red-600">-{formatCurrency(totals.pagosProyectados)}</p>
-          </CardContent>
-        </Card>
-      </div>
+                {/* Return Metrics Chart */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Building2 className="w-5 h-5 text-purple-500" />
+                      Retorno sobre Inversión
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={trendsChartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="periodo" tick={{ fontSize: 11 }} />
+                        <YAxis unit="%" />
+                        <Tooltip formatter={(value) => `${value.toFixed(1)}%`} />
+                        <Legend />
+                        <Line type="monotone" dataKey="roe" name="ROE" stroke="#8B5CF6" strokeWidth={2} dot={{ fill: '#8B5CF6' }} />
+                        <Line type="monotone" dataKey="roic" name="ROIC" stroke="#F97316" strokeWidth={2} dot={{ fill: '#F97316' }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                {/* Comparative Table */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5 text-amber-500" />
+                      Comparativo de Períodos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Table className="text-sm">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Período</TableHead>
+                          <TableHead className="text-right">Ingresos</TableHead>
+                          <TableHead className="text-right">Utilidad Neta</TableHead>
+                          <TableHead className="text-right">Margen %</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {trendsData.map((p, idx) => {
+                          const prev = idx > 0 ? trendsData[idx - 1] : null;
+                          const ingChange = prev ? ((p.income_statement?.ingresos || 0) - (prev.income_statement?.ingresos || 0)) / (prev.income_statement?.ingresos || 1) * 100 : 0;
+                          
+                          return (
+                            <TableRow key={p.periodo}>
+                              <TableCell className="font-medium">{p.periodo}</TableCell>
+                              <TableCell className="text-right">
+                                <div>{formatMXN(p.income_statement?.ingresos)}</div>
+                                {prev && (
+                                  <span className={`text-xs ${ingChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {ingChange >= 0 ? '+' : ''}{ingChange.toFixed(1)}%
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell className={`text-right ${(p.income_statement?.utilidad_neta || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {formatMXN(p.income_statement?.utilidad_neta)}
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {(p.metrics?.margins?.net_margin?.value || 0).toFixed(1)}%
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          )}
+        </TabsContent>
+
+        {/* SANKEY TAB */}
+        <TabsContent value="sankey" className="space-y-6">
+          {/* Company Header */}
+          <Card className="bg-gradient-to-r from-slate-800 to-slate-900 text-white">
+            <CardContent className="py-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">{company?.nombre || 'Empresa'}</h2>
+                  <p className="text-slate-300 mt-1">Estado de Resultados - Diagrama Sankey</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                    <SelectTrigger className="w-40 bg-white/10 border-white/20 text-white" data-testid="sankey-period-selector">
+                      <SelectValue placeholder="Período" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {periods.map((p) => (
+                        <SelectItem key={p.periodo} value={p.periodo}>
+                          {p.periodo}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {!sankeyData ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <PieChart className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900">Sin datos para Sankey</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Selecciona un período con estado de resultados cargado
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* Sankey Diagram */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <PieChart className="w-5 h-5 text-blue-500" />
+                    Flujo del Estado de Resultados - {selectedPeriod}
+                  </CardTitle>
+                  <CardDescription>
+                    Visualización del flujo desde Ingresos hasta Utilidad Neta
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[500px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <Sankey
+                        data={sankeyChartData}
+                        node={<SankeyNode />}
+                        link={<SankeyLink />}
+                        nodePadding={50}
+                        nodeWidth={10}
+                        margin={{ top: 20, right: 200, bottom: 20, left: 20 }}
+                      >
+                        <Tooltip 
+                          formatter={(value) => formatMXN(value)}
+                          labelFormatter={(name) => name}
+                        />
+                      </Sankey>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card className="bg-blue-50 border-blue-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-blue-800">Ingresos</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold text-blue-700">{formatMXN(sankeyData.summary?.ingresos)}</p>
+                    <p className="text-xs text-blue-600 mt-1">100%</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-red-50 border-red-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-red-800">Costo de Ventas</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold text-red-700">{formatMXN(sankeyData.summary?.costo_ventas)}</p>
+                    <p className="text-xs text-red-600 mt-1">
+                      {((sankeyData.summary?.costo_ventas / sankeyData.summary?.ingresos) * 100 || 0).toFixed(1)}%
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-green-50 border-green-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-green-800">Utilidad Bruta</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold text-green-700">{formatMXN(sankeyData.summary?.utilidad_bruta)}</p>
+                    <p className="text-xs text-green-600 mt-1">
+                      {((sankeyData.summary?.utilidad_bruta / sankeyData.summary?.ingresos) * 100 || 0).toFixed(1)}%
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-emerald-50 border-emerald-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-emerald-800">Utilidad Neta</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold text-emerald-700">{formatMXN(sankeyData.summary?.utilidad_neta)}</p>
+                    <p className="text-xs text-emerald-600 mt-1">
+                      {((sankeyData.summary?.utilidad_neta / sankeyData.summary?.ingresos) * 100 || 0).toFixed(1)}%
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Detailed Breakdown */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Desglose del Estado de Resultados</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between py-3 border-b">
+                      <span className="font-medium text-blue-700">Ingresos</span>
+                      <span className="font-bold text-blue-700">{formatMXN(sankeyData.summary?.ingresos)}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-2 pl-4">
+                      <span className="text-red-600">(-) Costo de Ventas</span>
+                      <span className="text-red-600">{formatMXN(sankeyData.summary?.costo_ventas)}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-3 border-b bg-green-50 px-2 rounded">
+                      <span className="font-medium text-green-700">= Utilidad Bruta</span>
+                      <span className="font-bold text-green-700">{formatMXN(sankeyData.summary?.utilidad_bruta)}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-2 pl-4">
+                      <span className="text-orange-600">(-) Gastos Operativos</span>
+                      <span className="text-orange-600">{formatMXN(sankeyData.summary?.gastos_operativos)}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-3 border-b bg-blue-50 px-2 rounded">
+                      <span className="font-medium text-blue-700">= Utilidad Operativa</span>
+                      <span className="font-bold text-blue-700">{formatMXN(sankeyData.summary?.utilidad_operativa)}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-2 pl-4">
+                      <span className="text-red-600">(-) Otros Gastos</span>
+                      <span className="text-red-600">{formatMXN(sankeyData.summary?.otros_gastos)}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-2 pl-4">
+                      <span className="text-purple-600">(-) Impuestos</span>
+                      <span className="text-purple-600">{formatMXN(sankeyData.summary?.impuestos)}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-3 border-t-2 bg-emerald-100 px-2 rounded">
+                      <span className="font-bold text-emerald-800">= UTILIDAD NETA</span>
+                      <span className="font-bold text-emerald-800 text-xl">{formatMXN(sankeyData.summary?.utilidad_neta)}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
