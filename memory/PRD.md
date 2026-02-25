@@ -320,9 +320,45 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
-## Latest Updates (February 25, 2026)
+## Latest Updates (February 25, 2026 - Session 2)
 
 ### Completed in This Session ✅
+
+**P0 - Corrección de Exportación PDF y Selector de Período (COMPLETADO)**
+
+El usuario reportó que el PDF exportado era incompleto (solo una captura de pantalla) y solicitó agregar selector de período con opciones:
+- Meses específicos (Enero 2024, Febrero 2024, etc.)
+- Trimestres (Q1, Q2, Q3, Q4) con sumarización correcta
+- Anual
+- Períodos genéricos (Último mes, Último trimestre, Último año)
+
+**Backend implementado:**
+- `GET /api/financial-statements/available-periods` - Retorna períodos disponibles organizados por tipo (monthly, quarterly, annual, generic)
+- `GET /api/financial-statements/aggregated?period_type=X&period_value=Y` - Retorna datos agregados para el período solicitado
+
+**Frontend actualizado (`BoardReport.js`):**
+- Nuevo selector de tipo de período (Mensual, Trimestral, Anual)
+- Selector de período dinámico que cambia según el tipo seleccionado
+- Indicador "Períodos incluidos" visible cuando hay más de un período
+- Función `exportToPDF` completamente reescrita para generar PDF multi-página con jsPDF
+- PDF incluye: portada, resumen ejecutivo, márgenes, retornos, eficiencia, liquidez, solvencia, tendencias, y desglose Sankey
+
+**Traducciones actualizadas (`boardReportTranslations.js`):**
+- Nuevos textos para selector de período y exportación PDF en español, inglés y portugués
+
+**Testing:** 100% (13/13 backend tests, all frontend UI verified)
+
+**Verificación de agregación trimestral:**
+- Enero 2024: $4,069,388.71
+- Febrero 2024: $2,161,962.64
+- Marzo 2024: $2,475,983.88
+- Q1 2024 (suma): $8,707,335.23 ✓
+
+---
+
+## Previous Updates (February 25, 2026 - Session 1)
+
+### Completed Previously ✅
 
 **P0 - Reporte Ejecutivo para el Board con Selector de Idioma (COMPLETADO)**
 
