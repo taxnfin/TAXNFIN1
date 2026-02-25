@@ -84,11 +84,18 @@ const AdvancedFeatures = () => {
         modificaciones: [modificacion]
       });
 
-      toast.success('Escenario creado');
+      toast.success('Escenario creado exitosamente');
       setScenarioDialog(false);
       setScenarioForm({ nombre: '', descripcion: '', tipo: 'adelantar_pago', monto: '', fecha: '' });
     } catch (error) {
-      toast.error('Error creando escenario');
+      // More descriptive error messages
+      if (error.response?.status === 403) {
+        toast.error('No tiene permisos para crear escenarios. Se requiere rol Admin o CFO.');
+      } else if (error.response?.data?.detail) {
+        toast.error('Error creando escenario: ' + error.response.data.detail);
+      } else {
+        toast.error('Error creando escenario. Verifique que existan datos de cashflow.');
+      }
     }
   };
 
