@@ -101,6 +101,13 @@ SOLVENCIA:
 - Cobertura de Intereses: {solvency.get('interest_coverage', {}).get('value', 0):.1f}x
 """
         
+        # Add trends data if available
+        if trends_data and len(trends_data) > 1:
+            financial_context += "\n\nTENDENCIAS HISTÓRICAS:\n"
+            for td in trends_data[-6:]:  # Last 6 periods max
+                td_is = td.get('income_statement', {})
+                financial_context += f"- {td.get('periodo', 'N/A')}: Ingresos ${td_is.get('ingresos', 0):,.0f}, Utilidad Bruta ${td_is.get('utilidad_bruta', 0):,.0f}, Utilidad Neta ${td_is.get('utilidad_neta', 0):,.0f}\n"
+        
         lang_instructions = {
             'es': 'Responde SOLO en español.',
             'en': 'Respond ONLY in English.',
