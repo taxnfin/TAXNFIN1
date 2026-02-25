@@ -939,6 +939,228 @@ async def get_financial_trends(
     }
 
 
+@router.get("/aggregated")
+async def get_aggregated_metrics(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    period_type: str = Query(..., description="Tipo de período: monthly, quarterly, annual"),
+    period_value: str = Query(..., description="Valor del período: 2024-01, Q1-2024, 2024, last_month, last_quarter, last_year")
+):
+    """Get aggregated financial metrics for a specific period type"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Determine which months to aggregate
+    months_to_aggregate = []
+    
+    if period_type == "monthly":
+        # Single month: 2024-01
+        months_to_aggregate = [period_value]
+        
+    elif period_type == "quarterly":
+        # Quarter: Q1-2024, Q2-2024, etc.
+        if period_value.startswith("Q"):
+            parts = period_value.split("-")
+            quarter = int(parts[0][1])  # Q1 -> 1
+            year = parts[1]
+            quarter_months = {
+                1: ["01", "02", "03"],
+                2: ["04", "05", "06"],
+                3: ["07", "08", "09"],
+                4: ["10", "11", "12"]
+            }
+            months_to_aggregate = [f"{year}-{m}" for m in quarter_months.get(quarter, [])]
+        elif period_value == "last_quarter":
+            # Calculate last complete quarter
+            from datetime import datetime
+            now = datetime.now()
+            current_quarter = (now.month - 1) // 3 + 1
+            last_quarter = current_quarter - 1 if current_quarter > 1 else 4
+            year = now.year if current_quarter > 1 else now.year - 1
+            quarter_months = {
+                1: ["01", "02", "03"],
+                2: ["04", "05", "06"],
+                3: ["07", "08", "09"],
+                4: ["10", "11", "12"]
+            }
+            months_to_aggregate = [f"{year}-{m}" for m in quarter_months[last_quarter]]
+            
+    elif period_type == "annual":
+        # Annual: 2024
+        if period_value == "last_year":
+            from datetime import datetime
+            year = str(datetime.now().year - 1)
+        else:
+            year = period_value
+        months_to_aggregate = [f"{year}-{str(m).zfill(2)}" for m in range(1, 13)]
+        
+    elif period_type == "last_month":
+        from datetime import datetime
+        now = datetime.now()
+        last_month = now.month - 1 if now.month > 1 else 12
+        year = now.year if now.month > 1 else now.year - 1
+        months_to_aggregate = [f"{year}-{str(last_month).zfill(2)}"]
+    
+    # Fetch all data for the periods
+    aggregated_income = {
+        'ingresos': 0, 'costo_ventas': 0, 'utilidad_bruta': 0,
+        'gastos_venta': 0, 'gastos_administracion': 0, 'gastos_generales': 0,
+        'utilidad_operativa': 0, 'otros_ingresos': 0, 'gastos_financieros': 0,
+        'otros_gastos': 0, 'utilidad_antes_impuestos': 0, 'impuestos': 0,
+        'utilidad_neta': 0, 'depreciacion': 0, 'amortizacion': 0, 'intereses': 0, 'ebitda': 0
+    }
+    
+    # For balance sheet, we take the latest period
+    latest_balance = None
+    periods_found = []
+    
+    for periodo in months_to_aggregate:
+        # Get income statement
+        income_stmt = await db.financial_statements.find_one({
+            'company_id': company_id,
+            'tipo': 'estado_resultados',
+            'periodo': periodo
+        })
+        
+        if income_stmt:
+            periods_found.append(periodo)
+            data = income_stmt.get('datos', {})
+            for key in aggregated_income:
+                if key in data:
+                    aggregated_income[key] += data.get(key, 0)
+        
+        # Get balance sheet (keep latest)
+        balance_sheet = await db.financial_statements.find_one({
+            'company_id': company_id,
+            'tipo': 'balance_general',
+            'periodo': periodo
+        })
+        
+        if balance_sheet:
+            latest_balance = balance_sheet.get('datos', {})
+    
+    if not periods_found:
+        raise HTTPException(status_code=404, detail=f"No hay datos financieros para el período solicitado")
+    
+    # Calculate aggregated EBITDA
+    aggregated_income['ebitda'] = (
+        aggregated_income['utilidad_operativa'] + 
+        aggregated_income['depreciacion'] + 
+        aggregated_income['amortizacion']
+    )
+    
+    # Calculate metrics with aggregated data
+    balance_data = latest_balance or {}
+    metrics = calculate_financial_metrics(aggregated_income, balance_data)
+    
+    # Generate period label
+    period_labels = {
+        'es': {
+            'monthly': 'Mensual',
+            'quarterly': 'Trimestral', 
+            'annual': 'Anual'
+        }
+    }
+    
+    return {
+        "period_type": period_type,
+        "period_value": period_value,
+        "periods_included": periods_found,
+        "periods_count": len(periods_found),
+        "has_income_statement": len(periods_found) > 0,
+        "has_balance_sheet": latest_balance is not None,
+        "metrics": metrics,
+        "income_statement": aggregated_income,
+        "balance_sheet": balance_data
+    }
+
+
+@router.get("/available-periods")
+async def get_available_periods_detailed(
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Get detailed list of available periods for selection UI"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get all periods
+    pipeline = [
+        {'$match': {'company_id': company_id, 'tipo': 'estado_resultados'}},
+        {'$group': {'_id': '$periodo'}},
+        {'$sort': {'_id': -1}}
+    ]
+    
+    results = await db.financial_statements.aggregate(pipeline).to_list(100)
+    available_months = [r['_id'] for r in results]
+    
+    # Build response with different period types
+    month_names_es = {
+        '01': 'Enero', '02': 'Febrero', '03': 'Marzo', '04': 'Abril',
+        '05': 'Mayo', '06': 'Junio', '07': 'Julio', '08': 'Agosto',
+        '09': 'Septiembre', '10': 'Octubre', '11': 'Noviembre', '12': 'Diciembre'
+    }
+    
+    # Specific months
+    specific_months = []
+    for m in available_months:
+        year, month = m.split('-')
+        specific_months.append({
+            'value': m,
+            'label': f"{month_names_es.get(month, month)} {year}",
+            'type': 'monthly'
+        })
+    
+    # Quarters (only if we have data for all months in the quarter)
+    quarters = []
+    years = sorted(set([m.split('-')[0] for m in available_months]), reverse=True)
+    
+    for year in years:
+        for q in range(4, 0, -1):
+            quarter_months = {
+                1: ['01', '02', '03'],
+                2: ['04', '05', '06'],
+                3: ['07', '08', '09'],
+                4: ['10', '11', '12']
+            }
+            months_in_quarter = [f"{year}-{m}" for m in quarter_months[q]]
+            months_available = [m for m in months_in_quarter if m in available_months]
+            
+            if months_available:
+                quarters.append({
+                    'value': f"Q{q}-{year}",
+                    'label': f"Q{q} {year}",
+                    'type': 'quarterly',
+                    'months_available': len(months_available),
+                    'months_total': 3
+                })
+    
+    # Annual
+    annual = []
+    for year in years:
+        months_in_year = [m for m in available_months if m.startswith(year)]
+        if months_in_year:
+            annual.append({
+                'value': year,
+                'label': f"Año {year}",
+                'type': 'annual',
+                'months_available': len(months_in_year)
+            })
+    
+    # Generic periods
+    generic = [
+        {'value': 'last_month', 'label': 'Último Mes', 'type': 'generic'},
+        {'value': 'last_quarter', 'label': 'Último Trimestre', 'type': 'generic'},
+        {'value': 'last_year', 'label': 'Último Año', 'type': 'generic'}
+    ]
+    
+    return {
+        "specific_months": specific_months,
+        "quarters": quarters,
+        "annual": annual,
+        "generic": generic,
+        "raw_periods": available_months
+    }
+
+
 @router.get("/sankey/{periodo}")
 async def get_sankey_data(
     request: Request,
