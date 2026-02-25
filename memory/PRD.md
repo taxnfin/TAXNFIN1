@@ -320,7 +320,52 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ---
 
-## Latest Updates (February 25, 2026 - Session 4)
+## Latest Updates (February 25, 2026 - Session 5)
+
+### Completed in This Session ✅
+
+**Internacionalización (i18n) de Páginas Adicionales (COMPLETADO)**
+
+El usuario solicitó agregar selectores de idioma a las páginas:
+- FinancialMetrics.js
+- Reports.js  
+- CashflowProjections.js
+
+**Implementación:**
+1. **FinancialMetrics.js**: 
+   - Agregado selector de idioma con Globe icon
+   - Traducidos todos los textos de secciones (Retorno sobre Inversión, Eficiencia Operativa, Liquidez, Solvencia)
+   - Traducidos datos del período, estado de resultados y balance general
+   - Traducidos mensajes de toast
+
+2. **Reports.js**:
+   - Agregado selector de idioma con Globe icon
+   - Traducido header ("Reportes" → "Reports")
+   - Traducidas tarjetas de resumen (Saldo Inicial, Flujo Neto Real, Saldo Proyectado)
+   - Traducida tabla de flujo de efectivo (columnas y filas)
+   - Traducidas etiquetas de gráficos
+   - Traducido tab Sankey P&L
+
+3. **CashflowProjections.js**:
+   - Agregado selector de idioma con Globe icon
+   - Traducido título principal y descripción
+   - Traducidos botones de acción (Configurar, Exportar PDF, Agregar Concepto)
+   - Traducido diálogo de configuración
+   - Traducido diálogo de agregar concepto manual
+
+4. **financialTranslations.js**:
+   - Agregadas ~60 nuevas claves de traducción para Reports
+   - Agregadas ~40 nuevas claves de traducción para CashflowProjections
+   - Soporte completo para español (es), inglés (en) y portugués (pt)
+
+**Testing:** 100% (6/6 features i18n funcionando)
+- ✅ FinancialMetrics: selector de idioma presente, traducciones verificadas ES/EN/PT
+- ✅ Reports: selector de idioma presente, traducciones verificadas ES/EN/PT
+- ✅ CashflowProjections: selector de idioma presente, traducciones verificadas ES/EN/PT
+
+---
+
+## Previous Updates (February 25, 2026 - Session 4)
 
 ### Completed in This Session ✅
 
