@@ -64,7 +64,7 @@ const FinancialMetrics = () => {
       if (error.response?.status === 404) {
         setMetrics(null);
       } else {
-        toast.error('Error cargando métricas');
+        toast.error(t.errorLoadingMetrics);
       }
     } finally {
       setLoading(false);
@@ -74,7 +74,7 @@ const FinancialMetrics = () => {
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file || !uploadPeriodo) {
-      toast.error('Selecciona un archivo y período');
+      toast.error(t.selectFileAndPeriod);
       return;
     }
 
@@ -90,31 +90,31 @@ const FinancialMetrics = () => {
       await api.post(endpoint, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      toast.success(uploadType === 'income' ? 'Estado de Resultados cargado' : 'Balance General cargado');
+      toast.success(uploadType === 'income' ? t.incomeStatementUploaded : t.balanceSheetUploaded);
       setUploadDialogOpen(false);
       loadPeriods();
       if (uploadPeriodo === selectedPeriod) {
         loadMetrics(selectedPeriod);
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al cargar archivo');
+      toast.error(error.response?.data?.detail || t.errorUploadingFile);
     } finally {
       setUploading(false);
     }
   };
 
   const handleDeletePeriod = async (periodo) => {
-    if (!window.confirm(`¿Eliminar todos los estados financieros de ${periodo}?`)) return;
+    if (!window.confirm(`${t.confirmDeletePeriod} ${periodo}?`)) return;
     try {
       await api.delete(`/financial-statements/${periodo}`);
-      toast.success('Período eliminado');
+      toast.success(t.periodDeleted);
       loadPeriods();
       if (periodo === selectedPeriod) {
         setMetrics(null);
         setSelectedPeriod('');
       }
     } catch (error) {
-      toast.error('Error al eliminar');
+      toast.error(t.errorDeleting);
     }
   };
 
