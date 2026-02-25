@@ -516,12 +516,6 @@ def calculate_financial_metrics(income: Dict, balance: Dict) -> Dict:
                 'label': 'Capital de Trabajo',
                 'formula': 'Activo Circulante - Pasivo Circulante',
                 'interpretation': 'Recursos disponibles para operar'
-            },
-            'cash_conversion_cycle': {
-                'value': safe_div(cuentas_por_cobrar * 365, ingresos) + safe_div(inventarios * 365, costo_ventas) - safe_div(cuentas_por_pagar * 365, costo_ventas),
-                'label': 'Ciclo de Conversión de Efectivo',
-                'formula': 'DSO + DIO - DPO',
-                'interpretation': 'Días para convertir inversión en efectivo'
             }
         },
         
