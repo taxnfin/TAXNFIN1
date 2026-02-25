@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { format, addWeeks, addDays } from 'date-fns';
 import { 
   TrendingUp, TrendingDown, Calendar, RefreshCw, Wallet, AlertTriangle,
-  BarChart3, PieChart, DollarSign, Building2, FileSpreadsheet, Download, FileText
+  BarChart3, PieChart, DollarSign, Building2, FileSpreadsheet, Download, FileText, Globe
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,6 +19,7 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { financialTranslations, languages } from '../utils/financialTranslations';
 
 // All available currencies
 const CURRENCIES = [
