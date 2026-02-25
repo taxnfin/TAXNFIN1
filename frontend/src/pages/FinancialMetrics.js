@@ -496,9 +496,9 @@ const FinancialMetrics = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ArrowUpRight className="w-5 h-5 text-green-500" />
-                Retorno sobre Inversión
+                {t.returnOnInvestment}
               </CardTitle>
-              <CardDescription>Eficiencia del capital</CardDescription>
+              <CardDescription>{t.capitalEfficiency}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -531,9 +531,9 @@ const FinancialMetrics = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <RefreshCw className="w-5 h-5 text-amber-500" />
-                Eficiencia Operativa
+                {t.operationalEfficiency}
               </CardTitle>
-              <CardDescription>Rotación y ciclos</CardDescription>
+              <CardDescription>{t.rotationAndCycles}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -574,9 +574,9 @@ const FinancialMetrics = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Wallet className="w-5 h-5 text-cyan-500" />
-                Liquidez
+                {t.liquidity}
               </CardTitle>
-              <CardDescription>Capacidad de pago a corto plazo</CardDescription>
+              <CardDescription>{t.shortTermPaymentCapacity}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -624,9 +624,9 @@ const FinancialMetrics = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Scale className="w-5 h-5 text-red-500" />
-                Solvencia
+                {t.solvency}
               </CardTitle>
-              <CardDescription>Estructura de capital y deuda</CardDescription>
+              <CardDescription>{t.capitalStructure}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -670,11 +670,11 @@ const FinancialMetrics = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Info className="w-5 h-5 text-gray-500" />
-                Datos del Período
+                {t.periodData}
               </CardTitle>
               <CardDescription>
-                {metrics.has_income_statement ? '✓ Estado de Resultados' : '✗ Falta Estado de Resultados'} | 
-                {metrics.has_balance_sheet ? ' ✓ Balance General' : ' ✗ Falta Balance General'}
+                {metrics.has_income_statement ? `✓ ${t.hasIncomeStatement}` : `✗ ${t.missingIncomeStatement}`} | 
+                {metrics.has_balance_sheet ? ` ✓ ${t.hasBalanceSheet}` : ` ✗ ${t.missingBalanceSheet}`}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -682,32 +682,32 @@ const FinancialMetrics = () => {
                 {/* Income Statement Summary */}
                 {metrics.income_statement && (
                   <div>
-                    <h4 className="font-medium text-sm text-gray-700 mb-3">Estado de Resultados</h4>
+                    <h4 className="font-medium text-sm text-gray-700 mb-3">{t.incomeStatement}</h4>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between py-1 border-b">
-                        <span className="text-gray-600">Ingresos</span>
+                        <span className="text-gray-600">{t.revenue}</span>
                         <span className="font-medium">{formatCurrency(metrics.income_statement.ingresos)}</span>
                       </div>
                       <div className="flex justify-between py-1 border-b">
-                        <span className="text-gray-600">Costo de Ventas</span>
+                        <span className="text-gray-600">{t.costOfSales}</span>
                         <span className="font-medium text-red-600">-{formatCurrency(metrics.income_statement.costo_ventas)}</span>
                       </div>
                       <div className="flex justify-between py-1 border-b font-medium">
-                        <span>Utilidad Bruta</span>
+                        <span>{t.grossProfit}</span>
                         <span>{formatCurrency(metrics.income_statement.utilidad_bruta)}</span>
                       </div>
                       <div className="flex justify-between py-1 border-b">
-                        <span className="text-gray-600">Gastos Operativos</span>
+                        <span className="text-gray-600">{t.operatingExpenses}</span>
                         <span className="font-medium text-red-600">
                           -{formatCurrency((metrics.income_statement.gastos_venta || 0) + (metrics.income_statement.gastos_administracion || 0) + (metrics.income_statement.gastos_generales || 0))}
                         </span>
                       </div>
                       <div className="flex justify-between py-1 border-b font-medium">
-                        <span>EBITDA</span>
+                        <span>{t.ebitda}</span>
                         <span>{formatCurrency(metrics.income_statement.ebitda)}</span>
                       </div>
                       <div className="flex justify-between py-1 border-b font-medium bg-blue-50 px-2 rounded">
-                        <span>Utilidad Neta</span>
+                        <span>{t.netProfit}</span>
                         <span className="text-blue-600">{formatCurrency(metrics.income_statement.utilidad_neta)}</span>
                       </div>
                     </div>
@@ -717,34 +717,34 @@ const FinancialMetrics = () => {
                 {/* Balance Sheet Summary */}
                 {metrics.balance_sheet && (
                   <div>
-                    <h4 className="font-medium text-sm text-gray-700 mb-3">Balance General</h4>
+                    <h4 className="font-medium text-sm text-gray-700 mb-3">{t.balanceSheet}</h4>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between py-1 border-b">
-                        <span className="text-gray-600">Efectivo</span>
+                        <span className="text-gray-600">{t.cash}</span>
                         <span className="font-medium">{formatCurrency(metrics.balance_sheet.efectivo)}</span>
                       </div>
                       <div className="flex justify-between py-1 border-b">
-                        <span className="text-gray-600">Cuentas por Cobrar</span>
+                        <span className="text-gray-600">{t.accountsReceivable}</span>
                         <span className="font-medium">{formatCurrency(metrics.balance_sheet.cuentas_por_cobrar)}</span>
                       </div>
                       <div className="flex justify-between py-1 border-b">
-                        <span className="text-gray-600">Inventarios</span>
+                        <span className="text-gray-600">{t.inventory}</span>
                         <span className="font-medium">{formatCurrency(metrics.balance_sheet.inventarios)}</span>
                       </div>
                       <div className="flex justify-between py-1 border-b font-medium">
-                        <span>Activo Circulante</span>
+                        <span>{t.currentAssets}</span>
                         <span>{formatCurrency(metrics.balance_sheet.activo_circulante)}</span>
                       </div>
                       <div className="flex justify-between py-1 border-b font-medium bg-amber-50 px-2 rounded">
-                        <span>Activo Total</span>
+                        <span>{t.totalAssets}</span>
                         <span className="text-amber-600">{formatCurrency(metrics.balance_sheet.activo_total)}</span>
                       </div>
                       <div className="flex justify-between py-1 border-b font-medium bg-red-50 px-2 rounded">
-                        <span>Pasivo Total</span>
+                        <span>{t.totalLiabilities}</span>
                         <span className="text-red-600">{formatCurrency(metrics.balance_sheet.pasivo_total)}</span>
                       </div>
                       <div className="flex justify-between py-1 border-b font-medium bg-green-50 px-2 rounded">
-                        <span>Capital Contable</span>
+                        <span>{t.equity}</span>
                         <span className="text-green-600">{formatCurrency(metrics.balance_sheet.capital_contable)}</span>
                       </div>
                     </div>
