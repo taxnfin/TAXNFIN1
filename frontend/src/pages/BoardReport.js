@@ -473,7 +473,12 @@ const BoardReport = () => {
           if (status === 'good') pdf.setTextColor(34, 197, 94);
           else if (status === 'warning') pdf.setTextColor(245, 158, 11);
           else if (status === 'critical') pdf.setTextColor(239, 68, 68);
-          const statusText = status === 'good' ? 'Bueno' : status === 'warning' ? 'Atención' : 'Crítico';
+          const statusLabels = {
+            es: { good: 'Bueno', warning: 'Atención', critical: 'Crítico' },
+            en: { good: 'Good', warning: 'Warning', critical: 'Critical' },
+            pt: { good: 'Bom', warning: 'Atenção', critical: 'Crítico' }
+          };
+          const statusText = statusLabels[language]?.[status] || statusLabels.es[status];
           pdf.text(statusText, margin + 130, y);
           pdf.setTextColor(0, 0, 0);
         }
