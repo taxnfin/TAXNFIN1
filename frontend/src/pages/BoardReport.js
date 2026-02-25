@@ -10,7 +10,8 @@ import {
   TrendingUp, TrendingDown, Minus, Download, FileText, FileSpreadsheet,
   BarChart3, PieChart, DollarSign, Building2, Target, Activity, Scale,
   Wallet, RefreshCw, Globe, ArrowUpRight, ArrowDownRight, CheckCircle,
-  AlertTriangle, XCircle, Percent, Calculator, Calendar, Clock
+  AlertTriangle, XCircle, Percent, Calculator, Calendar, Clock, Brain,
+  Sparkles, Lightbulb
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, 
