@@ -37,6 +37,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
     { name: 'Proyecciones', href: '/projections', icon: TrendingUp, highlight: true },
     { name: 'Métricas Financieras', href: '/financial-metrics', icon: Calculator, highlight: true },
+    { name: 'Reporte Board', href: '/board-report', icon: Presentation, highlight: true },
     { name: 'Decisiones', href: '/treasury', icon: Lightbulb, highlight: true },
     { name: 'Aging CxC/CxP', href: '/transactions', icon: ArrowRightLeft },
     { name: 'CFDI / SAT', href: '/cfdi', icon: FileText },
