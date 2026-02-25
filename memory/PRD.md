@@ -324,6 +324,43 @@ Build a backend-first, API-driven SaaS application called "TaxnFin Cashflow" - a
 
 ### Completed in This Session ✅
 
+**P0 - Reportes Financieros con Sankey y Tendencias (COMPLETADO)**
+
+Se implementó el módulo completo de reportes financieros solicitado por el usuario:
+
+**Backend implementado:**
+- `GET /api/financial-statements/trends` - Datos de tendencias de múltiples períodos
+- `GET /api/financial-statements/sankey/{periodo}` - Datos formateados para diagrama Sankey
+- Métricas adicionales: RONIC, GMROI, Net Debt/EBITDA, Financial Leverage, Liability Ratio, Cost of Debt, Cash Runway, Cash Efficiency, Cash Cycle, NWC/Revenue
+
+**Frontend implementado (Página de Reportes con 3 tabs):**
+1. **Flujo de Efectivo** - Rolling cash flow de 18 semanas (existente)
+2. **Estados Financieros** (NUEVO):
+   - Tarjetas resumen (Períodos, Ingresos, Utilidad Neta, ROE)
+   - Gráfico de Ingresos y Utilidades por período (barras + línea)
+   - Gráfico de Márgenes por período (líneas)
+   - Gráfico de Retorno sobre Inversión (ROE, ROIC)
+   - Tabla comparativa de períodos con variaciones
+3. **Sankey P&L** (NUEVO):
+   - Encabezado con nombre de empresa dinámico
+   - Selector de período
+   - Diagrama Sankey interactivo del Estado de Resultados
+   - Flujo: Ingresos → Costo Ventas / Utilidad Bruta → Gastos Op → Utilidad Op → Utilidad Neta
+   - Tarjetas resumen con porcentajes
+   - Desglose detallado del Estado de Resultados
+
+**Datos cargados:**
+- 2024-01: Ingresos $4,069,389, Utilidad Neta $1,466,427
+- 2024-02: Ingresos $2,161,963
+- 2024-03: Ingresos $2,475,984, Utilidad Neta $113,485
+
+**Archivos modificados:**
+- `backend/routes/financial_statements.py` - Endpoints de trends y sankey, métricas adicionales
+- `frontend/src/pages/Reports.js` - Nuevo diseño con tabs y visualizaciones
+- `package.json` - Agregado react-sankey
+
+---
+
 **P0 - Corrección del Parser de Estados Financieros de Alegra (COMPLETADO)**
 
 El usuario reportó que los datos mostrados no correspondían a sus archivos Excel reales. Se identificó que el parser no estaba leyendo correctamente el formato de Alegra.
