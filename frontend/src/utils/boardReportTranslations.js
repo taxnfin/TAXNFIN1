@@ -417,6 +417,34 @@ export const translations = {
     days: 'dias',
     months: 'meses',
     percentage: '%',
+    
+    // Period Selector
+    periodType: 'Tipo de Período',
+    selectPeriod: 'Selecionar Período',
+    monthly: 'Mensal',
+    quarterly: 'Trimestral',
+    annual: 'Anual',
+    generic: 'Genérico',
+    lastMonth: 'Último Mês',
+    lastQuarter: 'Último Trimestre',
+    lastYear: 'Último Ano',
+    periodsIncluded: 'Períodos incluídos',
+    
+    // PDF Export
+    pdfGenerating: 'Gerando PDF completo...',
+    pdfSuccess: 'PDF gerado com sucesso',
+    pdfError: 'Erro ao gerar PDF',
+    page: 'Página',
+    of: 'de',
+    confidential: 'CONFIDENCIAL',
+    preparedFor: 'Preparado para',
+    financialSummary: 'Resumo Financeiro',
+    incomeStatement: 'Demonstração de Resultados',
+    balanceSheet: 'Balanço Patrimonial',
+    metricsDetail: 'Detalhe de Métricas',
+    good: 'Bom',
+    warning: 'Atenção',
+    critical: 'Crítico',
   }
 };
 
