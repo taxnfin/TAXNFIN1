@@ -8,7 +8,7 @@ import os
 import uuid as uuid_lib
 from datetime import datetime
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://taxnfin-i18n.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://finance-exec-report.preview.emergentagent.com')
 
 # Test credentials
 TEST_EMAIL = "admin@demo.com"
