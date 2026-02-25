@@ -10,9 +10,8 @@ import pandas as pd
 import io
 import re
 
-from database import db
-from utils.auth import get_current_user
-from utils.helpers import get_active_company_id
+from core.database import db
+from core.auth import get_current_user, get_active_company_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/financial-statements", tags=["Financial Statements"])
