@@ -72,6 +72,8 @@ const BoardReport = () => {
   const [exporting, setExporting] = useState(false);
   const [activeTab, setActiveTab] = useState('summary');
   const [periodsIncluded, setPeriodsIncluded] = useState([]);
+  const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   
   const reportRef = useRef(null);
   const t = translations[language];
