@@ -170,7 +170,14 @@ def parse_alegra_income_statement(df: pd.DataFrame) -> Dict:
 
 
 def parse_alegra_balance_sheet(df: pd.DataFrame) -> Dict:
-    """Parse Alegra Balance Sheet Excel format"""
+    """Parse Alegra Balance Sheet Excel format
+    
+    Alegra format:
+    - Row 0-5: Header (title, company name, RFC, period, currency)
+    - Row 6: Column headers (Código, Cuenta contable, Fecha, %, ...)
+    - Row 7+: Data rows
+    - Special rows without code contain totals (Total activos, Total pasivos, Total capital contable)
+    """
     result = {
         # Activos
         'activo_circulante': 0,
@@ -198,86 +205,111 @@ def parse_alegra_balance_sheet(df: pd.DataFrame) -> Dict:
         'raw_data': []
     }
     
-    # Find the value column
-    value_col = None
-    for col in df.columns:
-        col_str = str(col)
-        if 'Ene' in col_str or '2024' in col_str or '2025' in col_str or '2026' in col_str:
-            value_col = col
+    # Find header row and value column
+    header_row = None
+    value_col_idx = 2  # Default: column index 2 (third column)
+    
+    for idx, row in df.iterrows():
+        cell0 = str(row.iloc[0]) if pd.notna(row.iloc[0]) else ''
+        if 'Código' in cell0 or 'codigo' in cell0.lower():
+            header_row = idx
+            # Find the value column (first column with date/year data)
+            for col_idx in range(2, len(row)):
+                col_val = str(row.iloc[col_idx]) if pd.notna(row.iloc[col_idx]) else ''
+                if any(month in col_val for month in ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']) or any(str(yr) in col_val for yr in range(2020, 2030)):
+                    value_col_idx = col_idx
+                    break
             break
     
-    if value_col is None and len(df.columns) > 2:
-        value_col = df.columns[2]
+    if header_row is None:
+        header_row = 6  # Default for Alegra Balance
     
-    # Process each row
+    # Process data rows (after header)
     for idx, row in df.iterrows():
-        account_code = str(row.iloc[0]) if pd.notna(row.iloc[0]) else ''
-        account_name = str(row.iloc[1]) if len(row) > 1 and pd.notna(row.iloc[1]) else account_code
+        if idx <= header_row:
+            continue
+            
+        codigo = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ''
+        cuenta = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ''
         
         try:
-            value = float(row[value_col]) if value_col and pd.notna(row[value_col]) else 0
-        except:
-            value = 0
+            valor = float(row.iloc[value_col_idx]) if pd.notna(row.iloc[value_col_idx]) else 0
+        except (ValueError, TypeError):
+            valor = 0
+        
+        # Skip rows without meaningful data
+        if not cuenta and not codigo:
+            continue
         
         # Store raw data
-        result['raw_data'].append({
-            'codigo': account_code,
-            'cuenta': account_name,
-            'valor': value
-        })
+        if cuenta or codigo:
+            result['raw_data'].append({
+                'codigo': codigo,
+                'cuenta': cuenta,
+                'valor': valor
+            })
         
-        account_lower = account_name.lower()
-        code_clean = account_code.replace('-', '').replace(' ', '')
+        cuenta_lower = cuenta.lower().strip()
+        codigo_clean = codigo.replace('-', '').replace(' ', '')
         
-        # ACTIVOS
-        if 'Total activos' in account_name:
-            result['activo_total'] = value
+        # === TOTALES (filas sin código, solo nombre) ===
+        if not codigo or codigo == 'nan':
+            if cuenta_lower == 'total activos':
+                result['activo_total'] = abs(valor)
+            elif cuenta_lower == 'total pasivos':
+                result['pasivo_total'] = abs(valor)
+            elif cuenta_lower == 'total capital contable':
+                result['capital_contable'] = abs(valor)
+            continue
         
-        elif 'Activo a corto plazo' in account_name or '100-00-000' in code_clean:
-            result['activo_circulante'] = value
+        # === ACTIVOS CIRCULANTES (100-xx-xxx) ===
+        if codigo == '100-01-000' or codigo_clean == '10001000':
+            result['activo_circulante'] = abs(valor)
         
-        elif '101' in code_clean or 'efectivo' in account_lower or 'banco' in account_lower or 'caja' in account_lower:
-            result['efectivo'] += value
+        # Efectivo y equivalentes (101-xx-xxx)
+        elif codigo == '101-00-000' or codigo_clean == '10100000':
+            result['efectivo'] = abs(valor)
         
-        elif '103' in code_clean or 'cuenta' in account_lower and 'cobrar' in account_lower:
-            result['cuentas_por_cobrar'] += value
+        # Cuentas por cobrar (103-xx-xxx)
+        elif codigo == '103-00-000' or codigo_clean == '10300000':
+            result['cuentas_por_cobrar'] = abs(valor)
         
-        elif '110' in code_clean or 'inventario' in account_lower:
-            result['inventarios'] += value
+        # Inventarios (110-xx-xxx)
+        elif codigo == '110-00-000' or codigo_clean == '11000000':
+            result['inventarios'] = abs(valor)
         
-        elif '150' in code_clean or 'activo fijo' in account_lower or 'propiedad' in account_lower:
-            result['activo_fijo'] = value
+        # === ACTIVOS FIJOS / LARGO PLAZO (150-xx-xxx, 100-02-000) ===
+        elif codigo == '100-02-000' or codigo_clean == '10002000':
+            result['activo_fijo'] = abs(valor)
+        elif codigo == '150-00-000' or codigo_clean == '15000000':
+            result['activo_fijo'] = abs(valor)
         
-        # PASIVOS
-        elif 'Total pasivos' in account_name:
-            result['pasivo_total'] = value
+        # === PASIVOS CIRCULANTES (200-xx-xxx) ===
+        elif codigo == '200-01-000' or codigo_clean == '20001000':
+            result['pasivo_circulante'] = abs(valor)
         
-        elif 'Pasivo a corto plazo' in account_name or '200-01-000' in code_clean:
-            result['pasivo_circulante'] = value
+        # Cuentas por pagar proveedores (201-xx-xxx)
+        elif codigo == '201-00-000' or codigo_clean == '20100000':
+            result['cuentas_por_pagar'] = abs(valor)
         
-        elif '201' in code_clean or 'cuenta' in account_lower and 'pagar' in account_lower and 'proveedor' in account_lower:
-            result['cuentas_por_pagar'] += value
+        # Deuda corto plazo / Obligaciones financieras (204-xx-xxx)
+        elif codigo == '204-00-000' or codigo_clean == '20400000':
+            result['deuda_corto_plazo'] = abs(valor)
         
-        elif '204' in code_clean or 'obligacion' in account_lower and 'financier' in account_lower and 'corto' in account_lower:
-            result['deuda_corto_plazo'] += value
+        # === PASIVOS LARGO PLAZO (200-02-000, 250-xx-xxx) ===
+        elif codigo == '200-02-000' or codigo_clean == '20002000':
+            result['pasivo_largo_plazo'] = abs(valor)
+        elif codigo == '250-00-000' or codigo_clean == '25000000':
+            result['deuda_largo_plazo'] = abs(valor)
         
-        elif 'Pasivo' in account_name and 'largo plazo' in account_lower:
-            result['pasivo_largo_plazo'] = value
+        # === CAPITAL (300-xx-xxx) ===
+        elif codigo == '301-00-000' or codigo_clean == '30100000':
+            result['capital_social'] = abs(valor)
         
-        elif '250' in code_clean or 'obligacion' in account_lower and 'financier' in account_lower and 'largo' in account_lower:
-            result['deuda_largo_plazo'] += value
-        
-        # CAPITAL
-        elif 'Total capital contable' in account_name:
-            result['capital_contable'] = value
-        
-        elif '301' in code_clean or 'capital social' in account_lower:
-            result['capital_social'] += value
-        
-        elif '302' in code_clean or '303' in code_clean or 'utilidad' in account_lower and ('ejercicio' in account_lower or 'anterior' in account_lower):
-            result['utilidades_retenidas'] += value
+        elif codigo == '302-00-000' or codigo_clean == '30200000' or codigo == '303-00-000' or codigo_clean == '30300000':
+            result['utilidades_retenidas'] += abs(valor)
     
-    # Calculate totals if not found
+    # Calculate totals if not found from headers
     if result['activo_total'] == 0:
         result['activo_total'] = result['activo_circulante'] + result['activo_fijo']
     
@@ -285,8 +317,8 @@ def parse_alegra_balance_sheet(df: pd.DataFrame) -> Dict:
         result['pasivo_total'] = result['pasivo_circulante'] + result['pasivo_largo_plazo']
     
     # Calculate other circulantes
-    result['otros_activos_circulantes'] = result['activo_circulante'] - result['efectivo'] - result['cuentas_por_cobrar'] - result['inventarios']
-    result['otros_pasivos_circulantes'] = result['pasivo_circulante'] - result['cuentas_por_pagar'] - result['deuda_corto_plazo']
+    result['otros_activos_circulantes'] = max(0, result['activo_circulante'] - result['efectivo'] - result['cuentas_por_cobrar'] - result['inventarios'])
+    result['otros_pasivos_circulantes'] = max(0, result['pasivo_circulante'] - result['cuentas_por_pagar'] - result['deuda_corto_plazo'])
     
     return result
 
