@@ -966,7 +966,7 @@ const BoardReport = () => {
           drawAnalysisText(aiAnalysis.recommendations);
         }
         
-        // ====== TRENDS TABLE ======
+        // ====== TRENDS TABLE WITH AI ANALYSIS ======
         if (trendsData.length > 1) {
           pdf.addPage();
           currentPage++;
@@ -974,11 +974,69 @@ const BoardReport = () => {
           
           drawSectionHeader(t.monthlyTrends, [99, 102, 241]);
           
+          // Add AI trends analysis if available
+          if (aiAnalysis?.trends_analysis) {
+            pdf.setFont(fontFamily, 'normal');
+            pdf.setFontSize(bodySize);
+            pdf.setTextColor(60, 60, 60);
+            const trendLines = wrapText(aiAnalysis.trends_analysis, contentWidth - 6, bodySize);
+            trendLines.forEach(line => {
+              addNewPageIfNeeded(6);
+              pdf.text(line, margin + 3, y);
+              y += 5;
+            });
+            y += 6;
+          }
+          
+          // Generate inline trends analysis if no AI analysis
+          if (!aiAnalysis?.trends_analysis && trendsData.length >= 2) {
+            // Calculate changes between periods
+            const analysisPoints = [];
+            for (let i = 1; i < trendsData.length; i++) {
+              const current = trendsData[i];
+              const prev = trendsData[i - 1];
+              const revenueChange = ((current.income_statement?.ingresos - prev.income_statement?.ingresos) / prev.income_statement?.ingresos * 100).toFixed(1);
+              const netProfitCurrent = current.income_statement?.utilidad_neta || 0;
+              const netProfitPrev = prev.income_statement?.utilidad_neta || 0;
+              
+              if (netProfitCurrent < 0 && netProfitPrev > 0) {
+                analysisPoints.push(language === 'es' 
+                  ? `En ${current.periodo} hubo una caída significativa a utilidad neta negativa (${formatCurrency(netProfitCurrent)}), requiriendo investigación de costos.`
+                  : `In ${current.periodo} there was a significant drop to negative net profit (${formatCurrency(netProfitCurrent)}), requiring cost investigation.`);
+              } else if (netProfitCurrent > 0 && netProfitPrev < 0) {
+                analysisPoints.push(language === 'es'
+                  ? `${current.periodo} muestra recuperación con utilidad neta positiva de ${formatCurrency(netProfitCurrent)}.`
+                  : `${current.periodo} shows recovery with positive net profit of ${formatCurrency(netProfitCurrent)}.`);
+              }
+              
+              if (Math.abs(parseFloat(revenueChange)) > 20) {
+                analysisPoints.push(language === 'es'
+                  ? `Los ingresos ${parseFloat(revenueChange) > 0 ? 'aumentaron' : 'disminuyeron'} ${Math.abs(parseFloat(revenueChange))}% de ${prev.periodo} a ${current.periodo}.`
+                  : `Revenue ${parseFloat(revenueChange) > 0 ? 'increased' : 'decreased'} ${Math.abs(parseFloat(revenueChange))}% from ${prev.periodo} to ${current.periodo}.`);
+              }
+            }
+            
+            if (analysisPoints.length > 0) {
+              pdf.setFont(fontFamily, 'italic');
+              pdf.setFontSize(bodySize - 1);
+              pdf.setTextColor(80, 80, 80);
+              analysisPoints.forEach(point => {
+                const pointLines = wrapText(point, contentWidth - 8, bodySize - 1);
+                pointLines.forEach(line => {
+                  addNewPageIfNeeded(6);
+                  pdf.text('• ' + line, margin + 3, y);
+                  y += 5;
+                });
+              });
+              y += 6;
+            }
+          }
+          
           // Table header
           pdf.setFillColor(240, 240, 240);
           pdf.rect(margin, y, contentWidth, 7, 'F');
-          pdf.setFontSize(7);
-          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(smallSize);
+          pdf.setFont(fontFamily, 'bold');
           
           const cols = [
             [t.period, 0],
@@ -993,8 +1051,8 @@ const BoardReport = () => {
           
           trendsData.forEach((p) => {
             addNewPageIfNeeded(8);
-            pdf.setFontSize(7);
-            pdf.setFont('helvetica', 'normal');
+            pdf.setFontSize(smallSize);
+            pdf.setFont(fontFamily, 'normal');
             pdf.text(p.periodo, margin, y);
             pdf.text(formatCurrency(p.income_statement?.ingresos).replace('$', ''), margin + 25, y);
             pdf.text(formatCurrency(p.income_statement?.utilidad_bruta).replace('$', ''), margin + 55, y);
