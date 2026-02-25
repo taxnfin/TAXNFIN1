@@ -6,7 +6,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://cfdi-analytics.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://taxnfin-i18n.preview.emergentagent.com')
 
 class TestAIAnalysisEndpoint:
     """Tests for /api/financial-statements/ai-analysis endpoint"""
