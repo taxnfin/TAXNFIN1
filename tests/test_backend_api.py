@@ -8,7 +8,7 @@ import os
 import json
 from datetime import datetime, timedelta
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://financial-dashboard-62.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://cfdi-analytics.preview.emergentagent.com')
 
 # Test credentials
 TEST_EMAIL = "admin@demo.com"
