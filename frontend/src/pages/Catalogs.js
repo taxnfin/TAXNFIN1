@@ -542,6 +542,7 @@ const Catalogs = () => {
               <Table className="data-table" key={`companies-table-${companies.length}-${companies[0]?.nombre || ''}`}>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-16">Logo</TableHead>
                     <TableHead>Nombre</TableHead>
                     <TableHead>RFC</TableHead>
                     <TableHead>Moneda</TableHead>
@@ -552,6 +553,15 @@ const Catalogs = () => {
                 <TableBody>
                   {companies.map((company) => (
                     <TableRow key={`${company.id}-${company.nombre}`}>
+                      <TableCell>
+                        {company.logo_url ? (
+                          <img src={company.logo_url} alt="Logo" className="w-10 h-10 object-contain rounded" />
+                        ) : (
+                          <div className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center">
+                            <Image size={16} className="text-gray-400" />
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell className="font-medium">{company.nombre}</TableCell>
                       <TableCell className="mono">{company.rfc}</TableCell>
                       <TableCell>{company.moneda_base}</TableCell>
