@@ -125,19 +125,28 @@ Tu tarea es generar análisis financiero profesional, conciso y accionable.
 - NO uses viñetas ni listas, escribe en párrafos cortos
 - IMPORTANTE: Responde ÚNICAMENTE con el JSON solicitado, sin texto adicional"""
 
-        # Single comprehensive prompt
-        prompt = f"""{financial_context}
-
-Genera un análisis financiero completo. Responde ÚNICAMENTE con un objeto JSON válido con estas 6 secciones:
-
-{{
+        # Build JSON structure based on available data
+        json_structure = """{
   "executive_summary": "Resumen ejecutivo de 3-4 oraciones sobre el desempeño general, indicadores positivos y áreas de atención",
   "profitability_analysis": "Análisis de 2-3 oraciones sobre los márgenes (bruto, operativo, neto, EBITDA)",
   "returns_analysis": "Análisis de 2-3 oraciones sobre ROIC, ROE y ROA",
   "liquidity_analysis": "Análisis de 2-3 oraciones sobre liquidez (razón circulante, prueba ácida, capital de trabajo)",
   "solvency_analysis": "Análisis de 2-3 oraciones sobre solvencia (endeudamiento, cobertura de intereses)",
-  "recommendations": "2-3 recomendaciones estratégicas en un párrafo"
-}}
+  "recommendations": "2-3 recomendaciones estratégicas en un párrafo\""""
+        
+        # Add trends_analysis if we have historical data
+        if trends_data and len(trends_data) > 1:
+            json_structure += """,
+  "trends_analysis": "Análisis de 3-5 oraciones explicando las tendencias observadas en los períodos históricos, identificando causas de cambios significativos (especialmente utilidades negativas), patrones y riesgos potenciales\""""
+        
+        json_structure += "\n}"
+        
+        # Single comprehensive prompt
+        prompt = f"""{financial_context}
+
+Genera un análisis financiero completo. Responde ÚNICAMENTE con un objeto JSON válido con estas secciones:
+
+{json_structure}
 
 Responde SOLO con el JSON, sin markdown ni texto adicional."""
 
