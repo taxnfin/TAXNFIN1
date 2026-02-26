@@ -159,8 +159,19 @@ const FinancialMetrics = () => {
     const color = getMetricColor(value, thresholds);
     const bg = getMetricBg(value, thresholds);
     
-    // List of metrics that have detailed pages
-    const hasDetailPage = ['gross_margin', 'net_margin', 'ebitda_margin', 'operating_margin', 'roic', 'roe', 'roa', 'current_ratio', 'debt_to_equity', 'interest_coverage'].includes(metricKey);
+    // List of metrics that have detailed pages - expanded list
+    const hasDetailPage = [
+      // Margins
+      'gross_margin', 'net_margin', 'ebitda_margin', 'operating_margin', 'nopat_margin',
+      // Returns
+      'roic', 'roe', 'roa', 'roce',
+      // Liquidity
+      'current_ratio', 'quick_ratio', 'cash_ratio', 'working_capital',
+      // Solvency
+      'debt_to_equity', 'debt_to_assets', 'interest_coverage', 'equity_ratio',
+      // Efficiency
+      'asset_turnover', 'dso', 'dpo', 'cash_conversion_cycle'
+    ].includes(metricKey);
     
     return (
       <div className={`p-4 rounded-lg ${bg} border group relative`}>
