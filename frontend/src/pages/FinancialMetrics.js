@@ -154,13 +154,16 @@ const FinancialMetrics = () => {
     return 'bg-red-50';
   };
 
-  const MetricCard = ({ metric, icon: Icon, thresholds, isPercent = true, suffix = '%' }) => {
+  const MetricCard = ({ metric, icon: Icon, thresholds, isPercent = true, suffix = '%', metricKey }) => {
     const value = metric?.value ?? 0;
     const color = getMetricColor(value, thresholds);
     const bg = getMetricBg(value, thresholds);
     
+    // List of metrics that have detailed pages
+    const hasDetailPage = ['gross_margin', 'net_margin', 'ebitda_margin', 'operating_margin', 'roic', 'roe', 'roa', 'current_ratio', 'debt_to_equity', 'interest_coverage'].includes(metricKey);
+    
     return (
-      <div className={`p-4 rounded-lg ${bg} border`}>
+      <div className={`p-4 rounded-lg ${bg} border group relative`}>
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{metric?.label}</p>
@@ -171,6 +174,15 @@ const FinancialMetrics = () => {
           <Icon className={`w-5 h-5 ${color}`} />
         </div>
         <p className="text-xs text-gray-500 mt-2 line-clamp-2">{metric?.interpretation}</p>
+        {hasDetailPage && (
+          <button
+            onClick={() => navigate(`/metrics/${metricKey}`)}
+            className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md bg-white/80 hover:bg-white shadow-sm border border-gray-200"
+            title="Ver detalle de métrica"
+          >
+            <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+          </button>
+        )}
       </div>
     );
   };
