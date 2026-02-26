@@ -595,6 +595,7 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix=" días"
                   thresholds={{ good: 30, warning: 60 }}
+                  metricKey="dso"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.efficiency?.dpo} 
@@ -602,6 +603,7 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix=" días"
                   thresholds={{ good: 45, warning: 30 }}
+                  metricKey="dpo"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.efficiency?.cash_conversion_cycle} 
@@ -609,6 +611,7 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix=" días"
                   thresholds={{ good: 30, warning: 60 }}
+                  metricKey="cash_conversion_cycle"
                 />
               </div>
             </CardContent>
