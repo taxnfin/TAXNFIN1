@@ -652,7 +652,7 @@ const FinancialMetrics = () => {
                   thresholds={{ good: 0.5, warning: 0.2 }}
                   metricKey="cash_ratio"
                 />
-                <div className="p-4 rounded-lg bg-blue-50 border">
+                <div className="p-4 rounded-lg bg-blue-50 border group relative">
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -665,6 +665,13 @@ const FinancialMetrics = () => {
                     <Wallet className="w-5 h-5 text-blue-500" />
                   </div>
                   <p className="text-xs text-gray-500 mt-2">{metrics.metrics?.liquidity?.working_capital?.interpretation}</p>
+                  <button
+                    onClick={() => navigate('/metrics/working_capital')}
+                    className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md bg-white/80 hover:bg-white shadow-sm border border-gray-200"
+                    title="Ver detalle de métrica"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+                  </button>
                 </div>
               </div>
             </CardContent>
