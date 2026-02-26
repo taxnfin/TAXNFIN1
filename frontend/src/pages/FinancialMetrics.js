@@ -685,11 +685,13 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix="x"
                   thresholds={{ good: 5, warning: 2 }}
+                  metricKey="interest_coverage"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.solvency?.equity_ratio} 
                   icon={Wallet}
                   thresholds={{ good: 40, warning: 20 }}
+                  metricKey="equity_ratio"
                 />
               </div>
             </CardContent>
