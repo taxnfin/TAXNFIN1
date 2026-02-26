@@ -18,6 +18,7 @@ import DIOTModule from './pages/DIOTModule';
 import TreasuryDecisions from './pages/TreasuryDecisions';
 import FinancialMetrics from './pages/FinancialMetrics';
 import MetricDetail from './pages/MetricDetail';
+import MetricCompare from './pages/MetricCompare';
 import BoardReport from './pages/BoardReport';
 import Layout from './components/Layout';
 import { Toaster } from './components/ui/sonner';
