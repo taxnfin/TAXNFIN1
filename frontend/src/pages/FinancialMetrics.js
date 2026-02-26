@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -11,7 +12,7 @@ import {
   TrendingUp, TrendingDown, Upload, FileSpreadsheet, Calendar, 
   DollarSign, Percent, Activity, BarChart3, PieChart, RefreshCw,
   Target, Wallet, Building2, ChevronRight, Info, Trash2,
-  ArrowUpRight, ArrowDownRight, Minus, Calculator, Scale, Globe
+  ArrowUpRight, ArrowDownRight, Minus, Calculator, Scale, Globe, ExternalLink
 } from 'lucide-react';
 import { 
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, 
@@ -21,6 +22,7 @@ import {
 import { financialTranslations, languages } from '../utils/financialTranslations';
 
 const FinancialMetrics = () => {
+  const navigate = useNavigate();
   const [language, setLanguage] = useState('es');
   const [periods, setPeriods] = useState([]);
   const [selectedPeriod, setSelectedPeriod] = useState('');
