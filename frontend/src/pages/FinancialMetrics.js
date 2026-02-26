@@ -268,6 +268,16 @@ const FinancialMetrics = () => {
             </SelectContent>
           </Select>
 
+          <Button 
+            variant="outline" 
+            className="gap-2"
+            onClick={() => navigate('/metrics/compare')}
+            data-testid="compare-metrics-btn"
+          >
+            <Scale className="w-4 h-4" />
+            {t.compareMetrics || 'Comparar'}
+          </Button>
+
           <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
             <DialogTrigger asChild>
               <Button data-testid="upload-btn" className="gap-2">
