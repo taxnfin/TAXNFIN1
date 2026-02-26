@@ -480,26 +480,31 @@ const FinancialMetrics = () => {
                   metric={metrics.metrics?.margins?.gross_margin} 
                   icon={TrendingUp}
                   thresholds={{ good: 30, warning: 15 }}
+                  metricKey="gross_margin"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.margins?.ebitda_margin} 
                   icon={Activity}
                   thresholds={{ good: 20, warning: 10 }}
+                  metricKey="ebitda_margin"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.margins?.operating_margin} 
                   icon={Calculator}
                   thresholds={{ good: 15, warning: 5 }}
+                  metricKey="operating_margin"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.margins?.net_margin} 
                   icon={Target}
                   thresholds={{ good: 10, warning: 3 }}
+                  metricKey="net_margin"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.margins?.nopat_margin} 
                   icon={DollarSign}
                   thresholds={{ good: 10, warning: 3 }}
+                  metricKey="nopat_margin"
                 />
               </div>
             </CardContent>
