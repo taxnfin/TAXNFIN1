@@ -129,6 +129,7 @@ function App() {
             <Route path="projections" element={<CashflowProjections />} />
             <Route path="treasury" element={<TreasuryDecisions />} />
             <Route path="financial-metrics" element={<FinancialMetrics />} />
+            <Route path="metrics/:metricId" element={<MetricDetail />} />
             <Route path="diot" element={<DIOTModule />} />
             <Route path="advanced" element={<AdvancedFeatures />} />
             <Route path="admin" element={<Admin />} />
