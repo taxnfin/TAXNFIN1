@@ -610,6 +610,7 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix="x"
                   thresholds={{ good: 2, warning: 1 }}
+                  metricKey="current_ratio"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.liquidity?.quick_ratio} 
@@ -617,6 +618,7 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix="x"
                   thresholds={{ good: 1, warning: 0.5 }}
+                  metricKey="quick_ratio"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.liquidity?.cash_ratio} 
@@ -624,6 +626,7 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix="x"
                   thresholds={{ good: 0.5, warning: 0.2 }}
+                  metricKey="cash_ratio"
                 />
                 <div className="p-4 rounded-lg bg-blue-50 border">
                   <div className="flex items-start justify-between">
@@ -660,11 +663,13 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix="x"
                   thresholds={{ good: 1, warning: 2 }}
+                  metricKey="debt_to_equity"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.solvency?.debt_to_assets} 
                   icon={Building2}
                   thresholds={{ good: 40, warning: 60 }}
+                  metricKey="debt_to_assets"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.solvency?.debt_to_ebitda} 
@@ -672,6 +677,7 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix="x"
                   thresholds={{ good: 3, warning: 5 }}
+                  metricKey="debt_to_ebitda"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.solvency?.interest_coverage} 
