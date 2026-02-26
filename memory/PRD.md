@@ -1930,5 +1930,46 @@ Created comprehensive metric detail pages (`/metrics/:metricId`) with:
 #### Working Features ✅
 - All previous features working
 - NEW: Metric detail pages with comprehensive information
+
+### New Feature: Metric Comparison Page ✅
+
+#### Implementation Summary
+Created metric comparison page (`/metrics/compare`) with:
+
+1. **Side-by-Side Comparison Cards**
+   - Current values with color-coding
+   - Visual formulas (numerator/denominator)
+   - Category badges
+   - Goal/target indicators
+
+2. **6 Predefined Suggested Comparisons**
+   - ROE vs ROIC (DuPont Analysis)
+   - Margen Bruto vs Neto (Cost structure)
+   - ROIC vs ROA (Capital efficiency)
+   - Liquidez vs Prueba Ácida (Quality of liquidity)
+   - Deuda vs Cobertura (Debt capacity)
+   - Margen Operativo vs EBITDA (Asset intensity)
+
+3. **Interactive Features**
+   - Metric selectors with 11 available metrics
+   - Swap button to exchange metrics
+   - URL params for shareable comparisons
+
+4. **Analysis Components**
+   - Historical trend chart (recharts LineChart)
+   - Insight cards with predefined analysis
+   - Dynamic "Tu situación" based on actual values
+   - Quick stats: Diferencia, Ratio, Status
+
+#### Files Created/Modified
+- `frontend/src/pages/MetricCompare.js` (NEW - ~500 lines)
+- `frontend/src/pages/FinancialMetrics.js` (MODIFIED - added "Comparar" button)
+- `frontend/src/App.js` (MODIFIED - added route)
+- `frontend/src/utils/financialTranslations.js` (MODIFIED - added translations)
+
+### Test Results
+- **Frontend**: 100% passed
+- **Report**: `/app/test_reports/iteration_20.json`
+
 - NEW: Industry benchmarks and expert insights
 - NEW: Visual formulas for financial ratios
