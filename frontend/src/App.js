@@ -17,6 +17,7 @@ import CashflowProjections from './pages/CashflowProjections';
 import DIOTModule from './pages/DIOTModule';
 import TreasuryDecisions from './pages/TreasuryDecisions';
 import FinancialMetrics from './pages/FinancialMetrics';
+import MetricDetail from './pages/MetricDetail';
 import BoardReport from './pages/BoardReport';
 import Layout from './components/Layout';
 import { Toaster } from './components/ui/sonner';
