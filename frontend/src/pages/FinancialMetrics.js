@@ -525,21 +525,25 @@ const FinancialMetrics = () => {
                   metric={metrics.metrics?.returns?.roic} 
                   icon={TrendingUp}
                   thresholds={{ good: 15, warning: 8 }}
+                  metricKey="roic"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.returns?.roe} 
                   icon={Target}
                   thresholds={{ good: 15, warning: 8 }}
+                  metricKey="roe"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.returns?.roce} 
                   icon={Activity}
                   thresholds={{ good: 12, warning: 6 }}
+                  metricKey="roce"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.returns?.roa} 
                   icon={Building2}
                   thresholds={{ good: 8, warning: 4 }}
+                  metricKey="roa"
                 />
               </div>
             </CardContent>
@@ -562,6 +566,7 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix="x"
                   thresholds={{ good: 1.5, warning: 0.8 }}
+                  metricKey="asset_turnover"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.efficiency?.dso} 
