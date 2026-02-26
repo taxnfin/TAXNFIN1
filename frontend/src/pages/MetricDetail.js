@@ -963,9 +963,20 @@ const MetricDetail = () => {
 
   const formatValue = (val) => {
     if (val === null || val === undefined) return 'N/A';
-    if (metric.category === 'liquidity' || metric.category === 'solvency') {
+    
+    // Metrics that should show as "x" (ratios)
+    const ratioMetrics = ['current_ratio', 'quick_ratio', 'cash_ratio', 'debt_to_equity', 'interest_coverage', 'debt_to_ebitda', 'asset_turnover'];
+    
+    // Metrics that should show as "días" (days)
+    const dayMetrics = ['dso', 'dpo', 'cash_conversion_cycle'];
+    
+    if (ratioMetrics.includes(metric.id)) {
       return `${val.toFixed(2)}x`;
     }
+    if (dayMetrics.includes(metric.id)) {
+      return `${Math.round(val)} días`;
+    }
+    // Everything else is a percentage
     return `${val.toFixed(1)}%`;
   };
 
