@@ -410,6 +410,434 @@ const metricDefinitions = {
       source: 'Bridgewater Associates'
     }
   },
+
+  // EFFICIENCY METRICS
+  asset_turnover: {
+    id: 'asset_turnover',
+    name: 'Rotación de Activos',
+    nameEn: 'Asset Turnover',
+    category: 'efficiency',
+    question: '¿Qué tan eficientemente usa la empresa sus activos para generar ventas?',
+    whatMeasures: 'Mide cuántos pesos de ventas genera la empresa por cada peso invertido en activos. Indica la eficiencia con que la empresa utiliza su base de activos para producir ingresos.',
+    reasoning: 'Una rotación alta significa que la empresa genera más ventas con menos activos, lo cual es señal de eficiencia operativa. Empresas de servicios típicamente tienen rotación más alta que manufactura.',
+    relevance: 'Clave para comparar eficiencia entre empresas del mismo sector. Componente fundamental del análisis DuPont de ROA.',
+    formula: {
+      numerator: 'Ingresos Totales',
+      denominator: 'Activos Totales Promedio',
+      expression: 'Rotación = Ventas / Activos Totales',
+      variables: ['Ingresos Totales', 'Activos Totales', 'Activos Promedio del Período']
+    },
+    relatedMetrics: ['roa', 'inventory_turnover', 'receivables_turnover'],
+    evaluation: [
+      { level: 'Excelente', color: 'blue', range: '> 2.0x', description: 'Muy eficiente, genera muchas ventas por peso de activos.' },
+      { level: 'Bueno', color: 'green', range: '1.0 - 2.0x', description: 'Eficiencia adecuada en uso de activos.' },
+      { level: 'Aceptable', color: 'yellow', range: '0.5 - 1.0x', description: 'Eficiencia moderada, común en industrias de capital intensivo.' },
+      { level: 'Bajo', color: 'orange', range: '0.3 - 0.5x', description: 'Activos subutilizados o negocio de lenta rotación.' },
+      { level: 'Crítico', color: 'red', range: '< 0.3x', description: 'Muy baja rotación, posibles activos ociosos.' }
+    ],
+    bestPerformers: [
+      { industry: 'Retail', icon: 'ShoppingCart', typical: '2.0-3.5x' },
+      { industry: 'Restaurantes', icon: 'Building2', typical: '1.5-2.5x' },
+      { industry: 'Servicios', icon: 'Activity', typical: '1.5-2.0x' },
+    ],
+    worstPerformers: [
+      { industry: 'Utilities', icon: 'Activity', typical: '0.3-0.5x' },
+      { industry: 'Real Estate', icon: 'Building2', typical: '0.1-0.3x' },
+      { industry: 'Telecomunicaciones', icon: 'Monitor', typical: '0.4-0.6x' },
+    ],
+    expertQuote: {
+      text: '"La rotación de activos te dice qué tan duro trabajan tus activos. Es la diferencia entre capital dormido y capital productivo."',
+      author: 'Peter Lynch',
+      source: 'Beating the Street'
+    }
+  },
+
+  dso: {
+    id: 'dso',
+    name: 'DSO (Días de Cobro)',
+    nameEn: 'Days Sales Outstanding',
+    category: 'efficiency',
+    question: '¿Cuántos días tarda en promedio la empresa en cobrar sus ventas a crédito?',
+    whatMeasures: 'Mide el número promedio de días que tarda la empresa en convertir sus cuentas por cobrar en efectivo. Indica la eficiencia en la gestión de crédito y cobranza.',
+    reasoning: 'Un DSO bajo significa cobro rápido y mejor flujo de efectivo. Un DSO alto puede indicar problemas de cobranza, clientes morosos o políticas de crédito laxas.',
+    relevance: 'Fundamental para gestión de capital de trabajo. Impacta directamente el ciclo de conversión de efectivo y necesidades de financiamiento.',
+    formula: {
+      numerator: 'Cuentas por Cobrar × 365',
+      denominator: 'Ventas a Crédito (Ingresos)',
+      expression: 'DSO = (Cuentas por Cobrar / Ventas) × 365 días',
+      variables: ['Cuentas por Cobrar', 'Ventas Netas', 'Días del Período']
+    },
+    relatedMetrics: ['dpo', 'cash_conversion_cycle', 'current_ratio'],
+    evaluation: [
+      { level: 'Excelente', color: 'blue', range: '< 30 días', description: 'Cobranza muy eficiente, excelente flujo de efectivo.' },
+      { level: 'Bueno', color: 'green', range: '30 - 45 días', description: 'Cobranza saludable, dentro de términos comerciales normales.' },
+      { level: 'Aceptable', color: 'yellow', range: '45 - 60 días', description: 'Cobranza moderada, monitorear tendencia.' },
+      { level: 'Alto', color: 'orange', range: '60 - 90 días', description: 'Cobranza lenta, posibles problemas con clientes.' },
+      { level: 'Crítico', color: 'red', range: '> 90 días', description: 'Cobranza deficiente, alto riesgo de incobrables.' }
+    ],
+    bestPerformers: [
+      { industry: 'Retail (contado)', icon: 'ShoppingCart', typical: '0-15 días' },
+      { industry: 'E-Commerce', icon: 'Monitor', typical: '5-20 días' },
+      { industry: 'Restaurantes', icon: 'Building2', typical: '0-10 días' },
+    ],
+    worstPerformers: [
+      { industry: 'Construcción', icon: 'Building2', typical: '60-120 días' },
+      { industry: 'Gobierno/Público', icon: 'Activity', typical: '90-180 días' },
+      { industry: 'B2B Industrial', icon: 'Cpu', typical: '45-75 días' },
+    ],
+    expertQuote: {
+      text: '"DSO es el termómetro de tu departamento de cobranza. Si sube, estás financiando gratis a tus clientes."',
+      author: 'CFO Magazine',
+      source: 'Working Capital Management Guide'
+    }
+  },
+
+  dpo: {
+    id: 'dpo',
+    name: 'DPO (Días de Pago)',
+    nameEn: 'Days Payable Outstanding',
+    category: 'efficiency',
+    question: '¿Cuántos días tarda en promedio la empresa en pagar a sus proveedores?',
+    whatMeasures: 'Mide el número promedio de días que la empresa tarda en pagar sus cuentas por pagar. Indica la política de pagos y el poder de negociación con proveedores.',
+    reasoning: 'Un DPO alto significa que la empresa retiene efectivo más tiempo, mejorando liquidez. Sin embargo, demasiado alto puede dañar relaciones con proveedores o perder descuentos.',
+    relevance: 'Componente clave del ciclo de conversión de efectivo. Refleja la capacidad de negociación y la salud de las relaciones con proveedores.',
+    formula: {
+      numerator: 'Cuentas por Pagar × 365',
+      denominator: 'Costo de Ventas',
+      expression: 'DPO = (Cuentas por Pagar / Costo de Ventas) × 365 días',
+      variables: ['Cuentas por Pagar', 'Costo de Ventas', 'Días del Período']
+    },
+    relatedMetrics: ['dso', 'cash_conversion_cycle', 'current_ratio'],
+    evaluation: [
+      { level: 'Muy bajo', color: 'orange', range: '< 20 días', description: 'Pago muy rápido, posible pérdida de float de efectivo.' },
+      { level: 'Bajo', color: 'yellow', range: '20 - 30 días', description: 'Pago rápido, buena relación pero menos efectivo disponible.' },
+      { level: 'Óptimo', color: 'green', range: '30 - 45 días', description: 'Balance adecuado entre relación con proveedores y liquidez.' },
+      { level: 'Alto', color: 'blue', range: '45 - 60 días', description: 'Buen uso del crédito de proveedores, maximiza float.' },
+      { level: 'Muy alto', color: 'red', range: '> 60 días', description: 'Posible tensión con proveedores o problemas de liquidez.' }
+    ],
+    bestPerformers: [
+      { industry: 'Retail grande', icon: 'ShoppingCart', typical: '45-90 días' },
+      { industry: 'Supermercados', icon: 'ShoppingCart', typical: '30-60 días' },
+      { industry: 'Tech grandes', icon: 'Cpu', typical: '60-90 días' },
+    ],
+    worstPerformers: [
+      { industry: 'Startups', icon: 'Lightbulb', typical: '15-30 días' },
+      { industry: 'PyMEs', icon: 'Building2', typical: '20-35 días' },
+    ],
+    expertQuote: {
+      text: '"El DPO refleja tu poder de negociación. Las empresas más fuertes pueden estirar los pagos, las débiles pagan de contado."',
+      author: 'Harvard Business Review',
+      source: 'Supply Chain Finance'
+    }
+  },
+
+  cash_conversion_cycle: {
+    id: 'cash_conversion_cycle',
+    name: 'Ciclo de Conversión de Efectivo',
+    nameEn: 'Cash Conversion Cycle',
+    category: 'efficiency',
+    question: '¿Cuántos días tarda la empresa en convertir su inversión en inventario en efectivo?',
+    whatMeasures: 'Mide el tiempo total desde que la empresa paga por inventario hasta que cobra la venta. Es la suma de DSO + DIO - DPO. Indica la eficiencia del capital de trabajo.',
+    reasoning: 'Un ciclo corto o negativo significa que la empresa genera efectivo rápidamente de sus operaciones. Un ciclo largo indica que el efectivo está "atrapado" en operaciones.',
+    relevance: 'El indicador más completo de eficiencia de capital de trabajo. Empresas como Amazon tienen ciclos negativos, lo que significa que cobran antes de pagar.',
+    formula: {
+      numerator: 'DSO + DIO - DPO',
+      denominator: 'N/A',
+      expression: 'CCC = Días de Cobro + Días de Inventario - Días de Pago',
+      variables: ['DSO (Días de Cobro)', 'DIO (Días de Inventario)', 'DPO (Días de Pago)']
+    },
+    relatedMetrics: ['dso', 'dpo', 'inventory_turnover', 'working_capital'],
+    evaluation: [
+      { level: 'Excelente', color: 'blue', range: '< 0 días', description: 'Ciclo negativo: cobras antes de pagar. Modelo ideal.' },
+      { level: 'Muy bueno', color: 'green', range: '0 - 30 días', description: 'Ciclo corto, excelente eficiencia de capital de trabajo.' },
+      { level: 'Aceptable', color: 'yellow', range: '30 - 60 días', description: 'Ciclo moderado, hay espacio para mejorar.' },
+      { level: 'Alto', color: 'orange', range: '60 - 90 días', description: 'Ciclo largo, efectivo atrapado en operaciones.' },
+      { level: 'Crítico', color: 'red', range: '> 90 días', description: 'Ciclo muy largo, altas necesidades de financiamiento.' }
+    ],
+    bestPerformers: [
+      { industry: 'Amazon/E-commerce', icon: 'ShoppingCart', typical: '-30 a 0 días' },
+      { industry: 'Supermercados', icon: 'ShoppingCart', typical: '0-15 días' },
+      { industry: 'Restaurantes', icon: 'Building2', typical: '5-20 días' },
+    ],
+    worstPerformers: [
+      { industry: 'Manufactura', icon: 'Cpu', typical: '60-120 días' },
+      { industry: 'Construcción', icon: 'Building2', typical: '90-180 días' },
+      { industry: 'Aeroespacial', icon: 'Activity', typical: '120-200 días' },
+    ],
+    expertQuote: {
+      text: '"El ciclo de conversión de efectivo es el pulso del negocio. Un ciclo negativo es como tener a tus proveedores financiando tu crecimiento."',
+      author: 'Jeff Bezos',
+      source: 'Amazon Annual Letter'
+    }
+  },
+
+  quick_ratio: {
+    id: 'quick_ratio',
+    name: 'Prueba Ácida',
+    nameEn: 'Quick Ratio / Acid Test',
+    category: 'liquidity',
+    question: '¿Puede la empresa pagar sus deudas de corto plazo sin vender inventario?',
+    whatMeasures: 'Mide la capacidad de la empresa para cubrir sus obligaciones de corto plazo usando solo sus activos más líquidos (efectivo, inversiones temporales y cuentas por cobrar), excluyendo inventarios.',
+    reasoning: 'Es una prueba más estricta que la razón circulante porque excluye inventarios, que pueden ser difíciles de convertir en efectivo rápidamente o a su valor total.',
+    relevance: 'Especialmente relevante para empresas con inventarios de lenta rotación. Indica la verdadera capacidad de respuesta ante obligaciones inmediatas.',
+    formula: {
+      numerator: 'Activo Circulante - Inventarios',
+      denominator: 'Pasivo Circulante',
+      expression: 'Prueba Ácida = (Efectivo + CxC + Inversiones) / Pasivo Circulante',
+      variables: ['Efectivo', 'Cuentas por Cobrar', 'Inversiones Temporales', 'Pasivo Circulante']
+    },
+    relatedMetrics: ['current_ratio', 'cash_ratio', 'working_capital'],
+    evaluation: [
+      { level: 'Excelente', color: 'blue', range: '> 2.0x', description: 'Muy alta liquidez sin depender de inventarios.' },
+      { level: 'Saludable', color: 'green', range: '1.0 - 2.0x', description: 'Liquidez adecuada para cubrir obligaciones inmediatas.' },
+      { level: 'Aceptable', color: 'yellow', range: '0.7 - 1.0x', description: 'Liquidez justa, monitorear de cerca.' },
+      { level: 'Bajo', color: 'orange', range: '0.5 - 0.7x', description: 'Dependencia de inventarios para cubrir deudas.' },
+      { level: 'Crítico', color: 'red', range: '< 0.5x', description: 'Riesgo serio de liquidez, dificultad para pagar.' }
+    ],
+    bestPerformers: [
+      { industry: 'Software', icon: 'Monitor', typical: '2.0-5.0x' },
+      { industry: 'Servicios', icon: 'Lightbulb', typical: '1.5-3.0x' },
+      { industry: 'Tecnología', icon: 'Cpu', typical: '1.5-2.5x' },
+    ],
+    worstPerformers: [
+      { industry: 'Retail', icon: 'ShoppingCart', typical: '0.3-0.8x' },
+      { industry: 'Manufactura', icon: 'Building2', typical: '0.5-1.0x' },
+      { industry: 'Automotriz', icon: 'Activity', typical: '0.4-0.8x' },
+    ],
+    expertQuote: {
+      text: '"La prueba ácida te dice la verdad cruda: ¿puedes pagar sin vender inventario? Si no, estás un paso más cerca del precipicio."',
+      author: 'Benjamin Graham',
+      source: 'Security Analysis'
+    }
+  },
+
+  cash_ratio: {
+    id: 'cash_ratio',
+    name: 'Razón de Efectivo',
+    nameEn: 'Cash Ratio',
+    category: 'liquidity',
+    question: '¿Puede la empresa pagar todas sus deudas de corto plazo solo con efectivo disponible?',
+    whatMeasures: 'Mide la capacidad de la empresa para cubrir sus obligaciones de corto plazo usando únicamente efectivo y equivalentes de efectivo. Es el indicador de liquidez más conservador.',
+    reasoning: 'Excluye cuentas por cobrar e inventarios. Muestra la posición de efectivo puro de la empresa. Un ratio muy alto puede indicar efectivo ocioso que debería invertirse.',
+    relevance: 'Importante en momentos de crisis o incertidumbre. Indica la capacidad de supervivencia si las ventas se detienen completamente.',
+    formula: {
+      numerator: 'Efectivo + Equivalentes de Efectivo',
+      denominator: 'Pasivo Circulante',
+      expression: 'Razón de Efectivo = Efectivo / Pasivo Circulante',
+      variables: ['Efectivo en Caja y Bancos', 'Inversiones Temporales', 'Pasivo Circulante']
+    },
+    relatedMetrics: ['current_ratio', 'quick_ratio', 'working_capital'],
+    evaluation: [
+      { level: 'Muy alto', color: 'blue', range: '> 1.0x', description: 'Puede pagar todo con efectivo. ¿Hay efectivo ocioso?' },
+      { level: 'Saludable', color: 'green', range: '0.5 - 1.0x', description: 'Buena posición de efectivo sin excesos.' },
+      { level: 'Aceptable', color: 'yellow', range: '0.2 - 0.5x', description: 'Efectivo moderado, depende de cobranza.' },
+      { level: 'Bajo', color: 'orange', range: '0.1 - 0.2x', description: 'Poco efectivo disponible inmediatamente.' },
+      { level: 'Crítico', color: 'red', range: '< 0.1x', description: 'Efectivo muy bajo, vulnerabilidad alta.' }
+    ],
+    bestPerformers: [
+      { industry: 'Tech (cash-rich)', icon: 'Cpu', typical: '0.8-2.0x' },
+      { industry: 'Farmacéuticas', icon: 'Activity', typical: '0.5-1.5x' },
+    ],
+    worstPerformers: [
+      { industry: 'Retail', icon: 'ShoppingCart', typical: '0.05-0.2x' },
+      { industry: 'Manufactura', icon: 'Building2', typical: '0.1-0.3x' },
+    ],
+    expertQuote: {
+      text: '"El efectivo es el oxígeno de los negocios. Sin él, mueres. Con demasiado, te vuelves perezoso."',
+      author: 'Warren Buffett',
+      source: 'Berkshire Hathaway Meeting'
+    }
+  },
+
+  working_capital: {
+    id: 'working_capital',
+    name: 'Capital de Trabajo',
+    nameEn: 'Working Capital',
+    category: 'liquidity',
+    question: '¿Cuántos recursos tiene la empresa disponibles para operar después de pagar sus deudas de corto plazo?',
+    whatMeasures: 'Mide la diferencia entre activos circulantes y pasivos circulantes. Representa el colchón financiero disponible para operaciones diarias.',
+    reasoning: 'Un capital de trabajo positivo significa que la empresa puede cubrir sus obligaciones y seguir operando. Negativo indica dependencia de financiamiento adicional.',
+    relevance: 'Fundamental para la operación diaria. Determina si la empresa necesita financiamiento externo para operar o si genera suficiente liquidez internamente.',
+    formula: {
+      numerator: 'Activo Circulante',
+      denominator: 'Pasivo Circulante',
+      expression: 'Capital de Trabajo = Activo Circulante - Pasivo Circulante',
+      variables: ['Activo Circulante Total', 'Pasivo Circulante Total', 'Diferencia Absoluta']
+    },
+    relatedMetrics: ['current_ratio', 'quick_ratio', 'cash_conversion_cycle'],
+    evaluation: [
+      { level: 'Muy alto', color: 'blue', range: '> 50% de ventas', description: 'Exceso de capital, posible ineficiencia.' },
+      { level: 'Saludable', color: 'green', range: '20 - 50% de ventas', description: 'Capital de trabajo adecuado para operaciones.' },
+      { level: 'Aceptable', color: 'yellow', range: '10 - 20% de ventas', description: 'Capital ajustado, monitorear flujos.' },
+      { level: 'Bajo', color: 'orange', range: '0 - 10% de ventas', description: 'Capital de trabajo limitado.' },
+      { level: 'Negativo', color: 'red', range: '< 0', description: 'Déficit de capital, necesita financiamiento.' }
+    ],
+    bestPerformers: [
+      { industry: 'Software', icon: 'Monitor', typical: 'Alto positivo' },
+      { industry: 'Servicios', icon: 'Lightbulb', typical: 'Positivo estable' },
+    ],
+    worstPerformers: [
+      { industry: 'Retail rápido', icon: 'ShoppingCart', typical: 'Bajo o negativo' },
+      { industry: 'Restaurantes', icon: 'Building2', typical: 'Bajo' },
+    ],
+    expertQuote: {
+      text: '"El capital de trabajo es el lubricante que mantiene funcionando la maquinaria del negocio. Sin él, todo se detiene."',
+      author: 'Joel Greenblatt',
+      source: 'The Little Book That Beats the Market'
+    }
+  },
+
+  nopat_margin: {
+    id: 'nopat_margin',
+    name: 'Margen NOPAT',
+    nameEn: 'NOPAT Margin',
+    category: 'margins',
+    question: '¿Qué porcentaje de ventas se convierte en utilidad operativa después de impuestos?',
+    whatMeasures: 'Mide la rentabilidad operativa neta de impuestos como porcentaje de las ventas. NOPAT = Net Operating Profit After Taxes.',
+    reasoning: 'Elimina el efecto de la estructura de capital (deuda) y muestra la rentabilidad pura de las operaciones. Es el numerador del ROIC.',
+    relevance: 'Clave para calcular el ROIC y evaluar la eficiencia operativa real sin distorsiones de financiamiento.',
+    formula: {
+      numerator: 'NOPAT',
+      denominator: 'Ingresos Totales',
+      expression: 'Margen NOPAT = (EBIT × (1 - Tasa de Impuestos)) / Ingresos',
+      variables: ['Utilidad Operativa (EBIT)', 'Tasa de Impuestos', 'Ingresos Totales']
+    },
+    relatedMetrics: ['roic', 'operating_margin', 'net_margin'],
+    evaluation: [
+      { level: 'Excelente', color: 'blue', range: '> 15%', description: 'Alta rentabilidad operativa neta.' },
+      { level: 'Bueno', color: 'green', range: '10 - 15%', description: 'Rentabilidad operativa saludable.' },
+      { level: 'Aceptable', color: 'yellow', range: '5 - 10%', description: 'Rentabilidad moderada.' },
+      { level: 'Bajo', color: 'orange', range: '2 - 5%', description: 'Márgenes operativos estrechos.' },
+      { level: 'Crítico', color: 'red', range: '< 2%', description: 'Operación apenas rentable.' }
+    ],
+    bestPerformers: [
+      { industry: 'Software', icon: 'Monitor', typical: '15-30%' },
+      { industry: 'Farmacéutica', icon: 'Activity', typical: '15-25%' },
+    ],
+    worstPerformers: [
+      { industry: 'Retail', icon: 'ShoppingCart', typical: '2-5%' },
+      { industry: 'Aerolíneas', icon: 'Activity', typical: '2-6%' },
+    ],
+    expertQuote: {
+      text: '"NOPAT es la utilidad que pertenece a todos los proveedores de capital. Es la métrica más pura de rentabilidad operativa."',
+      author: 'McKinsey & Company',
+      source: 'Valuation: Measuring and Managing Value'
+    }
+  },
+
+  roce: {
+    id: 'roce',
+    name: 'ROCE',
+    nameEn: 'Return on Capital Employed',
+    category: 'returns',
+    question: '¿Qué tan eficientemente genera la empresa retornos sobre todo el capital empleado?',
+    whatMeasures: 'Mide la rentabilidad generada sobre el capital total empleado en la empresa (activos totales menos pasivos circulantes). Similar al ROIC pero con diferente definición de capital.',
+    reasoning: 'Muestra la eficiencia con que la empresa usa su capital a largo plazo. Es útil para comparar empresas con diferentes estructuras de capital.',
+    relevance: 'Muy usado en UK y Europa. Complementa al ROIC para análisis de eficiencia de capital.',
+    formula: {
+      numerator: 'EBIT',
+      denominator: 'Capital Empleado',
+      expression: 'ROCE = EBIT / (Activos Totales - Pasivos Circulantes)',
+      variables: ['Utilidad Operativa (EBIT)', 'Activos Totales', 'Pasivos Circulantes']
+    },
+    relatedMetrics: ['roic', 'roe', 'roa'],
+    evaluation: [
+      { level: 'Excelente', color: 'blue', range: '> 20%', description: 'Uso excepcional del capital empleado.' },
+      { level: 'Bueno', color: 'green', range: '12 - 20%', description: 'Buena eficiencia de capital.' },
+      { level: 'Aceptable', color: 'yellow', range: '8 - 12%', description: 'Eficiencia promedio.' },
+      { level: 'Bajo', color: 'orange', range: '5 - 8%', description: 'Capital subutilizado.' },
+      { level: 'Crítico', color: 'red', range: '< 5%', description: 'Pobre uso del capital.' }
+    ],
+    bestPerformers: [
+      { industry: 'Software', icon: 'Monitor', typical: '20-40%' },
+      { industry: 'Tecnología', icon: 'Cpu', typical: '15-30%' },
+    ],
+    worstPerformers: [
+      { industry: 'Utilities', icon: 'Activity', typical: '5-10%' },
+      { industry: 'Telecomunicaciones', icon: 'Monitor', typical: '8-12%' },
+    ],
+    expertQuote: {
+      text: '"ROCE es particularmente útil para empresas capital-intensivas donde la inversión en activos fijos es significativa."',
+      author: 'Aswath Damodaran',
+      source: 'NYU Stern School of Business'
+    }
+  },
+
+  debt_to_assets: {
+    id: 'debt_to_assets',
+    name: 'Deuda/Activos',
+    nameEn: 'Debt to Assets Ratio',
+    category: 'solvency',
+    question: '¿Qué porcentaje de los activos de la empresa están financiados con deuda?',
+    whatMeasures: 'Mide la proporción de activos totales que está financiada por acreedores versus propietarios. Indica el nivel de apalancamiento financiero.',
+    reasoning: 'Un ratio alto significa mayor dependencia de deuda y mayor riesgo financiero. Un ratio bajo indica financiamiento más conservador.',
+    relevance: 'Importante para acreedores y análisis de riesgo. Complementa el ratio deuda/capital.',
+    formula: {
+      numerator: 'Pasivo Total',
+      denominator: 'Activo Total',
+      expression: 'Deuda/Activos = Pasivo Total / Activo Total × 100',
+      variables: ['Pasivo Total', 'Activo Total']
+    },
+    relatedMetrics: ['debt_to_equity', 'interest_coverage', 'equity_ratio'],
+    evaluation: [
+      { level: 'Conservador', color: 'blue', range: '< 30%', description: 'Bajo apalancamiento, muy seguro.' },
+      { level: 'Saludable', color: 'green', range: '30 - 50%', description: 'Balance adecuado de financiamiento.' },
+      { level: 'Moderado', color: 'yellow', range: '50 - 60%', description: 'Apalancamiento moderado.' },
+      { level: 'Alto', color: 'orange', range: '60 - 70%', description: 'Alta dependencia de deuda.' },
+      { level: 'Crítico', color: 'red', range: '> 70%', description: 'Muy apalancado, alto riesgo.' }
+    ],
+    bestPerformers: [
+      { industry: 'Tecnología', icon: 'Cpu', typical: '20-40%' },
+      { industry: 'Software', icon: 'Monitor', typical: '15-35%' },
+    ],
+    worstPerformers: [
+      { industry: 'Utilities', icon: 'Activity', typical: '55-70%' },
+      { industry: 'Bancos', icon: 'CreditCard', typical: '85-95%' },
+    ],
+    expertQuote: {
+      text: '"Cuanto más alto el ratio deuda/activos, más de tu empresa pertenece realmente a los bancos."',
+      author: 'John Bogle',
+      source: 'Common Sense on Mutual Funds'
+    }
+  },
+
+  equity_ratio: {
+    id: 'equity_ratio',
+    name: 'Razón de Patrimonio',
+    nameEn: 'Equity Ratio',
+    category: 'solvency',
+    question: '¿Qué porcentaje de los activos pertenece a los accionistas?',
+    whatMeasures: 'Mide la proporción de activos totales financiados con capital propio de los accionistas. Es el complemento de Deuda/Activos.',
+    reasoning: 'Un ratio alto indica que los accionistas tienen mayor participación en la empresa. Proporciona un colchón contra pérdidas.',
+    relevance: 'Indica la solidez patrimonial de la empresa. Mayor ratio = menor riesgo para acreedores.',
+    formula: {
+      numerator: 'Capital Contable',
+      denominator: 'Activo Total',
+      expression: 'Razón de Patrimonio = Capital Contable / Activo Total × 100',
+      variables: ['Capital Contable (Patrimonio)', 'Activo Total']
+    },
+    relatedMetrics: ['debt_to_equity', 'debt_to_assets', 'roe'],
+    evaluation: [
+      { level: 'Muy alto', color: 'blue', range: '> 70%', description: 'Muy sólido, bajo apalancamiento.' },
+      { level: 'Saludable', color: 'green', range: '50 - 70%', description: 'Buena proporción de capital propio.' },
+      { level: 'Moderado', color: 'yellow', range: '40 - 50%', description: 'Balance entre deuda y capital.' },
+      { level: 'Bajo', color: 'orange', range: '30 - 40%', description: 'Mayor dependencia de acreedores.' },
+      { level: 'Crítico', color: 'red', range: '< 30%', description: 'Alta dependencia de deuda externa.' }
+    ],
+    bestPerformers: [
+      { industry: 'Tecnología', icon: 'Cpu', typical: '60-80%' },
+      { industry: 'Software', icon: 'Monitor', typical: '65-85%' },
+    ],
+    worstPerformers: [
+      { industry: 'Bancos', icon: 'CreditCard', typical: '5-15%' },
+      { industry: 'Utilities', icon: 'Activity', typical: '30-45%' },
+    ],
+    expertQuote: {
+      text: '"El patrimonio es el colchón que absorbe las pérdidas antes de que afecten a los acreedores."',
+      author: 'Jamie Dimon',
+      source: 'JPMorgan Annual Report'
+    }
+  },
 };
 
 // Icon mapping
