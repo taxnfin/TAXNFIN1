@@ -1971,5 +1971,38 @@ Created metric comparison page (`/metrics/compare`) with:
 - **Frontend**: 100% passed
 - **Report**: `/app/test_reports/iteration_20.json`
 
+### Update: Added 12 More Metric Definitions ✅
+
+#### New Metrics with Detail Pages (Total: 22 metrics)
+
+**Efficiency (4 new):**
+- asset_turnover - Rotación de Activos
+- dso - Días de Cobro (DSO)
+- dpo - Días de Pago (DPO)
+- cash_conversion_cycle - Ciclo de Conversión de Efectivo
+
+**Liquidity (3 new):**
+- quick_ratio - Prueba Ácida
+- cash_ratio - Razón de Efectivo
+- working_capital - Capital de Trabajo
+
+**Solvency (2 new):**
+- debt_to_assets - Deuda/Activos
+- equity_ratio - Razón de Patrimonio
+
+**Margins (1 new):**
+- nopat_margin - Margen NOPAT
+
+**Returns (1 new):**
+- roce - ROCE (Return on Capital Employed)
+
+#### Bug Fixed
+- Percentage metrics (debt_to_assets, equity_ratio) now correctly show "%" instead of "x"
+
+### Test Results
+- **Frontend**: 100% passed
+- **Report**: `/app/test_reports/iteration_21.json`
+
+
 - NEW: Industry benchmarks and expert insights
 - NEW: Visual formulas for financial ratios
