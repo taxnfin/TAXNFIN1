@@ -1852,3 +1852,17 @@ All P0 features implemented and tested:
   - `/app/frontend/src/pages/MetricEncyclopedia.js` - Encyclopedia UI component
 - **Test Coverage**: iteration_19.json — 100% frontend (10/10 tests passed)
 
+
+
+### Phase 23: Benchmark Dinámico en Enciclopedia ✅
+- **Date**: April 14, 2026
+- **Feature**: Dynamic benchmark comparing company's actual values against evaluation ranges
+- **Components Added**:
+  - Benchmark banner: Shows current metric value, evaluation level, period, threshold range
+  - Visual progress bar: 5 color-coded segments with highlighted current position
+  - "TU EMPRESA" badge: Appears on the matching evaluation row
+  - Left nav values: Each metric shows its current value next to the name
+  - No-data state: Message shown when no financial data is loaded
+- **21 Metrics Mapped**: All metrics from the API mapped to encyclopedia via `metricPathMap`
+- **Evaluation Logic**: Handles both normal (higher=better) and inverted (lower=better) metrics
+- **Test Coverage**: iteration_20.json — 100% frontend (10/10 tests passed)
