@@ -1815,3 +1815,21 @@ All P0 features implemented and tested:
   "estado_conciliacion": "pendiente|conciliado|no_conciliable"
 }
 ```
+
+
+### Phase 21: KPI Formula Breakdown & Optimization Bug Fix ✅
+- **Date**: April 14, 2026
+- **KPI Card Interactive Breakdown**:
+  - All MetricCards on `/financial-metrics` now support click-to-expand
+  - Shows formula (e.g., "Utilidad Bruta / Ingresos")
+  - Shows component values with labels (e.g., "Utilidad Bruta $1.14M", "Ingresos $2.48M")
+  - Shows calculated result
+  - Tooltip on hover shows formula + "Clic para ver desglose"
+  - All sections: Márgenes, Retorno, Eficiencia, Liquidez, Solvencia
+  - Working Capital card also has the same breakdown
+  - Backend `components` field added to each metric in `routes/financial_statements.py`
+- **Optimization Apply Bug Fix**:
+  - Fixed `POST /api/optimize/apply/{optimization_id}` to handle missing `mejor_solucion`
+  - Returns 400 with clear message instead of 500 error
+  - Frontend `AdvancedFeatures.js` now shows specific error message from backend
+- **Test Coverage**: iteration_18.json — 100% backend, 100% frontend
