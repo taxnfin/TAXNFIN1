@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '../components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
 import { toast } from 'sonner';
@@ -12,7 +13,7 @@ import {
   DollarSign, Percent, Activity, BarChart3, PieChart, RefreshCw,
   Target, Wallet, Building2, ChevronRight, Info, Trash2,
   ArrowUpRight, ArrowDownRight, Minus, Calculator, Scale, Globe,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, BookOpen
 } from 'lucide-react';
 import { Tooltip as ShadcnTooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../components/ui/tooltip';
 import { 
@@ -21,6 +22,7 @@ import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar
 } from 'recharts';
 import { financialTranslations, languages } from '../utils/financialTranslations';
+import MetricEncyclopedia from './MetricEncyclopedia';
 
 const FinancialMetrics = () => {
   const [language, setLanguage] = useState('es');
@@ -374,6 +376,25 @@ const FinancialMetrics = () => {
           </Button>
         </div>
       </div>
+
+      {/* Main Tabs */}
+      <Tabs defaultValue="metrics" className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="metrics" className="gap-2" data-testid="tab-metrics">
+            <BarChart3 className="w-4 h-4" />
+            {t.financialMetrics || 'Métricas'}
+          </TabsTrigger>
+          <TabsTrigger value="encyclopedia" className="gap-2" data-testid="tab-encyclopedia">
+            <BookOpen className="w-4 h-4" />
+            Enciclopedia de Métricas
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="encyclopedia">
+          <MetricEncyclopedia />
+        </TabsContent>
+
+        <TabsContent value="metrics" className="space-y-6">
 
       {/* Status Cards */}
       {periods.length > 0 && (
@@ -866,6 +887,9 @@ const FinancialMetrics = () => {
           </Card>
         </>
       )}
+
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
