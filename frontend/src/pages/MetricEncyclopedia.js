@@ -20,7 +20,52 @@ const iconMap = {
   HardHat: Briefcase,
 };
 
-const MetricEncyclopedia = () => {
+// Mapping from encyclopedia metric key to API metrics data path
+const metricPathMap = {
+  gross_margin: 'margins.gross_margin',
+  ebitda_margin: 'margins.ebitda_margin',
+  operating_margin: 'margins.operating_margin',
+  net_margin: 'margins.net_margin',
+  nopat_margin: 'margins.nopat_margin',
+  roic: 'returns.roic',
+  roe: 'returns.roe',
+  roce: 'returns.roce',
+  roa: 'returns.roa',
+  asset_turnover: 'efficiency.asset_turnover',
+  dso: 'efficiency.dso',
+  dpo: 'efficiency.dpo',
+  cash_conversion_cycle: 'efficiency.cash_conversion_cycle',
+  current_ratio: 'liquidity.current_ratio',
+  quick_ratio: 'liquidity.quick_ratio',
+  cash_ratio: 'liquidity.cash_ratio',
+  working_capital: 'liquidity.working_capital',
+  debt_to_equity: 'solvency.debt_to_equity',
+  debt_to_assets: 'solvency.debt_to_assets',
+  interest_coverage: 'solvency.interest_coverage',
+  equity_ratio: 'solvency.equity_ratio',
+};
+
+const getMetricValue = (metricsData, key) => {
+  const path = metricPathMap[key];
+  if (!path || !metricsData?.metrics) return null;
+  const [section, metric] = path.split('.');
+  return metricsData.metrics[section]?.[metric]?.value ?? null;
+};
+
+const formatVal = (value, key) => {
+  if (value === null || value === undefined) return null;
+  const pctMetrics = ['gross_margin','ebitda_margin','operating_margin','net_margin','nopat_margin','debt_to_assets','equity_ratio'];
+  const xMetrics = ['asset_turnover','current_ratio','quick_ratio','cash_ratio','debt_to_equity','interest_coverage','roce','roic','roe','roa'];
+  const dayMetrics = ['dso','dpo','cash_conversion_cycle'];
+  const currencyMetrics = ['working_capital'];
+  if (pctMetrics.includes(key)) return `${value.toFixed(1)}%`;
+  if (xMetrics.includes(key)) return `${value.toFixed(2)}x`;
+  if (dayMetrics.includes(key)) return `${value.toFixed(1)} días`;
+  if (currencyMetrics.includes(key)) return `$${Math.round(value).toLocaleString('es-MX')}`;
+  return value.toFixed(2);
+};
+
+const MetricEncyclopedia = ({ metricsData, selectedPeriod }) => {
   const [selectedMetric, setSelectedMetric] = useState(metricsEncyclopedia.metrics[0]);
   const [activeSection, setActiveSection] = useState('queMide');
   const [expandedEval, setExpandedEval] = useState(null);
@@ -46,6 +91,64 @@ const MetricEncyclopedia = () => {
     .map(k => metricsEncyclopedia.metrics.find(m => m.key === k))
     .filter(Boolean);
 
+  // Benchmark: Get current company value and determine evaluation level
+  const currentValue = getMetricValue(metricsData, selectedMetric.key);
+  const formattedValue = formatVal(currentValue, selectedMetric.key);
+  
+  const getBenchmarkLevel = () => {
+    if (currentValue === null) return null;
+    const evals = selectedMetric.evaluacion;
+    // Parse thresholds to determine which level the value falls into
+    // Evaluation is ordered from best (index 0) to worst (index 4)
+    // For most metrics, higher = better. For some (DSO, debt ratios, CCC) lower = better
+    const invertedMetrics = ['dso', 'dpo', 'cash_conversion_cycle', 'debt_to_equity', 'debt_to_assets', 'debt_to_ebitda'];
+    const isInverted = invertedMetrics.includes(selectedMetric.key);
+    
+    // Define numeric thresholds for each metric based on evaluation data
+    const thresholdMap = {
+      gross_margin: [60, 40, 20, 10],
+      ebitda_margin: [30, 20, 10, 5],
+      operating_margin: [25, 15, 8, 3],
+      net_margin: [20, 10, 5, 1],
+      nopat_margin: [20, 12, 6, 2],
+      roic: [20, 12, 8, 4],
+      roe: [25, 15, 10, 5],
+      roce: [20, 12, 8, 4],
+      roa: [15, 8, 4, 2],
+      asset_turnover: [2.0, 1.0, 0.5, 0.25],
+      dso: [30, 45, 60, 90],         // inverted: lower is better
+      dpo: [90, 60, 45, 30],         // special: mid-range is best
+      cash_conversion_cycle: [0, 30, 60, 120], // inverted
+      current_ratio: [3.0, 2.0, 1.5, 1.0],
+      quick_ratio: [2.0, 1.5, 1.0, 0.5],
+      cash_ratio: [1.0, 0.5, 0.2, 0.1],
+      working_capital: [1000000, 500000, 100000, 0], // absolute
+      debt_to_equity: [0.5, 1.0, 2.0, 3.0], // inverted
+      debt_to_assets: [30, 50, 60, 75],       // inverted
+      interest_coverage: [10, 5, 3, 1.5],
+      equity_ratio: [70, 50, 40, 25],
+    };
+    
+    const thresholds = thresholdMap[selectedMetric.key];
+    if (!thresholds) return { level: evals[2], index: 2 }; // default middle
+    
+    if (isInverted) {
+      if (currentValue <= thresholds[0]) return { level: evals[0], index: 0 };
+      if (currentValue <= thresholds[1]) return { level: evals[1], index: 1 };
+      if (currentValue <= thresholds[2]) return { level: evals[2], index: 2 };
+      if (currentValue <= thresholds[3]) return { level: evals[3], index: 3 };
+      return { level: evals[4], index: 4 };
+    } else {
+      if (currentValue >= thresholds[0]) return { level: evals[0], index: 0 };
+      if (currentValue >= thresholds[1]) return { level: evals[1], index: 1 };
+      if (currentValue >= thresholds[2]) return { level: evals[2], index: 2 };
+      if (currentValue >= thresholds[3]) return { level: evals[3], index: 3 };
+      return { level: evals[4], index: 4 };
+    }
+  };
+
+  const benchmark = getBenchmarkLevel();
+
   return (
     <div className="flex gap-6" data-testid="metric-encyclopedia">
       {/* LEFT SIDEBAR: Metric Navigation + Detail Card */}
@@ -60,11 +163,13 @@ const MetricEncyclopedia = () => {
                 </div>
                 {metricsEncyclopedia.metrics.filter(m => m.category === cat.key).map(m => {
                   const MetricIcon = m.icon;
+                  const navVal = getMetricValue(metricsData, m.key);
+                  const navFormatted = formatVal(navVal, m.key);
                   return (
                     <button
                       key={m.key}
                       onClick={() => { setSelectedMetric(m); setActiveSection('queMide'); setExpandedEval(null); setShowImprove(false); }}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
+                      className={`w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors ${
                         selectedMetric.key === m.key
                           ? 'bg-gray-100 font-semibold border-l-3'
                           : 'hover:bg-gray-50'
@@ -73,7 +178,10 @@ const MetricEncyclopedia = () => {
                       data-testid={`enc-nav-${m.key}`}
                     >
                       <MetricIcon className="w-4 h-4 flex-shrink-0" style={{ color: cat.color }} />
-                      <span className="truncate">{m.name}</span>
+                      <span className="truncate flex-1">{m.name}</span>
+                      {navFormatted && (
+                        <span className="text-[10px] font-mono font-semibold text-gray-500 flex-shrink-0">{navFormatted}</span>
+                      )}
                     </button>
                   );
                 })}
@@ -90,6 +198,60 @@ const MetricEncyclopedia = () => {
           <h2 className="text-3xl font-bold text-gray-900">{selectedMetric.name}</h2>
           <span className="text-sm text-gray-400 font-mono">{selectedMetric.englishName}</span>
         </div>
+
+        {/* Benchmark Banner */}
+        {benchmark && formattedValue && (
+          <div
+            className="rounded-xl p-4 flex items-center gap-4 border-2 shadow-sm"
+            style={{ borderColor: benchmark.level.color + '50', background: `linear-gradient(135deg, ${benchmark.level.color}08, ${benchmark.level.color}15)` }}
+            data-testid="benchmark-banner"
+          >
+            <div className="w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 shadow-inner" style={{ backgroundColor: benchmark.level.color + '20' }}>
+              <span className="text-lg font-bold" style={{ color: benchmark.level.color }}>{formattedValue}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: benchmark.level.color }} />
+                <span className="text-sm font-bold" style={{ color: benchmark.level.color }}>{benchmark.level.nivel}</span>
+                <span className="text-xs text-gray-400">|</span>
+                <span className="text-xs text-gray-500">Período {selectedPeriod}</span>
+              </div>
+              <p className="text-sm text-gray-600 mt-1">
+                Tu <strong>{selectedMetric.name}</strong> de <strong>{formattedValue}</strong> se ubica en el rango <strong style={{ color: benchmark.level.color }}>{benchmark.level.threshold}</strong>
+              </p>
+            </div>
+            {/* Mini progress bar showing position */}
+            <div className="w-40 flex-shrink-0">
+              <div className="flex gap-0.5 h-3 rounded-full overflow-hidden">
+                {selectedMetric.evaluacion.map((ev, idx) => (
+                  <div
+                    key={idx}
+                    className="flex-1 relative transition-all"
+                    style={{
+                      backgroundColor: idx === benchmark.index ? ev.color : ev.color + '30',
+                      boxShadow: idx === benchmark.index ? `0 0 8px ${ev.color}60` : 'none',
+                    }}
+                  >
+                    {idx === benchmark.index && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-[9px] text-gray-400">Mejor</span>
+                <span className="text-[9px] text-gray-400">Peor</span>
+              </div>
+            </div>
+          </div>
+        )}
+        {!benchmark && !formattedValue && (
+          <div className="rounded-xl p-3 bg-gray-50 border border-dashed border-gray-300 text-center" data-testid="benchmark-no-data">
+            <p className="text-sm text-gray-400">Selecciona un período con datos financieros para ver tu benchmark</p>
+          </div>
+        )}
 
         {/* Top Row: Metric Card + Sections */}
         <div className="grid grid-cols-12 gap-5">
@@ -173,18 +335,28 @@ const MetricEncyclopedia = () => {
           <CardContent className="p-5">
             <h3 className="text-lg font-bold text-gray-800 mb-4">Evaluación de métrica</h3>
             <div className="space-y-2">
-              {selectedMetric.evaluacion.map((ev, idx) => (
+              {selectedMetric.evaluacion.map((ev, idx) => {
+                const isCurrent = benchmark && benchmark.index === idx;
+                return (
                 <div key={idx}>
                   <button
                     onClick={() => setExpandedEval(expandedEval === idx ? null : idx)}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all ${
                       expandedEval === idx ? 'shadow-md' : 'hover:bg-gray-50'
-                    }`}
-                    style={expandedEval === idx ? { backgroundColor: ev.color + '10', border: `1px solid ${ev.color}30` } : {}}
+                    } ${isCurrent ? 'ring-2' : ''}`}
+                    style={{
+                      ...(expandedEval === idx ? { backgroundColor: ev.color + '10', border: `1px solid ${ev.color}30` } : {}),
+                      ...(isCurrent ? { ringColor: ev.color, boxShadow: `0 0 0 2px ${ev.color}40` } : {}),
+                    }}
                     data-testid={`enc-eval-${idx}`}
                   >
                     <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: ev.color }} />
                     <span className="text-sm font-medium text-gray-800 flex-1">{ev.nivel}</span>
+                    {isCurrent && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: ev.color }} data-testid="benchmark-indicator">
+                        TU EMPRESA
+                      </span>
+                    )}
                     {expandedEval === idx ? (
                       <ChevronDown className="w-4 h-4 text-gray-400" />
                     ) : (
@@ -198,7 +370,8 @@ const MetricEncyclopedia = () => {
                     </div>
                   )}
                 </div>
-              ))}
+              );
+              })}
             </div>
           </CardContent>
         </Card>

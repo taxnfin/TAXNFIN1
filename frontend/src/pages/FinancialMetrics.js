@@ -391,7 +391,7 @@ const FinancialMetrics = () => {
         </TabsList>
 
         <TabsContent value="encyclopedia">
-          <MetricEncyclopedia />
+          <MetricEncyclopedia metricsData={metrics} selectedPeriod={selectedPeriod} />
         </TabsContent>
 
         <TabsContent value="metrics" className="space-y-6">
