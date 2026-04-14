@@ -1833,3 +1833,22 @@ All P0 features implemented and tested:
   - Returns 400 with clear message instead of 500 error
   - Frontend `AdvancedFeatures.js` now shows specific error message from backend
 - **Test Coverage**: iteration_18.json — 100% backend, 100% frontend
+
+### Phase 22: Enciclopedia de Métricas Financieras ✅
+- **Date**: April 14, 2026
+- **New Tab**: "Enciclopedia de Métricas" within Financial Metrics page
+- **21 Metrics Covered**: Márgenes (5), Retorno (4), Eficiencia (4), Liquidez (4), Solvencia (4)
+- **Per Metric Content**:
+  - Identity card with icon, name, question, frequency, alternative names
+  - 5 expandable sections: ¿Qué mide?, Razonamiento, Relevancia, Fórmula, Métricas relacionadas
+  - Evaluation levels (5 color-coded tiers with thresholds and descriptions)
+  - Best/Worst Performers by industry with icons
+  - Expert quote (Buffett, Munger, Damodaran, etc.)
+  - "¿Cómo mejorar?" with numbered actionable tips
+- **Navigation**: Left sidebar with metrics grouped by category, click to load detail
+- **Related Metrics**: Clickable links to navigate between related metrics
+- **New Files**:
+  - `/app/frontend/src/data/metricsEncyclopedia.js` - Comprehensive metric data
+  - `/app/frontend/src/pages/MetricEncyclopedia.js` - Encyclopedia UI component
+- **Test Coverage**: iteration_19.json — 100% frontend (10/10 tests passed)
+
