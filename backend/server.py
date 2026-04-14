@@ -7673,9 +7673,20 @@ async def apply_optimization(
     if not optimization:
         raise HTTPException(status_code=404, detail="Optimización no encontrada")
     
-    # Obtener mejor soluci\u00f3n
-    mejor_solucion = optimization['mejor_solucion']
-    modificaciones = mejor_solucion['modificaciones']
+    # Obtener mejor solución
+    mejor_solucion = optimization.get('mejor_solucion')
+    if not mejor_solucion:
+        raise HTTPException(status_code=400, detail="Esta optimización no tiene soluciones óptimas disponibles")
+    
+    modificaciones = mejor_solucion.get('modificaciones', [])
+    if not modificaciones:
+        return {
+            'status': 'success',
+            'optimization_id': optimization_id,
+            'modificaciones_aplicadas': 0,
+            'mejora_esperada': mejor_solucion.get('mejora_flujo_neto', 0),
+            'message': 'No hay modificaciones para aplicar'
+        }
     
     # Aplicar modificaciones a las transacciones reales
     aplicadas = 0
@@ -7712,7 +7723,7 @@ async def apply_optimization(
         'status': 'success',
         'optimization_id': optimization_id,
         'modificaciones_aplicadas': aplicadas,
-        'mejora_esperada': mejor_solucion['mejora_flujo_neto']
+        'mejora_esperada': mejor_solucion.get('mejora_flujo_neto', 0)
     }
 
 class BankAPIConnection(BaseModel):

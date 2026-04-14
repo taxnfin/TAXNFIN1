@@ -147,10 +147,17 @@ const AdvancedFeatures = () => {
   const applyOptimization = async (optimizationId) => {
     try {
       const res = await api.post(`/optimize/apply/${optimizationId}`);
-      toast.success(`${res.data.modificaciones_aplicadas} modificaciones aplicadas. Mejora esperada: $${res.data.mejora_esperada.toLocaleString()}`);
+      const applied = res.data.modificaciones_aplicadas || 0;
+      const mejora = res.data.mejora_esperada || 0;
+      if (applied > 0) {
+        toast.success(`${applied} modificaciones aplicadas. Mejora esperada: $${mejora.toLocaleString()}`);
+      } else {
+        toast.info(res.data.message || 'No se aplicaron modificaciones');
+      }
       setOptimizationResult(null);
     } catch (error) {
-      toast.error('Error aplicando optimización');
+      const detail = error.response?.data?.detail || 'Error aplicando optimización';
+      toast.error(detail);
     }
   };
 

@@ -11,8 +11,10 @@ import {
   TrendingUp, TrendingDown, Upload, FileSpreadsheet, Calendar, 
   DollarSign, Percent, Activity, BarChart3, PieChart, RefreshCw,
   Target, Wallet, Building2, ChevronRight, Info, Trash2,
-  ArrowUpRight, ArrowDownRight, Minus, Calculator, Scale, Globe
+  ArrowUpRight, ArrowDownRight, Minus, Calculator, Scale, Globe,
+  ChevronDown, ChevronUp
 } from 'lucide-react';
+import { Tooltip as ShadcnTooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../components/ui/tooltip';
 import { 
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer, ComposedChart, Area,
@@ -152,24 +154,76 @@ const FinancialMetrics = () => {
     return 'bg-red-50';
   };
 
-  const MetricCard = ({ metric, icon: Icon, thresholds, isPercent = true, suffix = '%' }) => {
+  const [expandedMetric, setExpandedMetric] = useState(null);
+
+  const formatCompValue = (v) => {
+    if (v === undefined || v === null) return '$0';
+    if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
+    if (Math.abs(v) >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;
+    return `$${v.toLocaleString('es-MX', { maximumFractionDigits: 2 })}`;
+  };
+
+  const MetricCard = ({ metric, icon: Icon, thresholds, isPercent = true, suffix = '%', metricKey }) => {
     const value = metric?.value ?? 0;
     const color = getMetricColor(value, thresholds);
     const bg = getMetricBg(value, thresholds);
+    const isExpanded = expandedMetric === metricKey;
+    const hasComponents = metric?.components?.length > 0;
     
     return (
-      <div className={`p-4 rounded-lg ${bg} border`}>
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{metric?.label}</p>
-            <p className={`text-2xl font-bold mt-1 ${color}`}>
-              {isPercent ? formatPercent(value) : formatNumber(value, 2)}{!isPercent && suffix !== '%' ? suffix : ''}
-            </p>
-          </div>
-          <Icon className={`w-5 h-5 ${color}`} />
-        </div>
-        <p className="text-xs text-gray-500 mt-2 line-clamp-2">{metric?.interpretation}</p>
-      </div>
+      <TooltipProvider delayDuration={300}>
+        <ShadcnTooltip>
+          <TooltipTrigger asChild>
+            <div 
+              className={`p-4 rounded-lg ${bg} border cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-[1.02] ${isExpanded ? 'ring-2 ring-blue-300' : ''}`}
+              onClick={() => hasComponents && setExpandedMetric(isExpanded ? null : metricKey)}
+              data-testid={`metric-card-${metricKey}`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{metric?.label}</p>
+                  <p className={`text-2xl font-bold mt-1 ${color}`}>
+                    {isPercent ? formatPercent(value) : formatNumber(value, 2)}{!isPercent && suffix !== '%' ? suffix : ''}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Icon className={`w-5 h-5 ${color}`} />
+                  {hasComponents && (
+                    isExpanded ? <ChevronUp className="w-3 h-3 text-gray-400" /> : <ChevronDown className="w-3 h-3 text-gray-400" />
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-2 line-clamp-2">{metric?.interpretation}</p>
+              
+              {isExpanded && hasComponents && (
+                <div className="mt-3 pt-3 border-t border-gray-200 space-y-2 animate-in slide-in-from-top-2 duration-200" data-testid={`metric-breakdown-${metricKey}`}>
+                  <p className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                    <Calculator className="w-3 h-3" /> {metric?.formula}
+                  </p>
+                  <div className="space-y-1">
+                    {metric.components.map((comp, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-xs">
+                        <span className="text-gray-600">{comp.label}</span>
+                        <span className="font-mono font-semibold text-gray-800">{formatCompValue(comp.value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between items-center text-xs pt-1 border-t border-dashed border-gray-300">
+                    <span className="font-semibold text-gray-700">Resultado</span>
+                    <span className={`font-mono font-bold ${color}`}>
+                      {isPercent ? formatPercent(value) : formatNumber(value, 2)}{!isPercent && suffix !== '%' ? suffix : ''}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-xs bg-gray-900 text-white px-3 py-2">
+            <p className="font-semibold text-xs">{metric?.formula}</p>
+            <p className="text-xs opacity-80 mt-0.5">Clic para ver desglose</p>
+          </TooltipContent>
+        </ShadcnTooltip>
+      </TooltipProvider>
     );
   };
 
@@ -466,26 +520,31 @@ const FinancialMetrics = () => {
                   metric={metrics.metrics?.margins?.gross_margin} 
                   icon={TrendingUp}
                   thresholds={{ good: 30, warning: 15 }}
+                  metricKey="gross_margin"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.margins?.ebitda_margin} 
                   icon={Activity}
                   thresholds={{ good: 20, warning: 10 }}
+                  metricKey="ebitda_margin"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.margins?.operating_margin} 
                   icon={Calculator}
                   thresholds={{ good: 15, warning: 5 }}
+                  metricKey="operating_margin"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.margins?.net_margin} 
                   icon={Target}
                   thresholds={{ good: 10, warning: 3 }}
+                  metricKey="net_margin"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.margins?.nopat_margin} 
                   icon={DollarSign}
                   thresholds={{ good: 10, warning: 3 }}
+                  metricKey="nopat_margin"
                 />
               </div>
             </CardContent>
@@ -506,21 +565,25 @@ const FinancialMetrics = () => {
                   metric={metrics.metrics?.returns?.roic} 
                   icon={TrendingUp}
                   thresholds={{ good: 15, warning: 8 }}
+                  metricKey="roic"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.returns?.roe} 
                   icon={Target}
                   thresholds={{ good: 15, warning: 8 }}
+                  metricKey="roe"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.returns?.roce} 
                   icon={Activity}
                   thresholds={{ good: 12, warning: 6 }}
+                  metricKey="roce"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.returns?.roa} 
                   icon={Building2}
                   thresholds={{ good: 8, warning: 4 }}
+                  metricKey="roa"
                 />
               </div>
             </CardContent>
@@ -543,6 +606,7 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix="x"
                   thresholds={{ good: 1.5, warning: 0.8 }}
+                  metricKey="asset_turnover"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.efficiency?.dso} 
@@ -550,6 +614,7 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix=" días"
                   thresholds={{ good: 30, warning: 60 }}
+                  metricKey="dso"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.efficiency?.dpo} 
@@ -557,6 +622,7 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix=" días"
                   thresholds={{ good: 45, warning: 30 }}
+                  metricKey="dpo"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.efficiency?.cash_conversion_cycle} 
@@ -564,6 +630,7 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix=" días"
                   thresholds={{ good: 30, warning: 60 }}
+                  metricKey="cash_conversion_cycle"
                 />
               </div>
             </CardContent>
@@ -586,6 +653,7 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix="x"
                   thresholds={{ good: 2, warning: 1 }}
+                  metricKey="current_ratio"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.liquidity?.quick_ratio} 
@@ -593,6 +661,7 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix="x"
                   thresholds={{ good: 1, warning: 0.5 }}
+                  metricKey="quick_ratio"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.liquidity?.cash_ratio} 
@@ -600,21 +669,58 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix="x"
                   thresholds={{ good: 0.5, warning: 0.2 }}
+                  metricKey="cash_ratio"
                 />
-                <div className="p-4 rounded-lg bg-blue-50 border">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        {metrics.metrics?.liquidity?.working_capital?.label}
-                      </p>
-                      <p className={`text-2xl font-bold mt-1 ${(metrics.metrics?.liquidity?.working_capital?.value || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatCurrency(metrics.metrics?.liquidity?.working_capital?.value)}
-                      </p>
-                    </div>
-                    <Wallet className="w-5 h-5 text-blue-500" />
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">{metrics.metrics?.liquidity?.working_capital?.interpretation}</p>
-                </div>
+                <TooltipProvider delayDuration={300}>
+                  <ShadcnTooltip>
+                    <TooltipTrigger asChild>
+                      <div 
+                        className={`p-4 rounded-lg bg-blue-50 border cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-[1.02] ${expandedMetric === 'working_capital' ? 'ring-2 ring-blue-300' : ''}`}
+                        onClick={() => setExpandedMetric(expandedMetric === 'working_capital' ? null : 'working_capital')}
+                        data-testid="metric-card-working_capital"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              {metrics.metrics?.liquidity?.working_capital?.label}
+                            </p>
+                            <p className={`text-2xl font-bold mt-1 ${(metrics.metrics?.liquidity?.working_capital?.value || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {formatCurrency(metrics.metrics?.liquidity?.working_capital?.value)}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Wallet className="w-5 h-5 text-blue-500" />
+                            {expandedMetric === 'working_capital' ? <ChevronUp className="w-3 h-3 text-gray-400" /> : <ChevronDown className="w-3 h-3 text-gray-400" />}
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2">{metrics.metrics?.liquidity?.working_capital?.interpretation}</p>
+                        {expandedMetric === 'working_capital' && metrics.metrics?.liquidity?.working_capital?.components && (
+                          <div className="mt-3 pt-3 border-t border-gray-200 space-y-2 animate-in slide-in-from-top-2 duration-200" data-testid="metric-breakdown-working_capital">
+                            <p className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                              <Calculator className="w-3 h-3" /> {metrics.metrics?.liquidity?.working_capital?.formula}
+                            </p>
+                            {metrics.metrics.liquidity.working_capital.components.map((comp, idx) => (
+                              <div key={idx} className="flex justify-between items-center text-xs">
+                                <span className="text-gray-600">{comp.label}</span>
+                                <span className="font-mono font-semibold text-gray-800">{formatCurrency(comp.value)}</span>
+                              </div>
+                            ))}
+                            <div className="flex justify-between items-center text-xs pt-1 border-t border-dashed border-gray-300">
+                              <span className="font-semibold text-gray-700">Resultado</span>
+                              <span className={`font-mono font-bold ${(metrics.metrics?.liquidity?.working_capital?.value || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {formatCurrency(metrics.metrics?.liquidity?.working_capital?.value)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-xs bg-gray-900 text-white px-3 py-2">
+                      <p className="font-semibold text-xs">{metrics.metrics?.liquidity?.working_capital?.formula}</p>
+                      <p className="text-xs opacity-80 mt-0.5">Clic para ver desglose</p>
+                    </TooltipContent>
+                  </ShadcnTooltip>
+                </TooltipProvider>
               </div>
             </CardContent>
           </Card>
@@ -636,11 +742,13 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix="x"
                   thresholds={{ good: 1, warning: 2 }}
+                  metricKey="debt_to_equity"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.solvency?.debt_to_assets} 
                   icon={Building2}
                   thresholds={{ good: 40, warning: 60 }}
+                  metricKey="debt_to_assets"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.solvency?.debt_to_ebitda} 
@@ -648,6 +756,7 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix="x"
                   thresholds={{ good: 3, warning: 5 }}
+                  metricKey="debt_to_ebitda"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.solvency?.interest_coverage} 
@@ -655,11 +764,13 @@ const FinancialMetrics = () => {
                   isPercent={false}
                   suffix="x"
                   thresholds={{ good: 5, warning: 2 }}
+                  metricKey="interest_coverage"
                 />
                 <MetricCard 
                   metric={metrics.metrics?.solvency?.equity_ratio} 
                   icon={Wallet}
                   thresholds={{ good: 40, warning: 20 }}
+                  metricKey="equity_ratio"
                 />
               </div>
             </CardContent>

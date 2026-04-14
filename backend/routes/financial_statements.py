@@ -370,6 +370,12 @@ def calculate_financial_metrics(income: Dict, balance: Dict) -> Dict:
     tax_rate = safe_div(impuestos, income.get('utilidad_antes_impuestos', 0))
     nopat = utilidad_operativa * (1 - tax_rate)
     
+    # Helper to build metric with components
+    gastos_op_total = income.get('gastos_venta', 0) + income.get('gastos_administracion', 0) + income.get('gastos_generales', 0)
+    dso_val = safe_div(cuentas_por_cobrar * 30, ingresos)
+    dpo_val = safe_div(cuentas_por_pagar * 30, costo_ventas) if costo_ventas > 0 else 0
+    dio_val = safe_div(inventarios * 30, costo_ventas) if costo_ventas > 0 else 0
+
     # Calculate metrics
     metrics = {
         # === MÁRGENES ===
@@ -378,31 +384,36 @@ def calculate_financial_metrics(income: Dict, balance: Dict) -> Dict:
                 'value': safe_pct(utilidad_bruta, ingresos),
                 'label': 'Margen Bruto',
                 'formula': 'Utilidad Bruta / Ingresos',
-                'interpretation': 'Porcentaje de ingresos que queda después de costos directos'
+                'interpretation': 'Porcentaje de ingresos que queda después de costos directos',
+                'components': [{'label': 'Utilidad Bruta', 'value': utilidad_bruta}, {'label': 'Ingresos', 'value': ingresos}]
             },
             'ebitda_margin': {
                 'value': safe_pct(ebitda, ingresos),
                 'label': 'Margen EBITDA',
                 'formula': 'EBITDA / Ingresos',
-                'interpretation': 'Rentabilidad operativa antes de intereses, impuestos, depreciación y amortización'
+                'interpretation': 'Rentabilidad operativa antes de intereses, impuestos, depreciación y amortización',
+                'components': [{'label': 'EBITDA', 'value': ebitda}, {'label': 'Ingresos', 'value': ingresos}]
             },
             'operating_margin': {
                 'value': safe_pct(utilidad_operativa, ingresos),
                 'label': 'Margen Operativo',
                 'formula': 'Utilidad Operativa / Ingresos',
-                'interpretation': 'Porcentaje de ingresos que queda después de gastos operativos'
+                'interpretation': 'Porcentaje de ingresos que queda después de gastos operativos',
+                'components': [{'label': 'Utilidad Operativa', 'value': utilidad_operativa}, {'label': 'Ingresos', 'value': ingresos}]
             },
             'net_margin': {
                 'value': safe_pct(utilidad_neta, ingresos),
                 'label': 'Margen Neto',
                 'formula': 'Utilidad Neta / Ingresos',
-                'interpretation': 'Porcentaje de ingresos que se convierte en utilidad'
+                'interpretation': 'Porcentaje de ingresos que se convierte en utilidad',
+                'components': [{'label': 'Utilidad Neta', 'value': utilidad_neta}, {'label': 'Ingresos', 'value': ingresos}]
             },
             'nopat_margin': {
                 'value': safe_pct(nopat, ingresos),
                 'label': 'Margen NOPAT',
                 'formula': 'NOPAT / Ingresos',
-                'interpretation': 'Utilidad operativa después de impuestos'
+                'interpretation': 'Utilidad operativa después de impuestos',
+                'components': [{'label': 'NOPAT', 'value': round(nopat, 2)}, {'label': 'Ingresos', 'value': ingresos}]
             }
         },
         
@@ -412,37 +423,43 @@ def calculate_financial_metrics(income: Dict, balance: Dict) -> Dict:
                 'value': safe_pct(nopat, capital_invertido),
                 'label': 'ROIC',
                 'formula': 'NOPAT / Capital Invertido',
-                'interpretation': 'Retorno sobre capital invertido (deuda + equity)'
+                'interpretation': 'Retorno sobre capital invertido (deuda + equity)',
+                'components': [{'label': 'NOPAT', 'value': round(nopat, 2)}, {'label': 'Capital Invertido', 'value': capital_invertido}]
             },
             'roe': {
                 'value': safe_pct(utilidad_neta, capital_contable),
                 'label': 'ROE',
                 'formula': 'Utilidad Neta / Capital Contable',
-                'interpretation': 'Retorno sobre el capital de los accionistas'
+                'interpretation': 'Retorno sobre el capital de los accionistas',
+                'components': [{'label': 'Utilidad Neta', 'value': utilidad_neta}, {'label': 'Capital Contable', 'value': capital_contable}]
             },
             'roce': {
                 'value': safe_pct(utilidad_operativa, (activo_total - pasivo_circulante)),
                 'label': 'ROCE',
                 'formula': 'EBIT / (Activos - Pasivo Circulante)',
-                'interpretation': 'Retorno sobre capital empleado'
+                'interpretation': 'Retorno sobre capital empleado',
+                'components': [{'label': 'EBIT (Utilidad Operativa)', 'value': utilidad_operativa}, {'label': 'Activos - Pasivo Circulante', 'value': activo_total - pasivo_circulante}]
             },
             'roa': {
                 'value': safe_pct(utilidad_neta, activo_total),
                 'label': 'ROA',
                 'formula': 'Utilidad Neta / Activos Totales',
-                'interpretation': 'Retorno sobre activos totales'
+                'interpretation': 'Retorno sobre activos totales',
+                'components': [{'label': 'Utilidad Neta', 'value': utilidad_neta}, {'label': 'Activos Totales', 'value': activo_total}]
             },
             'ronic': {
                 'value': safe_pct(nopat, capital_invertido) if capital_invertido > 0 else 0,
                 'label': 'RONIC',
                 'formula': 'NOPAT / Capital Invertido Nuevo',
-                'interpretation': 'Retorno sobre nuevo capital invertido'
+                'interpretation': 'Retorno sobre nuevo capital invertido',
+                'components': [{'label': 'NOPAT', 'value': round(nopat, 2)}, {'label': 'Capital Invertido', 'value': capital_invertido}]
             },
             'gmroi': {
                 'value': safe_div(utilidad_bruta, inventarios) if inventarios > 0 else 0,
                 'label': 'GMROI',
                 'formula': 'Utilidad Bruta / Inventarios',
-                'interpretation': 'Retorno de margen bruto sobre inventario'
+                'interpretation': 'Retorno de margen bruto sobre inventario',
+                'components': [{'label': 'Utilidad Bruta', 'value': utilidad_bruta}, {'label': 'Inventarios', 'value': inventarios}]
             }
         },
         
@@ -452,67 +469,78 @@ def calculate_financial_metrics(income: Dict, balance: Dict) -> Dict:
                 'value': safe_div(ingresos, activo_total),
                 'label': 'Rotación de Activos',
                 'formula': 'Ingresos / Activos Totales',
-                'interpretation': 'Veces que los activos generan ingresos'
+                'interpretation': 'Veces que los activos generan ingresos',
+                'components': [{'label': 'Ingresos', 'value': ingresos}, {'label': 'Activos Totales', 'value': activo_total}]
             },
             'receivables_turnover': {
                 'value': safe_div(ingresos, cuentas_por_cobrar),
                 'label': 'Rotación de CxC',
                 'formula': 'Ingresos / Cuentas por Cobrar',
-                'interpretation': 'Veces que se cobran las cuentas por cobrar'
+                'interpretation': 'Veces que se cobran las cuentas por cobrar',
+                'components': [{'label': 'Ingresos', 'value': ingresos}, {'label': 'Cuentas por Cobrar', 'value': cuentas_por_cobrar}]
             },
             'inventory_turnover': {
                 'value': safe_div(costo_ventas, inventarios),
                 'label': 'Rotación de Inventarios',
                 'formula': 'Costo de Ventas / Inventarios',
-                'interpretation': 'Veces que se rota el inventario'
+                'interpretation': 'Veces que se rota el inventario',
+                'components': [{'label': 'Costo de Ventas', 'value': costo_ventas}, {'label': 'Inventarios', 'value': inventarios}]
             },
             'payables_turnover': {
                 'value': safe_div(costo_ventas, cuentas_por_pagar),
                 'label': 'Rotación de CxP',
                 'formula': 'Costo de Ventas / Cuentas por Pagar',
-                'interpretation': 'Veces que se pagan las cuentas por pagar'
+                'interpretation': 'Veces que se pagan las cuentas por pagar',
+                'components': [{'label': 'Costo de Ventas', 'value': costo_ventas}, {'label': 'Cuentas por Pagar', 'value': cuentas_por_pagar}]
             },
             'ic_turnover': {
                 'value': safe_div(ingresos, capital_invertido),
                 'label': 'Rotación de Capital Invertido',
                 'formula': 'Ingresos / Capital Invertido',
-                'interpretation': 'Eficiencia del capital invertido'
+                'interpretation': 'Eficiencia del capital invertido',
+                'components': [{'label': 'Ingresos', 'value': ingresos}, {'label': 'Capital Invertido', 'value': capital_invertido}]
             },
             'dso': {
-                'value': safe_div(cuentas_por_cobrar * 30, ingresos),  # 30 días para datos mensuales
+                'value': dso_val,
                 'label': 'DSO (Días de Cobro)',
-                'formula': '(CxC × 30) / Ingresos mensuales',
-                'interpretation': 'Días promedio para cobrar'
+                'formula': '(CxC x 30) / Ingresos mensuales',
+                'interpretation': 'Días promedio para cobrar',
+                'components': [{'label': 'CxC x 30', 'value': cuentas_por_cobrar * 30}, {'label': 'Ingresos', 'value': ingresos}]
             },
             'dpo': {
-                'value': safe_div(cuentas_por_pagar * 30, costo_ventas) if costo_ventas > 0 else 0,  # 30 días para datos mensuales
+                'value': dpo_val,
                 'label': 'DPO (Días de Pago)',
-                'formula': '(CxP × 30) / Costo de Ventas mensual',
-                'interpretation': 'Días promedio para pagar'
+                'formula': '(CxP x 30) / Costo de Ventas mensual',
+                'interpretation': 'Días promedio para pagar',
+                'components': [{'label': 'CxP x 30', 'value': cuentas_por_pagar * 30}, {'label': 'Costo de Ventas', 'value': costo_ventas}]
             },
             'dio': {
-                'value': safe_div(inventarios * 30, costo_ventas) if costo_ventas > 0 else 0,  # 30 días para datos mensuales
+                'value': dio_val,
                 'label': 'DIO (Días de Inventario)',
-                'formula': '(Inventarios × 30) / Costo de Ventas mensual',
-                'interpretation': 'Días promedio de inventario'
+                'formula': '(Inventarios x 30) / Costo de Ventas mensual',
+                'interpretation': 'Días promedio de inventario',
+                'components': [{'label': 'Inventarios x 30', 'value': inventarios * 30}, {'label': 'Costo de Ventas', 'value': costo_ventas}]
             },
             'cash_conversion_cycle': {
-                'value': safe_div(cuentas_por_cobrar * 30, ingresos) + safe_div(inventarios * 30, costo_ventas if costo_ventas > 0 else 1) - safe_div(cuentas_por_pagar * 30, costo_ventas if costo_ventas > 0 else 1),
+                'value': dso_val + dio_val - dpo_val,
                 'label': 'Ciclo de Conversión de Efectivo',
                 'formula': 'DSO + DIO - DPO',
-                'interpretation': 'Días para convertir inversión en efectivo'
+                'interpretation': 'Días para convertir inversión en efectivo',
+                'components': [{'label': 'DSO', 'value': round(dso_val, 2)}, {'label': 'DIO', 'value': round(dio_val, 2)}, {'label': 'DPO', 'value': round(dpo_val, 2)}]
             },
             'nwc_to_revenue': {
                 'value': safe_pct((activo_circulante - pasivo_circulante), ingresos) if ingresos > 0 else 0,
                 'label': 'NWC / Ingresos',
                 'formula': 'Capital de Trabajo / Ingresos',
-                'interpretation': 'Capital de trabajo como % de ingresos'
+                'interpretation': 'Capital de trabajo como % de ingresos',
+                'components': [{'label': 'Capital de Trabajo', 'value': activo_circulante - pasivo_circulante}, {'label': 'Ingresos', 'value': ingresos}]
             },
             'capex_to_revenue': {
-                'value': 0,  # Requiere datos de CapEx del flujo de efectivo
+                'value': 0,
                 'label': 'CapEx / Ingresos',
                 'formula': 'CapEx / Ingresos',
-                'interpretation': 'Inversión en activos como % de ingresos'
+                'interpretation': 'Inversión en activos como % de ingresos',
+                'components': [{'label': 'CapEx', 'value': 0}, {'label': 'Ingresos', 'value': ingresos}]
             }
         },
         
@@ -522,43 +550,50 @@ def calculate_financial_metrics(income: Dict, balance: Dict) -> Dict:
                 'value': safe_div(activo_circulante, pasivo_circulante),
                 'label': 'Razón Circulante',
                 'formula': 'Activo Circulante / Pasivo Circulante',
-                'interpretation': 'Capacidad de pagar deudas corto plazo con activos circulantes'
+                'interpretation': 'Capacidad de pagar deudas corto plazo con activos circulantes',
+                'components': [{'label': 'Activo Circulante', 'value': activo_circulante}, {'label': 'Pasivo Circulante', 'value': pasivo_circulante}]
             },
             'quick_ratio': {
                 'value': safe_div((activo_circulante - inventarios), pasivo_circulante),
                 'label': 'Prueba Ácida',
                 'formula': '(Activo Circulante - Inventarios) / Pasivo Circulante',
-                'interpretation': 'Capacidad de pago sin depender de inventarios'
+                'interpretation': 'Capacidad de pago sin depender de inventarios',
+                'components': [{'label': 'Activo Circulante - Inventarios', 'value': activo_circulante - inventarios}, {'label': 'Pasivo Circulante', 'value': pasivo_circulante}]
             },
             'cash_ratio': {
                 'value': safe_div(efectivo, pasivo_circulante),
                 'label': 'Razón de Efectivo',
                 'formula': 'Efectivo / Pasivo Circulante',
-                'interpretation': 'Capacidad de pago inmediato con efectivo'
+                'interpretation': 'Capacidad de pago inmediato con efectivo',
+                'components': [{'label': 'Efectivo', 'value': efectivo}, {'label': 'Pasivo Circulante', 'value': pasivo_circulante}]
             },
             'cash_runway': {
-                'value': safe_div(efectivo, (income.get('gastos_venta', 0) + income.get('gastos_administracion', 0) + income.get('gastos_generales', 0))) if (income.get('gastos_venta', 0) + income.get('gastos_administracion', 0) + income.get('gastos_generales', 0)) > 0 else 999,
+                'value': safe_div(efectivo, gastos_op_total) if gastos_op_total > 0 else 999,
                 'label': 'Cash Runway',
                 'formula': 'Efectivo / Gastos Operativos Mensuales',
-                'interpretation': 'Meses de operación con efectivo actual'
+                'interpretation': 'Meses de operación con efectivo actual',
+                'components': [{'label': 'Efectivo', 'value': efectivo}, {'label': 'Gastos Operativos', 'value': gastos_op_total}]
             },
             'cash_efficiency': {
                 'value': safe_pct(utilidad_neta, efectivo) if efectivo > 0 else 0,
                 'label': 'Eficiencia de Efectivo',
                 'formula': 'Utilidad Neta / Efectivo',
-                'interpretation': 'Retorno sobre efectivo disponible'
+                'interpretation': 'Retorno sobre efectivo disponible',
+                'components': [{'label': 'Utilidad Neta', 'value': utilidad_neta}, {'label': 'Efectivo', 'value': efectivo}]
             },
             'cash_cycle': {
-                'value': safe_div(cuentas_por_cobrar * 30, ingresos) + safe_div(inventarios * 30, costo_ventas if costo_ventas > 0 else 1) - safe_div(cuentas_por_pagar * 30, costo_ventas if costo_ventas > 0 else 1),
+                'value': dso_val + dio_val - dpo_val,
                 'label': 'Ciclo de Efectivo',
                 'formula': 'DSO + DIO - DPO',
-                'interpretation': 'Días del ciclo de conversión de efectivo'
+                'interpretation': 'Días del ciclo de conversión de efectivo',
+                'components': [{'label': 'DSO', 'value': round(dso_val, 2)}, {'label': 'DIO', 'value': round(dio_val, 2)}, {'label': 'DPO', 'value': round(dpo_val, 2)}]
             },
             'working_capital': {
                 'value': activo_circulante - pasivo_circulante,
                 'label': 'Capital de Trabajo',
                 'formula': 'Activo Circulante - Pasivo Circulante',
-                'interpretation': 'Recursos disponibles para operar'
+                'interpretation': 'Recursos disponibles para operar',
+                'components': [{'label': 'Activo Circulante', 'value': activo_circulante}, {'label': 'Pasivo Circulante', 'value': pasivo_circulante}]
             }
         },
         
@@ -568,61 +603,71 @@ def calculate_financial_metrics(income: Dict, balance: Dict) -> Dict:
                 'value': safe_div(deuda_total, capital_contable),
                 'label': 'Deuda / Capital',
                 'formula': 'Deuda Total / Capital Contable',
-                'interpretation': 'Proporción de financiamiento con deuda vs equity'
+                'interpretation': 'Proporción de financiamiento con deuda vs equity',
+                'components': [{'label': 'Deuda Total', 'value': deuda_total}, {'label': 'Capital Contable', 'value': capital_contable}]
             },
             'debt_to_assets': {
                 'value': safe_pct(pasivo_total, activo_total),
                 'label': 'Deuda / Activos',
                 'formula': 'Pasivo Total / Activos Totales',
-                'interpretation': 'Porcentaje de activos financiados con deuda'
+                'interpretation': 'Porcentaje de activos financiados con deuda',
+                'components': [{'label': 'Pasivo Total', 'value': pasivo_total}, {'label': 'Activos Totales', 'value': activo_total}]
             },
             'debt_to_ebitda': {
                 'value': safe_div(deuda_total, ebitda) if ebitda > 0 else safe_div(pasivo_total - capital_contable, ebitda),
                 'label': 'Deuda / EBITDA',
                 'formula': 'Deuda Total / EBITDA',
-                'interpretation': 'Años para pagar deuda con EBITDA'
+                'interpretation': 'Años para pagar deuda con EBITDA',
+                'components': [{'label': 'Deuda Total', 'value': deuda_total}, {'label': 'EBITDA', 'value': ebitda}]
             },
             'net_debt_to_ebitda': {
                 'value': safe_div(deuda_total - efectivo, ebitda) if ebitda > 0 else 0,
                 'label': 'Deuda Neta / EBITDA',
                 'formula': '(Deuda Total - Efectivo) / EBITDA',
-                'interpretation': 'Años para pagar deuda neta con EBITDA'
+                'interpretation': 'Años para pagar deuda neta con EBITDA',
+                'components': [{'label': 'Deuda Total - Efectivo', 'value': deuda_total - efectivo}, {'label': 'EBITDA', 'value': ebitda}]
             },
             'interest_coverage': {
                 'value': safe_div(ebitda, intereses) if intereses > 0 else 999,
                 'label': 'Cobertura de Intereses',
                 'formula': 'EBITDA / Intereses',
-                'interpretation': 'Veces que se pueden pagar los intereses'
+                'interpretation': 'Veces que se pueden pagar los intereses',
+                'components': [{'label': 'EBITDA', 'value': ebitda}, {'label': 'Intereses', 'value': intereses}]
             },
             'financial_leverage': {
                 'value': safe_div(activo_total, capital_contable),
                 'label': 'Apalancamiento Financiero',
                 'formula': 'Activos Totales / Capital Contable',
-                'interpretation': 'Multiplicador del capital'
+                'interpretation': 'Multiplicador del capital',
+                'components': [{'label': 'Activos Totales', 'value': activo_total}, {'label': 'Capital Contable', 'value': capital_contable}]
             },
             'liability_ratio': {
                 'value': safe_div(pasivo_total, capital_contable),
                 'label': 'Razón de Pasivo',
                 'formula': 'Pasivo Total / Capital Contable',
-                'interpretation': 'Proporción pasivo vs capital'
+                'interpretation': 'Proporción pasivo vs capital',
+                'components': [{'label': 'Pasivo Total', 'value': pasivo_total}, {'label': 'Capital Contable', 'value': capital_contable}]
             },
             'debt_ratio': {
                 'value': safe_pct(deuda_total, activo_total),
                 'label': 'Razón de Deuda',
                 'formula': 'Deuda Total / Activos Totales',
-                'interpretation': 'Porcentaje de activos financiados con deuda'
+                'interpretation': 'Porcentaje de activos financiados con deuda',
+                'components': [{'label': 'Deuda Total', 'value': deuda_total}, {'label': 'Activos Totales', 'value': activo_total}]
             },
             'cost_of_debt': {
                 'value': safe_pct(intereses, deuda_total) if deuda_total > 0 else 0,
                 'label': 'Costo de Deuda',
                 'formula': 'Intereses / Deuda Total',
-                'interpretation': 'Tasa efectiva de interés'
+                'interpretation': 'Tasa efectiva de interés',
+                'components': [{'label': 'Intereses', 'value': intereses}, {'label': 'Deuda Total', 'value': deuda_total}]
             },
             'equity_ratio': {
                 'value': safe_pct(capital_contable, activo_total),
                 'label': 'Razón de Capital',
                 'formula': 'Capital Contable / Activos Totales',
-                'interpretation': 'Porcentaje de activos financiados con capital propio'
+                'interpretation': 'Porcentaje de activos financiados con capital propio',
+                'components': [{'label': 'Capital Contable', 'value': capital_contable}, {'label': 'Activos Totales', 'value': activo_total}]
             }
         },
         

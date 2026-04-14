@@ -1,0 +1,87 @@
+{
+  "summary": "Completed testing of KPI MetricCard click-to-expand feature, tooltip on hover, and optimization apply error handling. All features working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Financial Metrics charts",
+        "issues": ["Console warnings about chart dimensions (-1 width/height). Non-blocking but could be cleaned up."]
+      }
+    ]
+  },
+  "features_tested": {
+    "kpi_card_click_to_expand": {
+      "status": "PASSED",
+      "description": "MetricCard components expand on click showing formula and numeric breakdown",
+      "tested_cards": ["gross_margin", "ebitda_margin", "roic", "debt_to_equity", "working_capital"],
+      "breakdown_content": {
+        "formula_displayed": true,
+        "components_with_labels": true,
+        "components_with_values": true,
+        "result_displayed": true
+      }
+    },
+    "kpi_card_collapse": {
+      "status": "PASSED",
+      "description": "Clicking an expanded card collapses it back to normal state"
+    },
+    "kpi_card_tooltip_on_hover": {
+      "status": "PASSED",
+      "description": "Tooltip appears on hover showing formula and 'Clic para ver desglose' text",
+      "tooltip_content": "Shows formula (e.g., 'EBITDA / Ingresos') and instruction text"
+    },
+    "working_capital_card_breakdown": {
+      "status": "PASSED",
+      "description": "Capital de Trabajo card ($9,357,181) shows breakdown with Activo Circulante and Pasivo Circulante",
+      "components_verified": ["Activo Circulante: $16,409,139", "Pasivo Circulante: $7,051,958"]
+    },
+    "all_sections_expandable": {
+      "status": "PASSED",
+      "sections_tested": ["Márgenes", "Retorno sobre inversión", "Eficiencia Operativa", "Liquidez", "Solvencia"],
+      "all_cards_have_components": true
+    },
+    "backend_metrics_components": {
+      "status": "PASSED",
+      "endpoint": "GET /api/financial-statements/metrics/{periodo}",
+      "description": "All metrics return 'components' array with {label, value} objects"
+    },
+    "optimization_apply_error_handling": {
+      "status": "PASSED",
+      "endpoint": "POST /api/optimize/apply/{optimization_id}",
+      "test_cases": [
+        {"case": "Non-existent ID", "expected": "404", "actual": "404", "message": "Optimización no encontrada"},
+        {"case": "No auth", "expected": "401/403", "actual": "401", "message": "Proper auth error"}
+      ]
+    }
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_kpi_metrics.py",
+    "/app/test_reports/pytest/pytest_kpi_metrics.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_kpi_metrics.py"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8 tests passed)",
+    "frontend": "100% (all KPI card features verified)"
+  },
+  "test_credentials": {
+    "email": "admin@demo.com",
+    "password": "admin123"
+  },
+  "seed_data_creation": "None - used existing financial data for period 2024-03",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "KPI MetricCard feature fully implemented. Cards use data-testid='metric-card-{key}' and expanded breakdown uses data-testid='metric-breakdown-{key}'. Tooltip uses Shadcn/Radix Tooltip with 300ms delay. Backend returns 'components' array for each metric with {label, value} objects. Optimization apply endpoint properly returns 400 for missing mejor_solucion and 404 for non-existent optimization.",
+  "mocked_apis": {
+    "has_mocked_apis": false,
+    "mocked_apis_list": []
+  }
+}
