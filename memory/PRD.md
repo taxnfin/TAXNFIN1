@@ -1882,3 +1882,17 @@ All P0 features implemented and tested:
 - **Lo que queda en server.py**: Modelos Pydantic, CFDI upload/XML parsing, bank-transactions import PDF, AI categorization
 - **Verificación**: Todos los endpoints probados y funcionando correctamente
 
+### Phase 25: Refactorización Completa de server.py ✅
+- **Date**: April 28, 2026
+- **server.py**: Reducido de 5,957 a 962 líneas (reducción del 88% desde las 8,001 originales)
+- **0 endpoints en server.py** — todos los 200 endpoints en archivos modulares
+- **5 nuevos archivos de rutas creados en esta fase**:
+  - `routes/import_templates.py` (303 líneas) — Vendor/Customer templates e import masivo
+  - `routes/cashflow.py` (1,140 líneas) — Cashflow weeks, transactions, CFDI upload/XML, bank-txn CRUD
+  - `routes/payment_matching.py` (1,364 líneas) — Payment matching, auto-reconcile, batch payments
+  - `routes/cfdi_operations.py` (205 líneas) — AI categorization, categorize, notes
+  - `routes/bank_import.py` (1,661 líneas) — Bank statement import Excel + PDF
+- **Total archivos de rutas**: 28
+- **server.py ahora contiene solo**: Modelos Pydantic, configuración app, middleware CORS, exception handler
+
+
