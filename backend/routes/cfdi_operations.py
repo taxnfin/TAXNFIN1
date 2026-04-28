@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import logging
 
 from core.database import db
-from core.auth import get_current_user
+from core.auth import get_current_user, get_active_company_id
 from services.audit import audit_log
 from models.enums import UserRole
 

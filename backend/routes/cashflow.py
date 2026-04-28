@@ -14,6 +14,7 @@ from core.auth import get_current_user, get_active_company_id
 from services.audit import audit_log
 from services.fx import get_fx_rate_by_date
 from services.cashflow import initialize_cashflow_weeks
+from services.cfdi_parser import parse_cfdi_xml
 from models.enums import UserRole, TransactionType, TransactionOrigin, BankTransactionType
 from models.transaction import CashFlowWeek, Transaction, TransactionCreate
 from models.bank import BankTransaction, BankTransactionCreate

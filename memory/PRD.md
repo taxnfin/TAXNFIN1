@@ -1896,3 +1896,14 @@ All P0 features implemented and tested:
 - **server.py ahora contiene solo**: Modelos Pydantic, configuración app, middleware CORS, exception handler
 
 
+
+### Phase 26: Extracción Final de Modelos Pydantic ✅
+- **Date**: April 28, 2026
+- **server.py**: Reducido de 962 a 125 líneas (de 8,001 originales — reducción del 98.4%)
+- **Modelos eliminados de server.py**: 50+ clases Pydantic (ya existían en `/models/`)
+- **Funciones duplicadas eliminadas**: `hash_password`, `verify_password`, `create_token`, `get_current_user`, `get_active_company_id`, `audit_log`, `get_fx_rate_by_date`, `initialize_cashflow_weeks`, `parse_cfdi_xml` (ya existían en `/core/` y `/services/`)
+- **Imports corregidos en route files**: `belvo.py`, `cfdi_operations.py`, `import_templates.py`, `cashflow.py` — agregados imports faltantes de `models/` y `services/`
+- **server.py ahora contiene SOLO**: App setup, router imports/include, CORS middleware, exception handler, lifecycle events
+- **28 route files**, 200 endpoints, 14,245 líneas totales en routes/
+- **Verificación**: 15/15 endpoints probados OK via curl
+
