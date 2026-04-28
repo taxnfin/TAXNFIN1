@@ -1915,4 +1915,15 @@ All P0 features implemented and tested:
 - **Frontend**: NotificationBell.js (bell + panel), KpiAlertConfig.js (rules config), Alertas KPI tab
 - **Auto-evaluation**: Triggers on financial statement upload
 - **18 KPI Metrics**: Configurable thresholds with above/below conditions, 3 alert levels
+
+### Phase 28: AI Income Flow Analysis Verified + Historical Trend Comparison ✅
+- **Date**: April 28, 2026
+- **AI Income Flow Analysis**: Verified working — GPT-5.2 generates analysis of cost of sales %, operating efficiency, and revenue-to-profit conversion. Renders on Page 6 (Sankey section) of PDF via BoardReport.js
+- **Historical Trend in Encyclopedia**:
+  - Benchmark banner shows `+X%` or `-X%` change vs previous period with colored badge
+  - Left nav shows trend arrows (green ↗ / red ↘) next to each metric value
+  - Correctly handles inverted metrics (DSO, DPO, debt ratios — lower = better)
+  - No trend shown when no previous period available
+- **Test Coverage**: iteration_22.json — 100% backend (9/9), 100% frontend (8/8)
+
 - **Test Coverage**: iteration_21.json — 100% backend (15/15), 100% frontend (7/7)
