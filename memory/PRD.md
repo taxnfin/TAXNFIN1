@@ -1907,3 +1907,12 @@ All P0 features implemented and tested:
 - **28 route files**, 200 endpoints, 14,245 líneas totales en routes/
 - **Verificación**: 15/15 endpoints probados OK via curl
 
+
+
+### Phase 27: Notificaciones Automáticas por KPI ✅
+- **Date**: April 28, 2026
+- **Backend**: models/notification.py, services/kpi_alerts.py, routes/notifications.py (10 endpoints)
+- **Frontend**: NotificationBell.js (bell + panel), KpiAlertConfig.js (rules config), Alertas KPI tab
+- **Auto-evaluation**: Triggers on financial statement upload
+- **18 KPI Metrics**: Configurable thresholds with above/below conditions, 3 alert levels
+- **Test Coverage**: iteration_21.json — 100% backend (15/15), 100% frontend (7/7)
