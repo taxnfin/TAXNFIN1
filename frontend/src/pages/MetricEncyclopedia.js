@@ -65,7 +65,7 @@ const formatVal = (value, key) => {
   return value.toFixed(2);
 };
 
-const MetricEncyclopedia = ({ metricsData, selectedPeriod }) => {
+const MetricEncyclopedia = ({ metricsData, selectedPeriod, prevMetricsData, prevPeriod }) => {
   const [selectedMetric, setSelectedMetric] = useState(metricsEncyclopedia.metrics[0]);
   const [activeSection, setActiveSection] = useState('queMide');
   const [expandedEval, setExpandedEval] = useState(null);
@@ -94,6 +94,22 @@ const MetricEncyclopedia = ({ metricsData, selectedPeriod }) => {
   // Benchmark: Get current company value and determine evaluation level
   const currentValue = getMetricValue(metricsData, selectedMetric.key);
   const formattedValue = formatVal(currentValue, selectedMetric.key);
+  
+  // Trend: Get previous period value for comparison
+  const prevValue = getMetricValue(prevMetricsData, selectedMetric.key);
+  const formattedPrevValue = formatVal(prevValue, selectedMetric.key);
+  
+  const trendDelta = (currentValue !== null && prevValue !== null) ? currentValue - prevValue : null;
+  const trendPct = (prevValue !== null && prevValue !== 0 && trendDelta !== null) 
+    ? ((trendDelta / Math.abs(prevValue)) * 100) 
+    : null;
+  
+  // For inverted metrics (lower = better), positive delta is bad
+  const invertedMetrics = ['dso', 'dpo', 'cash_conversion_cycle', 'debt_to_equity', 'debt_to_assets'];
+  const isInvertedTrend = invertedMetrics.includes(selectedMetric.key);
+  const isTrendPositive = trendDelta !== null 
+    ? (isInvertedTrend ? trendDelta < 0 : trendDelta > 0)
+    : null;
   
   const getBenchmarkLevel = () => {
     if (currentValue === null) return null;
@@ -165,6 +181,10 @@ const MetricEncyclopedia = ({ metricsData, selectedPeriod }) => {
                   const MetricIcon = m.icon;
                   const navVal = getMetricValue(metricsData, m.key);
                   const navFormatted = formatVal(navVal, m.key);
+                  const navPrev = getMetricValue(prevMetricsData, m.key);
+                  const navDelta = (navVal !== null && navPrev !== null) ? navVal - navPrev : null;
+                  const navInv = ['dso', 'dpo', 'cash_conversion_cycle', 'debt_to_equity', 'debt_to_assets'].includes(m.key);
+                  const navUp = navDelta !== null ? (navInv ? navDelta < 0 : navDelta > 0) : null;
                   return (
                     <button
                       key={m.key}
@@ -180,7 +200,14 @@ const MetricEncyclopedia = ({ metricsData, selectedPeriod }) => {
                       <MetricIcon className="w-4 h-4 flex-shrink-0" style={{ color: cat.color }} />
                       <span className="truncate flex-1">{m.name}</span>
                       {navFormatted && (
-                        <span className="text-[10px] font-mono font-semibold text-gray-500 flex-shrink-0">{navFormatted}</span>
+                        <span className="flex items-center gap-0.5 flex-shrink-0">
+                          <span className="text-[10px] font-mono font-semibold text-gray-500">{navFormatted}</span>
+                          {navUp !== null && (
+                            navUp
+                              ? <TrendingUp className="w-3 h-3 text-emerald-500" />
+                              : <TrendingDown className="w-3 h-3 text-red-400" />
+                          )}
+                        </span>
                       )}
                     </button>
                   );
@@ -219,6 +246,25 @@ const MetricEncyclopedia = ({ metricsData, selectedPeriod }) => {
               <p className="text-sm text-gray-600 mt-1">
                 Tu <strong>{selectedMetric.name}</strong> de <strong>{formattedValue}</strong> se ubica en el rango <strong style={{ color: benchmark.level.color }}>{benchmark.level.threshold}</strong>
               </p>
+              
+              {/* Trend comparison */}
+              {trendDelta !== null && prevPeriod && (
+                <div className="flex items-center gap-2 mt-1.5" data-testid="benchmark-trend">
+                  <div className={`flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
+                    isTrendPositive ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'
+                  }`}>
+                    {isTrendPositive ? (
+                      <TrendingUp className="w-3 h-3" />
+                    ) : (
+                      <TrendingDown className="w-3 h-3" />
+                    )}
+                    {trendPct !== null ? `${trendPct > 0 ? '+' : ''}${trendPct.toFixed(1)}%` : (trendDelta > 0 ? '+' : '') + trendDelta.toFixed(1)}
+                  </div>
+                  <span className="text-xs text-gray-400">
+                    vs {prevPeriod} ({formattedPrevValue})
+                  </span>
+                </div>
+              )}
             </div>
             {/* Mini progress bar showing position */}
             <div className="w-40 flex-shrink-0">

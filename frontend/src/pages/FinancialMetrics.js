@@ -30,6 +30,8 @@ const FinancialMetrics = () => {
   const [periods, setPeriods] = useState([]);
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [metrics, setMetrics] = useState(null);
+  const [prevMetrics, setPrevMetrics] = useState(null);
+  const [prevPeriod, setPrevPeriod] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadType, setUploadType] = useState('');
@@ -65,6 +67,20 @@ const FinancialMetrics = () => {
     try {
       const response = await api.get(`/financial-statements/metrics/${periodo}`);
       setMetrics(response.data);
+      
+      // Find and load previous period for trend comparison
+      const currentIdx = periods.findIndex(p => p.periodo === periodo);
+      if (currentIdx >= 0 && currentIdx < periods.length - 1) {
+        const prev = periods[currentIdx + 1].periodo;
+        setPrevPeriod(prev);
+        try {
+          const prevRes = await api.get(`/financial-statements/metrics/${prev}`);
+          setPrevMetrics(prevRes.data);
+        } catch { setPrevMetrics(null); }
+      } else {
+        setPrevMetrics(null);
+        setPrevPeriod('');
+      }
     } catch (error) {
       if (error.response?.status === 404) {
         setMetrics(null);
@@ -396,7 +412,7 @@ const FinancialMetrics = () => {
         </TabsList>
 
         <TabsContent value="encyclopedia">
-          <MetricEncyclopedia metricsData={metrics} selectedPeriod={selectedPeriod} />
+          <MetricEncyclopedia metricsData={metrics} selectedPeriod={selectedPeriod} prevMetricsData={prevMetrics} prevPeriod={prevPeriod} />
         </TabsContent>
 
         <TabsContent value="alerts">
