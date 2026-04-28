@@ -1866,3 +1866,19 @@ All P0 features implemented and tested:
 - **21 Metrics Mapped**: All metrics from the API mapped to encyclopedia via `metricPathMap`
 - **Evaluation Logic**: Handles both normal (higher=better) and inverted (lower=better) metrics
 - **Test Coverage**: iteration_20.json — 100% frontend (10/10 tests passed)
+
+### Phase 24: Refactorización de server.py ✅
+- **Date**: April 14, 2026
+- **server.py**: Reducido de 8,001 a 5,957 líneas (-25%)
+- **6 nuevos archivos de rutas creados**:
+  - `routes/belvo.py` (472 líneas) — 9 endpoints integración Belvo
+  - `routes/reports.py` (546 líneas) — Dashboard, reports, audit logs
+  - `routes/scenarios.py` (297 líneas) — Escenarios + optimización genética
+  - `routes/exports.py` (510 líneas) — DIOT preview/export, COI, XML, Alegra, Cashflow
+  - `routes/advanced.py` (227 líneas) — AI predictive, alerts, auto-recon batch, bank API
+  - `routes/projections.py` (204 líneas) — Week detail projections, subcategories
+- **Total archivos de rutas**: 23 (de 16 anteriores)
+- **Total endpoints modulares**: 161 (vs 50 restantes en server.py)
+- **Lo que queda en server.py**: Modelos Pydantic, CFDI upload/XML parsing, bank-transactions import PDF, AI categorization
+- **Verificación**: Todos los endpoints probados y funcionando correctamente
+
