@@ -21,7 +21,8 @@ import {
   Receipt,
   Lightbulb,
   Calculator,
-  Presentation
+  Presentation,
+  Bell as BellIcon
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -29,6 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
+import NotificationBell from './NotificationBell';
 
 const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange }) => {
   const location = useLocation();
@@ -57,7 +59,10 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
     <div className="flex h-screen bg-[#F8FAFC]" data-testid="main-layout">
       <aside className="w-64 bg-white border-r border-[#E2E8F0] flex flex-col" data-testid="sidebar">
         <div className="p-6 border-b border-[#E2E8F0]">
-          <h1 className="text-xl font-bold text-[#0F172A] tracking-tight" style={{fontFamily: 'Manrope'}}>TaxnFin Cashflow</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-bold text-[#0F172A] tracking-tight" style={{fontFamily: 'Manrope'}}>TaxnFin Cashflow</h1>
+            <NotificationBell />
+          </div>
           <p className="text-xs text-[#64748B] mt-1">{user?.nombre}</p>
           <p className="text-xs text-[#94A3B8] mono">{user?.role}</p>
         </div>

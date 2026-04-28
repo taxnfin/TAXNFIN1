@@ -13,7 +13,7 @@ import {
   DollarSign, Percent, Activity, BarChart3, PieChart, RefreshCw,
   Target, Wallet, Building2, ChevronRight, Info, Trash2,
   ArrowUpRight, ArrowDownRight, Minus, Calculator, Scale, Globe,
-  ChevronDown, ChevronUp, BookOpen
+  ChevronDown, ChevronUp, BookOpen, Bell
 } from 'lucide-react';
 import { Tooltip as ShadcnTooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../components/ui/tooltip';
 import { 
@@ -23,6 +23,7 @@ import {
 } from 'recharts';
 import { financialTranslations, languages } from '../utils/financialTranslations';
 import MetricEncyclopedia from './MetricEncyclopedia';
+import KpiAlertConfig from './KpiAlertConfig';
 
 const FinancialMetrics = () => {
   const [language, setLanguage] = useState('es');
@@ -388,10 +389,18 @@ const FinancialMetrics = () => {
             <BookOpen className="w-4 h-4" />
             Enciclopedia de Métricas
           </TabsTrigger>
+          <TabsTrigger value="alerts" className="gap-2" data-testid="tab-alerts">
+            <Bell className="w-4 h-4" />
+            Alertas KPI
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="encyclopedia">
           <MetricEncyclopedia metricsData={metrics} selectedPeriod={selectedPeriod} />
+        </TabsContent>
+
+        <TabsContent value="alerts">
+          <KpiAlertConfig />
         </TabsContent>
 
         <TabsContent value="metrics" className="space-y-6">

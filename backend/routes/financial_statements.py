@@ -747,6 +747,25 @@ async def upload_income_statement(
             await db.financial_statements.insert_one(doc)
             action = 'creado'
         
+        # Trigger KPI alert evaluation
+        try:
+            from services.kpi_alerts import evaluate_kpi_alerts
+            import uuid as uuid_mod
+            # Get both statements for this period
+            inc = await db.financial_statements.find_one({'company_id': company_id, 'tipo': 'estado_resultados', 'periodo': periodo}, {'_id': 0})
+            bal = await db.financial_statements.find_one({'company_id': company_id, 'tipo': 'balance_general', 'periodo': periodo}, {'_id': 0})
+            if inc and bal:
+                inc_data = inc.get('datos', {})
+                bal_data = bal.get('datos', {})
+                metrics_result = calculate_financial_metrics(inc_data, bal_data)
+                triggered = await evaluate_kpi_alerts(db, company_id, {'metrics': metrics_result}, periodo)
+                for notif in triggered:
+                    notif['id'] = str(uuid_mod.uuid4())
+                    notif['created_at'] = notif['created_at'].isoformat()
+                    await db.notifications.insert_one(notif)
+        except Exception as eval_err:
+            logger.warning(f"KPI evaluation error (non-blocking): {eval_err}")
+
         return {
             "success": True,
             "message": f"Estado de Resultados {action} para {periodo}",
@@ -808,6 +827,24 @@ async def upload_balance_sheet(
             await db.financial_statements.insert_one(doc)
             action = 'creado'
         
+        # Trigger KPI alert evaluation
+        try:
+            from services.kpi_alerts import evaluate_kpi_alerts
+            import uuid as uuid_mod
+            inc = await db.financial_statements.find_one({'company_id': company_id, 'tipo': 'estado_resultados', 'periodo': periodo}, {'_id': 0})
+            bal_fs = await db.financial_statements.find_one({'company_id': company_id, 'tipo': 'balance_general', 'periodo': periodo}, {'_id': 0})
+            if inc and bal_fs:
+                inc_data = inc.get('datos', {})
+                bal_data2 = bal_fs.get('datos', {})
+                metrics_result = calculate_financial_metrics(inc_data, bal_data2)
+                triggered = await evaluate_kpi_alerts(db, company_id, {'metrics': metrics_result}, periodo)
+                for notif in triggered:
+                    notif['id'] = str(uuid_mod.uuid4())
+                    notif['created_at'] = notif['created_at'].isoformat()
+                    await db.notifications.insert_one(notif)
+        except Exception as eval_err:
+            logger.warning(f"KPI evaluation error (non-blocking): {eval_err}")
+
         return {
             "success": True,
             "message": f"Balance General {action} para {periodo}",
