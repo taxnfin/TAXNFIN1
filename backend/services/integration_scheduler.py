@@ -120,7 +120,9 @@ async def sync_contalink_for_company(db, integration: dict):
 
 
 async def sync_alegra_for_company(db, integration: dict):
-    """Sync Alegra data: contacts, invoices, bills"""
+    """Sync Alegra data: generate financial statements from synced invoices/bills"""
+    from services.alegra_financials import generate_alegra_financial_statements
+    
     company_id = integration['company_id']
     
     # Check if Alegra is connected at company level
@@ -128,16 +130,29 @@ async def sync_alegra_for_company(db, integration: dict):
     if not company or not company.get('alegra_connected'):
         return {'status': 'skipped', 'message': 'Alegra not connected at company level'}
     
-    # We can't call the route directly (it needs request/user), but we can update the sync timestamp
+    # Generate financial statements for last 3 months
+    now = datetime.now()
+    results = []
+    for months_back in range(3):
+        target = now - timedelta(days=30 * months_back)
+        periodo = f"{target.year}-{target.month:02d}"
+        try:
+            result = await generate_alegra_financial_statements(db, company_id, periodo)
+            results.append(result)
+        except Exception as e:
+            results.append({'periodo': periodo, 'error': str(e)})
+    
+    # Update integration status
     await db.integrations.update_one(
         {'id': integration['id']},
         {'$set': {
             'last_sync': datetime.now(timezone.utc).isoformat(),
             'connection_status': 'connected',
+            'sync_count': integration.get('sync_count', 0) + 1,
         }}
     )
     
-    return {'status': 'success', 'message': 'Alegra sync tracked. Use manual sync for full data pull.'}
+    return {'status': 'success', 'results': results}
 
 
 async def run_all_syncs(db):

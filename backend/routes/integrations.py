@@ -226,6 +226,41 @@ async def sync_integration(integration_id: str, current_user: Dict = Depends(get
             'details': synced
         }
     
+    if integration['integration_type'] == 'alegra':
+        from services.alegra_financials import generate_alegra_financial_statements
+        from datetime import timedelta as td
+        
+        company_id = current_user['company_id']
+        now = datetime.now()
+        results = []
+        
+        # Generate for last 3 months
+        for months_back in range(3):
+            target = now - td(days=30 * months_back)
+            periodo = f"{target.year}-{target.month:02d}"
+            result = await generate_alegra_financial_statements(db, company_id, periodo)
+            results.append(result)
+        
+        # Update integration status
+        await db.integrations.update_one(
+            {'id': integration_id},
+            {'$set': {
+                'last_sync': datetime.now(timezone.utc).isoformat(),
+                'connection_status': 'connected',
+                'sync_count': integration.get('sync_count', 0) + 1,
+            }}
+        )
+        
+        total_inv = sum(r.get('invoices_processed', 0) for r in results)
+        total_bills = sum(r.get('bills_processed', 0) for r in results)
+        periods_with_data = sum(1 for r in results if r.get('status') == 'success')
+        
+        return {
+            'status': 'success',
+            'message': f'Alegra: {total_inv} facturas + {total_bills} gastos → {periods_with_data} períodos con estados financieros generados',
+            'details': results
+        }
+    
     return {'status': 'error', 'message': 'Sincronización no disponible para este tipo'}
 
 

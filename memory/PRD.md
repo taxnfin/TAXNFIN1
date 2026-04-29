@@ -1959,5 +1959,18 @@ All P0 features implemented and tested:
 - **Verificación**: Scheduler arranca OK, CONTALink sync exitoso, mapper probado
 
 
+### Phase 31: Alegra Auto-Generación de Estados Financieros ✅
+- **Date**: April 29, 2026
+- **services/alegra_financials.py**: Genera Estado de Resultados + Balance General desde facturas/gastos sincronizados
+  - Procesa facturas CxC (ingresos) y CxP (egresos) por período
+  - Categoriza gastos automáticamente (costo de ventas vs operativos vs financieros)
+  - Calcula utilidad bruta, operativa, antes de impuestos y neta
+  - Genera balance general simplificado (efectivo, CxC, CxP, capital)
+- **Resultado verificado**: 49 facturas + 117 gastos → 3 períodos (2026-02 a 2026-04) con estados financieros completos
+- **Integrado en sync endpoint**: POST /api/integrations/{id}/sync para Alegra genera financieros
+- **Integrado en scheduler**: Auto-sync cada 6h genera financieros de Alegra automáticamente
+- **Métricas funcionales**: Margen Bruto, Neto, Razón Circulante, etc. calculados correctamente desde datos Alegra
+
+
 
 - **Test Coverage**: iteration_21.json — 100% backend (15/15), 100% frontend (7/7)
