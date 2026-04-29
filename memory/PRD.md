@@ -1926,4 +1926,21 @@ All P0 features implemented and tested:
   - No trend shown when no previous period available
 - **Test Coverage**: iteration_22.json — 100% backend (9/9), 100% frontend (8/8)
 
+### Phase 29: Admin Dashboard + Multi-System Integrations ✅
+- **Date**: April 29, 2026
+- **Admin Dashboard** (`/admin`):
+  - Summary cards: Empresas, Usuarios, Integraciones Activas, CFDIs Totales
+  - Companies table: nombre, RFC, usuarios, CFDIs, último período, integraciones conectadas
+  - Full integration management: conectar, sincronizar, desconectar
+- **Multi-System Accounting Integration Module**:
+  - Architecture plugin extensible para cualquier sistema contable
+  - **CONTALink** (LIVE): Conectado con API key, sync de balanza de comprobación, facturas, conciliación
+  - **Alegra** (available): Conectable via email + API token
+  - **QuickBooks, CONTPAQi, Xero, SAP** (coming_soon): Estructura lista para implementar
+  - Backend: `services/contalink.py`, `routes/integrations.py` (10 endpoints)
+  - Frontend: `pages/AdminDashboard.js` con panel completo
+- **CONTALink API Keys**: Guardadas en .env (2 keys del usuario)
+- **Test Coverage**: iteration_23.json — 100% backend (26/26), 100% frontend (12/12)
+
+
 - **Test Coverage**: iteration_21.json — 100% backend (15/15), 100% frontend (7/7)
