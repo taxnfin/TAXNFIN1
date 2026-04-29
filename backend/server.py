@@ -118,12 +118,24 @@ async def startup_event():
         logging.info("FX Rate Scheduler iniciado correctamente")
     except Exception as e:
         logging.error(f"Error iniciando FX Scheduler: {e}")
+    
+    try:
+        from services.integration_scheduler import start_integration_scheduler
+        start_integration_scheduler(db, interval_hours=6)
+        logging.info("Integration Scheduler iniciado (cada 6h)")
+    except Exception as e:
+        logging.error(f"Error iniciando Integration Scheduler: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
     try:
         from fx_scheduler import stop_scheduler
         stop_scheduler()
+    except:
+        pass
+    try:
+        from services.integration_scheduler import stop_integration_scheduler
+        stop_integration_scheduler()
     except:
         pass
     client.close()

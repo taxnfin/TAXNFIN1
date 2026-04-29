@@ -1942,5 +1942,22 @@ All P0 features implemented and tested:
 - **CONTALink API Keys**: Guardadas en .env (2 keys del usuario)
 - **Test Coverage**: iteration_23.json — 100% backend (26/26), 100% frontend (12/12)
 
+### Phase 30: Auto-Sync + Mapeo de Cuentas Contables ✅
+- **Date**: April 29, 2026
+- **Scheduler automático** (`services/integration_scheduler.py`):
+  - Ejecuta cada 6 horas para todas las integraciones activas
+  - CONTALink: sincroniza últimos 3 meses de balanza de comprobación
+  - Alegra: trackea sync status (manual sync para datos completos)
+  - Se inicia automáticamente con el servidor
+- **Mapeo de cuentas contables** (`services/account_mapper.py`):
+  - Convierte balanza de comprobación → Estado de Resultados + Balance General
+  - Mapeo SAT: 1xx=Activos, 2xx=Pasivos, 3xx=Capital, 4xx=Ingresos, 5xx=Costos, 6xx-7xx=Gastos
+  - 60+ códigos de cuenta mapeados a categorías TaxnFin
+  - Calcula automáticamente: utilidad bruta, operativa, EBITDA, utilidad neta
+  - Detecta depreciación, amortización, intereses por nombre de cuenta
+- **Sync endpoint mejorado**: POST /api/integrations/{id}/sync ahora usa el mapper completo
+- **Verificación**: Scheduler arranca OK, CONTALink sync exitoso, mapper probado
+
+
 
 - **Test Coverage**: iteration_21.json — 100% backend (15/15), 100% frontend (7/7)

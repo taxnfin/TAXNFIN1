@@ -202,7 +202,7 @@ async def test_integration(integration_id: str, current_user: Dict = Depends(get
 
 @router.post("/{integration_id}/sync")
 async def sync_integration(integration_id: str, current_user: Dict = Depends(get_current_user)):
-    """Trigger a sync for the integration (fetch data from external system)"""
+    """Trigger a full sync for the integration — fetches data and maps to financial statements"""
     integration = await db.integrations.find_one(
         {'id': integration_id, 'company_id': current_user['company_id']}
     )
@@ -210,48 +210,20 @@ async def sync_integration(integration_id: str, current_user: Dict = Depends(get
         raise HTTPException(status_code=404, detail="Integración no encontrada")
     
     if integration['integration_type'] == 'contalink':
-        from services.contalink import ContalinkClient
-        client = ContalinkClient(integration['credentials'].get('api_key', ''))
+        from services.integration_scheduler import sync_contalink_for_company
+        result = await sync_contalink_for_company(db, integration)
         
-        # Fetch current month trial balance
-        now = datetime.now()
-        start = f"{now.year}-{now.month:02d}-01"
-        end = f"{now.year}-{now.month:02d}-28"
-        
-        result = await client.get_trial_balance(start, end)
-        
-        if result.get('status') == 0:
+        if result.get('status') == 'error':
             return {'status': 'error', 'message': result.get('message', 'Error en sincronización')}
         
-        # Save sync result
-        await db.integrations.update_one(
-            {'id': integration_id},
-            {'$set': {
-                'last_sync': datetime.now(timezone.utc).isoformat(),
-                'connection_status': 'connected',
-                'sync_count': integration.get('sync_count', 0) + 1,
-            }}
-        )
+        synced = result.get('results', [])
+        mapped_count = sum(1 for r in synced if r.get('mapped'))
+        items_total = sum(r.get('items', 0) for r in synced)
         
-        # Save trial balance data
-        await db.integration_sync_data.update_one(
-            {'integration_id': integration_id, 'type': 'trial_balance', 'period': f"{now.year}-{now.month:02d}"},
-            {'$set': {
-                'company_id': current_user['company_id'],
-                'integration_id': integration_id,
-                'type': 'trial_balance',
-                'period': f"{now.year}-{now.month:02d}",
-                'data': result,
-                'synced_at': datetime.now(timezone.utc).isoformat(),
-            }},
-            upsert=True
-        )
-        
-        items_count = len(result.get('trial_balance', {}).get('items', []))
         return {
             'status': 'success',
-            'message': f'Balanza de comprobación sincronizada: {items_count} cuentas',
-            'items_synced': items_count
+            'message': f'Sincronizado: {items_total} cuentas en {mapped_count} períodos → estados financieros actualizados',
+            'details': synced
         }
     
     return {'status': 'error', 'message': 'Sincronización no disponible para este tipo'}
