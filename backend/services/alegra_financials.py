@@ -62,57 +62,103 @@ async def generate_alegra_financial_statements(db, company_id: str, periodo: str
     total_iva_pagado = sum(float(bill.get('iva_trasladado', 0)) for bill in bills)
     total_subtotal_egresos = sum(float(bill.get('subtotal', 0)) for bill in bills)
     
-    # Categorize expenses
+    # Categorize expenses using custom mappings first, then keyword heuristic
     gastos_by_category = {}
     for bill in bills:
         cat_id = bill.get('category_id', 'uncategorized')
         gastos_by_category[cat_id] = gastos_by_category.get(cat_id, 0) + float(bill.get('subtotal', 0))
     
-    # Estimate cost of sales vs operating expenses
-    # Heuristic: if category is "costo" or no category, it's cost of sales
-    # Otherwise it's operating expenses
+    # Load custom account mappings
+    custom_mappings = await db.account_mappings.find(
+        {'company_id': company_id, 'integration': {'$in': ['alegra', 'all']}},
+        {'_id': 0}
+    ).to_list(200)
+    
+    # Create mapping dict: source_id → target_category
+    mapping_by_id = {m['source_id']: m['target_category'] for m in custom_mappings if m.get('source_id')}
+    mapping_by_name = {m['source_value'].lower(): m['target_category'] for m in custom_mappings if m.get('source_value')}
+    
     categories = await db.categories.find(
         {'company_id': company_id, 'tipo': 'egreso'},
         {'_id': 0}
     ).to_list(50)
     cat_map = {c['id']: c.get('nombre', '').lower() for c in categories}
     
+    # Keyword-based fallback mapping
+    keyword_to_category = {
+        'costo_ventas': ['costo', 'mercancia', 'materia prima', 'produccion', 'inventario', 'manufactura', 'proveedor costo', 'proveedores costo'],
+        'gastos_venta': ['venta', 'comision', 'publicidad', 'marketing', 'envio', 'flete', 'logistica'],
+        'gastos_administracion': ['sueldo', 'nomina', 'renta', 'oficina', 'admin', 'servicio', 'papeleria', 'telefono', 'internet', 'software'],
+        'gastos_financieros': ['banco', 'bancario', 'interes', 'comision bancaria', 'financiero', 'amex', 'tarjeta'],
+        'impuestos': ['impuesto', 'isr', 'iva', 'ietu', 'fiscal'],
+        'otros_gastos': ['extraordinario', 'multa', 'donacion'],
+    }
+    
     costo_ventas = 0
-    gastos_operativos = 0
+    gastos_venta = 0
+    gastos_administracion = 0
+    gastos_generales = 0
     gastos_financieros = 0
+    impuestos_gastos = 0
+    otros_gastos = 0
     
     for cat_id, amount in gastos_by_category.items():
-        cat_name = cat_map.get(cat_id, '')
-        if any(w in cat_name for w in ['costo', 'mercancia', 'materia prima', 'produccion', 'inventario']):
-            costo_ventas += amount
-        elif any(w in cat_name for w in ['interes', 'financiero', 'banco', 'comision bancaria']):
-            gastos_financieros += amount
+        # 1. Check custom mapping by ID
+        if cat_id in mapping_by_id:
+            target = mapping_by_id[cat_id]
         else:
-            gastos_operativos += amount
+            # 2. Check custom mapping by name
+            cat_name = cat_map.get(cat_id, '')
+            target = mapping_by_name.get(cat_name, None)
+            
+            if not target:
+                # 3. Keyword-based auto-detection
+                target = None
+                for category_key, keywords in keyword_to_category.items():
+                    if any(kw in cat_name for kw in keywords):
+                        target = category_key
+                        break
+                
+                if not target:
+                    # 4. Default: gastos_generales
+                    target = 'gastos_generales'
+        
+        # Accumulate
+        if target == 'costo_ventas':
+            costo_ventas += amount
+        elif target == 'gastos_venta':
+            gastos_venta += amount
+        elif target == 'gastos_administracion':
+            gastos_administracion += amount
+        elif target == 'gastos_financieros':
+            gastos_financieros += amount
+        elif target == 'impuestos':
+            impuestos_gastos += amount
+        elif target == 'otros_gastos':
+            otros_gastos += amount
+        else:
+            gastos_generales += amount
     
-    # If no categorization, split 60/40 (cost of sales / operating)
-    if costo_ventas == 0 and gastos_operativos == 0 and total_subtotal_egresos > 0:
-        costo_ventas = total_subtotal_egresos * 0.6
-        gastos_operativos = total_subtotal_egresos * 0.4
+    gastos_operativos = gastos_venta + gastos_administracion + gastos_generales
     
     # Build income statement
     utilidad_bruta = total_subtotal_ingresos - costo_ventas
     utilidad_operativa = utilidad_bruta - gastos_operativos
-    utilidad_antes_impuestos = utilidad_operativa - gastos_financieros
-    impuestos = max(0, utilidad_antes_impuestos * 0.30) if utilidad_antes_impuestos > 0 else 0
+    utilidad_antes_impuestos = utilidad_operativa - gastos_financieros - otros_gastos
+    impuestos = impuestos_gastos if impuestos_gastos > 0 else (max(0, utilidad_antes_impuestos * 0.30) if utilidad_antes_impuestos > 0 else 0)
     utilidad_neta = utilidad_antes_impuestos - impuestos
     
     income = {
         'ingresos': total_subtotal_ingresos,
         'costo_ventas': costo_ventas,
         'utilidad_bruta': utilidad_bruta,
-        'gastos_venta': gastos_operativos * 0.4,
-        'gastos_administracion': gastos_operativos * 0.5,
-        'gastos_generales': gastos_operativos * 0.1,
+        'gastos_venta': gastos_venta,
+        'gastos_administracion': gastos_administracion,
+        'gastos_generales': gastos_generales,
         'utilidad_operativa': utilidad_operativa,
         'otros_ingresos': 0,
         'gastos_financieros': gastos_financieros,
-        'otros_gastos': 0,
+        'otros_gastos': otros_gastos,
         'utilidad_antes_impuestos': utilidad_antes_impuestos,
         'impuestos': impuestos,
         'utilidad_neta': utilidad_neta,
@@ -124,6 +170,7 @@ async def generate_alegra_financial_statements(db, company_id: str, periodo: str
         'source': 'alegra',
         'invoices_count': len(invoices),
         'bills_count': len(bills),
+        'mapping_used': 'custom' if custom_mappings else 'auto_keywords',
     }
     
     # Build simplified balance sheet from available data

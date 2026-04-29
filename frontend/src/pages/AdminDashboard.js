@@ -10,6 +10,7 @@ import {
   Building2, Users, FileText, Link2, Plus, Trash2, RefreshCw,
   CheckCircle2, XCircle, Clock, Zap, ArrowRight, Shield, Globe
 } from 'lucide-react';
+import AccountMappingPanel from './AccountMappingPanel';
 
 const statusConfig = {
   connected: { icon: CheckCircle2, color: '#10B981', label: 'Conectado' },
@@ -289,6 +290,9 @@ const AdminDashboard = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Account Mapping Section */}
+      <AccountMappingPanel />
 
       {/* Connect Dialog */}
       <Dialog open={connectDialog} onOpenChange={setConnectDialog}>
