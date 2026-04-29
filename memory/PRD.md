@@ -1973,4 +1973,15 @@ All P0 features implemented and tested:
 
 
 
+### Phase 32: Panel de Mapeo de Cuentas Configurable ✅
+- **Date**: April 29, 2026
+- **Backend**: `routes/account_mappings.py` — 7 endpoints (CRUD + auto-detect + categories list)
+- **Auto-detect inteligente**: Analiza nombres de categorías y tipo (ingreso/egreso), sugiere mapeos con % de confianza (90% ingresos, 80% costos/sueldos/bancarios, 30% genéricos)
+- **Mapeos custom**: Se guardan en `account_mappings` collection, se aplican ANTES del heurístico
+- **Alegra mejorado**: `alegra_financials.py` ahora usa: 1) Mapeos custom por ID, 2) Mapeos custom por nombre, 3) Keywords automáticos, 4) Default gastos_generales. Eliminada heurística 60/40.
+- **Frontend**: `AccountMappingPanel.js` con auto-detectar, sugerencias editables, aplicar todas, mapeos guardados con dropdown editable, leyenda de 11 categorías financieras
+- **11 Categorías Financieras**: Ingresos, Otros Ingresos, Costo de Ventas, Gastos Venta, Gastos Admin, Gastos Generales, Gastos Financieros, Otros Gastos, Impuestos, Depreciación, Amortización
+- **Test Coverage**: iteration_24.json — 100% backend (12/12), 100% frontend (8/8)
+
+
 - **Test Coverage**: iteration_21.json — 100% backend (15/15), 100% frontend (7/7)
