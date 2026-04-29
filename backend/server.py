@@ -48,6 +48,7 @@ from routes.payment_matching import router as payment_matching_router
 from routes.cfdi_operations import router as cfdi_operations_router
 from routes.bank_import import router as bank_import_router
 from routes.notifications import router as notifications_router
+from routes.integrations import router as integrations_router
 
 # ===== REGISTER ROUTERS =====
 api_router.include_router(auth_router)
@@ -78,6 +79,7 @@ api_router.include_router(payment_matching_router)
 api_router.include_router(cfdi_operations_router)
 api_router.include_router(bank_import_router)
 api_router.include_router(notifications_router)
+api_router.include_router(integrations_router)
 
 # ===== MIDDLEWARE =====
 app.add_middleware(
