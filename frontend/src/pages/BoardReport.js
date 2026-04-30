@@ -558,10 +558,15 @@ const BoardReport = () => {
       };
       
       const addPageFooter = () => {
-        pdf.setFontSize(smallSize);
+        const footerY = pageHeight - 8;
+        // Thin line separator
+        pdf.setDrawColor(200, 200, 200);
+        pdf.setLineWidth(0.3);
+        pdf.line(margin, footerY - 4, pageWidth - margin, footerY - 4);
+        
+        pdf.setFontSize(7);
         pdf.setFont(fontFamily, 'normal');
-        pdf.setTextColor(128, 128, 128);
-        const footerY = pageHeight - 10;
+        pdf.setTextColor(160, 160, 160);
         
         // Left: Company name
         pdf.text(company?.nombre || '', margin, footerY);
@@ -571,61 +576,82 @@ const BoardReport = () => {
         const pageTextWidth = pdf.getTextWidth(pageText);
         pdf.text(pageText, (pageWidth - pageTextWidth) / 2, footerY);
         
-        // Right: Report type
-        pdf.text(t.title || 'Reporte Ejecutivo', pageWidth - margin - pdf.getTextWidth(t.title || 'Reporte Ejecutivo'), footerY);
+        // Right: AI attribution
+        const rightText = 'Análisis: Claude Sonnet';
+        pdf.text(rightText, pageWidth - margin - pdf.getTextWidth(rightText), footerY);
         
         pdf.setTextColor(0, 0, 0);
       };
       
       const drawSectionHeader = (title, color = [15, 23, 42]) => {
-        addNewPageIfNeeded(25);
-        pdf.setFillColor(...color);
-        pdf.roundedRect(margin, y, contentWidth, 8, 1, 1, 'F');
-        pdf.setFontSize(sectionHeaderSize);
+        addNewPageIfNeeded(20);
+        // Elegant line + text style (no filled rectangle)
+        pdf.setDrawColor(...color);
+        pdf.setLineWidth(0.8);
+        pdf.line(margin, y + 1, margin + 35, y + 1);
+        pdf.setFontSize(sectionHeaderSize + 1);
         pdf.setFont(fontFamily, 'bold');
-        pdf.setTextColor(255, 255, 255);
-        pdf.text(title, margin + 4, y + 5.5);
+        pdf.setTextColor(...color);
+        pdf.text(title, margin, y + 8);
+        // Subtle line after title
+        const titleW = pdf.getTextWidth(title);
+        pdf.setDrawColor(220, 220, 220);
+        pdf.setLineWidth(0.3);
+        pdf.line(margin + titleW + 4, y + 6, pageWidth - margin, y + 6);
         pdf.setTextColor(0, 0, 0);
-        y += 12;
+        y += 14;
       };
       
       const drawAnalysisText = (text) => {
         if (!text) return;
         pdf.setFont(fontFamily, 'normal');
         pdf.setFontSize(bodySize);
-        pdf.setTextColor(60, 60, 60);
-        const lines = wrapText(text, contentWidth - 6, bodySize);
+        pdf.setTextColor(75, 85, 99);
+        const lines = wrapText(text, contentWidth - 8, bodySize);
         lines.forEach(line => {
           addNewPageIfNeeded(6);
-          pdf.text(line, margin + 2, y);
-          y += 5;
+          pdf.text(line, margin + 4, y);
+          y += 5.2;
         });
         pdf.setTextColor(0, 0, 0);
-        y += 3;
+        y += 4;
       };
       
+      let metricRowIndex = 0;
       const drawMetricRow = (label, value, status = null) => {
         addNewPageIfNeeded(7);
+        metricRowIndex++;
+        
+        // Subtle zebra striping
+        if (metricRowIndex % 2 === 0) {
+          pdf.setFillColor(248, 250, 252);
+          pdf.rect(margin, y - 4, contentWidth, 6.5, 'F');
+        }
+        
         pdf.setFontSize(bodySize);
         pdf.setFont(fontFamily, 'normal');
-        pdf.text(label, margin + 2, y);
+        pdf.setTextColor(55, 65, 81);
+        pdf.text(label, margin + 3, y);
+        
         pdf.setFont(fontFamily, 'bold');
-        pdf.text(String(value), margin + 85, y);
+        pdf.setTextColor(17, 24, 39);
+        pdf.text(String(value), margin + 90, y);
         
         if (status) {
-          if (status === 'good') pdf.setTextColor(34, 197, 94);
+          if (status === 'good') pdf.setTextColor(16, 185, 129);
           else if (status === 'warning') pdf.setTextColor(245, 158, 11);
-          else if (status === 'critical') pdf.setTextColor(239, 68, 68);
+          else if (status === 'critical') pdf.setTextColor(220, 38, 38);
           const statusLabels = {
             es: { good: 'Bueno', warning: 'Atención', critical: 'Crítico' },
             en: { good: 'Good', warning: 'Warning', critical: 'Critical' },
             pt: { good: 'Bom', warning: 'Atenção', critical: 'Crítico' }
           };
           const statusText = statusLabels[language]?.[status] || statusLabels.es[status];
-          pdf.text(statusText, margin + 130, y);
+          pdf.setFontSize(bodySize - 1);
+          pdf.text(statusText, margin + 140, y);
           pdf.setTextColor(0, 0, 0);
         }
-        y += 6;
+        y += 6.5;
       };
       
       const getStatus = (value, goodThreshold, warningThreshold, inverse = false) => {
@@ -638,24 +664,31 @@ const BoardReport = () => {
       };
       
       // ====== PAGE 1: PROFESSIONAL COVER PAGE ======
-      // Full page dark background
-      pdf.setFillColor(15, 23, 42);
+      // Full page dark navy background
+      pdf.setFillColor(12, 20, 36);
       pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+      
+      // Subtle geometric accent - gold vertical bar on left
+      pdf.setFillColor(180, 142, 58);
+      pdf.rect(0, 0, 3, pageHeight, 'F');
+      
+      // Top accent line
+      pdf.setFillColor(180, 142, 58);
+      pdf.rect(margin + 40, 30, contentWidth - 80, 0.5, 'F');
       
       // Add company logo if available (centered near top)
       if (company?.logo_url) {
         try {
-          // Add logo centered at top
-          const logoSize = 40;
+          const logoSize = 36;
           const logoX = (pageWidth - logoSize) / 2;
-          pdf.addImage(company.logo_url, 'PNG', logoX, 35, logoSize, logoSize);
+          pdf.addImage(company.logo_url, 'PNG', logoX, 40, logoSize, logoSize);
           y = 90;
         } catch (logoErr) {
           console.warn('Could not add logo to PDF:', logoErr);
-          y = 60;
+          y = 65;
         }
       } else {
-        y = 70;
+        y = 65;
       }
       
       // Company name - large and centered (handle long names)
@@ -697,15 +730,17 @@ const BoardReport = () => {
       pdf.text(titleText, (pageWidth - titleWidth) / 2, y);
       y += 15;
       
-      // Decorative line
-      pdf.setDrawColor(59, 130, 246);
-      pdf.setLineWidth(1);
-      pdf.line(margin + 30, y, pageWidth - margin - 30, y);
+      // Decorative gold line
+      pdf.setDrawColor(180, 142, 58);
+      pdf.setLineWidth(0.8);
+      pdf.line(margin + 50, y, pageWidth - margin - 50, y);
       y += 20;
       
-      // Period information box
-      pdf.setFillColor(30, 41, 59);
-      pdf.roundedRect(margin + 20, y - 5, contentWidth - 40, 35, 3, 3, 'F');
+      // Period information box - refined with gold border
+      pdf.setDrawColor(180, 142, 58);
+      pdf.setLineWidth(0.5);
+      pdf.setFillColor(18, 28, 48);
+      pdf.roundedRect(margin + 30, y - 5, contentWidth - 60, 35, 2, 2, 'FD');
       
       // Period type and value
       const periodTypeLabels = { monthly: t.monthly, quarterly: t.quarterly, annual: t.annual };
@@ -1151,7 +1186,7 @@ const BoardReport = () => {
         if (aiAnalysis?.generated_by === 'AI') {
           pdf.setFontSize(smallSize - 1);
           pdf.setTextColor(100, 100, 150);
-          const aiText = language === 'es' ? 'Análisis generado por IA (GPT-5.2)' : 'Analysis generated by AI (GPT-5.2)';
+          const aiText = language === 'es' ? 'Análisis generado por IA (Claude Sonnet)' : 'Analysis generated by AI (Claude Sonnet)';
           const aiTextWidth = pdf.getTextWidth(aiText);
           pdf.text(aiText, (pageWidth - aiTextWidth) / 2, pageHeight - 5);
         }
@@ -1463,7 +1498,7 @@ const BoardReport = () => {
                     <Sparkles className="w-5 h-5 text-indigo-500" />
                     <CardTitle className="text-indigo-900">{t.executiveSummary}</CardTitle>
                     {aiAnalysis.generated_by === 'AI' && (
-                      <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">GPT-5.2</span>
+                      <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">Claude Sonnet</span>
                     )}
                   </div>
                 </CardHeader>
@@ -1642,7 +1677,7 @@ const BoardReport = () => {
                     {aiAnalysis.generated_by === 'AI' && (
                       <div className="text-center text-xs text-gray-400 flex items-center justify-center gap-1">
                         <Sparkles className="w-3 h-3" />
-                        {t.generatedByAI} • GPT-5.2
+                        {t.generatedByAI} • Claude Sonnet
                       </div>
                     )}
                   </div>
@@ -1780,7 +1815,7 @@ const BoardReport = () => {
                   <CardTitle className="flex items-center gap-2 text-purple-800">
                     <Sparkles className="w-5 h-5" />
                     {language === 'es' ? 'Análisis de Tendencias' : 'Trends Analysis'}
-                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full ml-2">GPT-5.2</span>
+                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full ml-2">Claude Sonnet</span>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>

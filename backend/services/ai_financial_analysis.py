@@ -157,7 +157,7 @@ Responde SOLO con el JSON, sin markdown ni texto adicional."""
             api_key=api_key,
             session_id=f"financial-analysis-{period}",
             system_message=system_message
-        ).with_model("openai", "gpt-5.2")
+        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
         
         message = UserMessage(text=prompt)
         response = await chat.send_message(message)
@@ -190,7 +190,7 @@ Responde SOLO con el JSON, sin markdown ni texto adicional."""
                     analysis_result[key] = defaults.get(key, '')
             
             analysis_result["generated_by"] = "AI"
-            analysis_result["model"] = "gpt-5.2"
+            analysis_result["model"] = "claude-sonnet-4.5"
             
             logger.info(f"Completed single-call AI analysis for {company_name} - {period}")
             

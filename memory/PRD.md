@@ -1984,4 +1984,18 @@ All P0 features implemented and tested:
 - **Test Coverage**: iteration_24.json — 100% backend (12/12), 100% frontend (8/8)
 
 
+### Phase 33: PDF Corporativo + Migración a Claude Sonnet ✅
+- **Date**: April 30, 2026
+- **AI cambiado a Claude Sonnet 4.5**: Migrado de GPT-5.2 a `claude-sonnet-4-5-20250929` via emergentintegrations. Genera análisis financiero de alta calidad en español.
+- **PDF rediseñado más corporativo**:
+  - Cover: Fondo navy más oscuro (#0C1424), barra vertical dorada izquierda, línea de acento gold
+  - Section headers: Estilo elegante (línea + texto bold en vez de rectángulo relleno)
+  - Footer: Limpio — línea fina separadora + empresa | página | "Análisis: Claude Sonnet"
+  - Metric rows: Zebra striping sutil, mejor alineación y spacing
+  - Caja de período: Borde dorado con fondo navy refinado
+  - Texto análisis: Color más suave (gray-600), mejor interlineado
+- **Frontend actualizado**: Badges "Claude Sonnet" en UI del Board Report
+- **Verificado**: Claude genera análisis OK, PDF exporta correctamente
+
+
 - **Test Coverage**: iteration_21.json — 100% backend (15/15), 100% frontend (7/7)
