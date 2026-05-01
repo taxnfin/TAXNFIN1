@@ -5,11 +5,8 @@ from datetime import datetime, timezone, timedelta
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
-import resend
 import logging
-from emergentintegrations.llm.chat import LlmChat, UserMessage
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from twilio.rest import Client
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +15,6 @@ class PredictiveAnalysisService:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
-        self.llm_api_key = os.environ.get('EMERGENT_LLM_KEY', '')
         
     async def analyze_cashflow_trends(self, company_id: str, weeks_history: int = 13) -> Dict[str, Any]:
         """Analiza tendencias históricas de cashflow"""
@@ -111,54 +107,8 @@ class PredictiveAnalysisService:
         }
     
     async def generate_ai_insights(self, company_id: str, analysis_data: Dict[str, Any]) -> str:
-        """Genera insights inteligentes usando LLM"""
-        
-        if not self.llm_api_key:
-            return "Análisis de IA no disponible. Configure EMERGENT_LLM_KEY."
-        
-        try:
-            # Obtener contexto adicional
-            company = await self.db.companies.find_one({'id': company_id}, {'_id': 0})
-            
-            chat = LlmChat(
-                api_key=self.llm_api_key,
-                session_id=f"cashflow-analysis-{company_id}",
-                system_message="Eres un analista financiero experto especializado en flujo de efectivo empresarial en México. Proporciona insights accionables y estratégicos."
-            ).with_model("openai", "gpt-5.2")
-            
-            prompt = f"""
-Analiza el siguiente flujo de efectivo y proporciona insights estratégicos:
-
-Empresa: {company.get('nombre', 'N/A')}
-Moneda: {company.get('moneda_base', 'MXN')}
-
-Datos históricos:
-- Ingreso promedio semanal: ${analysis_data['analisis']['ingresos_promedio_semanal']:,.2f}
-- Egreso promedio semanal: ${analysis_data['analisis']['egresos_promedio_semanal']:,.2f}
-- Flujo neto promedio: ${analysis_data['analisis']['flujo_neto_promedio']:,.2f}
-- Volatilidad ingresos: ${analysis_data['analisis']['volatilidad_ingresos']:,.2f}
-- Volatilidad egresos: ${analysis_data['analisis']['volatilidad_egresos']:,.2f}
-
-Predicciones próximas 8 semanas:
-{self._format_predictions(analysis_data['predictions'])}
-
-Proporciona:
-1. Análisis de riesgos de liquidez (identifica semanas críticas)
-2. Recomendaciones accionables para mejorar el flujo
-3. Oportunidades de optimización
-4. Alertas tempranas (si las hay)
-
-Respuesta en español, máximo 300 palabras, formato markdown.
-"""
-            
-            user_message = UserMessage(text=prompt)
-            response = await chat.send_message(user_message)
-            
-            return response
-            
-        except Exception as e:
-            logger.error(f"Error generando insights IA: {str(e)}")
-            return f"Error generando análisis IA: {str(e)}"
+        """Generate AI insights. AI disabled — returns default message."""
+        return "Análisis de IA no disponible. Configure una API key de LLM para habilitar insights inteligentes."
     
     def _format_predictions(self, predictions: List[Dict]) -> str:
         """Formatea predicciones para el prompt"""

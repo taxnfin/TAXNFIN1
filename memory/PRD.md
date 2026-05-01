@@ -1998,4 +1998,17 @@ All P0 features implemented and tested:
 - **Verificado**: Claude genera análisis OK, PDF exporta correctamente
 
 
+
+### Phase 34: Eliminación de emergentintegrations ✅
+- **Date**: May 1, 2026
+- **Eliminado completamente**: `emergentintegrations` removido de requirements.txt, .env, y todos los archivos .py
+- **4 archivos limpiados**:
+  - `services/ai_financial_analysis.py` → Retorna análisis por defecto (templates en ES/EN/PT)
+  - `ai_categorization_service.py` → Retorna "AI disabled" sin errores
+  - `advanced_services.py` → Removido import y stubbed `generate_ai_insights`
+  - `routes/pdf_invoices.py` → Retorna 501 "AI disabled" en extracción PDF
+- **EMERGENT_LLM_KEY** eliminado del .env
+- **Sin impacto funcional**: La app compila y corre sin errores. AI features retornan defaults.
+- **Para reactivar AI**: Configurar API key de Anthropic/OpenAI e implementar las llamadas directas
+
 - **Test Coverage**: iteration_21.json — 100% backend (15/15), 100% frontend (7/7)

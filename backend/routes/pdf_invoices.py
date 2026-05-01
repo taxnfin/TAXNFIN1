@@ -15,7 +15,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
 
@@ -49,109 +48,14 @@ class ExtractedInvoiceData(BaseModel):
 
 async def extract_invoice_data_from_pdf(file_path: str, company_rfc: str) -> ExtractedInvoiceData:
     """
-    Extract invoice data from PDF using Gemini AI
+    Extract invoice data from PDF.
+    NOTE: AI extraction disabled — returns empty template.
+    To enable, configure an LLM API key and implement PDF parsing.
     """
-    api_key = os.environ.get('EMERGENT_LLM_KEY')
-    if not api_key:
-        raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY not configured")
-    
-    chat = LlmChat(
-        api_key=api_key,
-        session_id=f"invoice-extract-{uuid.uuid4()}",
-        system_message="""Eres un experto en extracción de datos de facturas mexicanas (CFDI).
-Tu tarea es extraer información estructurada de facturas en PDF.
-Siempre responde en formato JSON válido con los campos solicitados.
-Si un campo no está presente o no puedes identificarlo, usa null.
-Para montos numéricos, usa solo números sin símbolos de moneda.
-Para fechas, usa formato YYYY-MM-DD."""
-    ).with_model("gemini", "gemini-2.5-flash")
-    
-    pdf_file = FileContentWithMimeType(
-        file_path=file_path,
-        mime_type="application/pdf"
+    raise HTTPException(
+        status_code=501,
+        detail="Extracción de PDF por IA deshabilitada. Configure una API key de LLM para habilitar esta función."
     )
-    
-    extraction_prompt = f"""Extrae los siguientes datos de esta factura PDF y devuélvelos en formato JSON:
-
-{{
-    "emisor_nombre": "nombre del emisor/proveedor",
-    "emisor_rfc": "RFC del emisor",
-    "receptor_nombre": "nombre del receptor/cliente",
-    "receptor_rfc": "RFC del receptor",
-    "fecha": "fecha de emisión en formato YYYY-MM-DD",
-    "folio": "número de folio de la factura",
-    "folio_fiscal": "UUID/folio fiscal del CFDI",
-    "concepto": "descripción breve del concepto principal",
-    "subtotal": número sin símbolos,
-    "iva": número del IVA sin símbolos,
-    "total": número total sin símbolos,
-    "moneda": "MXN o USD",
-    "tipo_cambio": número del tipo de cambio (1 si es MXN),
-    "metodo_pago": "PUE o PPD",
-    "forma_pago": "descripción de la forma de pago",
-    "uso_cfdi": "uso del CFDI",
-    "tipo_comprobante": "Ingreso, Egreso, etc."
-}}
-
-IMPORTANTE: 
-- Solo responde con el JSON, sin texto adicional
-- El RFC de la empresa principal es: {company_rfc}
-- Si el emisor_rfc coincide con {company_rfc}, es una factura de VENTA (cobranza)
-- Si el receptor_rfc coincide con {company_rfc}, es una factura de COMPRA (pago a proveedor)"""
-
-    user_message = UserMessage(
-        text=extraction_prompt,
-        file_contents=[pdf_file]
-    )
-    
-    response = await chat.send_message(user_message)
-    
-    # Parse JSON response
-    try:
-        # Clean response - remove markdown code blocks if present
-        clean_response = response.strip()
-        if clean_response.startswith("```json"):
-            clean_response = clean_response[7:]
-        if clean_response.startswith("```"):
-            clean_response = clean_response[3:]
-        if clean_response.endswith("```"):
-            clean_response = clean_response[:-3]
-        clean_response = clean_response.strip()
-        
-        data = json.loads(clean_response)
-        
-        # Determine if it's a payment or collection based on RFC
-        emisor_rfc = data.get('emisor_rfc', '').upper().strip()
-        receptor_rfc = data.get('receptor_rfc', '').upper().strip()
-        company_rfc_clean = company_rfc.upper().strip()
-        
-        # If company is the receptor, it's a payment (expense)
-        # If company is the emisor, it's a collection (income)
-        es_pago = receptor_rfc == company_rfc_clean
-        
-        return ExtractedInvoiceData(
-            emisor_nombre=data.get('emisor_nombre'),
-            emisor_rfc=emisor_rfc,
-            receptor_nombre=data.get('receptor_nombre'),
-            receptor_rfc=receptor_rfc,
-            fecha=data.get('fecha'),
-            folio=data.get('folio'),
-            folio_fiscal=data.get('folio_fiscal'),
-            concepto=data.get('concepto'),
-            subtotal=float(data.get('subtotal', 0) or 0),
-            iva=float(data.get('iva', 0) or 0),
-            total=float(data.get('total', 0) or 0),
-            moneda=data.get('moneda', 'MXN'),
-            tipo_cambio=float(data.get('tipo_cambio', 1) or 1),
-            metodo_pago=data.get('metodo_pago'),
-            forma_pago=data.get('forma_pago'),
-            uso_cfdi=data.get('uso_cfdi'),
-            tipo_comprobante=data.get('tipo_comprobante'),
-            es_pago=es_pago
-        )
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse AI response as JSON: {response}")
-        raise HTTPException(status_code=500, detail=f"Error parsing invoice data: {str(e)}")
 
 
 @router.post("/extract")
