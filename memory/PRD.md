@@ -2037,3 +2037,19 @@ All P0 features implemented and tested:
 
 - **Test Coverage** (`/app/test_reports/iteration_25.json`): 100% backend (8/8 pytest en `/app/backend/tests/test_register_auto_company.py`), 100% frontend (registro + login + dashboard + descarga PDF de 879 KB sin errores en consola).
 
+
+
+### Phase 36: Bugfix Cashflow Projections respeta inicio_semana ✅
+- **Date**: February 2026
+- **Bug reportado**: La tabla "Modelo de Flujo de Efectivo - 18 Semanas" siempre arrancaba en lunes (30 mar) sin importar la configuración del día de inicio de semana.
+- **Causas raíz** (`pages/CashflowProjections.js`):
+  1. `processWeeklyData()` definía `getMonday(date)` hardcodeado a lunes y nunca usaba el parámetro `weekStartDay` que recibía.
+  2. `loadData()` y `handleSaveWeekStart()` leían `localStorage.getItem('company_id')`, una clave que **nunca se setea** (la clave correcta es `selectedCompany` en JSON, gestionada por App.js). Esto hacía que el `if (companyId)` siempre fuera falso y el código cayera al fallback hardcodeado `weekStartDay = 1`.
+- **Fix aplicado**:
+  1. Reemplazado `getMonday()` por `getWeekStart(date, startDay)` genérico que respeta cualquier día (0=Domingo … 6=Sábado).
+  2. `currentWeekStart`, `fourWeeksAgo` y `startWeek` ahora usan `getWeekStart` con el `weekStartDay` configurado.
+  3. Agregado helper `getActiveCompanyId()` que lee `selectedCompany` (JSON) y, como respaldo, `user.company_id` desde localStorage.
+- **Verificación E2E (Playwright)**:
+  - Config = Lunes ⇒ `30 mar, 06 abr, 13 abr, 20 abr, 27 abr` (lunes correctos).
+  - Config = Viernes ⇒ `03 abr, 10 abr, 17 abr, 24 abr, 01 may` (viernes correctos).
+  - Header `Inicio:` cambia en tiempo real, datos se reprocesan automáticamente.

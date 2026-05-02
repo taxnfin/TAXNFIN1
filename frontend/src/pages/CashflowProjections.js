@@ -183,8 +183,28 @@ const CashflowProjections = () => {
       
       const categoriesLoaded = catRes.data || [];
       
-      // Get company config for week start day
-      const companyId = localStorage.getItem('company_id');
+      // Get company config for week start day.
+      // The active company is stored as JSON under 'selectedCompany' (set by App.js).
+      // We also fall back to the user's company_id from the stored auth user.
+      const getActiveCompanyId = () => {
+        try {
+          const sel = localStorage.getItem('selectedCompany');
+          if (sel) {
+            const parsed = JSON.parse(sel);
+            if (parsed?.id) return parsed.id;
+          }
+        } catch {/* ignore */}
+        try {
+          const u = localStorage.getItem('user');
+          if (u) {
+            const parsed = JSON.parse(u);
+            if (parsed?.company_id) return parsed.company_id;
+          }
+        } catch {/* ignore */}
+        return null;
+      };
+      
+      const companyId = getActiveCompanyId();
       if (companyId) {
         try {
           const compRes = await api.get(`/companies/${companyId}`);
@@ -211,7 +231,18 @@ const CashflowProjections = () => {
 
   const handleSaveWeekStart = async (newWeekStart) => {
     try {
-      const companyId = localStorage.getItem('company_id');
+      // Resolve active company id from localStorage (selectedCompany JSON, then user.company_id)
+      let companyId = null;
+      try {
+        const sel = localStorage.getItem('selectedCompany');
+        if (sel) companyId = JSON.parse(sel)?.id || null;
+      } catch {/* ignore */}
+      if (!companyId) {
+        try {
+          const u = localStorage.getItem('user');
+          if (u) companyId = JSON.parse(u)?.company_id || null;
+        } catch {/* ignore */}
+      }
       if (!companyId) {
         toast.error('No se encontró la empresa activa');
         return;
@@ -246,15 +277,20 @@ const CashflowProjections = () => {
     
     const effectiveRates = { MXN: 1, USD: 17.599, EUR: 20.4852, ...fxRates, ...rates };
     
-    const getMonday = (date) => {
+    // Returns the start of the week for `date` according to `weekStartDay`.
+    // weekStartDay: 0=Sunday, 1=Monday, 2=Tuesday, ..., 6=Saturday
+    const getWeekStart = (date, startDay = 1) => {
       const d = new Date(date);
-      const day = d.getDay();
-      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-      return new Date(d.setDate(diff));
+      d.setHours(0, 0, 0, 0);
+      const day = d.getDay(); // 0 (Sun) - 6 (Sat)
+      let diff = day - startDay;
+      if (diff < 0) diff += 7;
+      d.setDate(d.getDate() - diff);
+      return d;
     };
     
     const today = new Date();
-    const currentMonday = getMonday(today);
+    const currentWeekStart = getWeekStart(today, weekStartDay);
     
     // Find earliest payment date for starting point
     let earliestDate = null;
@@ -266,14 +302,16 @@ const CashflowProjections = () => {
       }
     });
     
-    const fourWeeksAgo = addWeeks(currentMonday, -4);
-    const startMonday = earliestDate ? getMonday(earliestDate < fourWeeksAgo ? fourWeeksAgo : earliestDate) : fourWeeksAgo;
+    const fourWeeksAgo = addWeeks(currentWeekStart, -4);
+    const startWeek = earliestDate
+      ? getWeekStart(earliestDate < fourWeeksAgo ? fourWeeksAgo : earliestDate, weekStartDay)
+      : fourWeeksAgo;
     
     // Generate 18 weeks: 4 historical (S1-S4) + 1 current (S5) + 13 projected (S6-S18)
     // Rolling model: as weeks pass, historical weeks become fixed "Real" data
     const weeks = [];
     for (let i = 0; i < 18; i++) {
-      const weekStart = addWeeks(startMonday, i);
+      const weekStart = addWeeks(startWeek, i);
       const weekEnd = addWeeks(weekStart, 1);
       const isPast = weekEnd <= today;
       const isCurrent = weekStart <= today && today < weekEnd;
