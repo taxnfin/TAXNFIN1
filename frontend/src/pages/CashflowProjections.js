@@ -52,6 +52,12 @@ const CashflowProjections = () => {
   const [companyConfig, setCompanyConfig] = useState({ inicio_semana: 1 });
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   
+  // User-selected starting date for the 18-week window (overrides auto-detection).
+  // Empty string = automatic (default: 4 weeks before today, snapped to weekStart).
+  const [customStartDate, setCustomStartDate] = useState(() => {
+    try { return localStorage.getItem('cashflow_custom_start_date') || ''; } catch { return ''; }
+  });
+  
   // Currency selector for projections
   const [selectedCurrency, setSelectedCurrency] = useState('MXN');
   const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.4545, EUR: 20.4852, GBP: 22.00, JPY: 0.13, CHF: 20.00, CAD: 13.00, CNY: 2.40 });
@@ -119,7 +125,10 @@ const CashflowProjections = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+    // Re-run whenever the user-selected start date changes so the 18-week
+    // window updates without needing a manual page refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customStartDate]);
 
   const loadData = async () => {
     setLoading(true);
@@ -210,22 +219,39 @@ const CashflowProjections = () => {
           const compRes = await api.get(`/companies/${companyId}`);
           const weekStart = compRes.data?.inicio_semana ?? 1;
           setCompanyConfig({ ...compRes.data, inicio_semana: weekStart });
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, validPayments);
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, validPayments, customStartDate);
           setWeeklyData(weeks);
         } catch {
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments);
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate);
           setWeeklyData(weeks);
         }
       } else {
-        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments);
+        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate);
         setWeeklyData(weeks);
       }
       
-      processMonthlyData(cfdiRes.data, catRes.data);
+      processMonthlyData(cfdiRes.data, catRes.data, customStartDate);
     } catch (error) {
       toast.error(t?.errorLoadingData || 'Error loading data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveCustomStartDate = (newDate) => {
+    try {
+      if (newDate) {
+        localStorage.setItem('cashflow_custom_start_date', newDate);
+      } else {
+        localStorage.removeItem('cashflow_custom_start_date');
+      }
+    } catch {/* ignore */}
+    // setState triggers the useEffect below which calls loadData with the fresh value.
+    setCustomStartDate(newDate);
+    if (newDate) {
+      toast.success(`Inicio del flujo establecido al ${newDate}`);
+    } else {
+      toast.success('Inicio del flujo restaurado a automático');
     }
   };
 
@@ -249,6 +275,16 @@ const CashflowProjections = () => {
       }
       await api.put(`/companies/${companyId}`, { inicio_semana: newWeekStart });
       setCompanyConfig(prev => ({ ...prev, inicio_semana: newWeekStart }));
+      // Also keep the cached `selectedCompany` in localStorage in sync, so other
+      // pages (e.g. Dashboard) pick up the new inicio_semana without re-login.
+      try {
+        const sel = localStorage.getItem('selectedCompany');
+        if (sel) {
+          const parsed = JSON.parse(sel);
+          parsed.inicio_semana = newWeekStart;
+          localStorage.setItem('selectedCompany', JSON.stringify(parsed));
+        }
+      } catch {/* ignore */}
       // Reload data to reprocess with new week start
       loadData();
       setConfigDialogOpen(false);
@@ -267,7 +303,7 @@ const CashflowProjections = () => {
     return amount * rate;
   };
 
-  const processWeeklyData = (cfdisData, categoriesData, weekStartDay = 1, rates = {}, payments = []) => {
+  const processWeeklyData = (cfdisData, categoriesData, weekStartDay = 1, rates = {}, payments = [], customStart = '') => {
     // =====================================================================
     // NUEVA LÓGICA: ÚNICA FUENTE DE VERDAD
     // - Semanas pasadas/actuales: SOLO datos de Cobranza y Pagos
@@ -303,9 +339,23 @@ const CashflowProjections = () => {
     });
     
     const fourWeeksAgo = addWeeks(currentWeekStart, -4);
-    const startWeek = earliestDate
-      ? getWeekStart(earliestDate < fourWeeksAgo ? fourWeeksAgo : earliestDate, weekStartDay)
-      : fourWeeksAgo;
+    
+    // Priority order for window start:
+    // 1. Explicit user override (customStart) — lets the user choose any week (e.g., Jan 2026)
+    // 2. Earliest payment date (clamped to >= 4 weeks ago, to avoid too-far-back default)
+    // 3. Default: 4 weeks before today
+    let startWeek;
+    if (customStart) {
+      const parsed = new Date(customStart);
+      if (!isNaN(parsed.getTime())) {
+        startWeek = getWeekStart(parsed, weekStartDay);
+      }
+    }
+    if (!startWeek) {
+      startWeek = earliestDate
+        ? getWeekStart(earliestDate < fourWeeksAgo ? fourWeeksAgo : earliestDate, weekStartDay)
+        : fourWeeksAgo;
+    }
     
     // Generate 18 weeks: 4 historical (S1-S4) + 1 current (S5) + 13 projected (S6-S18)
     // Rolling model: as weeks pass, historical weeks become fixed "Real" data
@@ -613,11 +663,18 @@ const CashflowProjections = () => {
     return weeks;
   };
 
-  const processMonthlyData = (cfdisData, categoriesData) => {
-    // Generate 6 months
+  const processMonthlyData = (cfdisData, categoriesData, customMonthlyStart = '') => {
+    // Generate 6 months. If user picked a custom start date for the cashflow,
+    // anchor the monthly view to the same month (e.g., enero 2026).
     const months = [];
     const today = new Date();
-    const startDate = startOfMonth(today);
+    let startDate = startOfMonth(today);
+    if (customMonthlyStart) {
+      const parsed = new Date(customMonthlyStart);
+      if (!isNaN(parsed.getTime())) {
+        startDate = startOfMonth(parsed);
+      }
+    }
     
     for (let i = 0; i < 6; i++) {
       const monthStart = addMonths(startDate, i);
@@ -1605,6 +1662,38 @@ const CashflowProjections = () => {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="space-y-2 mt-4 pt-4 border-t">
+                  <Label htmlFor="cashflow-start-date">
+                    {language === 'es' ? 'Fecha de inicio del flujo' : language === 'pt' ? 'Data de início do fluxo' : 'Cashflow start date'}
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="cashflow-start-date"
+                      data-testid="cashflow-start-date-input"
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => handleSaveCustomStartDate(e.target.value)}
+                    />
+                    {customStartDate && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        data-testid="cashflow-start-date-reset"
+                        onClick={() => handleSaveCustomStartDate('')}
+                      >
+                        {language === 'es' ? 'Auto' : language === 'pt' ? 'Auto' : 'Auto'}
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {language === 'es'
+                      ? 'Elige cualquier fecha (ej. 5 ene 2026). Las 18 semanas se generarán a partir del día de inicio que configuraste arriba. Deja vacío para automático.'
+                      : language === 'pt'
+                        ? 'Escolha qualquer data (ex. 5 jan 2026). As 18 semanas começarão a partir do dia configurado acima. Deixe em branco para automático.'
+                        : 'Pick any date (e.g. Jan 5, 2026). The 18 weeks will start from the configured weekday above. Leave empty for automatic.'}
+                  </p>
                 </div>
                 <div className="space-y-2 mt-4 pt-4 border-t">
                   <Label>{t.minimumCashThreshold}</Label>

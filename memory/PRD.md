@@ -2053,3 +2053,25 @@ All P0 features implemented and tested:
   - Config = Lunes ⇒ `30 mar, 06 abr, 13 abr, 20 abr, 27 abr` (lunes correctos).
   - Config = Viernes ⇒ `03 abr, 10 abr, 17 abr, 24 abr, 01 may` (viernes correctos).
   - Header `Inicio:` cambia en tiempo real, datos se reprocesan automáticamente.
+
+
+### Phase 37: Selector de fecha de inicio + Dashboard alineado a inicio_semana ✅
+- **Date**: February 2026
+- **User feedback**: "Sigo viendo que empieza en marzo y debo de elegir qué semana debe empezar; si quiero que empiece en enero no se visualiza." Además pidió que `inicio_semana` se aplique también al Dashboard.
+
+**Cambios:**
+1. **Selector de "Fecha de inicio del flujo"** en `pages/CashflowProjections.js` → Configurar Proyecciones:
+   - Nuevo input de fecha (`<input type="date">`) que persiste en `localStorage.cashflow_custom_start_date`.
+   - Botón "Auto" para limpiar y volver al cálculo automático (4 semanas atrás).
+   - `processWeeklyData()` ahora acepta `customStart` y, si se provee, usa esa fecha como base (snap a `weekStartDay`). Esto permite ver enero, diciembre del año pasado, o cualquier ventana que el usuario quiera.
+2. **Vista Mensual también respeta la fecha custom**: `processMonthlyData()` acepta `customMonthlyStart` y arranca los 6 meses desde el mes elegido (en vez de mes actual).
+3. **Dashboard Ejecutivo** (`pages/Dashboard.js`):
+   - Reemplazada la fórmula hardcodeada `daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1` por una lectura dinámica de `selectedCompany.inicio_semana` desde localStorage.
+   - El rango por defecto (4 semanas atrás → 9 semanas adelante) ahora arranca y termina en el día de la semana configurado (Lunes/Viernes/etc.).
+4. **Sincronización**: cuando el usuario cambia el día de inicio en CashflowProjections, ahora también se actualiza `selectedCompany` en localStorage para que el Dashboard recoja el cambio sin re-login.
+5. **Bug por React closure**: el handler de fecha custom usaba `loadData()` inmediatamente tras `setState`, leyendo el state viejo (closure). Migrado a `useEffect([customStartDate])` para reaccionar correctamente.
+
+**Verificación E2E (Playwright):**
+- Custom date `2026-01-05` (Lunes) ⇒ semanas: `05 ene, 12 ene, 19 ene, 26 ene, 02 feb, …, 23 feb` ✓
+- Reset "Auto" ⇒ vuelve a `30 mar, 06 abr, …` ✓
+- Dashboard con inicio=Viernes ⇒ rango `04/03/2026 (Friday) – 07/03/2026 (Friday)` ✓

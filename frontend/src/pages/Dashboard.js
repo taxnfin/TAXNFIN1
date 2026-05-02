@@ -74,21 +74,34 @@ const Dashboard = () => {
     loadBankAccounts();
     loadSchedulerStatus();
     loadFxAlerts();
-    // Set default date range (4 weeks back, 9 weeks forward = 13 weeks rolling)
+    
+    // Resolve the company's configured "inicio_semana" (0=Sun..6=Sat). Default: 1 (Mon).
+    let weekStartDay = 1;
+    try {
+      const sel = localStorage.getItem('selectedCompany');
+      if (sel) {
+        const parsed = JSON.parse(sel);
+        if (parsed?.inicio_semana !== undefined && parsed?.inicio_semana !== null) {
+          weekStartDay = parsed.inicio_semana;
+        }
+      }
+    } catch {/* ignore */}
+    
+    // Set default date range respecting the configured week start day.
     const today = new Date();
-    // Find Monday of current week
-    const dayOfWeek = today.getDay();
-    const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    const currentMonday = new Date(today);
-    currentMonday.setDate(today.getDate() - daysToMonday);
+    const day = today.getDay();
+    let diff = day - weekStartDay;
+    if (diff < 0) diff += 7;
+    const currentWeekStart = new Date(today);
+    currentWeekStart.setDate(today.getDate() - diff);
     
-    // Start from 4 weeks ago (Monday)
-    const startDate = new Date(currentMonday);
-    startDate.setDate(currentMonday.getDate() - 28); // 4 weeks back
+    // Start from 4 weeks ago
+    const startDate = new Date(currentWeekStart);
+    startDate.setDate(currentWeekStart.getDate() - 28);
     
-    // End 9 weeks from current Monday
-    const endDate = new Date(currentMonday);
-    endDate.setDate(currentMonday.getDate() + 63); // 9 weeks forward
+    // End 9 weeks forward
+    const endDate = new Date(currentWeekStart);
+    endDate.setDate(currentWeekStart.getDate() + 63);
     
     setDateFrom(startDate.toISOString().split('T')[0]);
     setDateTo(endDate.toISOString().split('T')[0]);
