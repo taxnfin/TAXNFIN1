@@ -35,6 +35,11 @@ async def register(user_data: UserCreate):
         company_exists = await db.companies.find_one({'id': company_id}, {'_id': 0})
         if not company_exists:
             raise HTTPException(status_code=400, detail="Empresa no encontrada")
+        # SECURITY: Self-registration into an existing company always grants
+        # the lowest privilege (viewer). Promotion must be done by an admin
+        # via the admin panel. This prevents privilege escalation via the
+        # public /register endpoint.
+        role = UserRole.VIEWER
     else:
         # Auto-create a new company for this user
         if not user_data.company_name or not user_data.company_name.strip():

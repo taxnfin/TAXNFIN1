@@ -2012,3 +2012,28 @@ All P0 features implemented and tested:
 - **Para reactivar AI**: Configurar API key de Anthropic/OpenAI e implementar las llamadas directas
 
 - **Test Coverage**: iteration_21.json — 100% backend (15/15), 100% frontend (7/7)
+
+
+### Phase 35: Auto-Empresa en Registro + Charts en PDF Board Report ✅
+- **Date**: February 2026
+
+**P0.1 — Registro auto-crea empresa (UX):**
+- **Backend** (`routes/auth.py`, `models/auth.py`): `UserCreate` ahora acepta `company_name` (opcional) y `company_rfc` (opcional) en lugar de exigir `company_id`. Si no se provee `company_id`, se crea automáticamente una `Company` (UUID v4, RFC en mayúsculas o "PENDIENTE") y se asigna el rol `admin` al primer usuario de esa empresa.
+- **Frontend** (`pages/Login.js`): Reemplazado campo "ID Empresa" por "Nombre de la Empresa" (requerido) y "RFC (opcional)". El RFC se uppercasea automáticamente al escribirlo.
+- **Hardening de seguridad**: Cuando un usuario se autoregistra usando un `company_id` existente, ahora se fuerza `role=viewer` (antes el rol del payload se aceptaba tal cual, permitiendo escalación de privilegios).
+
+**P0.2 — Gráficos en PDF Executive Board Report:**
+- 4 helpers de dibujo agregados a `BoardReport.js → exportToPDF()` (puro jsPDF, sin html2canvas):
+  - `drawVerticalBarChart` — bar chart agrupado con eje Y, grid, leyenda y compact-currency labels
+  - `drawHorizontalBarChart` — barras horizontales con label, valor formateado y color por serie
+  - `drawStackedBar` — barra apilada con leyenda en 2 columnas (ideal para estructura de capital)
+  - `drawSparkline` — mini-gráfico de línea para uso inline
+- Insertados en 5 secciones:
+  1. Resumen Financiero → bar chart vertical "Ingresos & Utilidad Neta - Tendencia" (últimos 6 meses)
+  2. Resumen Financiero → stacked bar "Estructura de Capital" (Activos circulantes / fijos / Pasivos / Capital)
+  3. Sección Márgenes → horizontal bar chart de Gross/EBITDA/Operating/Net margins
+  4. Sección Retornos → horizontal bar chart de ROIC/ROE/ROA/ROCE
+  5. Sección Tendencias Mensuales → bar chart vertical full-series "Evolución Mensual: Ingresos, Utilidad Bruta y Neta"
+
+- **Test Coverage** (`/app/test_reports/iteration_25.json`): 100% backend (8/8 pytest en `/app/backend/tests/test_register_auto_company.py`), 100% frontend (registro + login + dashboard + descarga PDF de 879 KB sin errores en consola).
+
