@@ -2087,3 +2087,32 @@ All P0 features implemented and tested:
 - Todos llaman a `handleSaveCustomStartDate` que persiste en localStorage y dispara recálculo de las 18 semanas + Vista Mensual.
 - Usan `data-testid` (`cashflow-preset-current-year`, `cashflow-preset-fiscal-year`, `cashflow-preset-last-6-months`, `cashflow-preset-last-12-months`).
 - **Verificado E2E**: los 4 presets producen ventanas correctas snap-to-weekStartDay; reset "Auto" sigue funcionando.
+
+
+### Phase 39: Bugfixes críticos en integración Alegra ✅
+- **Date**: February 2026
+- **Bugs reportados por usuario en producción** (cashflow.taxnfin.com):
+
+**Bug #1 — Totales inflados ~17x:**
+- Síntoma: La UI mostraba `Ingresos (MXN): $58,635,592.35` cuando el Excel tenía solo `$178,373 USD` reales (~$3.1M MXN al tipo de cambio).
+- Causa raíz (`routes/alegra.py` líneas 514-525, 802 originales):
+  - `sync_alegra_invoices` y `sync_alegra_bills` guardaban `total = total_mxn` (ya pre-convertido a MXN) PERO mantenían `moneda = 'USD'`.
+  - Luego `routes/cfdi.py` `/summary` (línea 74) volvía a multiplicar `total × tipo_cambio` (17.50) creyendo que estaba en USD → resultado: USD × 17.5 × 17.5 = inflación ~306x por factura USD.
+- Fix:
+  - `total` ahora se guarda en **moneda original** (USD/EUR/MXN) — convención consistente con SAT/CFDI.
+  - Se agregó campo `total_mxn` como referencia pre-convertida (sin lógica que dependa de él para el summary).
+  - Mismo fix para `monto_cobrado` (invoices) y `monto_pagado` (bills): ahora en moneda original con `_mxn` como referencia.
+  - `subtotal` e `impuestos` recalculados desde el total en moneda original.
+- Migración: nuevo endpoint `POST /api/alegra/fix-mxn-totals?dry_run=true` que detecta CFDIs Alegra con `total` ya inflado y los corrige (heurística: `total ≈ original × tipo_cambio` con tolerancia 5%). Idempotente, soporta dry-run.
+
+**Bug #2 — Filtro de fechas trayendo facturas fuera del rango:**
+- Síntoma: Usuario filtró "enero 2026" y le bajó facturas desde noviembre 2025.
+- Causa raíz (`routes/alegra.py` líneas 459-482, 705-731 originales):
+  - El filtro se aplicaba a `fecha_pago` (conciliados) o `fecha_vencimiento` (pendientes), no a la fecha de emisión.
+  - Una factura emitida en noviembre con vencimiento en enero pasaba el filtro.
+- Fix: el filtro ahora usa `fecha_emision` (campo `date` en Alegra). Si una factura no tiene fecha, se excluye.
+
+**Acciones requeridas por usuario:**
+1. Llamar `POST /api/alegra/fix-mxn-totals?dry_run=true` para ver qué se arreglará.
+2. Llamar `POST /api/alegra/fix-mxn-totals?dry_run=false` para ejecutar la migración.
+3. Re-sincronizar Alegra con el rango deseado (`POST /api/alegra/sync/invoices?date_from=2026-01-01&date_to=2026-01-31`) — ya filtra por fecha de emisión.

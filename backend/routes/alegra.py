@@ -453,29 +453,19 @@ async def sync_alegra_invoices(
                         if not fecha_pago or pmt_date > fecha_pago:
                             fecha_pago = pmt_date
             
-            # Apply date filter logic:
-            # - For PAID invoices (conciliado): filter by payment date
-            # - For PENDING invoices: filter by due date
+            # Apply date filter logic: filter by INVOICE EMISSION DATE (fecha)
+            # so the user gets exactly what they asked for ("invoices issued in
+            # January 2026" must NOT include November-issued invoices that
+            # happen to mature in January).
             if date_from or date_to:
-                should_include = False
-                
-                if estado_conciliacion == 'conciliado' and fecha_pago:
-                    # Paid invoice: check if payment date is in range
-                    if date_from and date_to:
-                        should_include = date_from <= fecha_pago[:10] <= date_to
-                    elif date_from:
-                        should_include = fecha_pago[:10] >= date_from
-                    elif date_to:
-                        should_include = fecha_pago[:10] <= date_to
-                else:
-                    # Pending/Partial invoice: check if due date is in range
-                    if fecha_vencimiento:
-                        if date_from and date_to:
-                            should_include = date_from <= fecha_vencimiento[:10] <= date_to
-                        elif date_from:
-                            should_include = fecha_vencimiento[:10] >= date_from
-                        elif date_to:
-                            should_include = fecha_vencimiento[:10] <= date_to
+                fecha_check = (fecha or '')[:10]
+                should_include = True
+                if date_from and fecha_check and fecha_check < date_from:
+                    should_include = False
+                if date_to and fecha_check and fecha_check > date_to:
+                    should_include = False
+                if not fecha_check:
+                    should_include = False
                 
                 if not should_include:
                     skipped += 1
@@ -511,22 +501,25 @@ async def sync_alegra_invoices(
             # Also get the stamp date as the timbrado date
             fecha_timbrado = stamp.get('stampDate') or stamp.get('datetime') or fecha if isinstance(stamp, dict) else fecha
             
-            # Calculate totals - Alegra gives total in original currency
-            # total is the amount IN THE ORIGINAL CURRENCY (USD, MXN, etc.)
-            total_moneda_original = total  # This is the amount in USD/EUR/etc.
+            # Calculate totals.
+            # IMPORTANT: We store `total` in the ORIGINAL CURRENCY (USD/EUR/MXN)
+            # to match the convention used by the SAT/CFDI module and prevent
+            # the /cfdi/summary endpoint from double-converting (which used to
+            # produce 17x-inflated totals when foreign currencies were stored
+            # already-converted to MXN).
+            total_moneda_original = total  # always in original currency
             
-            # Convert to MXN if foreign currency
             if moneda != 'MXN' and tipo_cambio > 0:
-                total_mxn = total * tipo_cambio  # Convert to MXN
+                total_mxn = total * tipo_cambio  # Reference value in MXN
                 total_paid_mxn = total_paid * tipo_cambio
             else:
                 total_mxn = total
                 total_paid_mxn = total_paid
-                total_moneda_original = None  # No need to store if already MXN
             
-            # Calculate taxes (estimate from total MXN)
-            subtotal = total_mxn / 1.16 if total_mxn > 0 else 0  # Assuming 16% IVA
-            impuestos = total_mxn - subtotal
+            # Calculate taxes from the original-currency subtotal so the values
+            # are consistent with `total` (also in original currency).
+            subtotal = total / 1.16 if total > 0 else 0  # Assuming 16% IVA
+            impuestos = total - subtotal
             
             # Determine payment method based on payment status
             # PPD = Pago en Parcialidades o Diferido (pendiente)
@@ -553,15 +546,17 @@ async def sync_alegra_invoices(
                 'subtotal': round(subtotal, 2),
                 'descuento': 0,
                 'impuestos': round(impuestos, 2),
-                'total': round(total_mxn, 2),  # Total in MXN
-                'total_moneda_original': round(total_moneda_original, 2) if total_moneda_original else None,
+                'total': round(total, 2),  # Total in ORIGINAL currency (USD/EUR/MXN)
+                'total_mxn': round(total_mxn, 2),  # Reference: pre-converted to MXN
+                'total_moneda_original': round(total_moneda_original, 2),
                 'iva_trasladado': round(impuestos, 2),
                 'isr_retenido': 0,
                 'iva_retenido': 0,
                 'metodo_pago': metodo_pago,
                 'estatus': 'vigente',
                 'estado_conciliacion': estado_conciliacion,
-                'monto_cobrado': round(total_paid_mxn, 2),
+                'monto_cobrado': round(total_paid, 2),  # In original currency
+                'monto_cobrado_mxn': round(total_paid_mxn, 2),  # Reference in MXN
                 'monto_pagado': 0,
                 'referencia': folio_alegra,  # Full folio CUSTINVC859
                 'folio_alegra': folio_alegra,
@@ -707,29 +702,17 @@ async def sync_alegra_bills(
                         if not fecha_pago or pmt_date > fecha_pago:
                             fecha_pago = pmt_date
             
-            # Apply date filter logic:
-            # - For PAID bills (conciliado): filter by payment date
-            # - For PENDING bills: filter by due date
+            # Apply date filter logic: filter by BILL EMISSION DATE (fecha)
+            # so the user gets exactly what they asked for.
             if date_from or date_to:
-                should_include = False
-                
-                if estado_conciliacion == 'conciliado' and fecha_pago:
-                    # Paid bill: check if payment date is in range
-                    if date_from and date_to:
-                        should_include = date_from <= fecha_pago[:10] <= date_to
-                    elif date_from:
-                        should_include = fecha_pago[:10] >= date_from
-                    elif date_to:
-                        should_include = fecha_pago[:10] <= date_to
-                else:
-                    # Pending/Partial bill: check if due date is in range
-                    if fecha_vencimiento:
-                        if date_from and date_to:
-                            should_include = date_from <= fecha_vencimiento[:10] <= date_to
-                        elif date_from:
-                            should_include = fecha_vencimiento[:10] >= date_from
-                        elif date_to:
-                            should_include = fecha_vencimiento[:10] <= date_to
+                fecha_check = (fecha or '')[:10]
+                should_include = True
+                if date_from and fecha_check and fecha_check < date_from:
+                    should_include = False
+                if date_to and fecha_check and fecha_check > date_to:
+                    should_include = False
+                if not fecha_check:
+                    should_include = False
                 
                 if not should_include:
                     skipped += 1
@@ -765,21 +748,22 @@ async def sync_alegra_bills(
             # Also get the stamp date as the timbrado date
             fecha_timbrado = stamp.get('stampDate') or stamp.get('datetime') or fecha if isinstance(stamp, dict) else fecha
             
-            # Calculate totals - Alegra gives total in original currency
-            total_moneda_original = total  # Amount in original currency
+            # Calculate totals.
+            # IMPORTANT: We store `total` in the ORIGINAL CURRENCY to match the
+            # SAT/CFDI module convention and prevent the /cfdi/summary endpoint
+            # from double-converting (which produced 17x-inflated totals).
+            total_moneda_original = total
             
-            # Convert to MXN if foreign currency
             if moneda != 'MXN' and tipo_cambio > 0:
                 total_mxn = total * tipo_cambio
                 total_paid_mxn = total_paid * tipo_cambio
             else:
                 total_mxn = total
                 total_paid_mxn = total_paid
-                total_moneda_original = None
             
-            # Calculate taxes (estimate from total MXN)
-            subtotal = total_mxn / 1.16 if total_mxn > 0 else 0
-            impuestos = total_mxn - subtotal
+            # Calculate taxes from the original-currency total so values stay consistent
+            subtotal = total / 1.16 if total > 0 else 0
+            impuestos = total - subtotal
             
             # Determine payment method
             if estado_conciliacion == 'conciliado':
@@ -804,8 +788,9 @@ async def sync_alegra_bills(
                 'subtotal': round(subtotal, 2),
                 'descuento': 0,
                 'impuestos': round(impuestos, 2),
-                'total': round(total_mxn, 2),  # Total in MXN
-                'total_moneda_original': round(total_moneda_original, 2) if total_moneda_original else None,
+                'total': round(total, 2),  # Total in ORIGINAL currency
+                'total_mxn': round(total_mxn, 2),  # Reference: pre-converted to MXN
+                'total_moneda_original': round(total_moneda_original, 2),
                 'iva_trasladado': round(impuestos, 2),
                 'isr_retenido': 0,
                 'iva_retenido': 0,
@@ -813,7 +798,8 @@ async def sync_alegra_bills(
                 'estatus': 'vigente',
                 'estado_conciliacion': estado_conciliacion,
                 'monto_cobrado': 0,
-                'monto_pagado': round(total_paid_mxn, 2),
+                'monto_pagado': round(total_paid, 2),  # In original currency
+                'monto_pagado_mxn': round(total_paid_mxn, 2),  # Reference in MXN
                 'referencia': folio_alegra,
                 'folio_alegra': folio_alegra,
                 'source': 'alegra',
@@ -1122,4 +1108,147 @@ async def clear_alegra_data(
         "success": True,
         "message": f"Se eliminaron {total_deleted} registros de Alegra",
         "results": results
+    }
+
+
+@router.post("/fix-mxn-totals")
+async def fix_alegra_mxn_totals(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    dry_run: bool = Query(False, description="If true, only report what would change without writing")
+):
+    """
+    Repair past Alegra-synced CFDIs whose `total` was wrongly stored in MXN
+    while their `moneda` was a foreign currency (USD/EUR/...).
+    
+    The /cfdi/summary endpoint multiplied those totals by the FX rate again,
+    producing inflated values (e.g. 17x for USD). This migration restores the
+    invariant: `total` is ALWAYS in the row's original currency, with a
+    reference field `total_mxn` for downstream code that needs MXN.
+    
+    Detection rule: A row is considered already-converted-to-MXN when
+        - source == 'alegra'
+        - moneda != 'MXN'
+        - tipo_cambio > 1.01
+        - total_moneda_original is missing OR (total ~= total_moneda_original * tipo_cambio
+          but NOT ~= total_moneda_original)
+    
+    Safe to re-run; idempotent.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    cursor = db.cfdis.find(
+        {'company_id': company_id, 'source': 'alegra'},
+        {'_id': 0}
+    )
+    
+    examined = 0
+    fixed = 0
+    skipped_already_ok = 0
+    skipped_mxn = 0
+    samples_before = []
+    samples_after = []
+    
+    async for c in cursor:
+        examined += 1
+        moneda = c.get('moneda', 'MXN') or 'MXN'
+        if moneda == 'MXN':
+            skipped_mxn += 1
+            continue
+        
+        total = float(c.get('total', 0) or 0)
+        tc = float(c.get('tipo_cambio', 1) or 1)
+        if tc <= 1.01:
+            skipped_already_ok += 1
+            continue
+        
+        original = c.get('total_moneda_original')
+        # Heuristic: if total_moneda_original exists and total >= original * (tc - 0.5),
+        # the `total` field is in MXN (wrong). If total is approx equal to original,
+        # it is already in original currency (correct).
+        if original is not None:
+            try:
+                original = float(original)
+            except Exception:
+                original = None
+        
+        is_inflated = False
+        if original and original > 0:
+            # Already-correct case: total ~= original (within 1%)
+            if abs(total - original) / max(original, 1) < 0.01:
+                skipped_already_ok += 1
+                continue
+            # Inflated case: total ~= original * tc (within 5%)
+            expected_mxn = original * tc
+            if abs(total - expected_mxn) / max(expected_mxn, 1) < 0.05:
+                is_inflated = True
+        else:
+            # No reference value — assume inflated (legacy code always stored MXN)
+            is_inflated = True
+            original = round(total / tc, 2) if tc > 0 else total
+        
+        if not is_inflated:
+            skipped_already_ok += 1
+            continue
+        
+        new_total = round(original, 2)
+        new_total_mxn = round(original * tc, 2)
+        
+        # Same heuristic for monto_cobrado / monto_pagado
+        cobrado = float(c.get('monto_cobrado', 0) or 0)
+        pagado = float(c.get('monto_pagado', 0) or 0)
+        new_cobrado = round(cobrado / tc, 2) if cobrado > 0 and tc > 0 else cobrado
+        new_pagado = round(pagado / tc, 2) if pagado > 0 and tc > 0 else pagado
+        
+        # Recompute taxes from the new (original-currency) total
+        new_subtotal = round(new_total / 1.16, 2) if new_total > 0 else 0
+        new_impuestos = round(new_total - new_subtotal, 2)
+        
+        if len(samples_before) < 3:
+            samples_before.append({
+                'uuid': c.get('uuid'),
+                'moneda': moneda,
+                'tipo_cambio': tc,
+                'total_was': total,
+                'total_will_be': new_total,
+                'total_mxn': new_total_mxn,
+            })
+        
+        if not dry_run:
+            await db.cfdis.update_one(
+                {'id': c['id']},
+                {'$set': {
+                    'total': new_total,
+                    'total_mxn': new_total_mxn,
+                    'total_moneda_original': new_total,
+                    'subtotal': new_subtotal,
+                    'impuestos': new_impuestos,
+                    'iva_trasladado': new_impuestos,
+                    'monto_cobrado': new_cobrado,
+                    'monto_cobrado_mxn': round(new_cobrado * tc, 2),
+                    'monto_pagado': new_pagado,
+                    'monto_pagado_mxn': round(new_pagado * tc, 2),
+                    'updated_at': datetime.now(timezone.utc).isoformat(),
+                }}
+            )
+        fixed += 1
+        if len(samples_after) < 3:
+            samples_after.append({
+                'uuid': c.get('uuid'),
+                'moneda': moneda,
+                'total': new_total,
+                'total_mxn': new_total_mxn,
+            })
+    
+    return {
+        'success': True,
+        'dry_run': dry_run,
+        'examined': examined,
+        'fixed': fixed,
+        'skipped_already_ok': skipped_already_ok,
+        'skipped_mxn_native': skipped_mxn,
+        'samples_before': samples_before,
+        'samples_after': samples_after if not dry_run else [],
+        'message': (f"Se corregirían {fixed} CFDIs" if dry_run
+                    else f"Se corrigieron {fixed} CFDIs (de {examined} examinados)")
     }
