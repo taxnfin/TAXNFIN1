@@ -23,7 +23,9 @@ class UserCreate(BaseModel):
     password: str
     nombre: str
     role: UserRole = UserRole.VIEWER
-    company_id: str
+    company_id: Optional[str] = None
+    company_name: Optional[str] = None
+    company_rfc: Optional[str] = None
 
 
 class UserLogin(BaseModel):

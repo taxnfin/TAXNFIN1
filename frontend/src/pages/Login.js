@@ -17,8 +17,8 @@ const Login = ({ onLogin }) => {
     email: '', 
     password: '', 
     nombre: '',
-    company_id: '',
-    role: 'viewer'
+    company_name: '',
+    company_rfc: ''
   });
   const [loading, setLoading] = useState(false);
   const [auth0Loading, setAuth0Loading] = useState(false);
@@ -80,7 +80,7 @@ const Login = ({ onLogin }) => {
     try {
       await axios.post(`${API}/auth/register`, registerData);
       toast.success('Registro exitoso. Ahora puedes iniciar sesión.');
-      setRegisterData({ email: '', password: '', nombre: '', company_id: '', role: 'viewer' });
+      setRegisterData({ email: '', password: '', nombre: '', company_name: '', company_rfc: '' });
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error al registrar');
     } finally {
@@ -209,15 +209,26 @@ const Login = ({ onLogin }) => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="register-company">ID Empresa</Label>
+                  <Label htmlFor="register-company">Nombre de la Empresa</Label>
                   <Input
                     id="register-company"
                     data-testid="register-company-input"
                     type="text"
-                    placeholder="ID de la empresa"
-                    value={registerData.company_id}
-                    onChange={(e) => setRegisterData({ ...registerData, company_id: e.target.value })}
+                    placeholder="Ej. Mi Empresa SA de CV"
+                    value={registerData.company_name}
+                    onChange={(e) => setRegisterData({ ...registerData, company_name: e.target.value })}
                     required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="register-rfc">RFC <span className="text-xs text-gray-400">(opcional)</span></Label>
+                  <Input
+                    id="register-rfc"
+                    data-testid="register-rfc-input"
+                    type="text"
+                    placeholder="RFC de tu empresa"
+                    value={registerData.company_rfc}
+                    onChange={(e) => setRegisterData({ ...registerData, company_rfc: e.target.value.toUpperCase() })}
                   />
                 </div>
                 <Button 

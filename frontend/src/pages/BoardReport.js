@@ -663,6 +663,231 @@ const BoardReport = () => {
         return 'critical';
       };
       
+      // ====== CHART HELPERS (pure jsPDF primitives) ======
+      
+      // Compact compact-currency label for chart axes ($1.2M / $850K)
+      const compactCurrency = (v) => {
+        if (v === undefined || v === null || isNaN(v)) return '0';
+        const abs = Math.abs(v);
+        const sign = v < 0 ? '-' : '';
+        if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+        if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`;
+        return `${sign}$${abs.toFixed(0)}`;
+      };
+      
+      // Vertical grouped bar chart (e.g. Revenue + Net Profit by period)
+      // series = [{name, color:[r,g,b], values:[]}], labels = []
+      const drawVerticalBarChart = (xPos, yPos, w, h, labels, series, opts = {}) => {
+        const titleH = opts.title ? 7 : 0;
+        const legendH = series.length > 0 ? 6 : 0;
+        const padBottom = 10; // for x labels
+        const padLeft = 18; // for y labels
+        const padTop = titleH + 2;
+        
+        const chartX = xPos + padLeft;
+        const chartY = yPos + padTop;
+        const chartW = w - padLeft - 4;
+        const chartH = h - padTop - padBottom - legendH;
+        
+        // Title
+        if (opts.title) {
+          pdf.setFont(fontFamily, 'bold');
+          pdf.setFontSize(bodySize);
+          pdf.setTextColor(31, 41, 55);
+          pdf.text(opts.title, xPos, yPos + 5);
+        }
+        
+        // Determine min/max across all series
+        const allVals = series.flatMap(s => s.values);
+        const maxVal = Math.max(...allVals, 0);
+        const minVal = Math.min(...allVals, 0);
+        const range = (maxVal - minVal) || 1;
+        
+        // Y-axis grid (4 lines)
+        pdf.setDrawColor(229, 231, 235);
+        pdf.setLineWidth(0.2);
+        pdf.setFontSize(smallSize - 1);
+        pdf.setFont(fontFamily, 'normal');
+        pdf.setTextColor(120, 120, 120);
+        for (let i = 0; i <= 4; i++) {
+          const ratio = i / 4;
+          const yLine = chartY + chartH - (ratio * chartH);
+          pdf.line(chartX, yLine, chartX + chartW, yLine);
+          const labelVal = minVal + ratio * range;
+          pdf.text(compactCurrency(labelVal), xPos + padLeft - 2, yLine + 1.5, { align: 'right' });
+        }
+        
+        // X-axis baseline (zero line)
+        const zeroY = chartY + chartH - ((0 - minVal) / range) * chartH;
+        pdf.setDrawColor(180, 180, 180);
+        pdf.setLineWidth(0.4);
+        pdf.line(chartX, zeroY, chartX + chartW, zeroY);
+        
+        // Bars
+        const groupCount = labels.length;
+        if (groupCount === 0) return;
+        const groupW = chartW / groupCount;
+        const seriesCount = series.length;
+        const barW = Math.max(1.5, (groupW * 0.7) / seriesCount);
+        const groupGap = (groupW - barW * seriesCount) / 2;
+        
+        labels.forEach((lbl, i) => {
+          const groupStartX = chartX + i * groupW + groupGap;
+          series.forEach((s, sIdx) => {
+            const v = s.values[i] || 0;
+            const barH = Math.abs(v / range) * chartH;
+            const barX = groupStartX + sIdx * barW;
+            const barY = v >= 0 ? zeroY - barH : zeroY;
+            pdf.setFillColor(...s.color);
+            pdf.rect(barX, barY, barW * 0.95, barH, 'F');
+          });
+          
+          // X-label
+          pdf.setFontSize(smallSize - 1);
+          pdf.setTextColor(80, 80, 80);
+          const lblShort = String(lbl).length > 7 ? String(lbl).slice(2) : String(lbl);
+          pdf.text(lblShort, chartX + i * groupW + groupW / 2, chartY + chartH + 5, { align: 'center' });
+        });
+        
+        // Legend
+        if (series.length > 0) {
+          let legendX = chartX;
+          const legendY = yPos + h - 2;
+          pdf.setFontSize(smallSize);
+          pdf.setFont(fontFamily, 'normal');
+          pdf.setTextColor(60, 60, 60);
+          series.forEach(s => {
+            pdf.setFillColor(...s.color);
+            pdf.rect(legendX, legendY - 3, 3, 3, 'F');
+            pdf.text(s.name, legendX + 5, legendY);
+            legendX += pdf.getTextWidth(s.name) + 12;
+          });
+        }
+        
+        pdf.setTextColor(0, 0, 0);
+      };
+      
+      // Horizontal bar chart: items = [{label, value, color:[r,g,b], unit:'%'}]
+      const drawHorizontalBarChart = (xPos, yPos, w, h, items, opts = {}) => {
+        const titleH = opts.title ? 7 : 0;
+        const padTop = titleH + 2;
+        const labelW = 38;
+        const valueW = 18;
+        const chartX = xPos + labelW;
+        const chartY = yPos + padTop;
+        const chartW = w - labelW - valueW - 2;
+        const chartH = h - padTop - 2;
+        
+        if (opts.title) {
+          pdf.setFont(fontFamily, 'bold');
+          pdf.setFontSize(bodySize);
+          pdf.setTextColor(31, 41, 55);
+          pdf.text(opts.title, xPos, yPos + 5);
+        }
+        
+        const maxAbs = Math.max(...items.map(it => Math.abs(it.value || 0)), 1);
+        const rowH = chartH / items.length;
+        const barH = Math.min(rowH * 0.6, 5);
+        
+        items.forEach((it, i) => {
+          const rowY = chartY + i * rowH + rowH / 2;
+          
+          // Label
+          pdf.setFont(fontFamily, 'normal');
+          pdf.setFontSize(smallSize);
+          pdf.setTextColor(55, 65, 81);
+          pdf.text(it.label, xPos + labelW - 2, rowY + 1.5, { align: 'right' });
+          
+          // Bar background
+          pdf.setFillColor(243, 244, 246);
+          pdf.rect(chartX, rowY - barH / 2, chartW, barH, 'F');
+          
+          // Bar fill
+          const barWidth = (Math.abs(it.value) / maxAbs) * chartW;
+          pdf.setFillColor(...(it.color || [59, 130, 246]));
+          pdf.rect(chartX, rowY - barH / 2, barWidth, barH, 'F');
+          
+          // Value label
+          pdf.setFont(fontFamily, 'bold');
+          pdf.setFontSize(smallSize);
+          pdf.setTextColor(17, 24, 39);
+          const valStr = it.unit === '%' ? `${(it.value || 0).toFixed(1)}%` :
+                         it.unit === 'x' ? `${(it.value || 0).toFixed(2)}x` :
+                         compactCurrency(it.value);
+          pdf.text(valStr, chartX + chartW + 2, rowY + 1.5);
+        });
+        
+        pdf.setTextColor(0, 0, 0);
+      };
+      
+      // Stacked horizontal bar (for capital structure)
+      // segments = [{label, value, color:[r,g,b]}]
+      const drawStackedBar = (xPos, yPos, w, h, segments, opts = {}) => {
+        const titleH = opts.title ? 7 : 0;
+        if (opts.title) {
+          pdf.setFont(fontFamily, 'bold');
+          pdf.setFontSize(bodySize);
+          pdf.setTextColor(31, 41, 55);
+          pdf.text(opts.title, xPos, yPos + 5);
+        }
+        
+        const total = segments.reduce((sum, s) => sum + Math.abs(s.value || 0), 0) || 1;
+        const barY = yPos + titleH;
+        const barH = 8;
+        let cursorX = xPos;
+        
+        segments.forEach((seg) => {
+          const segW = (Math.abs(seg.value || 0) / total) * w;
+          pdf.setFillColor(...(seg.color || [156, 163, 175]));
+          pdf.rect(cursorX, barY, segW, barH, 'F');
+          cursorX += segW;
+        });
+        
+        // Legend below the bar (2 columns)
+        const legendStartY = barY + barH + 4;
+        const colW = w / 2;
+        segments.forEach((seg, i) => {
+          const col = i % 2;
+          const row = Math.floor(i / 2);
+          const lx = xPos + col * colW;
+          const ly = legendStartY + row * 5;
+          pdf.setFillColor(...(seg.color || [156, 163, 175]));
+          pdf.rect(lx, ly - 2.5, 3, 3, 'F');
+          pdf.setFont(fontFamily, 'normal');
+          pdf.setFontSize(smallSize - 1);
+          pdf.setTextColor(55, 65, 81);
+          const pct = ((Math.abs(seg.value || 0) / total) * 100).toFixed(0);
+          pdf.text(`${seg.label}: ${compactCurrency(seg.value)} (${pct}%)`, lx + 5, ly);
+        });
+        
+        pdf.setTextColor(0, 0, 0);
+      };
+      
+      // Sparkline drawing
+      const drawSparkline = (xPos, yPos, w, h, values, color = [59, 130, 246]) => {
+        if (!values || values.length < 2) return;
+        const maxV = Math.max(...values);
+        const minV = Math.min(...values);
+        const range = (maxV - minV) || 1;
+        const step = w / (values.length - 1);
+        
+        pdf.setDrawColor(...color);
+        pdf.setLineWidth(0.6);
+        for (let i = 0; i < values.length - 1; i++) {
+          const x1 = xPos + i * step;
+          const y1 = yPos + h - ((values[i] - minV) / range) * h;
+          const x2 = xPos + (i + 1) * step;
+          const y2 = yPos + h - ((values[i + 1] - minV) / range) * h;
+          pdf.line(x1, y1, x2, y2);
+        }
+        
+        // End point dot
+        const lastX = xPos + (values.length - 1) * step;
+        const lastY = yPos + h - ((values[values.length - 1] - minV) / range) * h;
+        pdf.setFillColor(...color);
+        pdf.circle(lastX, lastY, 0.8, 'F');
+      };
+      
       // ====== PAGE 1: PROFESSIONAL COVER PAGE ======
       // Full page dark navy background
       pdf.setFillColor(12, 20, 36);
@@ -879,6 +1104,34 @@ const BoardReport = () => {
         
         y = Math.max(y, startY + incomeItems.length * 5 + 6) + 8;
         
+        // ====== TREND CHART: Revenue + Net Profit (last 6 months) ======
+        if (trendsData.length >= 2) {
+          addNewPageIfNeeded(75);
+          const trendSlice = trendsData.slice(-6);
+          const trendLabels = trendSlice.map(p => p.periodo);
+          const revenues = trendSlice.map(p => p.income_statement?.ingresos || 0);
+          const netProfits = trendSlice.map(p => p.income_statement?.utilidad_neta || 0);
+          
+          drawVerticalBarChart(margin, y, contentWidth, 65, trendLabels, [
+            { name: t.revenue, color: [59, 130, 246], values: revenues },
+            { name: t.netProfit, color: [16, 185, 129], values: netProfits }
+          ], { title: language === 'es' ? 'Ingresos y Utilidad Neta - Tendencia' : language === 'pt' ? 'Receita e Lucro Líquido - Tendência' : 'Revenue & Net Profit - Trend' });
+          y += 70;
+        }
+        
+        // ====== CAPITAL STRUCTURE CHART ======
+        if (bal.activo_total || bal.pasivo_total) {
+          addNewPageIfNeeded(35);
+          drawStackedBar(margin, y, contentWidth, 25, [
+            { label: t.currentAssets, value: bal.activo_circulante || 0, color: [59, 130, 246] },
+            { label: t.fixedAssets, value: bal.activo_fijo || 0, color: [99, 102, 241] },
+            { label: t.currentLiabilities, value: bal.pasivo_circulante || 0, color: [239, 68, 68] },
+            { label: t.longTermLiabilities, value: bal.pasivo_largo_plazo || 0, color: [249, 115, 22] },
+            { label: t.equity, value: bal.capital_contable || 0, color: [34, 197, 94] },
+          ], { title: language === 'es' ? 'Estructura de Capital' : language === 'pt' ? 'Estrutura de Capital' : 'Capital Structure' });
+          y += 30;
+        }
+        
         // ====== MARGINS SECTION ======
         addNewPageIfNeeded(50);
         drawSectionHeader(t.marginsAnalysis, [34, 197, 94]);
@@ -893,6 +1146,16 @@ const BoardReport = () => {
           [t.operatingMargin, metrics.margins?.operating_margin?.value, 15, 5],
           [t.netMargin, metrics.margins?.net_margin?.value, 10, 3],
         ];
+        
+        // Margins chart
+        addNewPageIfNeeded(35);
+        drawHorizontalBarChart(margin, y, contentWidth, 28, marginsItems.map(([lbl, v]) => ({
+          label: lbl,
+          value: v || 0,
+          color: [34, 197, 94],
+          unit: '%'
+        })));
+        y += 32;
         
         marginsItems.forEach(([label, value, good, warn]) => {
           drawMetricRow(label, formatPercent(value), getStatus(value, good, warn));
@@ -913,6 +1176,16 @@ const BoardReport = () => {
           ['ROA', metrics.returns?.roa?.value, 8, 4, '%'],
           ['ROCE', metrics.returns?.roce?.value, 12, 6, '%'],
         ];
+        
+        // Returns chart
+        addNewPageIfNeeded(35);
+        drawHorizontalBarChart(margin, y, contentWidth, 28, returnsItems.map(([lbl, v]) => ({
+          label: lbl,
+          value: v || 0,
+          color: [139, 92, 246],
+          unit: '%'
+        })));
+        y += 32;
         
         returnsItems.forEach(([label, value, good, warn]) => {
           drawMetricRow(label, formatPercent(value), getStatus(value, good, warn));
@@ -1008,6 +1281,22 @@ const BoardReport = () => {
           y = margin;
           
           drawSectionHeader(t.monthlyTrends, [99, 102, 241]);
+          
+          // ====== TRENDS BAR CHART (full series) ======
+          {
+            const allLabels = trendsData.map(p => p.periodo);
+            const allRevenues = trendsData.map(p => p.income_statement?.ingresos || 0);
+            const allGross = trendsData.map(p => p.income_statement?.utilidad_bruta || 0);
+            const allNet = trendsData.map(p => p.income_statement?.utilidad_neta || 0);
+            
+            addNewPageIfNeeded(80);
+            drawVerticalBarChart(margin, y, contentWidth, 70, allLabels, [
+              { name: t.revenue, color: [59, 130, 246], values: allRevenues },
+              { name: t.grossProfit, color: [16, 185, 129], values: allGross },
+              { name: t.netProfit, color: [139, 92, 246], values: allNet },
+            ], { title: language === 'es' ? 'Evolución Mensual: Ingresos, Utilidad Bruta y Neta' : language === 'pt' ? 'Evolução Mensal: Receita, Lucro Bruto e Líquido' : 'Monthly Evolution: Revenue, Gross & Net Profit' });
+            y += 75;
+          }
           
           // Add AI trends analysis if available
           if (aiAnalysis?.trends_analysis) {

@@ -14,21 +14,57 @@ router = APIRouter(prefix="/auth")
 
 @router.post("/register", response_model=User)
 async def register(user_data: UserCreate):
-    """Register a new user"""
+    """Register a new user.
+    
+    If company_id is not provided, automatically creates a new company
+    using company_name (required) and assigns the new user as admin.
+    If company_id IS provided, joins the existing company with the given role.
+    """
+    import uuid as _uuid
+    from models.enums import UserRole
+    
     existing = await db.users.find_one({'email': user_data.email}, {'_id': 0})
     if existing:
         raise HTTPException(status_code=400, detail="Email ya registrado")
     
-    company_exists = await db.companies.find_one({'id': user_data.company_id}, {'_id': 0})
-    if not company_exists:
-        raise HTTPException(status_code=400, detail="Empresa no encontrada")
+    company_id = user_data.company_id
+    role = user_data.role
+    
+    if company_id:
+        # Joining an existing company
+        company_exists = await db.companies.find_one({'id': company_id}, {'_id': 0})
+        if not company_exists:
+            raise HTTPException(status_code=400, detail="Empresa no encontrada")
+    else:
+        # Auto-create a new company for this user
+        if not user_data.company_name or not user_data.company_name.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Debes proporcionar el nombre de tu empresa"
+            )
+        
+        company_id = str(_uuid.uuid4())
+        company_doc = {
+            'id': company_id,
+            'nombre': user_data.company_name.strip(),
+            'rfc': (user_data.company_rfc or '').strip().upper() or 'PENDIENTE',
+            'moneda_base': 'MXN',
+            'pais': 'México',
+            'activo': True,
+            'inicio_semana': 1,
+            'logo_url': None,
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        await db.companies.insert_one(company_doc)
+        # First user of a brand-new company becomes admin
+        role = UserRole.ADMIN
     
     password_hash = hash_password(user_data.password)
     user = User(
         email=user_data.email,
         nombre=user_data.nombre,
-        role=user_data.role,
-        company_id=user_data.company_id
+        role=role,
+        company_id=company_id
     )
     
     doc = user.model_dump()
