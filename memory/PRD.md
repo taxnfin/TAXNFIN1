@@ -2075,3 +2075,15 @@ All P0 features implemented and tested:
 - Custom date `2026-01-05` (Lunes) ⇒ semanas: `05 ene, 12 ene, 19 ene, 26 ene, 02 feb, …, 23 feb` ✓
 - Reset "Auto" ⇒ vuelve a `30 mar, 06 abr, …` ✓
 - Dashboard con inicio=Viernes ⇒ rango `04/03/2026 (Friday) – 07/03/2026 (Friday)` ✓
+
+
+### Phase 38: Botones de presets rápidos en Configurar Proyecciones ✅
+- **Date**: February 2026
+- 4 botones de preset agregados al diálogo "Configurar Proyecciones" → "Fecha de inicio del flujo":
+  - **Año Actual**: 1 ene del año en curso
+  - **Año Fiscal**: 1 ene del año fiscal cerrado anterior (útil para revisión de cierre fiscal mexicano)
+  - **Últimos 6 meses**: 1 del mes que cae 6 meses atrás
+  - **Últimos 12 meses**: 1 del mes que cae 12 meses atrás
+- Todos llaman a `handleSaveCustomStartDate` que persiste en localStorage y dispara recálculo de las 18 semanas + Vista Mensual.
+- Usan `data-testid` (`cashflow-preset-current-year`, `cashflow-preset-fiscal-year`, `cashflow-preset-last-6-months`, `cashflow-preset-last-12-months`).
+- **Verificado E2E**: los 4 presets producen ventanas correctas snap-to-weekStartDay; reset "Auto" sigue funcionando.

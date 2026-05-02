@@ -1667,6 +1667,66 @@ const CashflowProjections = () => {
                   <Label htmlFor="cashflow-start-date">
                     {language === 'es' ? 'Fecha de inicio del flujo' : language === 'pt' ? 'Data de início do fluxo' : 'Cashflow start date'}
                   </Label>
+                  
+                  {/* Quick preset buttons */}
+                  <div className="flex flex-wrap gap-2 pb-1">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 text-xs"
+                      data-testid="cashflow-preset-current-year"
+                      onClick={() => {
+                        const d = new Date(new Date().getFullYear(), 0, 1);
+                        handleSaveCustomStartDate(d.toISOString().slice(0, 10));
+                      }}
+                    >
+                      {language === 'es' ? 'Año Actual' : language === 'pt' ? 'Ano Atual' : 'Current Year'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 text-xs"
+                      data-testid="cashflow-preset-fiscal-year"
+                      title={language === 'es' ? 'Año fiscal cerrado anterior (Ene 1 año anterior)' : language === 'pt' ? 'Ano fiscal anterior fechado' : 'Previous closed fiscal year'}
+                      onClick={() => {
+                        const d = new Date(new Date().getFullYear() - 1, 0, 1);
+                        handleSaveCustomStartDate(d.toISOString().slice(0, 10));
+                      }}
+                    >
+                      {language === 'es' ? 'Año Fiscal' : language === 'pt' ? 'Ano Fiscal' : 'Fiscal Year'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 text-xs"
+                      data-testid="cashflow-preset-last-6-months"
+                      onClick={() => {
+                        const today = new Date();
+                        const d = new Date(today.getFullYear(), today.getMonth() - 6, 1);
+                        handleSaveCustomStartDate(d.toISOString().slice(0, 10));
+                      }}
+                    >
+                      {language === 'es' ? 'Últimos 6 meses' : language === 'pt' ? 'Últimos 6 meses' : 'Last 6 months'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 text-xs"
+                      data-testid="cashflow-preset-last-12-months"
+                      onClick={() => {
+                        const today = new Date();
+                        const d = new Date(today.getFullYear() - 1, today.getMonth(), 1);
+                        handleSaveCustomStartDate(d.toISOString().slice(0, 10));
+                      }}
+                    >
+                      {language === 'es' ? 'Últimos 12 meses' : language === 'pt' ? 'Últimos 12 meses' : 'Last 12 months'}
+                    </Button>
+                  </div>
+                  
                   <div className="flex gap-2">
                     <Input
                       id="cashflow-start-date"
