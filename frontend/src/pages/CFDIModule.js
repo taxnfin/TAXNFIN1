@@ -1041,23 +1041,31 @@ const CFDIModule = () => {
                 filteredCfdis.map((cfdi) => {
                   const moneda = cfdi.moneda || 'MXN';
                   // Compute the amount to show in the "TOTAL (viewCurrency)" column.
-                  // We mirror the logic used by excelExport.js so on-screen and
-                  // exported numbers always agree:
+                  // Mirrors the logic in excelExport.js so on-screen and exported numbers always agree:
                   //   1. Same currency as view → show `total` directly.
-                  //   2. Foreign → MXN: prefer the precomputed `total_mxn`
-                  //      (uses the per-row exchange rate from the day of issuance).
-                  //   3. Otherwise: derive `total × tipo_cambio` per row.
-                  //   4. Last resort: convertAmount with the global rates table.
+                  //   2. Foreign → MXN: prefer the precomputed `total_mxn` (per-row TC of issuance).
+                  //   3. Foreign → other foreign: route via MXN using the row's TC, then divide by global rate.
+                  //   4. MXN → foreign: divide by global rate (CFDI's own tc is 1.0, so unusable).
+                  //   5. Last resort: convertAmount with the global rates table.
                   const tc = cfdi.tipo_cambio || 0;
                   let displayTotal;
                   if (moneda === viewCurrency) {
                     displayTotal = cfdi.total || 0;
                   } else if (viewCurrency === 'MXN' && cfdi.total_mxn != null) {
                     displayTotal = cfdi.total_mxn;
-                  } else if (viewCurrency === 'MXN' && moneda !== 'MXN' && tc > 0) {
-                    displayTotal = (cfdi.total || 0) * tc;
-                  } else if (moneda === 'MXN' && viewCurrency !== 'MXN' && tc > 0) {
-                    displayTotal = (cfdi.total || 0) / tc;
+                  } else if (moneda !== 'MXN' && tc > 1.01) {
+                    // Foreign source — route via MXN using the row's exact TC
+                    const inMXN = (cfdi.total || 0) * tc;
+                    if (viewCurrency === 'MXN') {
+                      displayTotal = inMXN;
+                    } else {
+                      const targetRate = fxRates[viewCurrency] || 1;
+                      displayTotal = targetRate > 0 ? inMXN / targetRate : inMXN;
+                    }
+                  } else if (moneda === 'MXN' && viewCurrency !== 'MXN') {
+                    // MXN -> foreign (use global rates table)
+                    const targetRate = fxRates[viewCurrency] || 1;
+                    displayTotal = targetRate > 0 ? (cfdi.total || 0) / targetRate : (cfdi.total || 0);
                   } else {
                     displayTotal = convertAmount(cfdi.total || 0, moneda);
                   }

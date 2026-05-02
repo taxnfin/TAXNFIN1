@@ -77,9 +77,6 @@ async def get_cfdi_summary(
             totals_converted[tipo] += total
         elif moneda_vista == 'MXN' and precomputed_mxn is not None:
             totals_converted[tipo] += float(precomputed_mxn)
-        elif moneda == 'MXN' and precomputed_mxn is None and cfdi_tc and cfdi_tc > 0:
-            # MXN -> foreign: total / row's own rate
-            totals_converted[tipo] += total / cfdi_tc
         elif moneda != 'MXN' and cfdi_tc and cfdi_tc > 0:
             # foreign -> view currency, going via MXN with the row's own rate
             in_mxn = total * cfdi_tc
@@ -90,7 +87,7 @@ async def get_cfdi_summary(
             else:
                 totals_converted[tipo] += in_mxn
         elif moneda in rates and moneda_vista in rates:
-            # Fallback to company-level rates
+            # MXN -> foreign, or fallback to company-level rates table
             if moneda == 'MXN':
                 converted = total / rates.get(moneda_vista, 1)
             elif moneda_vista == 'MXN':

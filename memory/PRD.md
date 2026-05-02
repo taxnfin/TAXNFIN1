@@ -2146,3 +2146,19 @@ All P0 features implemented and tested:
   3. Si no → `total × tipo_cambio` por fila.
   4. Fallback final → `convertAmount` con tasas globales.
 - **Verificado E2E**: USD $448.92 @ 18.916 ahora muestra **$8,491.66 MXN** en la columna ✓.
+
+
+### Phase 42: Multi-currency view fully wired (cards + tabla + Excel) ✅
+- **Date**: February 2026
+- El selector "Ver en: MXN/USD/EUR/GBP/CAD" ahora reactiva todo el módulo CFDI/SAT en tiempo real:
+  - **Cards de Resumen**: ya estaban (llamada al backend `/cfdi/summary?moneda_vista=X` en `useEffect([viewCurrency])`).
+  - **Tabla del Listado** (era el bug): la columna `Total ({viewCurrency})` ahora calcula con la misma lógica que el Excel:
+    1. Misma moneda → `total` directo
+    2. Foreign → MXN: usa `total_mxn` precomputado si existe (TC del día)
+    3. Foreign → otra foreign: route via MXN con TC del row, luego divide por tasa global
+    4. MXN → foreign: divide por tasa global (el `tipo_cambio` del row es 1.0, no sirve)
+- **Backend** (`routes/cfdi.py /summary`): mismo refinamiento — para CFDIs MXN nativo viendo en USD, ahora usa la tabla `rates` global en vez de `total / 1.0` (que no convertía).
+- **Verificado E2E**: cambiar selector MXN ↔ USD recalcula en vivo:
+  - MXN: $9,339,113.91 ingresos / $5,928,783.50 egresos / +$3,410,330.41 balance
+  - USD: $534,047.26 ingresos / $336,508.98 egresos / +$197,538.29 balance
+  - Las facturas USD individuales muestran su monto USD directo sin reconversión.
