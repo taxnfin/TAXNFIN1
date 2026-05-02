@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import FXValidationPanel from '@/components/FXValidationPanel';
 import { toast } from 'sonner';
 import { Plus, Trash2, RefreshCw, DollarSign, TrendingUp, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
@@ -487,6 +488,9 @@ const FXRatesModule = () => {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* FX Validation Panel — Banxico DOF audit */}
+      <FXValidationPanel />
 
       {/* Info Card */}
       <Card className="border-[#F59E0B] bg-[#FFFBEB]">

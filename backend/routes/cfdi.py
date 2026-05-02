@@ -474,3 +474,86 @@ async def sync_cfdi_payment_amounts(request: Request, current_user: Dict = Depen
         'message': f'Sincronización completada. {updated_count} CFDIs actualizados.',
         'updated_count': updated_count
     }
+
+
+@router.get("/audit/fx-validation")
+async def validate_cfdi_exchange_rates(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    fecha_desde: Optional[str] = None,
+    fecha_hasta: Optional[str] = None,
+    limit: int = Query(500, le=2000)
+):
+    """Audit per-CFDI exchange rates against the official Banxico FIX (DOF) rate
+    of the issuance day.
+    
+    Returns a list of CFDIs with deviation status:
+      - ok: |actual - official| <= 1%
+      - warning: 1% < |dev| <= 5%
+      - critical: |dev| > 5% (likely capture error, may affect SAT deductibility)
+    
+    Requires BANXICO_TOKEN env var. If absent, returns an explanatory error.
+    """
+    from services.banxico_fx import get_official_rate, evaluate_deviation, _token
+    
+    if not _token():
+        return {
+            'success': False,
+            'error': 'banxico_token_missing',
+            'message': (
+                'BANXICO_TOKEN no está configurado. Solicita el token gratuito en '
+                'https://www.banxico.org.mx/SieAPIRest/service/v1/token y agrégalo '
+                'al archivo backend/.env como BANXICO_TOKEN=tu_token_de_64_caracteres'
+            )
+        }
+    
+    company_id = await get_active_company_id(request, current_user)
+    query = {'company_id': company_id, 'moneda': {'$ne': 'MXN'}}
+    if fecha_desde:
+        query.setdefault('fecha_emision', {})['$gte'] = fecha_desde
+    if fecha_hasta:
+        query.setdefault('fecha_emision', {})['$lte'] = fecha_hasta + 'T23:59:59'
+    
+    cursor = db.cfdis.find(query, {'_id': 0}).limit(limit)
+    
+    results = []
+    summary_counts = {'ok': 0, 'warning': 0, 'critical': 0, 'unknown': 0}
+    
+    async for c in cursor:
+        moneda = (c.get('moneda') or '').upper()
+        actual = float(c.get('tipo_cambio') or 0)
+        if actual <= 0 or moneda == 'MXN':
+            continue
+        
+        fecha_iso = (c.get('fecha_emision') or '')[:10]
+        if not fecha_iso:
+            continue
+        
+        official = await get_official_rate(moneda, fecha_iso)
+        if official is None:
+            evaluation = {'status': 'unknown', 'deviation_pct': None,
+                          'official_rate': None, 'actual_rate': round(actual, 4)}
+        else:
+            evaluation = evaluate_deviation(actual, official)
+        
+        summary_counts[evaluation['status']] = summary_counts.get(evaluation['status'], 0) + 1
+        
+        results.append({
+            'cfdi_id': c.get('id'),
+            'uuid': c.get('uuid'),
+            'fecha_emision': fecha_iso,
+            'moneda': moneda,
+            'folio': c.get('folio_alegra') or c.get('referencia') or '',
+            'emisor': c.get('emisor_nombre') or c.get('emisor_rfc') or '',
+            'receptor': c.get('receptor_nombre') or c.get('receptor_rfc') or '',
+            'total': c.get('total'),
+            **evaluation,
+        })
+    
+    return {
+        'success': True,
+        'count': len(results),
+        'summary': summary_counts,
+        'thresholds': {'ok_max_pct': 1.0, 'warning_max_pct': 5.0},
+        'results': results,
+    }

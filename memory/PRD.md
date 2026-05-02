@@ -2162,3 +2162,27 @@ All P0 features implemented and tested:
   - MXN: $9,339,113.91 ingresos / $5,928,783.50 egresos / +$3,410,330.41 balance
   - USD: $534,047.26 ingresos / $336,508.98 egresos / +$197,538.29 balance
   - Las facturas USD individuales muestran su monto USD directo sin reconversión.
+
+
+### Phase 43: Multi-currency Reporte Board + Auditoría Banxico DOF ✅
+- **Date**: February 2026
+
+**Tarea 1 — Selector "Ver en" en Reporte Board:**
+- Nuevo state `viewCurrency` + `fxRates` cargado desde `/fx-rates/latest`.
+- `formatCurrency(value)` ahora convierte de MXN a la moneda seleccionada con `Intl.NumberFormat`.
+- Nuevo selector ($ MXN / USD / EUR / GBP / CAD) en el header (`data-testid=board-currency-selector`).
+- El PDF exporta con un badge "Cifras expresadas en {currency}" debajo del título (acento dorado).
+- Verificado E2E: cambio de MXN a USD en vivo recalcula KPIs (Ingresos, Utilidad Bruta, EBITDA, Activo, Pasivo, Capital).
+
+**Tarea 2 — Auditoría TC vs Banxico DOF:**
+- **Backend**:
+  - Nuevo servicio `services/banxico_fx.py`: cliente HTTP del SIE de Banxico (series SF43718 USD, SF46410 EUR, SF46406 GBP, SF60634 CAD). Cache 12h. Token vía env var `BANXICO_TOKEN`.
+  - Nuevo endpoint `GET /api/cfdi/audit/fx-validation`: para cada CFDI no-MXN, compara `tipo_cambio` vs el FIX oficial del día de emisión y devuelve status `ok|warning|critical|unknown` (umbrales 1% y 5%).
+  - Banxico API espera fechas `YYYY-MM-DD/YYYY-MM-DD` y token en query string (no header — mi implementación inicial usaba `Bmx-Token` header pero retornaba 302/404).
+- **Frontend**:
+  - Nuevo componente `components/FXValidationPanel.js` con 4 tarjetas (OK / Revisar / Crítico / Sin DOF) clickeables como filtros y tabla de resultados con badge por estado.
+  - Insertado al final de la página "Tipos de Cambio".
+- Verificado E2E con 132 CFDIs: 52 OK, 36 warning, 44 critical, 0 unknown.
+
+**Variables de entorno nuevas:**
+- `BANXICO_TOKEN`: token gratuito de https://www.banxico.org.mx/SieAPIRest/service/v1/token. Sin él el endpoint devuelve `success=false` con instrucciones.

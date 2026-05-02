@@ -78,6 +78,13 @@ const BoardReport = () => {
   const [periodsIncluded, setPeriodsIncluded] = useState([]);
   const [aiAnalysis, setAiAnalysis] = useState(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  
+  // Multi-currency view selector. Mirrors the CFDI module — values across the
+  // entire Board Report (cards, tables, charts and PDF) are displayed in this
+  // currency, converted on-the-fly using the company's FX rates.
+  const [viewCurrency, setViewCurrency] = useState('MXN');
+  const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.50, EUR: 19.00, GBP: 22.00, CAD: 12.50 });
+  
   const prevLanguageRef = useRef(language);
   
   // PDF Configuration State
@@ -116,14 +123,18 @@ const BoardReport = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [companyRes, periodsRes, trendsRes, availablePeriodsRes] = await Promise.all([
+      const [companyRes, periodsRes, trendsRes, availablePeriodsRes, ratesRes] = await Promise.all([
         api.get('/companies'),
         api.get('/financial-statements/periods'),
         api.get('/financial-statements/trends'),
-        api.get('/financial-statements/available-periods')
+        api.get('/financial-statements/available-periods'),
+        api.get('/fx-rates/latest').catch(() => ({ data: { rates: null } }))
       ]);
       
       if (companyRes.data?.length > 0) setCompany(companyRes.data[0]);
+      if (ratesRes?.data?.rates) {
+        setFxRates(prev => ({ ...prev, ...ratesRes.data.rates }));
+      }
       setPeriods(periodsRes.data || []);
       setTrendsData(trendsRes.data?.data || []);
       setAvailablePeriods(availablePeriodsRes.data || {
@@ -230,9 +241,30 @@ const BoardReport = () => {
     }
   };
 
+  // Convert a value originally stored in MXN to the currently-selected
+  // viewCurrency using the global FX rates table.
+  const convertFromMXN = (mxnValue) => {
+    if (mxnValue === undefined || mxnValue === null || isNaN(mxnValue)) return 0;
+    if (viewCurrency === 'MXN') return mxnValue;
+    const rate = fxRates[viewCurrency] || 1;
+    return rate > 0 ? mxnValue / rate : mxnValue;
+  };
+
   const formatCurrency = (value) => {
     if (value === undefined || value === null) return '$0';
-    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
+    const converted = convertFromMXN(value);
+    // Use Intl with the active viewCurrency. Fall back to MXN/USD pattern when
+    // the currency code isn't widely supported by the user's locale.
+    try {
+      return new Intl.NumberFormat('es-MX', {
+        style: 'currency',
+        currency: viewCurrency,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(converted);
+    } catch {
+      return `$${Math.round(converted).toLocaleString('es-MX')} ${viewCurrency}`;
+    }
   };
 
   const formatPercent = (value) => {
@@ -983,6 +1015,19 @@ const BoardReport = () => {
       const periodValueWidth = pdf.getTextWidth(selectedPeriod);
       pdf.text(selectedPeriod, (pageWidth - periodValueWidth) / 2, y + 23);
       
+      // Currency badge — small note under the period to make it explicit that
+      // every monetary figure in this PDF has been converted to viewCurrency.
+      pdf.setFontSize(smallSize + 1);
+      pdf.setFont(fontFamily, 'normal');
+      pdf.setTextColor(212, 175, 55); // gold accent
+      const currencyLabel = (
+        language === 'es' ? `Cifras expresadas en ${viewCurrency}` :
+        language === 'pt' ? `Valores expressos em ${viewCurrency}` :
+        `Figures expressed in ${viewCurrency}`
+      );
+      const currencyLabelWidth = pdf.getTextWidth(currencyLabel);
+      pdf.text(currencyLabel, (pageWidth - currencyLabelWidth) / 2, y + 33);
+      
       y += 50;
       
       // Periods included (if aggregated)
@@ -1596,6 +1641,19 @@ const BoardReport = () => {
                     <SelectItem key={lang.code} value={lang.code}>
                       {lang.flag} {lang.name}
                     </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              {/* View Currency Selector */}
+              <Select value={viewCurrency} onValueChange={setViewCurrency}>
+                <SelectTrigger className="w-32 bg-white/10 border-white/20 text-white" data-testid="board-currency-selector">
+                  <DollarSign className="w-4 h-4 mr-2" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {['MXN', 'USD', 'EUR', 'GBP', 'CAD'].map(c => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
