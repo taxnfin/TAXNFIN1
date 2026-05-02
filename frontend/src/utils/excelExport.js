@@ -119,8 +119,21 @@ export const exportCFDIs = (cfdis, categories) => {
   const data = cfdis.map(cfdi => {
     const moneda = cfdi.moneda || 'MXN';
     const tipoCambio = cfdi.tipo_cambio || 1;
-    const totalMonedaOriginal = cfdi.total_moneda_original || cfdi.total || 0;
-    const totalMXN = cfdi.total || 0;
+    // `total` is stored in the ORIGINAL currency (USD/EUR/MXN).
+    // For MXN: total_moneda_original may be missing — fall back to total.
+    const totalMonedaOriginal = cfdi.total_moneda_original ?? cfdi.total ?? 0;
+    // Compute the MXN equivalent. Prefer the precomputed `total_mxn` written by
+    // the Alegra sync; otherwise derive it from `total * tipo_cambio`.
+    const totalMXN = cfdi.total_mxn != null
+      ? cfdi.total_mxn
+      : (moneda === 'MXN' ? (cfdi.total || 0) : (cfdi.total || 0) * tipoCambio);
+    
+    // Subtotal/IVA in the row's original currency
+    const subtotalOrig = cfdi.subtotal || 0;
+    const ivaOrig = cfdi.iva_trasladado || cfdi.iva || 0;
+    // Convert to MXN for the consolidated columns
+    const subtotalMXN = moneda === 'MXN' ? subtotalOrig : subtotalOrig * tipoCambio;
+    const ivaMXN = moneda === 'MXN' ? ivaOrig : ivaOrig * tipoCambio;
     
     return {
       'Fecha Emisión': cfdi.fecha_emision ? format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy') : '',
@@ -137,9 +150,9 @@ export const exportCFDIs = (cfdis, categories) => {
       'Moneda': moneda,
       'Total Moneda Original': moneda !== 'MXN' ? totalMonedaOriginal : '',
       'Tipo de Cambio': moneda !== 'MXN' ? tipoCambio : '',
-      'Total MXN': totalMXN,
-      'Subtotal MXN': cfdi.subtotal || 0,
-      'IVA MXN': cfdi.iva_trasladado || cfdi.iva || 0,
+      'Total MXN': Math.round(totalMXN * 100) / 100,
+      'Subtotal MXN': Math.round(subtotalMXN * 100) / 100,
+      'IVA MXN': Math.round(ivaMXN * 100) / 100,
       'Método Pago': cfdi.metodo_pago || '',
       'Forma Pago': cfdi.forma_pago || '',
       'Uso CFDI': cfdi.uso_cfdi || '',

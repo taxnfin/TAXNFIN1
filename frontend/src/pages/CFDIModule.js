@@ -47,6 +47,9 @@ const CFDIModule = () => {
   const [viewCurrency, setViewCurrency] = useState('MXN');
   const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.50, EUR: 19.00 });
   const [summary, setSummary] = useState(null);
+  const [fixingTotals, setFixingTotals] = useState(false);
+  const [fixTotalsDialogOpen, setFixTotalsDialogOpen] = useState(false);
+  const [fixTotalsPreview, setFixTotalsPreview] = useState(null);
   const [categorizeDialogOpen, setCategorizeDialogOpen] = useState(false);
   const [cfdiToCategorize, setCfdiToCategorize] = useState(null);
   const [categorizeData, setCategorizeData] = useState({ category_id: '', subcategory_id: '', customer_id: '', vendor_id: '' });
@@ -437,6 +440,35 @@ const CFDIModule = () => {
     }
   };
 
+  const handlePreviewFixTotals = async () => {
+    setFixingTotals(true);
+    try {
+      const response = await api.post('/alegra/fix-mxn-totals?dry_run=true');
+      setFixTotalsPreview(response.data);
+      setFixTotalsDialogOpen(true);
+    } catch (error) {
+      toast.error('Error al previsualizar la reparación');
+    } finally {
+      setFixingTotals(false);
+    }
+  };
+
+  const handleExecuteFixTotals = async () => {
+    setFixingTotals(true);
+    try {
+      const response = await api.post('/alegra/fix-mxn-totals?dry_run=false');
+      const data = response.data;
+      toast.success(data.message || `Se corrigieron ${data.fixed} CFDIs`);
+      setFixTotalsDialogOpen(false);
+      setFixTotalsPreview(null);
+      loadData();
+    } catch (error) {
+      toast.error('Error al ejecutar la reparación');
+    } finally {
+      setFixingTotals(false);
+    }
+  };
+
   const handleAiCategorizeAll = async () => {
     const uncategorizedCount = cfdis.filter(c => !c.category_id).length;
     if (uncategorizedCount === 0) {
@@ -638,6 +670,19 @@ const CFDIModule = () => {
           <p className="text-[#64748B]">Gestión de facturas electrónicas</p>
         </div>
         <div className="flex gap-2 items-center">
+          {/* Fix Alegra MXN Totals Button (migration tool) */}
+          <Button
+            variant="outline"
+            className="gap-2 border-amber-500 text-amber-700 hover:bg-amber-50"
+            onClick={handlePreviewFixTotals}
+            disabled={fixingTotals}
+            data-testid="fix-alegra-totals-button"
+            title="Repara CFDIs de Alegra cuyo total fue almacenado en MXN cuando debía estar en moneda original"
+          >
+            {fixingTotals ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+            Reparar Totales Alegra
+          </Button>
+          
           {/* AI Categorize Button */}
           <Button
             variant="outline"
@@ -1286,6 +1331,83 @@ const CFDIModule = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Fix Alegra Totals Preview Dialog */}
+      <AlertDialog open={fixTotalsDialogOpen} onOpenChange={setFixTotalsDialogOpen}>
+        <AlertDialogContent className="max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-amber-600 flex items-center gap-2">
+              <RefreshCw size={20} />
+              Reparar Totales de CFDIs Alegra
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 pt-2">
+                {fixTotalsPreview && (
+                  <>
+                    <div className="bg-amber-50 border border-amber-200 rounded p-3 text-sm">
+                      <p className="font-semibold text-amber-900 mb-1">Resumen del análisis:</p>
+                      <ul className="text-amber-800 space-y-1">
+                        <li>• CFDIs examinados: <strong>{fixTotalsPreview.examined}</strong></li>
+                        <li>• CFDIs a corregir: <strong className="text-amber-700">{fixTotalsPreview.fixed}</strong></li>
+                        <li>• CFDIs MXN nativos (sin cambios): {fixTotalsPreview.skipped_mxn_native}</li>
+                        <li>• CFDIs ya correctos: {fixTotalsPreview.skipped_already_ok}</li>
+                      </ul>
+                    </div>
+                    {fixTotalsPreview.fixed > 0 && fixTotalsPreview.samples_before?.length > 0 && (
+                      <div className="text-xs">
+                        <p className="font-semibold mb-2 text-gray-700">Ejemplos de cambios:</p>
+                        <div className="border rounded overflow-hidden">
+                          <table className="w-full text-xs">
+                            <thead className="bg-gray-100">
+                              <tr>
+                                <th className="p-2 text-left">Moneda</th>
+                                <th className="p-2 text-right">Total Antes</th>
+                                <th className="p-2 text-right">Total Después</th>
+                                <th className="p-2 text-right">TC</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {fixTotalsPreview.samples_before.map((s, i) => (
+                                <tr key={i} className="border-t">
+                                  <td className="p-2">{s.moneda}</td>
+                                  <td className="p-2 text-right text-red-600">${s.total_was?.toLocaleString()}</td>
+                                  <td className="p-2 text-right text-green-600">${s.total_will_be?.toLocaleString()}</td>
+                                  <td className="p-2 text-right">{s.tipo_cambio}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                    {fixTotalsPreview.fixed === 0 && (
+                      <p className="text-green-700 font-medium">¡Todos los CFDIs ya están correctos!</p>
+                    )}
+                    <p className="text-xs text-gray-500">
+                      Esta reparación corrige CFDIs sincronizados desde Alegra cuyo campo
+                      <code className="mx-1 px-1 bg-gray-100 rounded">total</code>
+                      fue almacenado en MXN ya convertido en lugar de la moneda original. Es seguro re-ejecutarla.
+                    </p>
+                  </>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={fixingTotals} data-testid="fix-totals-cancel">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleExecuteFixTotals(); }}
+              disabled={fixingTotals || !fixTotalsPreview || fixTotalsPreview.fixed === 0}
+              className="bg-amber-600 hover:bg-amber-700"
+              data-testid="fix-totals-confirm"
+            >
+              {fixingTotals ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+              {fixTotalsPreview?.fixed > 0 ? `Reparar ${fixTotalsPreview.fixed} CFDIs` : 'Sin cambios'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
 
       {/* Link XML Dialog */}
       <Dialog open={linkXmlDialog.open} onOpenChange={(open) => setLinkXmlDialog({ open, cfdi: open ? linkXmlDialog.cfdi : null })}>

@@ -2116,3 +2116,21 @@ All P0 features implemented and tested:
 1. Llamar `POST /api/alegra/fix-mxn-totals?dry_run=true` para ver qué se arreglará.
 2. Llamar `POST /api/alegra/fix-mxn-totals?dry_run=false` para ejecutar la migración.
 3. Re-sincronizar Alegra con el rango deseado (`POST /api/alegra/sync/invoices?date_from=2026-01-01&date_to=2026-01-31`) — ya filtra por fecha de emisión.
+
+
+### Phase 40: Bugfix Excel export + summary endpoint + UI Reparar Totales ✅
+- **Date**: February 2026
+- **Síntoma residual reportado**: Después de Phase 39, el Excel exportado seguía mostrando `Total MXN = Total Original` (sin convertir) y el summary seguía inflando.
+- **Causas raíz adicionales**:
+  1. `/app/frontend/src/utils/excelExport.js` mapeaba `cfdi.total` directamente a la columna `Total MXN`. Ahora que `total` está en moneda original, la columna mostraba USD sin convertir.
+  2. `/app/backend/routes/cfdi.py` `/summary` no consideraba el campo nuevo `total_mxn` ni el `tipo_cambio` por fila — usaba solo la tasa global de la BD.
+- **Fix**:
+  1. **Excel export**: ahora calcula `Total MXN = total_mxn ?? (total × tipo_cambio)`, y `Subtotal MXN`/`IVA MXN` también se convierten cuando la moneda no es MXN.
+  2. **Summary endpoint**: prioriza `total_mxn` precomputado por el sync; fallback a `total × tipo_cambio` por fila; último recurso la tasa global. Esto permite usar la tasa exacta del día de emisión de cada factura (consistente con el Excel).
+  3. **UI**: Botón ámbar **"Reparar Totales Alegra"** en el header de Módulo CFDI/SAT (`data-testid=fix-alegra-totals-button`). Al hacer click muestra preview con conteo de CFDIs a corregir y 3 ejemplos antes/después. Botón "Reparar X CFDIs" ejecuta la migración.
+
+**Verificación E2E (preview con admin@demo.com):**
+- Migración corrigió 132 CFDIs USD/EUR de 327 examinados.
+- `/cfdi/summary` antes: Ingresos $123,871,858 → después: **$9,339,113.91** ✓
+- Balance antes: $52,853,129 → después: **+$3,410,330.41** ✓
+- Botón "Reparar Totales Alegra" abre diálogo, muestra preview, ejecuta y refresca.

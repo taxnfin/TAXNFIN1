@@ -59,21 +59,43 @@ async def get_cfdi_summary(
         moneda = c.get('moneda', 'MXN') or 'MXN'
         tipo = 'ingresos' if c.get('tipo_cfdi') == 'ingreso' else 'egresos'
         
-        # Sum by original currency
+        # Sum by ORIGINAL currency (always uses `total` which lives in moneda's currency)
         if moneda not in totals_by_currency[tipo]:
             totals_by_currency[tipo][moneda] = 0
         totals_by_currency[tipo][moneda] += total
         
-        # Convert to view currency
+        # Convert to view currency.
+        # 1) Prefer the precomputed `total_mxn` (written by Alegra sync) when
+        #    converting to MXN — uses the exact rate at the time of issuance
+        #    rather than the latest cached rate.
+        # 2) Fallback: derive from the row's `tipo_cambio`.
+        # 3) Last resort: use the company-level rates table.
+        cfdi_tc = c.get('tipo_cambio') or 0
+        precomputed_mxn = c.get('total_mxn')
+        
         if moneda == moneda_vista:
             totals_converted[tipo] += total
+        elif moneda_vista == 'MXN' and precomputed_mxn is not None:
+            totals_converted[tipo] += float(precomputed_mxn)
+        elif moneda == 'MXN' and precomputed_mxn is None and cfdi_tc and cfdi_tc > 0:
+            # MXN -> foreign: total / row's own rate
+            totals_converted[tipo] += total / cfdi_tc
+        elif moneda != 'MXN' and cfdi_tc and cfdi_tc > 0:
+            # foreign -> view currency, going via MXN with the row's own rate
+            in_mxn = total * cfdi_tc
+            if moneda_vista == 'MXN':
+                totals_converted[tipo] += in_mxn
+            elif moneda_vista in rates and rates[moneda_vista]:
+                totals_converted[tipo] += in_mxn / rates[moneda_vista]
+            else:
+                totals_converted[tipo] += in_mxn
         elif moneda in rates and moneda_vista in rates:
+            # Fallback to company-level rates
             if moneda == 'MXN':
                 converted = total / rates.get(moneda_vista, 1)
             elif moneda_vista == 'MXN':
                 converted = total * rates.get(moneda, 1)
             else:
-                # Cross rate
                 to_mxn = total * rates.get(moneda, 1)
                 converted = to_mxn / rates.get(moneda_vista, 1)
             totals_converted[tipo] += converted
