@@ -1040,12 +1040,27 @@ const CFDIModule = () => {
               ) : (
                 filteredCfdis.map((cfdi) => {
                   const moneda = cfdi.moneda || 'MXN';
-                  // If cfdi.total is already in MXN (from Alegra or SAT), don't convert again
-                  // Only convert if the source doesn't pre-convert (e.g., manual entries)
-                  // Alegra CFDIs have total already in MXN, so we use it directly
-                  const displayTotal = cfdi.source === 'alegra' || cfdi.source === 'alegra+xml' 
-                    ? cfdi.total  // Already in MXN from backend
-                    : convertAmount(cfdi.total, moneda);  // Convert if needed
+                  // Compute the amount to show in the "TOTAL (viewCurrency)" column.
+                  // We mirror the logic used by excelExport.js so on-screen and
+                  // exported numbers always agree:
+                  //   1. Same currency as view → show `total` directly.
+                  //   2. Foreign → MXN: prefer the precomputed `total_mxn`
+                  //      (uses the per-row exchange rate from the day of issuance).
+                  //   3. Otherwise: derive `total × tipo_cambio` per row.
+                  //   4. Last resort: convertAmount with the global rates table.
+                  const tc = cfdi.tipo_cambio || 0;
+                  let displayTotal;
+                  if (moneda === viewCurrency) {
+                    displayTotal = cfdi.total || 0;
+                  } else if (viewCurrency === 'MXN' && cfdi.total_mxn != null) {
+                    displayTotal = cfdi.total_mxn;
+                  } else if (viewCurrency === 'MXN' && moneda !== 'MXN' && tc > 0) {
+                    displayTotal = (cfdi.total || 0) * tc;
+                  } else if (moneda === 'MXN' && viewCurrency !== 'MXN' && tc > 0) {
+                    displayTotal = (cfdi.total || 0) / tc;
+                  } else {
+                    displayTotal = convertAmount(cfdi.total || 0, moneda);
+                  }
                   const reconciliationStatus = cfdi.estado_conciliacion || 'pendiente';
                   const ReconciliationIcon = RECONCILIATION_STATUS[reconciliationStatus]?.icon || Clock;
                   

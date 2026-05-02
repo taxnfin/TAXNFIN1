@@ -2134,3 +2134,15 @@ All P0 features implemented and tested:
 - `/cfdi/summary` antes: Ingresos $123,871,858 → después: **$9,339,113.91** ✓
 - Balance antes: $52,853,129 → después: **+$3,410,330.41** ✓
 - Botón "Reparar Totales Alegra" abre diálogo, muestra preview, ejecuta y refresca.
+
+
+### Phase 41: Fix display de tabla CFDIs con tipo de cambio por fila ✅
+- **Date**: February 2026
+- **Síntoma**: La columna "TOTAL (MXN)" del listado mostraba `$448.92` (USD sin convertir) cuando debería mostrar `$8,491.66 MXN` (448.92 × 18.916).
+- **Causa raíz** (`pages/CFDIModule.js` línea 1046): código legacy que decía "Alegra ya está en MXN" — verdadero antes de Phase 39, falso después. Devolvía `cfdi.total` (ahora en moneda original) directamente.
+- **Fix**: Misma lógica que `excelExport.js` (idéntica) → mismo monto en pantalla y en Excel:
+  1. Si `moneda === viewCurrency` → `total` directo.
+  2. Si convirtiendo a MXN y existe `total_mxn` precomputado → usarlo (TC del día de emisión).
+  3. Si no → `total × tipo_cambio` por fila.
+  4. Fallback final → `convertAmount` con tasas globales.
+- **Verificado E2E**: USD $448.92 @ 18.916 ahora muestra **$8,491.66 MXN** en la columna ✓.
