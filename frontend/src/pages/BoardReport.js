@@ -25,6 +25,7 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import jsPDF from 'jspdf';
 import { translations, languages } from '@/utils/boardReportTranslations';
+import ResumenEjecutivoIA from '@/components/ResumenEjecutivoIA';
 
 // Sankey Node Component
 const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => {
@@ -89,6 +90,8 @@ const BoardReport = () => {
   
   // PDF Configuration State
   const [pdfConfigOpen, setPdfConfigOpen] = useState(false);
+  const [resumenModalOpen, setResumenModalOpen] = useState(false);
+  const [generatingMejorado, setGeneratingMejorado] = useState(false);
   const [pdfConfig, setPdfConfig] = useState({
     fontFamily: 'helvetica',
     titleSize: 28,
@@ -400,6 +403,109 @@ const BoardReport = () => {
       { name: t.equity, value: bal.capital_contable || 0, fill: '#22C55E' },
     ];
   }, [currentMetrics, t]);
+
+  // Descargar PDF Mejorado desde Railway (generado con Python/ReportLab)
+  const downloadPDFMejorado = async () => {
+    if (!currentMetrics || !currentMetrics.income_statement) {
+      toast.error('No hay datos financieros para el período seleccionado');
+      return;
+    }
+    setGeneratingMejorado(true);
+    toast.info('Generando PDF Mejorado con análisis profundo...');
+    try {
+      const inc = currentMetrics.income_statement || {};
+      const bal = currentMetrics.balance_sheet || {};
+      const met = currentMetrics.metrics || {};
+      const payload = {
+        empresa: company?.nombre || 'Mi Empresa',
+        rfc: company?.rfc || '',
+        periodo: selectedPeriod,
+        ingresos: inc.ingresos || 0,
+        costo_ventas: inc.costo_ventas || 0,
+        utilidad_bruta: inc.utilidad_bruta || 0,
+        gastos_op: (inc.gastos_venta || 0) + (inc.gastos_administracion || 0) + (inc.gastos_generales || 0),
+        ebitda: inc.ebitda || inc.utilidad_operativa || 0,
+        utilidad_neta: inc.utilidad_neta || 0,
+        activo_total: bal.activo_total || 0,
+        activo_circ: bal.activo_circulante || 0,
+        activo_fijo: bal.activo_fijo || 0,
+        pasivo_total: bal.pasivo_total || 0,
+        pasivo_circ: bal.pasivo_circulante || 0,
+        pasivo_lp: bal.pasivo_largo_plazo || 0,
+        capital: bal.capital_contable || 0,
+        margen_bruto: met.margins?.gross_margin?.value || 0,
+        margen_ebitda: met.margins?.ebitda_margin?.value || 0,
+        margen_op: met.margins?.operating_margin?.value || 0,
+        margen_neto: met.margins?.net_margin?.value || 0,
+        roic: met.returns?.roic?.value || 0,
+        roe: met.returns?.roe?.value || 0,
+        roa: met.returns?.roa?.value || 0,
+        roce: met.returns?.roce?.value || 0,
+        razon_circ: met.liquidity?.current_ratio?.value || 0,
+        prueba_acida: met.liquidity?.quick_ratio?.value || 0,
+        razon_ef: met.liquidity?.cash_ratio?.value || 0,
+        capital_trabajo: met.liquidity?.working_capital?.value || 0,
+        cash_runway: met.liquidity?.cash_runway?.value || 0,
+        dso: met.efficiency?.dso?.value || 0,
+        dpo: met.efficiency?.dpo?.value || 0,
+        dio: met.efficiency?.dio?.value || 0,
+        ccc: met.efficiency?.cash_conversion_cycle?.value || 0,
+        deuda_capital: met.solvency?.debt_to_equity?.value || 0,
+        deuda_activos: met.solvency?.debt_to_assets?.value || 0,
+        deuda_ebitda: met.solvency?.debt_to_ebitda?.value || 0,
+        cobertura: met.solvency?.interest_coverage?.value || 0,
+        apalancamiento: met.solvency?.financial_leverage?.value || 0,
+      };
+      const response = await api.post('/reports/pdf-mejorado', payload, { responseType: 'blob' });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Reporte_Ejecutivo_${company?.nombre || 'Empresa'}_${selectedPeriod}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast.success('PDF Mejorado descargado correctamente');
+    } catch (error) {
+      console.error('Error generando PDF Mejorado:', error);
+      toast.error('Error al generar el PDF Mejorado');
+    } finally {
+      setGeneratingMejorado(false);
+    }
+  };
+
+  // Datos para ResumenEjecutivoIA
+  const resumenFinancialData = currentMetrics ? (() => {
+    const inc = currentMetrics.income_statement || {};
+    const bal = currentMetrics.balance_sheet || {};
+    const met = currentMetrics.metrics || {};
+    return {
+      empresa: company?.nombre || 'Mi Empresa',
+      periodo: selectedPeriod,
+      rfc: company?.rfc || '',
+      ingresos: inc.ingresos || 0,
+      costoVentas: inc.costo_ventas || 0,
+      utilidadBruta: inc.utilidad_bruta || 0,
+      gastosOp: (inc.gastos_venta || 0) + (inc.gastos_administracion || 0) + (inc.gastos_generales || 0),
+      ebitda: inc.ebitda || inc.utilidad_operativa || 0,
+      utilidadNeta: inc.utilidad_neta || 0,
+      activoTotal: bal.activo_total || 0,
+      activoCirc: bal.activo_circulante || 0,
+      pasivoTotal: bal.pasivo_total || 0,
+      capital: bal.capital_contable || 0,
+      margenBruto: met.margins?.gross_margin?.value || 0,
+      margenEbitda: met.margins?.ebitda_margin?.value || 0,
+      margenNeto: met.margins?.net_margin?.value || 0,
+      razonCirculante: met.liquidity?.current_ratio?.value || 0,
+      pruebaAcida: met.liquidity?.quick_ratio?.value || 0,
+      cashRunway: met.liquidity?.cash_runway?.value || 0,
+      dso: met.efficiency?.dso?.value || 0,
+      dio: met.efficiency?.dio?.value || 0,
+      dpo: met.efficiency?.dpo?.value || 0,
+      ccc: met.efficiency?.cash_conversion_cycle?.value || 0,
+    };
+  })() : null;
 
   // Export to Excel - Complete with all metrics and AI analysis
   const exportToExcel = () => {
@@ -1708,6 +1814,23 @@ const BoardReport = () => {
                 <FileText className="w-4 h-4 mr-2" />
                 {exporting ? t.exporting : 'PDF'}
               </Button>
+              <Button
+                onClick={downloadPDFMejorado}
+                disabled={generatingMejorado}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                data-testid="export-pdf-mejorado-btn"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                {generatingMejorado ? 'Generando...' : 'PDF Mejorado'}
+              </Button>
+              <Button
+                onClick={() => setResumenModalOpen(true)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                data-testid="resumen-ia-btn"
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                Reporte IA
+              </Button>
             </div>
           </div>
         </div>
@@ -2272,6 +2395,24 @@ const BoardReport = () => {
           </TabsContent>
         </Tabs>
       </div>
+    </div>
+
+      {/* ── Modal Resumen Ejecutivo IA ─────────────────────────────────────── */}
+      {resumenModalOpen && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(15,23,42,0.75)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', padding: '32px 16px' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setResumenModalOpen(false); }}
+        >
+          <div style={{ width: '100%', maxWidth: 900, position: 'relative' }}>
+            <button
+              onClick={() => setResumenModalOpen(false)}
+              style={{ position: 'absolute', top: -12, right: -12, zIndex: 10, background: '#1C2B3A', border: '2px solid #2A8A9A', borderRadius: '50%', width: 32, height: 32, color: '#fff', fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >×</button>
+            {resumenFinancialData && <ResumenEjecutivoIA financialData={resumenFinancialData} />}
+          </div>
+        </div>
+      )}
+      {/* ──────────────────────────────────────────────────────────────────────── */}
     </div>
   );
 };
