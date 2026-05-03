@@ -43,8 +43,15 @@ async def create_company(company_data: CompanyCreate, current_user: Dict = Depen
 
 @router.get("", response_model=List[Company])
 async def list_companies(current_user: Dict = Depends(get_current_user)):
-    """List all active companies"""
-    companies = await db.companies.find({'activo': True}, {'_id': 0}).to_list(1000)
+    """List companies accessible to the current user"""
+    user_company_id = current_user.get('company_id')
+    
+    # Solo devolver la empresa del usuario autenticado
+    companies = await db.companies.find(
+        {'id': user_company_id, 'activo': True}, 
+        {'_id': 0}
+    ).to_list(1000)
+    
     for c in companies:
         if isinstance(c.get('created_at'), str):
             c['created_at'] = datetime.fromisoformat(c['created_at'])
@@ -53,7 +60,13 @@ async def list_companies(current_user: Dict = Depends(get_current_user)):
 
 @router.get("/{company_id}", response_model=Company)
 async def get_company(company_id: str, current_user: Dict = Depends(get_current_user)):
-    """Get a specific company"""
+    """Get a specific company — only if it belongs to the current user"""
+    user_company_id = current_user.get('company_id')
+    
+    # Verificar que el usuario tiene acceso a esta empresa
+    if company_id != user_company_id:
+        raise HTTPException(status_code=403, detail="Sin acceso a esta empresa")
+    
     company = await db.companies.find_one({'id': company_id, 'activo': True}, {'_id': 0})
     if not company:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
@@ -65,6 +78,10 @@ async def get_company(company_id: str, current_user: Dict = Depends(get_current_
 @router.put("/{company_id}")
 async def update_company(company_id: str, data: CompanyUpdate, current_user: Dict = Depends(get_current_user)):
     """Update a company"""
+    user_company_id = current_user.get('company_id')
+    if company_id != user_company_id:
+        raise HTTPException(status_code=403, detail="Sin acceso a esta empresa")
+    
     company = await db.companies.find_one({'id': company_id, 'activo': True}, {'_id': 0})
     if not company:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
@@ -86,26 +103,25 @@ async def upload_company_logo(
     current_user: Dict = Depends(get_current_user)
 ):
     """Upload company logo as base64"""
+    user_company_id = current_user.get('company_id')
+    if company_id != user_company_id:
+        raise HTTPException(status_code=403, detail="Sin acceso a esta empresa")
+    
     company = await db.companies.find_one({'id': company_id, 'activo': True}, {'_id': 0})
     if not company:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
     
-    # Validate file type
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
     
-    # Read file and convert to base64
     contents = await file.read()
     
-    # Limit file size (max 2MB)
     if len(contents) > 2 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="El archivo no debe exceder 2MB")
     
-    # Convert to base64 data URL
     base64_data = base64.b64encode(contents).decode('utf-8')
     logo_url = f"data:{file.content_type};base64,{base64_data}"
     
-    # Update company with logo
     await db.companies.update_one({'id': company_id}, {'$set': {'logo_url': logo_url}})
     
     return {"success": True, "logo_url": logo_url}
@@ -117,6 +133,10 @@ async def delete_company_logo(
     current_user: Dict = Depends(get_current_user)
 ):
     """Delete company logo"""
+    user_company_id = current_user.get('company_id')
+    if company_id != user_company_id:
+        raise HTTPException(status_code=403, detail="Sin acceso a esta empresa")
+    
     company = await db.companies.find_one({'id': company_id, 'activo': True}, {'_id': 0})
     if not company:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
