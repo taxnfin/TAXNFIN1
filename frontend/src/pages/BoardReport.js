@@ -1802,6 +1802,7 @@ const BoardReport = () => {
                 <FileSpreadsheet className="w-4 h-4 mr-2" />
                 Excel
               </Button>
+
               <Button 
                 variant="outline" 
                 onClick={() => setPdfConfigOpen(true)} 
@@ -1810,10 +1811,6 @@ const BoardReport = () => {
               >
                 <Settings className="w-4 h-4" />
               </Button>
-              <Button onClick={exportToPDF} disabled={exporting} className="bg-blue-600 hover:bg-blue-700" data-testid="export-pdf-btn">
-                <FileText className="w-4 h-4 mr-2" />
-                {exporting ? t.exporting : 'PDF'}
-              </Button>
               <Button
                 onClick={downloadPDFMejorado}
                 disabled={generatingMejorado}
@@ -1821,7 +1818,7 @@ const BoardReport = () => {
                 data-testid="export-pdf-mejorado-btn"
               >
                 <Download className="w-4 h-4 mr-2" />
-                {generatingMejorado ? 'Generando...' : 'PDF Mejorado'}
+                {generatingMejorado ? 'Generando...' : 'Resumen Ejecutivo'}
               </Button>
               <Button
                 onClick={() => setResumenModalOpen(true)}
