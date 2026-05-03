@@ -92,6 +92,7 @@ const BoardReport = () => {
   const [pdfConfigOpen, setPdfConfigOpen] = useState(false);
   const [resumenModalOpen, setResumenModalOpen] = useState(false);
   const [generatingMejorado, setGeneratingMejorado] = useState(false);
+  const [generatingKPIs, setGeneratingKPIs] = useState(false);
   const [pdfConfig, setPdfConfig] = useState({
     fontFamily: 'helvetica',
     titleSize: 28,
@@ -506,6 +507,66 @@ const BoardReport = () => {
       ccc: met.efficiency?.cash_conversion_cycle?.value || 0,
     };
   })() : null;
+
+  const downloadKPIsPDF = async () => {
+    if (!currentMetrics || !currentMetrics.income_statement) {
+      toast.error('No hay datos financieros para el período seleccionado');
+      return;
+    }
+    setGeneratingKPIs(true);
+    toast.info('Generando Dashboard KPIs...');
+    try {
+      const inc = currentMetrics.income_statement || {};
+      const bal = currentMetrics.balance_sheet || {};
+      const met = currentMetrics.metrics || {};
+      const payload = {
+        empresa: company?.nombre || 'Mi Empresa', rfc: company?.rfc || '', periodo: selectedPeriod,
+        ingresos: inc.ingresos||0, costo_ventas: inc.costo_ventas||0,
+        utilidad_bruta: inc.utilidad_bruta||0,
+        gastos_op: (inc.gastos_venta||0)+(inc.gastos_administracion||0)+(inc.gastos_generales||0),
+        ebitda: inc.ebitda||inc.utilidad_operativa||0, utilidad_neta: inc.utilidad_neta||0,
+        activo_total: bal.activo_total||0, activo_circ: bal.activo_circulante||0,
+        activo_fijo: bal.activo_fijo||0, pasivo_total: bal.pasivo_total||0,
+        pasivo_circ: bal.pasivo_circulante||0, pasivo_lp: bal.pasivo_largo_plazo||0,
+        capital: bal.capital_contable||0,
+        margen_bruto: met.margins?.gross_margin?.value||0,
+        margen_ebitda: met.margins?.ebitda_margin?.value||0,
+        margen_op: met.margins?.operating_margin?.value||0,
+        margen_neto: met.margins?.net_margin?.value||0,
+        roic: met.returns?.roic?.value||0, roe: met.returns?.roe?.value||0,
+        roa: met.returns?.roa?.value||0, roce: met.returns?.roce?.value||0,
+        razon_circ: met.liquidity?.current_ratio?.value||0,
+        prueba_acida: met.liquidity?.quick_ratio?.value||0,
+        razon_ef: met.liquidity?.cash_ratio?.value||0,
+        capital_trabajo: met.liquidity?.working_capital?.value||0,
+        cash_runway: met.liquidity?.cash_runway?.value||0,
+        dso: met.efficiency?.dso?.value||0, dpo: met.efficiency?.dpo?.value||0,
+        dio: met.efficiency?.dio?.value||0,
+        ccc: met.efficiency?.cash_conversion_cycle?.value||0,
+        deuda_capital: met.solvency?.debt_to_equity?.value||0,
+        deuda_activos: met.solvency?.debt_to_assets?.value||0,
+        deuda_ebitda: met.solvency?.debt_to_ebitda?.value||0,
+        cobertura: met.solvency?.interest_coverage?.value||0,
+        apalancamiento: met.solvency?.financial_leverage?.value||0,
+      };
+      const response = await api.post('/reports/pdf-kpis', payload, { responseType: 'blob' });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Dashboard_KPIs_${company?.nombre||'Empresa'}_${selectedPeriod}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast.success('Dashboard KPIs descargado');
+    } catch (error) {
+      console.error('Error generando KPIs PDF:', error);
+      toast.error('Error al generar Dashboard KPIs');
+    } finally {
+      setGeneratingKPIs(false);
+    }
+  };
 
   // Export to Excel - Complete with all metrics and AI analysis
   const exportToExcel = () => {
@@ -1810,6 +1871,10 @@ const BoardReport = () => {
               >
                 <Settings className="w-4 h-4" />
               </Button>
+              <Button onClick={exportToPDF} disabled={exporting} className="bg-blue-600 hover:bg-blue-700" data-testid="export-pdf-btn">
+                <FileText className="w-4 h-4 mr-2" />
+                {exporting ? t.exporting : 'PDF'}
+              </Button>
               <Button
                 onClick={downloadPDFMejorado}
                 disabled={generatingMejorado}
@@ -1817,16 +1882,16 @@ const BoardReport = () => {
                 data-testid="export-pdf-mejorado-btn"
               >
                 <Download className="w-4 h-4 mr-2" />
-                {generatingMejorado ? 'Generando...' : 'Resumen Ejecutivo'}
+                {generatingMejorado ? 'Generando...' : 'PDF Mejorado'}
               </Button>
               <Button
-                onClick={downloadPDFMejorado}
-                disabled={generatingMejorado}
+                onClick={downloadKPIsPDF}
+                disabled={generatingKPIs}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white"
                 data-testid="resumen-ia-btn"
               >
                 <Sparkles className="w-4 h-4 mr-2" />
-                {generatingMejorado ? 'Generando...' : 'Reporte IA'}
+                {generatingKPIs ? 'Generando...' : 'Reporte IA'}
               </Button>
             </div>
           </div>
