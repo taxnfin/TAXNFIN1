@@ -362,7 +362,7 @@ def build_pdf(output_path):
         canvas_obj.drawString(15*mm, H*0.72, 'KARY')
         canvas_obj.setFont('Helvetica', 14)
         canvas_obj.setFillColor(colors.HexColor('#8EC8D4'))
-        canvas_obj.drawString(15*mm, H*0.67, 'Reporte Ejecutivo Mensual')
+        canvas_obj.drawString(15*mm, H*0.67, 'Resumen Ejecutivo Mensual')
 
         # Periodo
         canvas_obj.setFont('Helvetica-Bold', 36)
@@ -370,11 +370,19 @@ def build_pdf(output_path):
         canvas_obj.drawString(15*mm, H*0.58, 'Enero 2026')
 
         # KPIs portada
+        def fmt_kpi(v):
+            if v is None: return '$0'
+            av = abs(v)
+            sign = '-' if v < 0 else ''
+            if av >= 1_000_000: return f'{sign}${av/1_000_000:.2f}M'
+            if av >= 1_000: return f'{sign}${av/1_000:.0f}K'
+            return f'{sign}${av:,.0f}'
+        
         kpis = [
-            ('Ingresos', '$2.33M'),
-            ('Util. Bruta', '$563K'),
-            ('Margen Bruto', '24.2%'),
-            ('EBITDA', '-$167K'),
+            ('Ingresos',     fmt_kpi(DATA.get('ingresos', 0))),
+            ('Util. Bruta',  fmt_kpi(DATA.get('utilidad_bruta', 0))),
+            ('Margen Bruto', f"{DATA.get('margen_bruto', 0):.1f}%"),
+            ('EBITDA',       fmt_kpi(DATA.get('ebitda', 0))),
         ]
         box_w = (W - 30*mm) / 4
         for i, (lbl, val) in enumerate(kpis):
@@ -418,7 +426,7 @@ def build_pdf(output_path):
         canvas_obj.drawString(18*mm, H-8*mm, 'KARY')
         canvas_obj.setFont('Helvetica', 9)
         canvas_obj.setFillColor(colors.HexColor('#8EC8D4'))
-        canvas_obj.drawString(32*mm, H-8*mm, '· Reporte Ejecutivo Mensual')
+        canvas_obj.drawString(32*mm, H-8*mm, '· Resumen Ejecutivo Mensual')
         canvas_obj.setFont('Helvetica', 8)
         canvas_obj.setFillColor(GOLD)
         canvas_obj.drawRightString(W-18*mm, H-8*mm, f"{DATA['periodo']}")
@@ -782,4 +790,4 @@ def build_pdf_mejorado(data_dict: dict) -> io.BytesIO:
 
 
 if __name__ == '__main__':
-    build_pdf('/mnt/user-data/outputs/Reporte_Ejecutivo_KARY_2026-01_MEJORADO.pdf')
+    build_pdf('/mnt/user-data/outputs/Resumen_Ejecutivo_KARY_2026-01_MEJORADO.pdf')
