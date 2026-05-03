@@ -17,8 +17,9 @@ const AgingModule = () => {
   const [cfdis, setCfdis] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [vendors, setVendors] = useState([]);
-  const [fxRates, setFxRates] = useState({});
+  const [fxRates, setFxRates] = useState({ USD: 17.5, EUR: 19.0 });
   const [syncingRates, setSyncingRates] = useState(false);
+  const [displayCurrency, setDisplayCurrency] = useState('MXN');
   const [activeTab, setActiveTab] = useState('cxc'); // cxc = Cuentas por Cobrar, cxp = Cuentas por Pagar
 
   // Filtros para CxC
@@ -56,7 +57,20 @@ const AgingModule = () => {
       setCustomers(custRes.data);
       setVendors(vendRes.data);
       // Extract rates object from response
-      setFxRates(fxRes.data?.rates || {});
+      // Normalizar rates — puede venir como array [{moneda, tasa_mxn}] o como objeto {USD: 17.5}
+      const rawRates = fxRes.data?.rates;
+      let ratesObj = {};
+      if (Array.isArray(rawRates)) {
+        rawRates.forEach(r => {
+          if (r.moneda && r.tasa_mxn) ratesObj[r.moneda] = r.tasa_mxn;
+          else if (r.moneda_origen && r.tasa) ratesObj[r.moneda_origen] = r.tasa;
+        });
+      } else if (rawRates && typeof rawRates === 'object') {
+        ratesObj = { ...rawRates };
+      }
+      if (!ratesObj.USD) ratesObj.USD = 17.5;
+      if (!ratesObj.EUR) ratesObj.EUR = 19.0;
+      setFxRates(ratesObj);
     } catch (error) {
       toast.error('Error cargando datos');
     } finally {
@@ -69,13 +83,15 @@ const AgingModule = () => {
     try {
       const res = await api.post('/fx-rates/sync');
       if (res.data.rates) {
-        // Convert array to object { moneda: tasa_mxn }
         const ratesObj = {};
         res.data.rates.forEach(r => {
-          ratesObj[r.moneda] = r.tasa_mxn;
+          if (r.moneda && r.tasa_mxn) ratesObj[r.moneda] = r.tasa_mxn;
+          else if (r.moneda_origen && r.tasa) ratesObj[r.moneda_origen] = r.tasa;
         });
+        if (!ratesObj.USD) ratesObj.USD = 17.5;
+        if (!ratesObj.EUR) ratesObj.EUR = 19.0;
         setFxRates(ratesObj);
-        toast.success(`Tipos de cambio actualizados (Banxico y OpenExchange)`);
+        toast.success(`Tipos de cambio actualizados`);
       }
     } catch (error) {
       toast.error('Error sincronizando tipos de cambio');
@@ -94,6 +110,13 @@ const AgingModule = () => {
     if (!moneda || moneda === 'MXN') return amount;
     const rate = fxRates[moneda] || 1;
     return amount * rate;
+  };
+
+  // Convert MXN to display currency
+  const fromMXN = (amountMXN, targetCurrency) => {
+    if (!targetCurrency || targetCurrency === 'MXN') return amountMXN;
+    const rate = fxRates[targetCurrency] || 1;
+    return amountMXN / rate;
   };
 
   // Get the due date for a CFDI based on:
@@ -332,6 +355,8 @@ const AgingModule = () => {
   const totalCxP = Object.values(cxpBuckets).reduce((s, b) => s + b.total, 0);
   const totalCxCMXN = Object.values(cxcBuckets).reduce((s, b) => s + b.totalMXN, 0);
   const totalCxPMXN = Object.values(cxpBuckets).reduce((s, b) => s + b.totalMXN, 0);
+  const totalCxCDisplay = fromMXN(totalCxCMXN, displayCurrency);
+  const totalCxPDisplay = fromMXN(totalCxPMXN, displayCurrency);
 
   // Currency options
   const cxcCurrencies = getUniqueCurrencies('cxc');
@@ -419,7 +444,7 @@ const AgingModule = () => {
               </CardHeader>
               <CardContent>
                 <div className={`text-lg font-bold ${bucket.totalMXN > 0 ? (key === 'vigente' ? 'text-green-600' : 'text-red-600') : 'text-gray-400'}`}>
-                  {formatCurrency(bucket.totalMXN, 'MXN')}
+                  {formatCurrency(fromMXN(bucket.totalMXN, displayCurrency), displayCurrency)}
                 </div>
                 <div className="text-xs text-gray-500">{bucket.cfdis.length} factura(s)</div>
               </CardContent>
@@ -605,7 +630,7 @@ const AgingModule = () => {
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Pagado</TableHead>
                   <TableHead className="text-right">Pendiente</TableHead>
-                  <TableHead className="text-right bg-blue-50">Pend. MXN</TableHead>
+                  <TableHead className="text-right bg-blue-50">Pend. {displayCurrency}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -663,7 +688,7 @@ const AgingModule = () => {
                         <TableCell className="text-right font-mono text-xs">{formatCurrency(cfdi.total, cfdi.moneda)}</TableCell>
                         <TableCell className="text-right font-mono text-xs text-green-600">{formatCurrency(pagado, cfdi.moneda)}</TableCell>
                         <TableCell className="text-right font-mono text-xs font-bold text-orange-600">{formatCurrency(cfdi.pendiente, cfdi.moneda)}</TableCell>
-                        <TableCell className="text-right font-mono text-xs font-bold bg-blue-50 text-blue-700">{formatCurrency(cfdi.pendienteMXN, 'MXN')}</TableCell>
+                        <TableCell className="text-right font-mono text-xs font-bold bg-blue-50 text-blue-700">{formatCurrency(fromMXN(cfdi.pendienteMXN, displayCurrency), displayCurrency)}</TableCell>
                       </TableRow>
                     );
                   })
@@ -734,9 +759,19 @@ const AgingModule = () => {
           <p className="text-[#64748B]">Análisis de antigüedad de Cuentas por Cobrar y por Pagar</p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="text-sm text-gray-500">
-            TC: USD ${fxRates.USD?.toFixed(2) || 'N/A'} | EUR ${fxRates.EUR?.toFixed(2) || 'N/A'}
+          <div className="text-sm text-gray-500 bg-white border rounded px-3 py-1.5">
+            TC: USD ${fxRates.USD?.toFixed(2) || '—'} | EUR ${fxRates.EUR?.toFixed(2) || '—'}
           </div>
+          <Select value={displayCurrency} onValueChange={setDisplayCurrency}>
+            <SelectTrigger className="w-28 h-9 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="MXN">MXN</SelectItem>
+              <SelectItem value="USD">USD</SelectItem>
+              <SelectItem value="EUR">EUR</SelectItem>
+            </SelectContent>
+          </Select>
           <Button 
             variant="outline" 
             className="gap-2"
@@ -769,7 +804,7 @@ const AgingModule = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-green-700">{formatCurrency(totalCxCMXN, 'MXN')}</div>
+            <div className="text-3xl font-bold text-green-700">{formatCurrency(totalCxCDisplay, displayCurrency)}</div>
             <div className="text-sm text-green-600 mt-1">
               {Object.values(cxcBuckets).reduce((s, b) => s + b.cfdis.length, 0)} facturas pendientes de cobro
             </div>
@@ -784,7 +819,7 @@ const AgingModule = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-red-700">{formatCurrency(totalCxPMXN, 'MXN')}</div>
+            <div className="text-3xl font-bold text-red-700">{formatCurrency(totalCxPDisplay, displayCurrency)}</div>
             <div className="text-sm text-red-600 mt-1">
               {Object.values(cxpBuckets).reduce((s, b) => s + b.cfdis.length, 0)} facturas pendientes de pago
             </div>
