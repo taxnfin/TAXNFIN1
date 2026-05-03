@@ -2186,3 +2186,26 @@ All P0 features implemented and tested:
 
 **Variables de entorno nuevas:**
 - `BANXICO_TOKEN`: token gratuito de https://www.banxico.org.mx/SieAPIRest/service/v1/token. Sin él el endpoint devuelve `success=false` con instrucciones.
+
+
+### Phase 44: Corrector activo de TC + portada PDF en blanco/crema ✅
+- **Date**: February 2026
+
+**Tarea 1 — Botón "Corregir TC al DOF":**
+- **Backend**: Nuevo endpoint `POST /api/cfdi/audit/fx-fix` con `{cfdi_ids: [], confirm: true}` que:
+  - Sobrescribe `tipo_cambio` con el FIX oficial de Banxico (DOF) del día de emisión.
+  - Recalcula `total_mxn`, `subtotal`, `impuestos` e `iva_trasladado` desde el `total_moneda_original`.
+  - Escribe entrada en `audit_logs` con TC anterior y nuevo (trazabilidad completa para auditoría SAT).
+  - Skip por: cfdi no encontrado, moneda no soportada, sin fecha, Banxico sin FIX para esa fecha.
+- **Frontend** (`FXValidationPanel.js`):
+  - Banner rojo "X CFDIs con desviación crítica detectados" + botón **"Corregir todos al DOF"** con AlertDialog de confirmación.
+  - Botón individual **"Corregir al DOF"** (icono Wand2) en cada fila critical o warning.
+  - Estado local actualizado in-place: tras corregir un CFDI, se re-clasifica como OK sin re-ejecutar la auditoría.
+- **Verificado E2E**: 79 botones individuales presentes, banner bulk visible, fix individual cambia TC 19.2338 → 17.6922 con éxito.
+
+**Tarea 2 — Portada PDF más clara:**
+- Reemplazado fondo navy oscuro `(12,20,36)` por crema claro `(252,252,250)`.
+- Texto del nombre de empresa: blanco → slate-900 oscuro `(15,23,42)`.
+- Card de período: navy `(18,28,48)` → crema `(245,240,230)` con borde dorado.
+- Badge "Cifras expresadas en {currency}": dorado claro → dorado oscuro `(146,100,30)` para legibilidad.
+- Verificado por análisis IA del PDF: "fondo crema/off-white, texto navy oscuro, acentos dorados, profesional y limpio".

@@ -921,8 +921,8 @@ const BoardReport = () => {
       };
       
       // ====== PAGE 1: PROFESSIONAL COVER PAGE ======
-      // Full page dark navy background
-      pdf.setFillColor(12, 20, 36);
+      // Full page light/cream background (much easier on the eyes than dark navy)
+      pdf.setFillColor(252, 252, 250);
       pdf.rect(0, 0, pageWidth, pageHeight, 'F');
       
       // Subtle geometric accent - gold vertical bar on left
@@ -951,7 +951,7 @@ const BoardReport = () => {
       // Company name - large and centered (handle long names)
       const companyName = company?.nombre || 'Company';
       pdf.setFont(fontFamily, 'bold');
-      pdf.setTextColor(255, 255, 255);
+      pdf.setTextColor(15, 23, 42); // slate-900 — dark on light background
       
       // Adjust font size based on name length
       let nameFontSize = titleSize;
@@ -981,7 +981,7 @@ const BoardReport = () => {
       // Report title
       pdf.setFontSize(subtitleSize);
       pdf.setFont(fontFamily, 'normal');
-      pdf.setTextColor(148, 163, 184);
+      pdf.setTextColor(100, 116, 139); // slate-500 — soft secondary
       const titleText = t.title || 'Executive Board Report';
       const titleWidth = pdf.getTextWidth(titleText);
       pdf.text(titleText, (pageWidth - titleWidth) / 2, y);
@@ -993,17 +993,17 @@ const BoardReport = () => {
       pdf.line(margin + 50, y, pageWidth - margin - 50, y);
       y += 20;
       
-      // Period information box - refined with gold border
+      // Period information box - subtle off-white card with gold border
       pdf.setDrawColor(180, 142, 58);
       pdf.setLineWidth(0.5);
-      pdf.setFillColor(18, 28, 48);
+      pdf.setFillColor(245, 240, 230); // soft cream highlight
       pdf.roundedRect(margin + 30, y - 5, contentWidth - 60, 35, 2, 2, 'FD');
       
       // Period type and value
       const periodTypeLabels = { monthly: t.monthly, quarterly: t.quarterly, annual: t.annual };
       pdf.setFontSize(sectionHeaderSize);
       pdf.setFont(fontFamily, 'normal');
-      pdf.setTextColor(148, 163, 184);
+      pdf.setTextColor(100, 116, 139);
       const periodLabel = periodTypeLabels[periodType] || periodType;
       const periodLabelText = `${periodLabel}`;
       const periodLabelWidth = pdf.getTextWidth(periodLabelText);
@@ -1011,7 +1011,7 @@ const BoardReport = () => {
       
       pdf.setFontSize(subtitleSize + 2);
       pdf.setFont(fontFamily, 'bold');
-      pdf.setTextColor(255, 255, 255);
+      pdf.setTextColor(15, 23, 42); // dark slate on cream card
       const periodValueWidth = pdf.getTextWidth(selectedPeriod);
       pdf.text(selectedPeriod, (pageWidth - periodValueWidth) / 2, y + 23);
       
@@ -1019,7 +1019,7 @@ const BoardReport = () => {
       // every monetary figure in this PDF has been converted to viewCurrency.
       pdf.setFontSize(smallSize + 1);
       pdf.setFont(fontFamily, 'normal');
-      pdf.setTextColor(212, 175, 55); // gold accent
+      pdf.setTextColor(146, 100, 30); // dark gold for legibility on cream
       const currencyLabel = (
         language === 'es' ? `Cifras expresadas en ${viewCurrency}` :
         language === 'pt' ? `Valores expressos em ${viewCurrency}` :

@@ -557,3 +557,119 @@ async def validate_cfdi_exchange_rates(
         'thresholds': {'ok_max_pct': 1.0, 'warning_max_pct': 5.0},
         'results': results,
     }
+
+
+from pydantic import BaseModel as _BM
+
+
+class FXFixRequest(_BM):
+    cfdi_ids: List[str]
+    confirm: bool = False
+
+
+@router.post("/audit/fx-fix")
+async def fix_cfdi_exchange_rates(
+    payload: FXFixRequest,
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Rewrite the `tipo_cambio` of the given CFDIs with the official Banxico
+    FIX rate of the issuance date. Recomputes `total_mxn`, `subtotal`,
+    `impuestos` and `iva_trasladado` accordingly. Writes an audit_log entry per
+    CFDI.
+    
+    Body:
+        {"cfdi_ids": [...], "confirm": true}
+    """
+    from services.banxico_fx import get_official_rate, _token
+    
+    if not _token():
+        raise HTTPException(status_code=400, detail='BANXICO_TOKEN no configurado')
+    if not payload.confirm:
+        raise HTTPException(status_code=400, detail='Falta confirm=true')
+    if not payload.cfdi_ids:
+        raise HTTPException(status_code=400, detail='Lista vacía')
+    
+    company_id = await get_active_company_id(request, current_user)
+    
+    fixed = []
+    skipped = []
+    
+    for cfdi_id in payload.cfdi_ids:
+        c = await db.cfdis.find_one({'id': cfdi_id, 'company_id': company_id}, {'_id': 0})
+        if not c:
+            skipped.append({'cfdi_id': cfdi_id, 'reason': 'not_found'})
+            continue
+        
+        moneda = (c.get('moneda') or '').upper()
+        if moneda == 'MXN' or moneda not in ('USD', 'EUR', 'GBP', 'CAD'):
+            skipped.append({'cfdi_id': cfdi_id, 'reason': f'unsupported_currency_{moneda}'})
+            continue
+        
+        fecha_iso = (c.get('fecha_emision') or '')[:10]
+        if not fecha_iso:
+            skipped.append({'cfdi_id': cfdi_id, 'reason': 'no_date'})
+            continue
+        
+        official = await get_official_rate(moneda, fecha_iso)
+        if official is None or official <= 0:
+            skipped.append({'cfdi_id': cfdi_id, 'reason': 'no_dof_rate'})
+            continue
+        
+        old_tc = float(c.get('tipo_cambio') or 0)
+        # `total` is stored in the original currency (after Phase 39 fix), so
+        # only `tipo_cambio` and the MXN-derived fields need to change.
+        total_orig = float(c.get('total_moneda_original') or c.get('total') or 0)
+        new_total_mxn = round(total_orig * official, 2)
+        new_subtotal = round(total_orig / 1.16, 2) if total_orig > 0 else 0
+        new_impuestos = round(total_orig - new_subtotal, 2)
+        
+        await db.cfdis.update_one(
+            {'id': cfdi_id},
+            {'$set': {
+                'tipo_cambio': round(official, 4),
+                'total_mxn': new_total_mxn,
+                'subtotal': new_subtotal,
+                'impuestos': new_impuestos,
+                'iva_trasladado': new_impuestos,
+                'updated_at': datetime.now(timezone.utc).isoformat(),
+            }}
+        )
+        
+        # Audit log entry
+        try:
+            await audit_log(
+                company_id=company_id,
+                entidad='cfdi',
+                entity_id=cfdi_id,
+                accion='fx_corrected_to_dof',
+                user_id=current_user.get('id') or current_user.get('email', 'unknown'),
+                datos_anteriores={
+                    'tipo_cambio': old_tc,
+                    'total_mxn': c.get('total_mxn'),
+                },
+                datos_nuevos={
+                    'tipo_cambio': round(official, 4),
+                    'total_mxn': new_total_mxn,
+                    'fuente': 'banxico_fix_dof',
+                    'fecha_emision': fecha_iso,
+                    'moneda': moneda,
+                }
+            )
+        except Exception as e:
+            logger.warning("Audit log failed for cfdi %s: %s", cfdi_id, e)
+        
+        fixed.append({
+            'cfdi_id': cfdi_id,
+            'old_tc': old_tc,
+            'new_tc': round(official, 4),
+            'total_mxn': new_total_mxn,
+        })
+    
+    return {
+        'success': True,
+        'fixed_count': len(fixed),
+        'skipped_count': len(skipped),
+        'fixed': fixed,
+        'skipped': skipped,
+    }
