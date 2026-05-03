@@ -708,7 +708,7 @@ const AgingModule = () => {
                         <TableCell className="text-right font-mono text-xs bg-amber-50">
                           {cfdi.esRetencion ? (
                             <span className="text-amber-700 font-bold" title="Retención para entero al SAT">
-                              {formatCurrency(fromMXN(toMXN(cfdi.retencionSAT, cfdi.moneda), displayCurrency), displayCurrency)}
+                              {formatCurrency(fromMXN(convertToMXN(cfdi.retencionSAT, cfdi.moneda), displayCurrency), displayCurrency)}
                             </span>
                           ) : (
                             <span className="text-gray-300">—</span>
