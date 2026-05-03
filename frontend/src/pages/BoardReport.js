@@ -1802,7 +1802,6 @@ const BoardReport = () => {
                 <FileSpreadsheet className="w-4 h-4 mr-2" />
                 Excel
               </Button>
-
               <Button 
                 variant="outline" 
                 onClick={() => setPdfConfigOpen(true)} 
@@ -1821,12 +1820,13 @@ const BoardReport = () => {
                 {generatingMejorado ? 'Generando...' : 'Resumen Ejecutivo'}
               </Button>
               <Button
-                onClick={() => setResumenModalOpen(true)}
+                onClick={downloadPDFMejorado}
+                disabled={generatingMejorado}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white"
                 data-testid="resumen-ia-btn"
               >
                 <Sparkles className="w-4 h-4 mr-2" />
-                Reporte IA
+                {generatingMejorado ? 'Generando...' : 'Reporte IA'}
               </Button>
             </div>
           </div>
