@@ -2209,3 +2209,33 @@ All P0 features implemented and tested:
 - Card de período: navy `(18,28,48)` → crema `(245,240,230)` con borde dorado.
 - Badge "Cifras expresadas en {currency}": dorado claro → dorado oscuro `(146,100,30)` para legibilidad.
 - Verificado por análisis IA del PDF: "fondo crema/off-white, texto navy oscuro, acentos dorados, profesional y limpio".
+
+
+### Phase 45: Bitácora de Cambios + pulido panel SAT/FIEL ✅
+- **Date**: February 2026
+
+**Tarea 1 — Pulido panel SAT/FIEL:**
+- **Badge "Vigente"** ahora muestra los días restantes:
+  - Verde "Vigente · Xd" si quedan >30 días (ej: "Vigente · 898d")
+  - Ámbar "Expira en Xd" si quedan ≤30 días
+  - Rojo "Expirada hace Xd" si ya venció
+- **Última sincronización**: nuevo card al lado del badge mostrando fecha/hora de la última sync + badge OK/Error.
+- **Link de ayuda**: añadido "¿Dónde obtengo mi FIEL?" al diálogo de configuración, apuntando al portal SAT (Certifica).
+
+**Tarea 2 — Página "Bitácora de Cambios":**
+- **Backend** (`routes/reports.py`):
+  - Endpoint `/audit-logs` extendido con filtros por `entidad`, `accion`, `user_id`, `fecha_desde`, `fecha_hasta` y paginación (limit hasta 1000).
+  - Nuevo endpoint `/audit-logs/distinct` que devuelve los valores únicos para poblar dropdowns.
+- **Frontend** (`pages/AuditLogsPage.js`):
+  - Filtros: 3 dropdowns (Entidad, Acción, Usuario) + 2 date pickers (Desde/Hasta) con re-fetch automático.
+  - Card "Resumen": conteo total + breakdown por acción con badges de colores.
+  - Tabla con 6 columnas: Fecha, Usuario, Entidad, Acción, Antes, Después.
+  - **Export Excel** con `xlsx` (8 columnas incluyendo acción técnica).
+  - **Export PDF** con `jspdf-autotable` (landscape A4, header dorado, tabla con datos antes/después truncados).
+  - Ruta nueva: `/audit-logs` con item "Bitácora" (icon ScrollText) en sidebar.
+- **Verificado E2E con admin@demo.com**:
+  - 1000 eventos cargados, 14 acciones distintas detectadas (CREATE, CATEGORIZE, BULK_DELETE, UPLOAD, AI_AUTO_CATEGORIZE, fx_corrected_to_dof, etc.).
+  - Filtro por "Corrección TC al DOF" → exactamente 2 filas con datos antes/después legibles.
+  - Botones Excel/PDF presentes y funcionales.
+
+**Dependencia nueva:** `jspdf-autotable@5.0.7` (ya en `package.json`).

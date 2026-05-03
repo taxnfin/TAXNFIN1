@@ -16,22 +16,60 @@ router = APIRouter()
 
 @router.get("/audit-logs", response_model=List[AuditLog])
 async def list_audit_logs(
+    request: Request,
     current_user: Dict = Depends(get_current_user),
     limit: int = Query(100, le=1000),
-    skip: int = Query(0, ge=0)
+    skip: int = Query(0, ge=0),
+    entidad: Optional[str] = Query(None, description="Filter by entity type (cfdi, payment, etc)"),
+    accion: Optional[str] = Query(None, description="Filter by action (e.g. fx_corrected_to_dof)"),
+    user_id: Optional[str] = Query(None, description="Filter by user id/email"),
+    fecha_desde: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
+    fecha_hasta: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
 ):
     if current_user['role'] not in [UserRole.ADMIN, UserRole.CFO]:
         raise HTTPException(status_code=403, detail="Permisos insuficientes")
     
-    logs = await db.audit_logs.find(
-        {'company_id': current_user['company_id']},
-        {'_id': 0}
-    ).sort('timestamp', -1).skip(skip).limit(limit).to_list(limit)
+    company_id = await get_active_company_id(request, current_user)
+    query: Dict[str, Any] = {'company_id': company_id}
+    if entidad:
+        query['entidad'] = entidad
+    if accion:
+        query['accion'] = accion
+    if user_id:
+        query['user_id'] = user_id
+    if fecha_desde or fecha_hasta:
+        ts: Dict[str, Any] = {}
+        if fecha_desde:
+            ts['$gte'] = fecha_desde + 'T00:00:00'
+        if fecha_hasta:
+            ts['$lte'] = fecha_hasta + 'T23:59:59'
+        query['timestamp'] = ts
+    
+    logs = await db.audit_logs.find(query, {'_id': 0}).sort('timestamp', -1).skip(skip).limit(limit).to_list(limit)
     
     for log in logs:
         if isinstance(log.get('timestamp'), str):
             log['timestamp'] = datetime.fromisoformat(log['timestamp'])
     return logs
+
+
+@router.get("/audit-logs/distinct")
+async def audit_logs_distinct(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Return distinct values of entidad/accion/user_id for the company.
+    Used to populate filter dropdowns in the Bitácora UI."""
+    if current_user['role'] not in [UserRole.ADMIN, UserRole.CFO]:
+        raise HTTPException(status_code=403, detail="Permisos insuficientes")
+    
+    company_id = await get_active_company_id(request, current_user)
+    base = {'company_id': company_id}
+    return {
+        'entidades': sorted([v for v in await db.audit_logs.distinct('entidad', base) if v]),
+        'acciones': sorted([v for v in await db.audit_logs.distinct('accion', base) if v]),
+        'usuarios': sorted([v for v in await db.audit_logs.distinct('user_id', base) if v]),
+    }
 
 @router.get("/reports/dashboard")
 async def get_dashboard_report(

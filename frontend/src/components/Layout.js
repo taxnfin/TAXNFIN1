@@ -18,6 +18,7 @@ import {
   Tags,
   TrendingUp,
   FileSpreadsheet,
+  ScrollText,
   Receipt,
   Lightbulb,
   Calculator,
@@ -51,6 +52,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
     { name: 'Categorías', href: '/categories', icon: Tags },
     { name: 'Catálogos', href: '/catalogs', icon: FolderOpen },
     { name: 'Reportes', href: '/reports', icon: BarChart3 },
+    { name: 'Bitácora', href: '/audit-logs', icon: ScrollText },
     { name: 'IA & Avanzado', href: '/advanced', icon: Sparkles },
     { name: 'Admin', href: '/admin', icon: Settings },
   ];

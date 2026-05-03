@@ -281,11 +281,26 @@ const SATIntegration = ({ onSyncComplete }) => {
                       Serial: {satStatus?.serial_number?.slice(0, 16)}...
                     </span>
                   </div>
-                  {satStatus?.valid_to && (
-                    <Badge variant={new Date(satStatus.valid_to) > new Date() ? "outline" : "destructive"} className="ml-2">
-                      {new Date(satStatus.valid_to) > new Date() ? 'Vigente' : 'Expirada'}
-                    </Badge>
-                  )}
+                  {satStatus?.valid_to && (() => {
+                    const validTo = new Date(satStatus.valid_to);
+                    const now = new Date();
+                    const daysLeft = Math.ceil((validTo - now) / (1000 * 60 * 60 * 24));
+                    if (daysLeft < 0) {
+                      return <Badge variant="destructive" className="ml-2" data-testid="fiel-expired-badge">Expirada hace {Math.abs(daysLeft)}d</Badge>;
+                    }
+                    if (daysLeft <= 30) {
+                      return (
+                        <Badge variant="outline" className="ml-2 bg-amber-100 text-amber-800 border-amber-300" data-testid="fiel-expiring-badge">
+                          Expira en {daysLeft}d
+                        </Badge>
+                      );
+                    }
+                    return (
+                      <Badge variant="outline" className="ml-2 bg-emerald-100 text-emerald-800 border-emerald-300" data-testid="fiel-valid-badge">
+                        Vigente · {daysLeft}d
+                      </Badge>
+                    );
+                  })()}
                 </>
               ) : (
                 <>
@@ -294,6 +309,31 @@ const SATIntegration = ({ onSyncComplete }) => {
                 </>
               )}
             </div>
+            
+            {/* Last Sync info */}
+            {satStatus?.configured && satStatus?.last_sync && (
+              <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border text-xs text-[#475569]" data-testid="sat-last-sync-info">
+                <Clock size={14} className="text-[#64748B]" />
+                <div className="flex flex-col leading-tight">
+                  <span>Última sync</span>
+                  <span className="font-medium text-[#1E293B]">
+                    {format(new Date(satStatus.last_sync), 'dd MMM HH:mm', { locale: es })}
+                  </span>
+                </div>
+                {satStatus.last_sync_result && (
+                  <Badge
+                    variant="outline"
+                    className={`ml-2 text-[10px] ${
+                      satStatus.last_sync_result === 'success'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-red-50 text-red-700 border-red-200'
+                    }`}
+                  >
+                    {satStatus.last_sync_result === 'success' ? 'OK' : 'Error'}
+                  </Badge>
+                )}
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="flex gap-2 ml-auto">
@@ -378,7 +418,16 @@ const SATIntegration = ({ onSyncComplete }) => {
             </DialogTitle>
             <DialogDescription>
               Suba los archivos de su FIEL para conectar con el SAT.
-              Los archivos se almacenan de forma encriptada.
+              Los archivos se almacenan de forma encriptada.{' '}
+              <a
+                href="https://www.sat.gob.mx/aplicacion/16660/genera-y-descarga-tus-archivos-a-traves-de-la-aplicacion-certifica"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#3B82F6] underline hover:text-[#2563EB]"
+                data-testid="fiel-help-link"
+              >
+                ¿Dónde obtengo mi FIEL?
+              </a>
             </DialogDescription>
           </DialogHeader>
 
