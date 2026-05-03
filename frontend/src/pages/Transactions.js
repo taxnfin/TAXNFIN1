@@ -194,7 +194,8 @@ const AgingModule = () => {
       
       // Check pending balance
       const amountField = isIngreso ? 'monto_cobrado' : 'monto_pagado';
-      const pendiente = cfdi.total - (cfdi[amountField] || 0);
+      const retenciones = isIngreso ? 0 : ((cfdi.isr_retenido || 0) + (cfdi.iva_retenido || 0));
+      const pendiente = (cfdi.total - retenciones) - (cfdi[amountField] || 0);
       return pendiente > 0.01;
     });
 
@@ -211,7 +212,11 @@ const AgingModule = () => {
     filtered.forEach(cfdi => {
       const bucket = getAgingBucket(cfdi, tipo);
       const amountField = isIngreso ? 'monto_cobrado' : 'monto_pagado';
-      const pendiente = cfdi.total - (cfdi[amountField] || 0);
+      // Para CxP: descontar retenciones (ISR e IVA retenido) del total
+      // ya que las retenciones las retiene el receptor — no son deuda pendiente
+      const retenciones = isIngreso ? 0 : ((cfdi.isr_retenido || 0) + (cfdi.iva_retenido || 0));
+      const baseFactura = cfdi.total - retenciones;
+      const pendiente = baseFactura - (cfdi[amountField] || 0);
       const moneda = cfdi.moneda || 'MXN';
       const pendienteMXN = convertToMXN(pendiente, moneda);
       const dueDate = getDueDate(cfdi, tipo);
@@ -304,7 +309,8 @@ const AgingModule = () => {
       if (cfdi.tipo_cfdi !== (isIngreso ? 'ingreso' : 'egreso')) return false;
       if (cfdi.estado_cancelacion === 'cancelado') return false;
       const amountField = isIngreso ? 'monto_cobrado' : 'monto_pagado';
-      const pendiente = cfdi.total - (cfdi[amountField] || 0);
+      const retenciones = isIngreso ? 0 : ((cfdi.isr_retenido || 0) + (cfdi.iva_retenido || 0));
+      const pendiente = (cfdi.total - retenciones) - (cfdi[amountField] || 0);
       return pendiente > 0.01;
     });
     
