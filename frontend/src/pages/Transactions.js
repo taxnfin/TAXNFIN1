@@ -223,6 +223,14 @@ const AgingModule = () => {
       const diasVencido = getDaysOverdue(cfdi, tipo);
       const plazo = getPlazo(cfdi, tipo);
       
+      // Retención implícita: diferencia entre total y lo pagado cuando isr/iva_retenido = 0
+      // Aplica a personas físicas donde el pagador retiene ISR/IVA para el SAT
+      const retencionImplicita = (!isIngreso && cfdi.isr_retenido === 0 && cfdi.iva_retenido === 0)
+        ? Math.max(0, pendiente - 0.01)  // si el pendiente es pequeño vs total, probablemente es retención
+        : 0;
+      // Solo marcar como retención si el pendiente es <= 15% del total (típico de retenciones)
+      const esRetencion = !isIngreso && retencionImplicita > 0 && (pendiente / cfdi.total) <= 0.15;
+
       buckets[bucket].cfdis.push({
         ...cfdi,
         pendiente,
@@ -230,7 +238,9 @@ const AgingModule = () => {
         moneda,
         fechaVencimiento: dueDate,
         diasVencido,
-        plazo
+        plazo,
+        esRetencion,
+        retencionSAT: esRetencion ? pendiente : 0,
       });
       buckets[bucket].total += pendiente;
       buckets[bucket].totalMXN += pendienteMXN;
@@ -636,13 +646,14 @@ const AgingModule = () => {
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Pagado</TableHead>
                   <TableHead className="text-right">Pendiente</TableHead>
+                  <TableHead className="text-right bg-amber-50">Ret. SAT</TableHead>
                   <TableHead className="text-right bg-blue-50">Pend. {displayCurrency}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredCfdis.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                       {isFiltered 
                         ? 'No hay facturas que coincidan con los filtros seleccionados'
                         : `No hay facturas pendientes de ${tipo === 'cxc' ? 'cobro' : 'pago'}`
@@ -694,7 +705,22 @@ const AgingModule = () => {
                         <TableCell className="text-right font-mono text-xs">{formatCurrency(cfdi.total, cfdi.moneda)}</TableCell>
                         <TableCell className="text-right font-mono text-xs text-green-600">{formatCurrency(pagado, cfdi.moneda)}</TableCell>
                         <TableCell className="text-right font-mono text-xs font-bold text-orange-600">{formatCurrency(cfdi.pendiente, cfdi.moneda)}</TableCell>
-                        <TableCell className="text-right font-mono text-xs font-bold bg-blue-50 text-blue-700">{formatCurrency(fromMXN(cfdi.pendienteMXN, displayCurrency), displayCurrency)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs bg-amber-50">
+                          {cfdi.esRetencion ? (
+                            <span className="text-amber-700 font-bold" title="Retención para entero al SAT">
+                              {formatCurrency(fromMXN(toMXN(cfdi.retencionSAT, cfdi.moneda), displayCurrency), displayCurrency)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs font-bold bg-blue-50 text-blue-700">
+                          {cfdi.esRetencion ? (
+                            <span className="text-gray-400 line-through text-xs">{formatCurrency(fromMXN(cfdi.pendienteMXN, displayCurrency), displayCurrency)}</span>
+                          ) : (
+                            formatCurrency(fromMXN(cfdi.pendienteMXN, displayCurrency), displayCurrency)
+                          )}
+                        </TableCell>
                       </TableRow>
                     );
                   })
