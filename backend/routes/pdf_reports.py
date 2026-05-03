@@ -1,4 +1,4 @@
-"""PDF Report generation routes"""
+"""PDF Report generation routes — Resumen Ejecutivo + Dashboard KPIs"""
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-class PDFMejoradoRequest(BaseModel):
+class PDFRequest(BaseModel):
     empresa: str = "Mi Empresa"
     rfc: str = ""
     periodo: str = ""
@@ -55,23 +55,42 @@ class PDFMejoradoRequest(BaseModel):
 @router.post("/reports/pdf-mejorado")
 async def generate_pdf_mejorado(
     request: Request,
-    data: PDFMejoradoRequest,
+    data: PDFRequest,
     current_user: Dict = Depends(get_current_user),
 ):
-    """
-    Genera el Reporte Ejecutivo Mejorado con gráficas y análisis profundo.
-    Devuelve un PDF binario para descarga directa.
-    """
+    """Resumen Ejecutivo con gráficas — 5 páginas"""
     try:
         from services.pdf_generator import build_pdf_mejorado
         pdf_buffer = build_pdf_mejorado(data.dict())
         empresa_safe = data.empresa.replace(" ", "_").replace("/", "-")
-        filename = f"Analisis_Financiero_{empresa_safe}_{data.periodo}.pdf"
+        filename = f"Resumen_Ejecutivo_{empresa_safe}_{data.periodo}.pdf"
         return StreamingResponse(
             pdf_buffer,
             media_type="application/pdf",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'}
         )
     except Exception as e:
-        logger.error(f"Error generando PDF Mejorado: {e}", exc_info=True)
+        logger.error(f"Error generando Resumen Ejecutivo: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error generando PDF: {str(e)}")
+
+
+@router.post("/reports/pdf-kpis")
+async def generate_pdf_kpis(
+    request: Request,
+    data: PDFRequest,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Dashboard KPIs — 20 indicadores con semáforos en 1 página"""
+    try:
+        from services.kpi_pdf_generator import build_kpi_pdf
+        pdf_buffer = build_kpi_pdf(data.dict())
+        empresa_safe = data.empresa.replace(" ", "_").replace("/", "-")
+        filename = f"Dashboard_KPIs_{empresa_safe}_{data.periodo}.pdf"
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        logger.error(f"Error generando Dashboard KPIs: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error generando KPIs PDF: {str(e)}")
