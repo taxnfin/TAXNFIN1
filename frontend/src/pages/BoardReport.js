@@ -2395,9 +2395,8 @@ const BoardReport = () => {
           </TabsContent>
         </Tabs>
       </div>
-    </div>
 
-      {/* ── Modal Resumen Ejecutivo IA ─────────────────────────────────────── */}
+      {/* Modal Resumen Ejecutivo IA */}
       {resumenModalOpen && (
         <div
           style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(15,23,42,0.75)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', padding: '32px 16px' }}
@@ -2412,7 +2411,6 @@ const BoardReport = () => {
           </div>
         </div>
       )}
-      {/* ──────────────────────────────────────────────────────────────────────── */}
     </div>
   );
 };
