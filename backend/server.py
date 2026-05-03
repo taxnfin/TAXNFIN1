@@ -38,6 +38,7 @@ from routes.treasury import router as treasury_router
 from routes.financial_statements import router as financial_statements_router
 from routes.belvo import router as belvo_router
 from routes.reports import router as reports_router
+from routes.pdf_reports import router as pdf_reports_router
 from routes.scenarios import router as scenarios_router
 from routes.exports import router as exports_router
 from routes.advanced import router as advanced_router
@@ -70,6 +71,7 @@ api_router.include_router(treasury_router)
 api_router.include_router(financial_statements_router)
 api_router.include_router(belvo_router)
 api_router.include_router(reports_router)
+api_router.include_router(pdf_reports_router)
 api_router.include_router(scenarios_router)
 api_router.include_router(exports_router)
 api_router.include_router(advanced_router)
