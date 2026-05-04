@@ -75,6 +75,13 @@ async def alegra_request(method: str, endpoint: str, email: str, token: str, par
                 error_text = e.response.text
                 status_code = e.response.status_code
                 
+                # If it's a 429 (rate limit), wait and retry
+                if status_code == 429 and attempt < max_retries - 1:
+                    import asyncio
+                    wait_time = 5 * (attempt + 1)
+                    logger.warning(f"Alegra API rate limit (429), waiting {wait_time}s ({attempt + 1}/{max_retries})...")
+                    await asyncio.sleep(wait_time)
+                    continue
                 # If it's a 500 error from Alegra, retry
                 if status_code == 500 and attempt < max_retries - 1:
                     logger.warning(f"Alegra API error 500, retrying ({attempt + 1}/{max_retries})...")
