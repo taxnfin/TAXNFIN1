@@ -988,13 +988,6 @@ async def sync_all_alegra_data(
     
     results = {}
     
-    # Sync contacts
-    try:
-        contacts_result = await sync_alegra_contacts(request, current_user, "all")
-        results['contacts'] = contacts_result.get('stats', {})
-    except Exception as e:
-        results['contacts'] = {'error': str(e)}
-    
     # Sync invoices (CxC) with date filters
     try:
         invoices_result = await sync_alegra_invoices(request, current_user, "all", date_from, date_to)
