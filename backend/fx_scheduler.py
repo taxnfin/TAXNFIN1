@@ -9,8 +9,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
 
-from forex_service import get_forex_service, ForexService
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,7 +30,8 @@ async def sync_all_company_rates(db):
     logger.info(f"⏰ Hora actual: {datetime.now(MEXICO_TZ).strftime('%Y-%m-%d %H:%M:%S')} (México)")
     
     try:
-        # Get forex service
+        # Get forex service (import here to avoid crashing server on startup)
+        from forex_service import get_forex_service
         service = get_forex_service()
         
         # Fetch rates once (same for all companies)
