@@ -1590,8 +1590,10 @@ async def import_bank_statement_pdf(
         # Import transactions
         imported = 0
         duplicates = 0
+        auto_conciliados = 0   # Duplicados auto-conciliados con certeza alta
+        requieren_revision = 0  # Duplicados sin conciliar que el usuario debe revisar manualmente
         errors = []
-        
+
         for txn in transactions:
             try:
                 # Calculate amount and type
@@ -1601,10 +1603,10 @@ async def import_bank_statement_pdf(
                 else:
                     monto = txn['retiro']
                     tipo = 'debito'
-                
+
                 if monto == 0:
                     continue
-                
+
                 # Check for duplicates
                 existing = await db.bank_transactions.find_one({
                     'company_id': company_id,
@@ -1612,13 +1614,152 @@ async def import_bank_statement_pdf(
                     'descripcion': txn['descripcion'],
                     'monto': monto,
                     'fecha_movimiento': {'$regex': f"^{txn['fecha']}"}
-                }, {'_id': 0, 'id': 1})
-                
+                }, {'_id': 0, 'id': 1, 'conciliado': 1, 'requiere_revision': 1})
+
                 if existing:
-                    duplicates += 1
+                    # ¿Ya está conciliado? → omitir limpiamente
+                    if existing.get('conciliado'):
+                        duplicates += 1
+                        continue
+
+                    # ¿Ya está marcado para revisión? → no volver a procesar
+                    if existing.get('requiere_revision'):
+                        duplicates += 1
+                        continue
+
+                    # NO conciliado → aplicar reglas de certeza alta para auto-conciliar
+                    bank_txn_id = existing['id']
+                    tipo_cfdi_buscar = 'ingreso' if tipo == 'credito' else 'egreso'
+
+                    # REGLA 1: monto EXACTO (no ±2%, sin tolerancia)
+                    # REGLA 2: UN SOLO candidato (sin ambigüedad)
+                    # REGLA 3: saldo pendiente del CFDI >= monto del movimiento
+                    candidatos = await db.cfdis.find({
+                        'company_id': company_id,
+                        'tipo_cfdi': tipo_cfdi_buscar,
+                        'estado_cancelacion': {'$ne': 'cancelado'},
+                        'total': monto,  # monto exacto
+                        '$or': [
+                            {'estado_conciliacion': {'$in': [None, 'pendiente', 'parcial']}},
+                            {'estado_conciliacion': {'$exists': False}}
+                        ]
+                    }, {'_id': 0}).to_list(10)  # traemos hasta 10 para detectar ambigüedad
+
+                    # Filtrar candidatos con saldo pendiente suficiente
+                    candidatos_validos = []
+                    for c in candidatos:
+                        cfdi_total = float(c.get('total', 0) or 0)
+                        if tipo_cfdi_buscar == 'ingreso':
+                            ya_cubierto = float(c.get('monto_cobrado', 0) or 0)
+                        else:
+                            ya_cubierto = float(c.get('monto_pagado', 0) or 0)
+                        saldo_pendiente = cfdi_total - ya_cubierto
+                        if saldo_pendiente >= monto - 0.01:
+                            candidatos_validos.append(c)
+
+                    certeza_alta = len(candidatos_validos) == 1  # único candidato válido
+
+                    if certeza_alta:
+                        cfdi_match = candidatos_validos[0]
+                        tipo_pago = 'cobro' if tipo_cfdi_buscar == 'ingreso' else 'pago'
+                        if tipo_cfdi_buscar == 'ingreso':
+                            beneficiario = cfdi_match.get('receptor_nombre', '') or cfdi_match.get('emisor_nombre', '')
+                        else:
+                            beneficiario = cfdi_match.get('emisor_nombre', '') or cfdi_match.get('receptor_nombre', '')
+
+                        # Evitar payment duplicado
+                        pay_exists = await db.payments.find_one({
+                            'company_id': company_id,
+                            'bank_transaction_id': bank_txn_id,
+                            'cfdi_id': cfdi_match['id']
+                        }, {'_id': 0, 'id': 1})
+
+                        if not pay_exists:
+                            payment_doc = {
+                                'id': str(uuid.uuid4()),
+                                'company_id': company_id,
+                                'bank_account_id': bank_account_id,
+                                'cfdi_id': cfdi_match['id'],
+                                'tipo': tipo_pago,
+                                'concepto': f"Auto-conciliación PDF - {beneficiario}",
+                                'monto': monto,
+                                'moneda': account.get('moneda', 'MXN'),
+                                'metodo_pago': 'transferencia',
+                                'fecha_vencimiento': f"{txn['fecha']}T12:00:00",
+                                'fecha_pago': f"{txn['fecha']}T12:00:00",
+                                'estatus': 'completado',
+                                'referencia': txn.get('referencia', ''),
+                                'beneficiario': beneficiario,
+                                'es_real': True,
+                                'bank_transaction_id': bank_txn_id,
+                                'cfdi_uuid': cfdi_match.get('uuid'),
+                                'cfdi_emisor': cfdi_match.get('emisor_nombre'),
+                                'cfdi_receptor': cfdi_match.get('receptor_nombre'),
+                                'category_id': cfdi_match.get('category_id'),
+                                'subcategory_id': cfdi_match.get('subcategory_id'),
+                                'auto_created_from_reconciliation': True,
+                                'fuente': 'pdf_import_autoconciliacion',
+                                'created_at': datetime.now(timezone.utc).isoformat()
+                            }
+                            await db.payments.insert_one(payment_doc)
+
+                            # Actualizar CFDI
+                            cfdi_total = float(cfdi_match.get('total', 0) or 0)
+                            if tipo_pago == 'cobro':
+                                ya_cobrado = float(cfdi_match.get('monto_cobrado', 0) or 0)
+                                nuevo = min(ya_cobrado + monto, cfdi_total)
+                                nuevo_estado = 'conciliado' if nuevo >= cfdi_total - 0.01 else 'parcial'
+                                await db.cfdis.update_one(
+                                    {'id': cfdi_match['id']},
+                                    {'$set': {'monto_cobrado': nuevo, 'estado_conciliacion': nuevo_estado}}
+                                )
+                            else:
+                                ya_pagado = float(cfdi_match.get('monto_pagado', 0) or 0)
+                                nuevo = min(ya_pagado + monto, cfdi_total)
+                                nuevo_estado = 'conciliado' if nuevo >= cfdi_total - 0.01 else 'parcial'
+                                await db.cfdis.update_one(
+                                    {'id': cfdi_match['id']},
+                                    {'$set': {'monto_pagado': nuevo, 'estado_conciliacion': nuevo_estado}}
+                                )
+
+                            # Marcar banco como conciliado
+                            await db.bank_transactions.update_one(
+                                {'id': bank_txn_id},
+                                {'$set': {
+                                    'conciliado': True,
+                                    'tipo_conciliacion': 'con_uuid',
+                                    'payment_id': payment_doc['id']
+                                }}
+                            )
+                            auto_conciliados += 1
+                            logger.info(
+                                f"Auto-conciliado (certeza alta): bank_txn={bank_txn_id} "
+                                f"→ CFDI={cfdi_match['id']} ({tipo_pago} ${monto})"
+                            )
+                    else:
+                        # Ambigüedad (0 o 2+ candidatos) → marcar para revisión manual
+                        # El movimiento ya existe en DB, solo le agregamos el flag
+                        motivo = (
+                            'sin_cfdi_match' if len(candidatos_validos) == 0
+                            else f'multiples_candidatos_{len(candidatos_validos)}'
+                        )
+                        await db.bank_transactions.update_one(
+                            {'id': bank_txn_id},
+                            {'$set': {
+                                'requiere_revision': True,
+                                'motivo_revision': motivo,
+                                # Guardar IDs de candidatos para mostrarlos en el modal de la UI
+                                'cfdi_candidatos': [c['id'] for c in candidatos_validos[:5]]
+                            }}
+                        )
+                        requieren_revision += 1
+                        logger.info(
+                            f"Marcado para revisión: bank_txn={bank_txn_id} "
+                            f"motivo={motivo} monto=${monto}"
+                        )
                     continue
-                
-                # Create transaction
+
+                # Transacción nueva → insertar normalmente
                 new_txn = {
                     'id': str(uuid.uuid4()),
                     'company_id': company_id,
@@ -1635,19 +1776,30 @@ async def import_bank_statement_pdf(
                     'conciliado': False,
                     'created_at': datetime.now(timezone.utc).isoformat()
                 }
-                
+
                 await db.bank_transactions.insert_one(new_txn)
                 imported += 1
-                
+
             except Exception as e:
                 errors.append(f"Error en transacción: {str(e)}")
-        
+                logger.error(f"Error procesando txn del PDF: {str(e)}", exc_info=True)
+
         await audit_log(company_id, 'BankTransaction', 'PDF_IMPORT', 'IMPORT', current_user['id'])
-        
+
+        msg_parts = [f'Se importaron {imported} movimientos.']
+        if auto_conciliados:
+            msg_parts.append(f'{auto_conciliados} auto-conciliados con CFDI.')
+        if requieren_revision:
+            msg_parts.append(f'{requieren_revision} requieren revisión manual.')
+        if duplicates:
+            msg_parts.append(f'{duplicates} duplicados omitidos.')
+
         return {
             'status': 'success',
-            'message': f'Se importaron {imported} movimientos del PDF',
+            'message': ' '.join(msg_parts),
             'importados': imported,
+            'auto_conciliados': auto_conciliados,
+            'requieren_revision': requieren_revision,
             'duplicados_omitidos': duplicates,
             'errores': len(errors),
             'detalle_errores': errors[:10],
