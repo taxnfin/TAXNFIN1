@@ -607,6 +607,23 @@ async def get_payments_breakdown(request: Request, current_user: Dict = Depends(
     total_pagado_mxn = sum(to_mxn(p.get('monto', 0) or 0, p.get('moneda', 'MXN')) for p in payments if p.get('tipo') == 'pago')
     total_cobrado_mxn = sum(to_mxn(p.get('monto', 0) or 0, p.get('moneda', 'MXN')) for p in payments if p.get('tipo') == 'cobro')
 
+    # FIX A: Si no hay payments registrados pero los CFDIs tienen monto_cobrado/pagado
+    # (vienen de Alegra/Contalink), leer directamente de los CFDIs para que las tarjetas
+    # Pagado/Cobrado no aparezcan en $0.
+    if total_pagado_mxn == 0 and total_cobrado_mxn == 0:
+        for c in cfdis:
+            moneda = c.get('moneda', 'MXN') or 'MXN'
+            tc = c.get('tipo_cambio', 1) or 1
+            mxn_factor = tc if moneda != 'MXN' else 1
+            if c.get('tipo_cfdi') == 'ingreso':
+                cobrado = c.get('monto_cobrado', 0) or 0
+                if cobrado > 0.01:
+                    total_cobrado_mxn += cobrado * mxn_factor
+            else:
+                pagado = c.get('monto_pagado', 0) or 0
+                if pagado > 0.01:
+                    total_pagado_mxn += pagado * mxn_factor
+
     # Projected payments
     proj_payments = await db.payments.find(
         {'company_id': company_id, 'es_real': False},
