@@ -135,6 +135,110 @@ async def list_payments(
     return payments
 
 
+@router.post("/backfill-from-cfdis")
+async def backfill_payments_from_cfdis(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Backfill payments desde CFDIs que ya tienen monto_cobrado/monto_pagado > 0
+    pero no tienen un payment registrado en la colección payments.
+    Ejecutar UNA SOLA VEZ. Es idempotente (no crea duplicados).
+    """
+    company_id = await get_active_company_id(request, current_user)
+
+    cfdis = await db.cfdis.find(
+        {
+            'company_id': company_id,
+            'estado_cancelacion': {'$ne': 'cancelado'},
+            '$or': [
+                {'monto_cobrado': {'$gt': 0.01}},
+                {'monto_pagado': {'$gt': 0.01}}
+            ]
+        },
+        {'_id': 0}
+    ).to_list(10000)
+
+    creados = 0
+    omitidos = 0
+    errores = []
+
+    for cfdi in cfdis:
+        try:
+            cfdi_id = cfdi.get('id')
+            tipo_cfdi = cfdi.get('tipo_cfdi', '')
+            tipo_pago = 'cobro' if tipo_cfdi == 'ingreso' else 'pago'
+            monto_field = 'monto_cobrado' if tipo_cfdi == 'ingreso' else 'monto_pagado'
+            monto = float(cfdi.get(monto_field, 0) or 0)
+
+            if monto < 0.01:
+                continue
+
+            existing = await db.payments.find_one(
+                {'company_id': company_id, 'cfdi_id': cfdi_id},
+                {'_id': 0, 'id': 1}
+            )
+            if existing:
+                omitidos += 1
+                continue
+
+            if tipo_cfdi == 'ingreso':
+                beneficiario = cfdi.get('receptor_nombre', '') or cfdi.get('emisor_nombre', '')
+            else:
+                beneficiario = cfdi.get('emisor_nombre', '') or cfdi.get('receptor_nombre', '')
+
+            fecha_pago = cfdi.get('fecha_emision') or cfdi.get('fecha_timbrado') or datetime.now(timezone.utc).isoformat()
+            if len(fecha_pago) == 10:
+                fecha_pago = f"{fecha_pago}T12:00:00"
+
+            moneda = cfdi.get('moneda', 'MXN') or 'MXN'
+            tc = cfdi.get('tipo_cambio', 1) or 1
+
+            payment_doc = {
+                'id': str(uuid.uuid4()),
+                'company_id': company_id,
+                'cfdi_id': cfdi_id,
+                'tipo': tipo_pago,
+                'concepto': f"Backfill - {beneficiario or cfdi.get('uuid', '')[:8]}",
+                'monto': monto,
+                'moneda': moneda,
+                'tipo_cambio_historico': tc if moneda != 'MXN' else 1,
+                'metodo_pago': cfdi.get('metodo_pago', 'transferencia'),
+                'fecha_vencimiento': fecha_pago,
+                'fecha_pago': fecha_pago,
+                'estatus': 'completado',
+                'referencia': cfdi.get('uuid', '')[:36],
+                'beneficiario': beneficiario,
+                'es_real': True,
+                'bank_transaction_id': None,
+                'cfdi_uuid': cfdi.get('uuid'),
+                'cfdi_emisor': cfdi.get('emisor_nombre'),
+                'cfdi_receptor': cfdi.get('receptor_nombre'),
+                'category_id': cfdi.get('category_id'),
+                'subcategory_id': cfdi.get('subcategory_id'),
+                'fuente': 'backfill_from_cfdi',
+                'auto_created_from_reconciliation': False,
+                'created_at': datetime.now(timezone.utc).isoformat()
+            }
+
+            await db.payments.insert_one(payment_doc)
+            creados += 1
+            logger.info(f"Backfill payment creado: CFDI={cfdi_id} tipo={tipo_pago} monto={monto}")
+
+        except Exception as e:
+            errores.append(f"CFDI {cfdi.get('id', '?')}: {str(e)}")
+            logger.error(f"Error en backfill CFDI {cfdi.get('id')}: {str(e)}", exc_info=True)
+
+    await audit_log(company_id, 'Payment', 'BACKFILL_FROM_CFDIS', 'CREATE', current_user['id'],
+                    {'creados': creados, 'omitidos': omitidos, 'errores': len(errores)})
+
+    return {
+        'status': 'success',
+        'message': f'Backfill completado: {creados} payments creados, {omitidos} ya existían.',
+        'creados': creados,
+        'omitidos': omitidos,
+        'errores': len(errores),
+        'detalle_errores': errores[:10]
+    }
+
+
 @router.put("/{payment_id}")
 async def update_payment(payment_id: str, payment_data: PaymentCreate, request: Request, current_user: Dict = Depends(get_current_user)):
     """Update a payment with CFDI amount adjustment"""
@@ -541,119 +645,6 @@ async def get_payments_summary(request: Request, current_user: Dict = Depends(ge
         'total_cobrado': total_cobrado,
         'total_proy_pagos': total_proy_pagos,
         'total_proy_cobros': total_proy_cobros,
-    }
-
-
-@router.post("/backfill-from-cfdis")
-async def backfill_payments_from_cfdis(request: Request, current_user: Dict = Depends(get_current_user)):
-    """
-    Backfill payments desde CFDIs que ya tienen monto_cobrado/monto_pagado > 0
-    pero no tienen un payment registrado en la colección payments.
-
-    Casos de uso:
-    - CFDIs importados desde Alegra/Contalink que ya vienen marcados como pagados
-    - Datos migrados de otro sistema
-
-    Ejecutar UNA SOLA VEZ. Es idempotente (no crea duplicados).
-    """
-    company_id = await get_active_company_id(request, current_user)
-
-    # Traer todos los CFDIs con monto cobrado/pagado > 0
-    cfdis = await db.cfdis.find(
-        {
-            'company_id': company_id,
-            'estado_cancelacion': {'$ne': 'cancelado'},
-            '$or': [
-                {'monto_cobrado': {'$gt': 0.01}},
-                {'monto_pagado': {'$gt': 0.01}}
-            ]
-        },
-        {'_id': 0}
-    ).to_list(10000)
-
-    creados = 0
-    omitidos = 0
-    errores = []
-
-    for cfdi in cfdis:
-        try:
-            cfdi_id = cfdi.get('id')
-            tipo_cfdi = cfdi.get('tipo_cfdi', '')
-            tipo_pago = 'cobro' if tipo_cfdi == 'ingreso' else 'pago'
-            monto_field = 'monto_cobrado' if tipo_cfdi == 'ingreso' else 'monto_pagado'
-            monto = float(cfdi.get(monto_field, 0) or 0)
-
-            if monto < 0.01:
-                continue
-
-            # Verificar si ya existe un payment para este CFDI
-            existing = await db.payments.find_one(
-                {'company_id': company_id, 'cfdi_id': cfdi_id},
-                {'_id': 0, 'id': 1}
-            )
-            if existing:
-                omitidos += 1
-                continue
-
-            # Determinar beneficiario
-            if tipo_cfdi == 'ingreso':
-                beneficiario = cfdi.get('receptor_nombre', '') or cfdi.get('emisor_nombre', '')
-            else:
-                beneficiario = cfdi.get('emisor_nombre', '') or cfdi.get('receptor_nombre', '')
-
-            # Usar fecha_emision como fecha de pago
-            fecha_pago = cfdi.get('fecha_emision') or cfdi.get('fecha_timbrado') or datetime.now(timezone.utc).isoformat()
-            if len(fecha_pago) == 10:  # solo fecha sin hora
-                fecha_pago = f"{fecha_pago}T12:00:00"
-
-            moneda = cfdi.get('moneda', 'MXN') or 'MXN'
-            tc = cfdi.get('tipo_cambio', 1) or 1
-
-            payment_doc = {
-                'id': str(uuid.uuid4()),
-                'company_id': company_id,
-                'cfdi_id': cfdi_id,
-                'tipo': tipo_pago,
-                'concepto': f"Backfill - {beneficiario or cfdi.get('uuid', '')[:8]}",
-                'monto': monto,
-                'moneda': moneda,
-                'tipo_cambio_historico': tc if moneda != 'MXN' else 1,
-                'metodo_pago': cfdi.get('metodo_pago', 'transferencia'),
-                'fecha_vencimiento': fecha_pago,
-                'fecha_pago': fecha_pago,
-                'estatus': 'completado',
-                'referencia': cfdi.get('uuid', '')[:36],
-                'beneficiario': beneficiario,
-                'es_real': True,
-                'bank_transaction_id': None,  # Sin txn bancaria → el frontend lo incluye automáticamente
-                'cfdi_uuid': cfdi.get('uuid'),
-                'cfdi_emisor': cfdi.get('emisor_nombre'),
-                'cfdi_receptor': cfdi.get('receptor_nombre'),
-                'category_id': cfdi.get('category_id'),
-                'subcategory_id': cfdi.get('subcategory_id'),
-                'fuente': 'backfill_from_cfdi',
-                'auto_created_from_reconciliation': False,
-                'created_at': datetime.now(timezone.utc).isoformat()
-            }
-
-            await db.payments.insert_one(payment_doc)
-            creados += 1
-            logger.info(f"Backfill payment creado: CFDI={cfdi_id} tipo={tipo_pago} monto={monto}")
-
-        except Exception as e:
-            errores.append(f"CFDI {cfdi.get('id', '?')}: {str(e)}")
-            logger.error(f"Error en backfill CFDI {cfdi.get('id')}: {str(e)}", exc_info=True)
-
-    await audit_log(company_id, 'Payment', 'BACKFILL_FROM_CFDIS', 'CREATE', current_user['id'],
-                    {'creados': creados, 'omitidos': omitidos, 'errores': len(errores)})
-
-    return {
-        'status': 'success',
-        'message': f'Backfill completado: {creados} payments creados, {omitidos} ya existían.',
-        'creados': creados,
-        'omitidos': omitidos,
-        'errores': len(errores),
-        'detalle_errores': errores[:10]
     }
 
 
