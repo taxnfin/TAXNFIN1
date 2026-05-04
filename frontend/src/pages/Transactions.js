@@ -106,9 +106,10 @@ const AgingModule = () => {
   };
 
   // Convert to MXN using fx rates
-  const convertToMXN = (amount, moneda) => {
+  // Prefers the invoice-level tipo_cambio when available for accuracy
+  const convertToMXN = (amount, moneda, tipoCambio = null) => {
     if (!moneda || moneda === 'MXN') return amount;
-    const rate = fxRates[moneda] || 1;
+    const rate = tipoCambio && tipoCambio > 0 ? tipoCambio : (fxRates[moneda] || 1);
     return amount * rate;
   };
 
@@ -218,7 +219,7 @@ const AgingModule = () => {
       const baseFactura = cfdi.total - retenciones;
       const pendiente = baseFactura - (cfdi[amountField] || 0);
       const moneda = cfdi.moneda || 'MXN';
-      const pendienteMXN = convertToMXN(pendiente, moneda);
+      const pendienteMXN = convertToMXN(pendiente, moneda, cfdi.tipo_cambio);
       const dueDate = getDueDate(cfdi, tipo);
       const diasVencido = getDaysOverdue(cfdi, tipo);
       const plazo = getPlazo(cfdi, tipo);
