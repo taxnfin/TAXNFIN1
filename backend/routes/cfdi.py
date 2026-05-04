@@ -55,11 +55,23 @@ async def get_cfdi_summary(
     conciliados = 0
     
     for c in cfdis:
-        total = c.get('total', 0) or 0
+        # Usar saldo pendiente real (total - lo ya cobrado/pagado)
+        total_original = c.get('total', 0) or 0
+        if c.get('tipo_cfdi') == 'ingreso':
+            ya_cobrado = c.get('monto_cobrado', 0) or 0
+            total = max(0, total_original - ya_cobrado)
+        else:
+            ya_pagado = c.get('monto_pagado', 0) or 0
+            total = max(0, total_original - ya_pagado)
+        
+        # Omitir CFDIs sin saldo pendiente
+        if total <= 0.01:
+            continue
+            
         moneda = c.get('moneda', 'MXN') or 'MXN'
         tipo = 'ingresos' if c.get('tipo_cfdi') == 'ingreso' else 'egresos'
         
-        # Sum by ORIGINAL currency (always uses `total` which lives in moneda's currency)
+        # Sum by ORIGINAL currency (pendiente real)
         if moneda not in totals_by_currency[tipo]:
             totals_by_currency[tipo][moneda] = 0
         totals_by_currency[tipo][moneda] += total
@@ -71,12 +83,15 @@ async def get_cfdi_summary(
         # 2) Fallback: derive from the row's `tipo_cambio`.
         # 3) Last resort: use the company-level rates table.
         cfdi_tc = c.get('tipo_cambio') or 0
-        precomputed_mxn = c.get('total_mxn')
+        # No usar precomputed_mxn ya que es el total completo, no el pendiente
+        # Calcular MXN del pendiente usando el tipo de cambio de la factura
         
         if moneda == moneda_vista:
             totals_converted[tipo] += total
-        elif moneda_vista == 'MXN' and precomputed_mxn is not None:
-            totals_converted[tipo] += float(precomputed_mxn)
+        elif moneda_vista == 'MXN' and moneda != 'MXN' and cfdi_tc and cfdi_tc > 0:
+            totals_converted[tipo] += total * cfdi_tc
+        elif moneda_vista == 'MXN' and moneda == 'MXN':
+            totals_converted[tipo] += total
         elif moneda != 'MXN' and cfdi_tc and cfdi_tc > 0:
             # foreign -> view currency, going via MXN with the row's own rate
             in_mxn = total * cfdi_tc
