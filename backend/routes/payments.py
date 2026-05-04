@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from typing import Dict, List, Optional
 from datetime import datetime, timezone, timedelta
 import logging
+import uuid
 
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
