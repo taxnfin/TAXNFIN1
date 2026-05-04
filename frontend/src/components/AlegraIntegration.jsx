@@ -163,10 +163,13 @@ export default function AlegraIntegration() {
     setSyncing(true);
     try {
       // Build URL with date params if provided
+      // Contacts don't support date filtering in Alegra API
       let url = `/alegra/sync/${entity}`;
       const params = new URLSearchParams();
-      if (syncDateFrom) params.append('date_from', syncDateFrom);
-      if (syncDateTo) params.append('date_to', syncDateTo);
+      if (entity !== 'contacts') {
+        if (syncDateFrom) params.append('date_from', syncDateFrom);
+        if (syncDateTo) params.append('date_to', syncDateTo);
+      }
       if (params.toString()) url += '?' + params.toString();
       
       const response = await api.post(url);
