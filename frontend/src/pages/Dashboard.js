@@ -16,7 +16,6 @@ import {
   Filter, ArrowUpRight, ArrowDownRight, Minus, Calendar, Settings
 } from 'lucide-react';
 import { toast } from 'sonner';
-import ResumenEjecutivoIA from '@/components/ResumenEjecutivoIA';
 
 const CURRENCIES = [
   { value: 'MXN', label: 'MXN - Peso Mexicano', symbol: '$' },
@@ -241,70 +240,6 @@ const Dashboard = () => {
   // ── Datos para ResumenEjecutivoIA ────────────────────────────────────────
   // Toma los datos reales de flujo del dashboard y los mapea al formato del componente.
   // Los campos de P&L (costoVentas, utilidadBruta, gastosOp) son estimaciones proxy
-  // hasta que tu backend exponga un endpoint de Estado de Resultados completo.
-  const resumenFinancialData = dashboardData ? (() => {
-    const ing = totalIngresos;
-    const egr = totalEgresos;
-    const flujoNeto = ing - egr;
-    const margenFlujoPct = ing > 0 ? (flujoNeto / ing * 100) : 0;
-
-    // Nombre y RFC de la empresa seleccionada
-    let empresaNombre = 'Mi Empresa';
-    let empresaRFC = '';
-    try {
-      const sel = localStorage.getItem('selectedCompany');
-      if (sel) {
-        const parsed = JSON.parse(sel);
-        empresaNombre = parsed?.nombre || 'Mi Empresa';
-        empresaRFC    = parsed?.rfc    || '';
-      }
-    } catch { /* ignore */ }
-
-    // Período: mes y año actual
-    const ahora = new Date();
-    const periodoLabel = ahora.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
-
-    // Cash runway en meses a partir del flujo promedio semanal
-    const cashRunwayMeses = trend.avg_flow_4w < 0 && saldoInicial > 0
-      ? parseFloat((saldoInicial / Math.abs(trend.avg_flow_4w) / 4.33).toFixed(1))
-      : 99;
-
-    return {
-      empresa:       empresaNombre,
-      periodo:       periodoLabel,
-      rfc:           empresaRFC,
-
-      // P&L real: ingresos y egresos vienen del endpoint
-      ingresos:      ing,
-      costoVentas:   egr * 0.76,          // proxy hasta tener endpoint P&L
-      utilidadBruta: ing - (egr * 0.76),  // proxy
-      gastosOp:      egr * 0.24,          // proxy
-      ebitda:        flujoNeto,
-      utilidadNeta:  flujoNeto * 0.85,
-
-      // Márgenes calculados
-      margenBruto:   ing > 0 ? ((ing - egr * 0.76) / ing * 100) : 0,
-      margenEbitda:  ing > 0 ? (flujoNeto / ing * 100) : 0,
-      margenNeto:    ing > 0 ? (flujoNeto * 0.85 / ing * 100) : 0,
-
-      // Balance: basado en saldos bancarios reales
-      activoTotal:  saldoInicial * 11.4,
-      activoCirc:   saldoInicial * 8.8,
-      pasivoTotal:  saldoInicial * 4.9,
-      capital:      saldoInicial * 6.5,
-
-      // Liquidez real del dashboard
-      razonCirculante: 2.66,
-      pruebaAcida:     1.41,
-      cashRunway:      cashRunwayMeses,
-
-      // Ciclo de conversión — reemplaza con datos reales de tu módulo de cartera
-      dso: 137,
-      dio: 201,
-      dpo: 95,
-      ccc: 244,
-    };
-  })() : null;
   // ─────────────────────────────────────────────────────────────────────────
 
   const TrendIcon = trend.direction === 'up' ? ArrowUpRight : trend.direction === 'down' ? ArrowDownRight : Minus;
@@ -1027,11 +962,6 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
-      {/* ── RESUMEN EJECUTIVO IA ─────────────────────────────────────────────── */}
-      {resumenFinancialData && (
-        <ResumenEjecutivoIA financialData={resumenFinancialData} />
-      )}
-      {/* ──────────────────────────────────────────────────────────────────────── */}
 
     </div>
   );
