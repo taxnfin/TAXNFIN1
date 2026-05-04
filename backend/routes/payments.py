@@ -523,3 +523,118 @@ async def cleanup_duplicate_payments(request: Request, current_user: Dict = Depe
         'deleted_ids': deleted_ids[:20]  # Show first 20 for reference
     }
 
+
+
+@router.get("/summary")
+async def get_payments_summary(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Summary of payments for dashboard cards"""
+    company_id = await get_active_company_id(request, current_user)
+    payments = await db.payments.find({'company_id': company_id}, {'_id': 0}).to_list(10000)
+    
+    total_pagado = sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'pago' and p.get('estatus') == 'completado')
+    total_cobrado = sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'cobro' and p.get('estatus') == 'completado')
+    total_proy_pagos = sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'pago' and p.get('es_real') == False)
+    total_proy_cobros = sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'cobro' and p.get('es_real') == False)
+    
+    return {
+        'total_pagado': total_pagado,
+        'total_cobrado': total_cobrado,
+        'total_proy_pagos': total_proy_pagos,
+        'total_proy_cobros': total_proy_cobros,
+    }
+
+
+@router.get("/breakdown")
+async def get_payments_breakdown(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Breakdown of CFDI pending amounts and payment totals for dashboard cards.
+    Uses REAL pending balances (total - monto_cobrado/pagado)."""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get FX rates
+    rates_docs = await db.fx_rates.find({'company_id': company_id}).to_list(100)
+    fx = {'MXN': 1.0, 'USD': 17.5, 'EUR': 19.0}
+    for r in rates_docs:
+        moneda = r.get('moneda_cotizada') or r.get('moneda_origen')
+        tasa = r.get('tipo_cambio') or r.get('tasa')
+        if moneda and tasa:
+            fx[moneda] = tasa
+
+    def to_mxn(amount, moneda):
+        if not moneda or moneda == 'MXN':
+            return amount
+        tc = fx.get(moneda, 1)
+        return amount * tc
+
+    # Get all active CFDIs
+    cfdis = await db.cfdis.find(
+        {'company_id': company_id, 'estado_cancelacion': {'$ne': 'cancelado'}},
+        {'_id': 0, 'tipo_cfdi': 1, 'total': 1, 'moneda': 1, 'tipo_cambio': 1,
+         'monto_cobrado': 1, 'monto_pagado': 1}
+    ).to_list(10000)
+
+    cfdi_por_cobrar_mxn = 0.0
+    cfdi_por_cobrar_count = 0
+    cfdi_por_pagar_mxn = 0.0
+    cfdi_por_pagar_count = 0
+
+    for c in cfdis:
+        total = c.get('total', 0) or 0
+        moneda = c.get('moneda', 'MXN') or 'MXN'
+        tc = c.get('tipo_cambio', 1) or 1
+
+        if c.get('tipo_cfdi') == 'ingreso':
+            ya_cobrado = c.get('monto_cobrado', 0) or 0
+            pendiente = max(0, total - ya_cobrado)
+            if pendiente > 0.01:
+                # Use row-level tipo_cambio for accuracy
+                mxn = pendiente * tc if moneda != 'MXN' else pendiente
+                cfdi_por_cobrar_mxn += mxn
+                cfdi_por_cobrar_count += 1
+        else:
+            ya_pagado = c.get('monto_pagado', 0) or 0
+            pendiente = max(0, total - ya_pagado)
+            if pendiente > 0.01:
+                mxn = pendiente * tc if moneda != 'MXN' else pendiente
+                cfdi_por_pagar_mxn += mxn
+                cfdi_por_pagar_count += 1
+
+    # Get real payments from payments collection
+    payments = await db.payments.find(
+        {'company_id': company_id, 'es_real': True, 'estatus': 'completado'},
+        {'_id': 0, 'tipo': 1, 'monto': 1, 'moneda': 1}
+    ).to_list(10000)
+
+    total_pagado_mxn = sum(to_mxn(p.get('monto', 0) or 0, p.get('moneda', 'MXN')) for p in payments if p.get('tipo') == 'pago')
+    total_cobrado_mxn = sum(to_mxn(p.get('monto', 0) or 0, p.get('moneda', 'MXN')) for p in payments if p.get('tipo') == 'cobro')
+
+    # Projected payments
+    proj_payments = await db.payments.find(
+        {'company_id': company_id, 'es_real': False},
+        {'_id': 0, 'tipo': 1, 'monto': 1, 'moneda': 1}
+    ).to_list(10000)
+
+    proy_pagos_mxn = sum(to_mxn(p.get('monto', 0) or 0, p.get('moneda', 'MXN')) for p in proj_payments if p.get('tipo') == 'pago')
+    proy_cobros_mxn = sum(to_mxn(p.get('monto', 0) or 0, p.get('moneda', 'MXN')) for p in proj_payments if p.get('tipo') == 'cobro')
+
+    return {
+        'cfdi_por_cobrar': {
+            'total_equiv_mxn': round(cfdi_por_cobrar_mxn, 2),
+            'total_count': cfdi_por_cobrar_count,
+        },
+        'cfdi_por_pagar': {
+            'total_equiv_mxn': round(cfdi_por_pagar_mxn, 2),
+            'total_count': cfdi_por_pagar_count,
+        },
+        'pagado': {
+            'total_equiv_mxn': round(total_pagado_mxn, 2),
+        },
+        'cobrado': {
+            'total_equiv_mxn': round(total_cobrado_mxn, 2),
+        },
+        'proy_pagos': {
+            'total_equiv_mxn': round(proy_pagos_mxn, 2),
+        },
+        'proy_cobros': {
+            'total_equiv_mxn': round(proy_cobros_mxn, 2),
+        },
+    }
