@@ -287,17 +287,7 @@ export default function AlegraIntegration() {
 
             {/* Sync Buttons */}
             <div className="grid grid-cols-2 gap-2">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => syncEntity('contacts')}
-                disabled={syncing}
-                className="justify-start"
-                data-testid="sync-contacts-btn"
-              >
-                <Users className="h-4 w-4 mr-2 text-blue-600" />
-                Contactos
-              </Button>
+
               <Button 
                 variant="outline" 
                 size="sm"
@@ -497,7 +487,7 @@ export default function AlegraIntegration() {
                   {Object.entries(syncResults).map(([key, stats]) => (
                     <div key={key} className="bg-gray-50 rounded-lg p-3 border">
                       <div className="font-medium text-sm capitalize mb-1">
-                        {key === 'contacts' ? 'Contactos' : 
+                        {
                          key === 'invoices' ? 'Facturas (CxC)' :
                          key === 'bills' ? 'Facturas (CxP)' :
                          key === 'payments' ? 'Pagos' : key}
