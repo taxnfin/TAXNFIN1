@@ -1282,14 +1282,14 @@ const PaymentsModule = () => {
               <div className="flex items-center gap-6">
                 <div className="text-sm">
                   <span className="text-slate-400">Flujo Neto Real:</span>
-                  <span className={`ml-2 font-bold mono ${breakdown.varianza.flujo_neto_real >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    ${breakdown.varianza.flujo_neto_real?.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                  <span className={`ml-2 font-bold mono ${(breakdown?.varianza?.flujo_neto_real ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    ${breakdown?.varianza?.flujo_neto_real?.toLocaleString('es-MX', {minimumFractionDigits: 2}) ?? '0.00'}
                   </span>
                 </div>
                 <div className="text-sm">
                   <span className="text-slate-400">Flujo Neto Proyectado:</span>
-                  <span className={`ml-2 font-bold mono ${breakdown.varianza.flujo_neto_proyectado >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    ${breakdown.varianza.flujo_neto_proyectado?.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                  <span className={`ml-2 font-bold mono ${(breakdown?.varianza?.flujo_neto_proyectado ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    ${breakdown?.varianza?.flujo_neto_proyectado?.toLocaleString('es-MX', {minimumFractionDigits: 2}) ?? '0.00'}
                   </span>
                 </div>
               </div>
