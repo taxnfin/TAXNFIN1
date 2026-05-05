@@ -197,7 +197,7 @@ async def backfill_payments_from_cfdis(request: Request, current_user: Dict = De
                 'company_id': company_id,
                 'cfdi_id': cfdi_id,
                 'tipo': tipo_pago,
-                'concepto': f"Backfill - {beneficiario or cfdi.get('uuid', '')[:8]}",
+                'concepto': cfdi.get('concepto') or cfdi.get('descripcion') or cfdi.get('uso_cfdi') or beneficiario or cfdi.get('uuid', '')[:8],
                 'monto': monto,
                 'moneda': moneda,
                 'tipo_cambio_historico': tc if moneda != 'MXN' else 1,
@@ -234,6 +234,69 @@ async def backfill_payments_from_cfdis(request: Request, current_user: Dict = De
         'status': 'success',
         'message': f'Backfill completado: {creados} payments creados, {omitidos} ya existían.',
         'creados': creados,
+        'omitidos': omitidos,
+        'errores': len(errores),
+        'detalle_errores': errores[:10]
+    }
+
+
+@router.post("/fix-backfill-concepts")
+async def fix_backfill_concepts(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Corrige el campo 'concepto' de los payments creados por backfill.
+    Reemplaza 'Backfill - XXX' con el concepto real del CFDI.
+    Ejecutar UNA SOLA VEZ.
+    """
+    company_id = await get_active_company_id(request, current_user)
+
+    # Buscar todos los payments de backfill
+    backfill_payments = await db.payments.find(
+        {'company_id': company_id, 'fuente': 'backfill_from_cfdi'},
+        {'_id': 0}
+    ).to_list(10000)
+
+    actualizados = 0
+    omitidos = 0
+    errores = []
+
+    for p in backfill_payments:
+        try:
+            cfdi_id = p.get('cfdi_id')
+            if not cfdi_id:
+                omitidos += 1
+                continue
+
+            cfdi = await db.cfdis.find_one({'id': cfdi_id}, {'_id': 0})
+            if not cfdi:
+                omitidos += 1
+                continue
+
+            if p.get('tipo') == 'cobro':
+                beneficiario = cfdi.get('receptor_nombre', '') or cfdi.get('emisor_nombre', '')
+            else:
+                beneficiario = cfdi.get('emisor_nombre', '') or cfdi.get('receptor_nombre', '')
+
+            nuevo_concepto = (
+                cfdi.get('concepto') or
+                cfdi.get('descripcion') or
+                cfdi.get('uso_cfdi') or
+                beneficiario or
+                cfdi.get('uuid', '')[:8]
+            )
+
+            await db.payments.update_one(
+                {'id': p['id']},
+                {'$set': {'concepto': nuevo_concepto}}
+            )
+            actualizados += 1
+
+        except Exception as e:
+            errores.append(f"Payment {p.get('id', '?')}: {str(e)}")
+
+    return {
+        'status': 'success',
+        'message': f'{actualizados} conceptos actualizados.',
+        'actualizados': actualizados,
         'omitidos': omitidos,
         'errores': len(errores),
         'detalle_errores': errores[:10]
