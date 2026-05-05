@@ -197,7 +197,9 @@ async def backfill_payments_from_cfdis(request: Request, current_user: Dict = De
                 'company_id': company_id,
                 'cfdi_id': cfdi_id,
                 'tipo': tipo_pago,
-                'concepto': cfdi.get('concepto') or cfdi.get('descripcion') or cfdi.get('uso_cfdi') or beneficiario or cfdi.get('uuid', '')[:8],
+                'concepto': (
+                    f"{cfdi.get('folio_alegra') or cfdi.get('referencia') or ''} - {beneficiario}".strip(' -')
+                ),
                 'monto': monto,
                 'moneda': moneda,
                 'tipo_cambio_historico': tc if moneda != 'MXN' else 1,
@@ -242,14 +244,9 @@ async def backfill_payments_from_cfdis(request: Request, current_user: Dict = De
 
 @router.post("/fix-backfill-concepts")
 async def fix_backfill_concepts(request: Request, current_user: Dict = Depends(get_current_user)):
-    """
-    Corrige el campo 'concepto' de los payments creados por backfill.
-    Reemplaza 'Backfill - XXX' con el concepto real del CFDI.
-    Ejecutar UNA SOLA VEZ.
-    """
+    """Corrige el concepto de payments creados por backfill. Ejecutar UNA SOLA VEZ."""
     company_id = await get_active_company_id(request, current_user)
 
-    # Buscar todos los payments de backfill
     backfill_payments = await db.payments.find(
         {'company_id': company_id, 'fuente': 'backfill_from_cfdi'},
         {'_id': 0}
@@ -276,13 +273,8 @@ async def fix_backfill_concepts(request: Request, current_user: Dict = Depends(g
             else:
                 beneficiario = cfdi.get('emisor_nombre', '') or cfdi.get('receptor_nombre', '')
 
-            nuevo_concepto = (
-                cfdi.get('concepto') or
-                cfdi.get('descripcion') or
-                cfdi.get('uso_cfdi') or
-                beneficiario or
-                cfdi.get('uuid', '')[:8]
-            )
+            folio = cfdi.get('folio_alegra') or cfdi.get('referencia') or ''
+            nuevo_concepto = f"{folio} - {beneficiario}".strip(' -')
 
             await db.payments.update_one(
                 {'id': p['id']},
