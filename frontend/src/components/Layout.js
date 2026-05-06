@@ -23,7 +23,8 @@ import {
   Lightbulb,
   Calculator,
   Presentation,
-  Bell as BellIcon
+  Bell as BellIcon,
+  Link2
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -54,6 +55,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
     { name: 'Reportes', href: '/reports', icon: BarChart3 },
     { name: 'Bitácora', href: '/audit-logs', icon: ScrollText },
     { name: 'IA & Avanzado', href: '/advanced', icon: Sparkles },
+    { name: 'Contalink', href: '/contalink', icon: Link2 },
     { name: 'Admin', href: '/admin', icon: Settings },
   ];
 
