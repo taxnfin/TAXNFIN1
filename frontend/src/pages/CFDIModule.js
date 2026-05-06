@@ -94,8 +94,9 @@ const CFDIModule = () => {
       ]);
       setCfdis(cfdisRes.data);
       setCategories(categoriesRes.data);
-      setCustomers(customersRes.data || []);
-      setVendors(vendorsRes.data || []);
+      const cleanName = (obj) => (obj.nombre || obj.name || '').replace(/\s+/g, ' ').trim();
+      setCustomers([...(customersRes.data || [])].sort((a, b) => cleanName(a).localeCompare(cleanName(b), 'es', { sensitivity: 'base' })));
+      setVendors([...(vendorsRes.data || [])].sort((a, b) => cleanName(a).localeCompare(cleanName(b), 'es', { sensitivity: 'base' })));
       if (ratesRes.data.rates) {
         setFxRates(ratesRes.data.rates);
       }
