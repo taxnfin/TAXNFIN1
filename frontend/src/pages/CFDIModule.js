@@ -12,8 +12,6 @@ import { Upload, FileText, Trash2, TrendingUp, TrendingDown, RefreshCw, Tag, Che
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { exportCFDIs } from '@/utils/excelExport';
-import SATIntegration from '@/components/SATIntegration';
-import AlegraIntegration from '@/components/AlegraIntegration';
 import PDFInvoiceUploader from '@/components/PDFInvoiceUploader';
 import {
   AlertDialog,
@@ -836,14 +834,7 @@ const CFDIModule = () => {
         </Card>
       </div>
 
-      {/* Integrations Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* SAT Integration */}
-        <SATIntegration onSyncComplete={loadData} />
-        
-        {/* Alegra Integration */}
-        <AlegraIntegration />
-      </div>
+
 
       {/* Exchange Rates Info */}
       {Object.keys(fxRates).length > 1 && (
