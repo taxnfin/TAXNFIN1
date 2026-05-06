@@ -213,8 +213,8 @@ const PaymentsModule = () => {
         api.get('/vendors'),
         api.get('/categories')
       ]);
-      setCustomers(customersRes.data);
-      setVendors(vendorsRes.data);
+      setCustomers([...customersRes.data].sort((a, b) => (a.nombre || a.name || '').localeCompare(b.nombre || b.name || '', 'es', { sensitivity: 'base' })));
+      setVendors([...vendorsRes.data].sort((a, b) => (a.nombre || a.name || '').localeCompare(b.nombre || b.name || '', 'es', { sensitivity: 'base' })));
       setCategories(categoriesRes.data);
     } catch (error) {
       console.error('Error loading parties:', error);
