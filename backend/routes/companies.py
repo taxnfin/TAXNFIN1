@@ -68,18 +68,16 @@ async def list_companies(current_user: Dict = Depends(get_current_user)):
 
     # Admin sees all companies
     if current_user.get('role') == 'admin':
-        companies = await db.companies.find(
-            {'activo': True}, {'_id': 0}
-        ).to_list(1000)
+        companies = await db.companies.find({}, {'_id': 0}).to_list(1000)
+        companies = [c for c in companies if c.get('activo', True) != False]
     else:
         # Regular user — ONLY companies in their company_ids list
         companies = await db.companies.find(
-            {
-                'id': {'$in': company_ids},
-                'activo': True
-            },
+            {'id': {'$in': company_ids}},
             {'_id': 0}
         ).to_list(1000)
+        # Filter out inactive — handle missing 'activo' field gracefully
+        companies = [c for c in companies if c.get('activo', True) != False]
 
     # Deduplicate
     seen = set()
