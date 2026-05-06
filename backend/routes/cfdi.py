@@ -380,8 +380,31 @@ async def categorize_cfdi(
     if update_data:
         await db.cfdis.update_one({'id': cfdi_id}, {'$set': update_data})
         await audit_log(company_id, 'CFDI', cfdi_id, 'CATEGORIZE', current_user['id'], update_data)
-    
-    return {'status': 'success', 'message': 'CFDI categorizado correctamente'}
+
+    # Propagar categoría/vendor/customer a todos los payments vinculados a este CFDI
+    payment_update = {}
+    if category_id:
+        payment_update['category_id'] = category_id
+    if subcategory_id:
+        payment_update['subcategory_id'] = subcategory_id
+    if vendor_id:
+        payment_update['vendor_id'] = vendor_id
+    if customer_id:
+        payment_update['customer_id'] = customer_id
+
+    payments_actualizados = 0
+    if payment_update:
+        result = await db.payments.update_many(
+            {'company_id': company_id, 'cfdi_id': cfdi_id},
+            {'$set': payment_update}
+        )
+        payments_actualizados = result.modified_count
+
+    return {
+        'status': 'success',
+        'message': 'CFDI categorizado correctamente',
+        'payments_actualizados': payments_actualizados
+    }
 
 
 @router.put("/{cfdi_id}/reconciliation-status")
