@@ -72,13 +72,10 @@ async def list_companies(current_user: Dict = Depends(get_current_user)):
             {'activo': True}, {'_id': 0}
         ).to_list(1000)
     else:
-        # Regular user — only their companies + companies they created
+        # Regular user — ONLY companies in their company_ids list
         companies = await db.companies.find(
             {
-                '$or': [
-                    {'id': {'$in': company_ids}},
-                    {'created_by': user_id}
-                ],
+                'id': {'$in': company_ids},
                 'activo': True
             },
             {'_id': 0}
