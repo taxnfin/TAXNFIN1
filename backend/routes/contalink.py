@@ -455,6 +455,22 @@ async def create_conciliation(
     return {"success": True, "data": result}
 
 
+# ── Delete Credentials ────────────────────────────────────────────────────────
+@router.delete("/credentials")
+async def delete_contalink_credentials(
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Remove Contalink credentials (disconnect)"""
+    company_id = await get_active_company_id(request, current_user)
+    await db.integrations.update_one(
+        {"company_id": company_id, "type": "contalink"},
+        {"$set": {"active": False, "api_key": "", "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    await audit_log(company_id, "Integration", "contalink", "DISCONNECT", current_user["id"])
+    return {"success": True, "message": "Contalink desconectado"}
+
+
 # ── Invoice Status ─────────────────────────────────────────────────────────────
 @router.get("/invoice-status/{cfdi_uuid}")
 async def check_invoice_status(
