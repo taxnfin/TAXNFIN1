@@ -11,6 +11,20 @@ import logging
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
 
+def safe_parse_date(date_str) -> datetime:
+    """Parse date string ensuring timezone awareness"""
+    if not date_str:
+        return None
+    try:
+        if isinstance(date_str, datetime):
+            return date_str.replace(tzinfo=timezone.utc) if date_str.tzinfo is None else date_str
+        dt = datetime.fromisoformat(str(date_str).replace('Z', '+00:00'))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
 router = APIRouter(prefix="/treasury", tags=["Treasury"])
 logger = logging.getLogger(__name__)
 
@@ -19,7 +33,7 @@ def get_week_number(date_str: str) -> int:
     """Get ISO week number from date string"""
     try:
         if isinstance(date_str, str):
-            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            dt = safe_parse_date(date_str)
         else:
             dt = date_str
         return dt.isocalendar()[1]
@@ -171,7 +185,12 @@ async def calculate_alerts(company_id: str, threshold: float, weeks_ahead: int) 
     # Check for late collections (clients that might delay)
     for collection in pending_collections:
         if collection.get('fecha_vencimiento'):
-            due_date = datetime.fromisoformat(collection['fecha_vencimiento'].replace('Z', '+00:00'))
+            try:
+                due_date = safe_parse_date(collection['fecha_vencimiento'])
+                if due_date.tzinfo is None:
+                    due_date = due_date.replace(tzinfo=timezone.utc)
+            except:
+                continue
             days_until_due = (due_date - today).days
             amount = collection.get('saldo_pendiente', 0)
             
@@ -193,7 +212,12 @@ async def calculate_alerts(company_id: str, threshold: float, weeks_ahead: int) 
     # Check for payments that can be moved without risk
     for payment in pending_payments:
         if payment.get('fecha_vencimiento'):
-            due_date = datetime.fromisoformat(payment['fecha_vencimiento'].replace('Z', '+00:00'))
+            try:
+                due_date = safe_parse_date(payment['fecha_vencimiento'])
+                if due_date.tzinfo is None:
+                    due_date = due_date.replace(tzinfo=timezone.utc)
+            except:
+                continue
             days_until_due = (due_date - today).days
             amount = payment.get('saldo_pendiente', 0)
             
@@ -492,8 +516,8 @@ async def calculate_working_capital_intelligence(company_id: str) -> dict:
     for c in all_collections:
         if c.get('fecha_pago') and c.get('created_at'):
             try:
-                created = datetime.fromisoformat(c['created_at'].replace('Z', '+00:00'))
-                paid = datetime.fromisoformat(c['fecha_pago'].replace('Z', '+00:00'))
+                created = safe_parse_date(c['created_at'])
+                paid = safe_parse_date(c['fecha_pago'])
                 days = (paid - created).days
                 if 0 <= days <= 365:  # Reasonable range
                     collection_days.append(days)
@@ -508,8 +532,8 @@ async def calculate_working_capital_intelligence(company_id: str) -> dict:
     for p in all_payments:
         if p.get('fecha_pago') and p.get('created_at'):
             try:
-                created = datetime.fromisoformat(p['created_at'].replace('Z', '+00:00'))
-                paid = datetime.fromisoformat(p['fecha_pago'].replace('Z', '+00:00'))
+                created = safe_parse_date(p['created_at'])
+                paid = safe_parse_date(p['fecha_pago'])
                 days = (paid - created).days
                 if 0 <= days <= 365:
                     payment_days.append(days)
@@ -536,8 +560,8 @@ async def calculate_working_capital_intelligence(company_id: str) -> dict:
     for c in recent_collections:
         if c.get('fecha_pago') and c.get('created_at'):
             try:
-                created = datetime.fromisoformat(c['created_at'].replace('Z', '+00:00'))
-                paid = datetime.fromisoformat(c['fecha_pago'].replace('Z', '+00:00'))
+                created = safe_parse_date(c['created_at'])
+                paid = safe_parse_date(c['fecha_pago'])
                 days = (paid - created).days
                 if 0 <= days <= 365:
                     recent_dso_days.append(days)
@@ -550,8 +574,8 @@ async def calculate_working_capital_intelligence(company_id: str) -> dict:
     for c in older_collections:
         if c.get('fecha_pago') and c.get('created_at'):
             try:
-                created = datetime.fromisoformat(c['created_at'].replace('Z', '+00:00'))
-                paid = datetime.fromisoformat(c['fecha_pago'].replace('Z', '+00:00'))
+                created = safe_parse_date(c['created_at'])
+                paid = safe_parse_date(c['fecha_pago'])
                 days = (paid - created).days
                 if 0 <= days <= 365:
                     older_dso_days.append(days)
