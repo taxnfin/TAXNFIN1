@@ -39,7 +39,6 @@ const Integrations = () => {
 
   return (
     <div className="p-8 space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{ fontFamily: 'Manrope' }}>
           Integraciones
@@ -49,7 +48,6 @@ const Integrations = () => {
         </p>
       </div>
 
-      {/* Tab buttons */}
       <div className="flex gap-3 border-b border-gray-200 pb-0">
         {TABS.map(tab => {
           const Icon = tab.icon;
@@ -71,17 +69,10 @@ const Integrations = () => {
         })}
       </div>
 
-      {/* Tab content */}
       <div className="mt-0">
-        {activeTab === 'sat' && (
-          <SATIntegration onSyncComplete={() => {}} />
-        )}
-        {activeTab === 'alegra' && (
-          <AlegraIntegration />
-        )}
-        {activeTab === 'contalink' && (
-          <ContalinkIntegration />
-        )}
+        {activeTab === 'sat' && <SATIntegration onSyncComplete={() => {}} />}
+        {activeTab === 'alegra' && <AlegraIntegration />}
+        {activeTab === 'contalink' && <ContalinkIntegration />}
       </div>
     </div>
   );
