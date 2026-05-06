@@ -89,13 +89,13 @@ async def get_current_cash_position(company_id: str) -> dict:
     """Get current cash position summary"""
     # Get bank accounts with balances
     accounts = await db.bank_accounts.find(
-        {'company_id': company_id, 'activa': True},
+        {'company_id': company_id, '$or': [{'activa': True}, {'activo': True}]},
         {'_id': 0}
     ).to_list(100)
     
     total_mxn = 0
     for acc in accounts:
-        balance = acc.get('saldo_actual', 0) or 0
+        balance = acc.get('saldo_actual') or acc.get('saldo') or acc.get('saldo_inicial') or acc.get('balance', 0) or 0
         currency = acc.get('moneda', 'MXN')
         if currency == 'MXN':
             total_mxn += balance
@@ -107,12 +107,12 @@ async def get_current_cash_position(company_id: str) -> dict:
     # Get pending collections and payments
     pending_collections = await db.payments.aggregate([
         {'$match': {'company_id': company_id, 'tipo': 'cobro', 'estatus': {'$in': ['pendiente', 'parcial']}}},
-        {'$group': {'_id': None, 'total': {'$sum': '$saldo_pendiente'}}}
+        {'$group': {'_id': None, 'total': {'$sum': {'$ifNull': ['$saldo_pendiente', '$monto']}}}}
     ]).to_list(1)
     
     pending_payments = await db.payments.aggregate([
         {'$match': {'company_id': company_id, 'tipo': 'pago', 'estatus': {'$in': ['pendiente', 'parcial']}}},
-        {'$group': {'_id': None, 'total': {'$sum': '$saldo_pendiente'}}}
+        {'$group': {'_id': None, 'total': {'$sum': {'$ifNull': ['$saldo_pendiente', '$monto']}}}}
     ]).to_list(1)
     
     cxc = pending_collections[0]['total'] if pending_collections else 0
@@ -155,13 +155,13 @@ async def calculate_alerts(company_id: str, threshold: float, weeks_ahead: int) 
         
         # Calculate week's inflows and outflows
         week_collections = sum(
-            p.get('saldo_pendiente', 0) for p in pending_collections
+            (p.get('saldo_pendiente') or p.get('monto', 0)) for p in pending_collections
             if p.get('fecha_vencimiento') and 
             week_start.isoformat()[:10] <= p.get('fecha_vencimiento', '')[:10] < week_end.isoformat()[:10]
         )
         
         week_payments = sum(
-            p.get('saldo_pendiente', 0) for p in pending_payments
+            (p.get('saldo_pendiente') or p.get('monto', 0)) for p in pending_payments
             if p.get('fecha_vencimiento') and 
             week_start.isoformat()[:10] <= p.get('fecha_vencimiento', '')[:10] < week_end.isoformat()[:10]
         )
@@ -192,7 +192,7 @@ async def calculate_alerts(company_id: str, threshold: float, weeks_ahead: int) 
             except:
                 continue
             days_until_due = (due_date - today).days
-            amount = collection.get('saldo_pendiente', 0)
+            amount = (collection.get('saldo_pendiente') or collection.get('monto', 0))
             
             # If client delays 7 days, what happens?
             if 0 <= days_until_due <= 14 and amount > 50000:
@@ -219,7 +219,7 @@ async def calculate_alerts(company_id: str, threshold: float, weeks_ahead: int) 
             except:
                 continue
             days_until_due = (due_date - today).days
-            amount = payment.get('saldo_pendiente', 0)
+            amount = (payment.get('saldo_pendiente') or payment.get('monto', 0))
             
             # Payments due in next 2 weeks that could potentially be delayed
             if 0 <= days_until_due <= 14 and amount > 30000:
@@ -269,14 +269,14 @@ async def generate_recommendations(company_id: str, weeks_ahead: int) -> List[di
             "priority": "high",
             "icon": "💰",
             "title": "Priorizar Cobranza",
-            "message": f"Prioriza cobro a {top1.get('beneficiario', 'Cliente A')[:25]} (${top1.get('saldo_pendiente', 0):,.0f}) sobre {top2.get('beneficiario', 'Cliente B')[:25]} (${top2.get('saldo_pendiente', 0):,.0f})",
-            "impact": f"+${top1.get('saldo_pendiente', 0):,.0f} MXN",
+            "message": f"Prioriza cobro a {top1.get('beneficiario', 'Cliente A')[:25]} (${(top1.get('saldo_pendiente') or top1.get('monto', 0)):,.0f}) sobre {top2.get('beneficiario', 'Cliente B')[:25]} (${(top2.get('saldo_pendiente') or top2.get('monto', 0)):,.0f})",
+            "impact": f"+${(top1.get('saldo_pendiente') or top1.get('monto', 0)):,.0f} MXN",
             "action": "contact_client",
             "entity_id": top1.get('id')
         })
     
     # Recommendation: Payments that can be rescheduled
-    flexible_payments = [p for p in pending_payments if p.get('saldo_pendiente', 0) > 20000]
+    flexible_payments = [p for p in pending_payments if (p.get('saldo_pendiente') or p.get('monto', 0)) > 20000]
     flexible_payments.sort(key=lambda x: x.get('fecha_vencimiento', ''), reverse=True)
     
     if flexible_payments:
@@ -287,7 +287,7 @@ async def generate_recommendations(company_id: str, weeks_ahead: int) -> List[di
             "icon": "🔄",
             "title": "Reprogramar Pago",
             "message": f"Evalúa mover pago a {payment.get('beneficiario', 'Proveedor')[:25]} 1 semana",
-            "impact": f"Libera ${payment.get('saldo_pendiente', 0):,.0f} MXN temporalmente",
+            "impact": f"Libera ${(payment.get('saldo_pendiente') or payment.get('monto', 0)):,.0f} MXN temporalmente",
             "action": "reschedule",
             "entity_id": payment.get('id')
         })
@@ -297,7 +297,7 @@ async def generate_recommendations(company_id: str, weeks_ahead: int) -> List[di
                             if c.get('fecha_vencimiento') and 
                             c.get('fecha_vencimiento', '')[:10] <= (today + timedelta(days=7)).isoformat()[:10]]
     
-    total_near_term = sum(c.get('saldo_pendiente', 0) for c in near_term_collections)
+    total_near_term = sum((c.get('saldo_pendiente') or c.get('monto', 0)) for c in near_term_collections)
     if total_near_term > 100000:
         recommendations.append({
             "type": "anticipated_flow",
@@ -315,7 +315,7 @@ async def generate_recommendations(company_id: str, weeks_ahead: int) -> List[di
                           if c.get('fecha_vencimiento') and 
                           c.get('fecha_vencimiento', '')[:10] < today.isoformat()[:10]]
     
-    total_overdue = sum(c.get('saldo_pendiente', 0) for c in overdue_collections)
+    total_overdue = sum((c.get('saldo_pendiente') or c.get('monto', 0)) for c in overdue_collections)
     if total_overdue > 0:
         recommendations.append({
             "type": "overdue_collection",
@@ -385,7 +385,7 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
                 due_date = payment.get('fecha_vencimiento', '')[:10]
                 if week_start.isoformat()[:10] <= due_date < week_end.isoformat()[:10]:
                     category = categorize_payment(payment)
-                    amount = payment.get('saldo_pendiente', 0)
+                    amount = (payment.get('saldo_pendiente') or payment.get('monto', 0))
                     
                     week_data['payments'][category].append({
                         "beneficiario": payment.get('beneficiario', 'N/A')[:30],
@@ -415,7 +415,7 @@ async def calculate_concentration_kpis(company_id: str) -> dict:
         {'$group': {
             '_id': '$beneficiario',
             'total': {'$sum': '$monto'},
-            'pending': {'$sum': {'$cond': [{'$in': ['$estatus', ['pendiente', 'parcial']]}, '$saldo_pendiente', 0]}}
+            'pending': {'$sum': {'$cond': [{'$in': ['$estatus', ['pendiente', 'parcial']]}, {'$ifNull': ['$saldo_pendiente', '$monto']}, 0]}}
         }},
         {'$sort': {'total': -1}}
     ]).to_list(100)
@@ -426,7 +426,7 @@ async def calculate_concentration_kpis(company_id: str) -> dict:
         {'$group': {
             '_id': '$beneficiario',
             'total': {'$sum': '$monto'},
-            'pending': {'$sum': {'$cond': [{'$in': ['$estatus', ['pendiente', 'parcial']]}, '$saldo_pendiente', 0]}}
+            'pending': {'$sum': {'$cond': [{'$in': ['$estatus', ['pendiente', 'parcial']]}, {'$ifNull': ['$saldo_pendiente', '$monto']}, 0]}}
         }},
         {'$sort': {'total': -1}}
     ]).to_list(100)
