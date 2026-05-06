@@ -56,6 +56,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
     { name: 'Bitácora', href: '/audit-logs', icon: ScrollText },
     { name: 'IA & Avanzado', href: '/advanced', icon: Sparkles },
     { name: 'Contalink', href: '/contalink', icon: Link2 },
+    { name: 'Integraciones', href: '/integrations', icon: Link2 },
     { name: 'Admin', href: '/admin', icon: Settings },
   ];
 
