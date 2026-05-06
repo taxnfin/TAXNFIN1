@@ -527,9 +527,11 @@ const PaymentsModule = () => {
     if (!selectedPayment) return;
     
     try {
+      const { cfdi_ids, ...restFormData } = formData;
       await api.put(`/payments/${selectedPayment.id}`, {
-        ...formData,
+        ...restFormData,
         monto: parseFloat(formData.monto),
+        cfdi_id: cfdi_ids?.length >= 1 ? cfdi_ids[0] : null,
         bank_account_id: formData.bank_account_id || null
       });
       toast.success('Pago actualizado');
