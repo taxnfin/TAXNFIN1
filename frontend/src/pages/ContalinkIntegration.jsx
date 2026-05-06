@@ -4,25 +4,24 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { RefreshCw, CheckCircle2, XCircle, Link2, FileText, Building2, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
+import { RefreshCw, CheckCircle2, XCircle, Link2, FileText, TrendingUp, AlertCircle, CreditCard, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 
 const ContalinkIntegration = () => {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [syncingKey, setSyncingKey] = useState(null); // which button is syncing
 
   const [credentials, setCredentials] = useState({ api_key: '', rfc: '' });
-  const [syncConfig, setSyncConfig] = useState({
-    days_back: '90',
-    transaction_type: 'received',
-    document_type: 'I',
-  });
-  const [syncResult, setSyncResult] = useState(null);
+
+  // Date range — same as Alegra
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  const [syncResults, setSyncResults] = useState({});
   const [trialBalance, setTrialBalance] = useState(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [balanceDates, setBalanceDates] = useState({
@@ -36,11 +35,22 @@ const ContalinkIntegration = () => {
     try {
       const res = await api.get('/contalink/status');
       setStatus(res.data);
-    } catch (err) {
+    } catch {
       setStatus({ connected: false });
     } finally {
       setLoading(false);
     }
+  };
+
+  // Calculate days_back from date range, or default 90
+  const getDaysBack = () => {
+    if (dateFrom) {
+      const from = new Date(dateFrom);
+      const now = new Date();
+      const diff = Math.ceil((now - from) / (1000 * 60 * 60 * 24));
+      return Math.max(1, Math.min(diff, 365));
+    }
+    return 90;
   };
 
   const handleTestConnection = async () => {
@@ -56,7 +66,7 @@ const ContalinkIntegration = () => {
       } else {
         toast.error(`❌ ${res.data.message}`);
       }
-    } catch (err) {
+    } catch {
       toast.error('Error al probar conexión');
     } finally {
       setTesting(false);
@@ -85,34 +95,77 @@ const ContalinkIntegration = () => {
     }
   };
 
-  const handleSyncInvoices = async () => {
-    setSyncing(true);
-    setSyncResult(null);
+  const handleDisconnect = async () => {
+    if (!window.confirm('¿Desconectar Contalink? Se eliminarán las credenciales guardadas.')) return;
     try {
+      await api.delete('/contalink/credentials');
+      toast.success('Contalink desconectado');
+      loadStatus();
+    } catch {
+      toast.error('Error desconectando');
+    }
+  };
+
+  // Sync individual buttons — same pattern as Alegra
+  const syncButtons = [
+    {
+      key: 'cxc',
+      label: 'Facturas (CxC)',
+      description: 'Facturas emitidas — ingresos',
+      icon: FileText,
+      color: 'text-green-600',
+      bg: 'hover:bg-green-50 border-green-200',
+      params: { transaction_type: 'issued', document_type: 'I' }
+    },
+    {
+      key: 'cxp',
+      label: 'Facturas (CxP)',
+      description: 'Facturas recibidas — gastos',
+      icon: FileText,
+      color: 'text-red-600',
+      bg: 'hover:bg-red-50 border-red-200',
+      params: { transaction_type: 'received', document_type: 'I' }
+    },
+    {
+      key: 'complementos',
+      label: 'Complementos Pago',
+      description: 'Documentos tipo P',
+      icon: CreditCard,
+      color: 'text-blue-600',
+      bg: 'hover:bg-blue-50 border-blue-200',
+      params: { transaction_type: 'received', document_type: 'P' }
+    },
+  ];
+
+  const handleSync = async (btn) => {
+    setSyncingKey(btn.key);
+    try {
+      const days = getDaysBack();
       const res = await api.post(
-        `/contalink/sync/invoices?transaction_type=${syncConfig.transaction_type}&document_type=${syncConfig.document_type}&days_back=${syncConfig.days_back}`
+        `/contalink/sync/invoices?transaction_type=${btn.params.transaction_type}&document_type=${btn.params.document_type}&days_back=${days}`
       );
-      setSyncResult(res.data);
-      toast.success(res.data.message);
+      setSyncResults(prev => ({ ...prev, [btn.key]: res.data }));
+      toast.success(`${btn.label}: ${res.data.created} nuevas, ${res.data.updated} actualizadas`);
+      loadStatus();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error sincronizando');
+      toast.error(err.response?.data?.detail || `Error sincronizando ${btn.label}`);
     } finally {
-      setSyncing(false);
+      setSyncingKey(null);
     }
   };
 
   const handleSyncAll = async () => {
-    setSyncing(true);
-    setSyncResult(null);
+    setSyncingKey('all');
+    setSyncResults({});
     try {
-      const res = await api.post(`/contalink/sync/all?days_back=${syncConfig.days_back}`);
-      setSyncResult(res.data);
+      const days = getDaysBack();
+      const res = await api.post(`/contalink/sync/all?days_back=${days}`);
       toast.success(res.data.message);
       loadStatus();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error en sincronización');
     } finally {
-      setSyncing(false);
+      setSyncingKey(null);
     }
   };
 
@@ -138,31 +191,44 @@ const ContalinkIntegration = () => {
       {/* Header */}
       <div className="flex items-center gap-3">
         <div className="p-2 bg-blue-600 rounded-lg">
-          <Building2 className="text-white" size={24} />
+          <Link2 className="text-white" size={24} />
         </div>
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Integración Contalink</h2>
           <p className="text-gray-500 text-sm">Sincroniza facturas, movimientos bancarios y balanza contable</p>
         </div>
-        {status?.connected ? (
-          <span className="ml-auto flex items-center gap-2 text-green-600 bg-green-50 px-3 py-1 rounded-full text-sm">
-            <CheckCircle2 size={16} /> Conectado · {status.rfc}
-          </span>
-        ) : (
-          <span className="ml-auto flex items-center gap-2 text-red-600 bg-red-50 px-3 py-1 rounded-full text-sm">
-            <XCircle size={16} /> No conectado
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {status?.connected ? (
+            <>
+              <span className="flex items-center gap-2 text-green-600 bg-green-50 px-3 py-1 rounded-full text-sm">
+                <CheckCircle2 size={16} /> Conectado · {status.rfc}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-red-500 hover:bg-red-50"
+                onClick={handleDisconnect}
+                title="Desconectar"
+              >
+                <Trash2 size={16} />
+              </Button>
+            </>
+          ) : (
+            <span className="flex items-center gap-2 text-red-600 bg-red-50 px-3 py-1 rounded-full text-sm">
+              <XCircle size={16} /> No conectado
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Credentials */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Link2 size={18} /> Credenciales API
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Link2 size={16} /> Credenciales API
           </CardTitle>
           <CardDescription>
-            Ingresa tu API Key de Contalink. La encuentras en tu cuenta de Contalink → Configuración → API.
+            Ingresa tu API Key de Contalink. La encuentras en tu cuenta → Configuración → API.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -187,7 +253,9 @@ const ContalinkIntegration = () => {
           </div>
           <div className="flex gap-3">
             <Button variant="outline" onClick={handleTestConnection} disabled={testing}>
-              {testing ? <RefreshCw size={16} className="animate-spin mr-2" /> : <CheckCircle2 size={16} className="mr-2" />}
+              {testing
+                ? <RefreshCw size={16} className="animate-spin mr-2" />
+                : <CheckCircle2 size={16} className="mr-2" />}
               Probar conexión
             </Button>
             <Button onClick={handleSaveCredentials} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
@@ -202,88 +270,91 @@ const ContalinkIntegration = () => {
         </CardContent>
       </Card>
 
-      {/* Sync Invoices */}
+      {/* Sync Section */}
       {status?.connected && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText size={18} /> Sincronizar Facturas / CFDIs
+            <CardTitle className="flex items-center gap-2 text-base">
+              <RefreshCw size={16} /> Sincronizar Facturas / CFDIs
             </CardTitle>
             <CardDescription>
-              Importa facturas emitidas y recibidas desde Contalink a TaxnFin
+              Importa facturas desde Contalink a TaxnFin
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label>Días hacia atrás</Label>
-                <Select value={syncConfig.days_back} onValueChange={(v) => setSyncConfig({ ...syncConfig, days_back: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="30">30 días</SelectItem>
-                    <SelectItem value="60">60 días</SelectItem>
-                    <SelectItem value="90">90 días</SelectItem>
-                    <SelectItem value="180">6 meses</SelectItem>
-                    <SelectItem value="365">1 año</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Tipo de transacción</Label>
-                <Select value={syncConfig.transaction_type} onValueChange={(v) => setSyncConfig({ ...syncConfig, transaction_type: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="received">Recibidas (Gastos)</SelectItem>
-                    <SelectItem value="issued">Emitidas (Ingresos)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Tipo de documento</Label>
-                <Select value={syncConfig.document_type} onValueChange={(v) => setSyncConfig({ ...syncConfig, document_type: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="I">Ingreso (I)</SelectItem>
-                    <SelectItem value="E">Egreso (E)</SelectItem>
-                    <SelectItem value="P">Complemento Pago (P)</SelectItem>
-                    <SelectItem value="N">Nómina (N)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={handleSyncInvoices} disabled={syncing}>
-                {syncing ? <RefreshCw size={16} className="animate-spin mr-2" /> : <FileText size={16} className="mr-2" />}
-                Sincronizar selección
-              </Button>
-              <Button onClick={handleSyncAll} disabled={syncing} className="bg-blue-600 hover:bg-blue-700">
-                {syncing ? <RefreshCw size={16} className="animate-spin mr-2" /> : <RefreshCw size={16} className="mr-2" />}
-                Sincronizar todo (emitidas + recibidas)
-              </Button>
-            </div>
+          <CardContent className="space-y-5">
 
-            {/* Sync Result */}
-            {syncResult && (
-              <div className={`p-4 rounded-lg border ${syncResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                <p className={`font-medium ${syncResult.success ? 'text-green-800' : 'text-red-800'}`}>
-                  {syncResult.message}
-                </p>
-                <div className="grid grid-cols-3 gap-4 mt-3">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">{syncResult.total_created ?? syncResult.created}</div>
-                    <div className="text-xs text-gray-500">Nuevas</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">{syncResult.total_updated ?? syncResult.updated}</div>
-                    <div className="text-xs text-gray-500">Actualizadas</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-red-600">{syncResult.total_errors ?? syncResult.errors}</div>
-                    <div className="text-xs text-gray-500">Errores</div>
-                  </div>
+            {/* Date Range — igual que Alegra */}
+            <div className="p-3 bg-gray-50 rounded-lg border">
+              <Label className="text-xs text-gray-500 mb-2 block">Rango de fechas (opcional)</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Desde</Label>
+                  <Input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Hasta</Label>
+                  <Input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="mt-1"
+                  />
                 </div>
               </div>
-            )}
+              {!dateFrom && (
+                <p className="text-xs text-gray-400 mt-2">Sin fechas: sincroniza últimos 90 días</p>
+              )}
+            </div>
+
+            {/* Individual sync buttons — igual que Alegra */}
+            <div className="grid grid-cols-3 gap-3">
+              {syncButtons.map(btn => {
+                const Icon = btn.icon;
+                const result = syncResults[btn.key];
+                const isSyncing = syncingKey === btn.key;
+                return (
+                  <div key={btn.key} className="space-y-2">
+                    <button
+                      onClick={() => handleSync(btn)}
+                      disabled={!!syncingKey}
+                      className={`w-full flex items-center gap-3 p-3 border rounded-lg text-left transition-colors ${btn.bg} disabled:opacity-50 disabled:cursor-not-allowed bg-white`}
+                    >
+                      {isSyncing
+                        ? <RefreshCw size={20} className={`${btn.color} animate-spin shrink-0`} />
+                        : <Icon size={20} className={`${btn.color} shrink-0`} />
+                      }
+                      <div>
+                        <p className={`text-sm font-medium ${btn.color}`}>{btn.label}</p>
+                        <p className="text-xs text-gray-400">{btn.description}</p>
+                      </div>
+                    </button>
+                    {result && (
+                      <div className="text-xs text-center text-gray-500 bg-gray-50 rounded px-2 py-1">
+                        +{result.created} nuevas · {result.updated} act.
+                        {result.errors > 0 && <span className="text-red-500"> · {result.errors} err</span>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Sync All button */}
+            <Button
+              onClick={handleSyncAll}
+              disabled={!!syncingKey}
+              className="w-full bg-blue-600 hover:bg-blue-700"
+            >
+              {syncingKey === 'all'
+                ? <><RefreshCw size={16} className="animate-spin mr-2" />Sincronizando...</>
+                : <><RefreshCw size={16} className="mr-2" />Sincronizar Todo</>
+              }
+            </Button>
           </CardContent>
         </Card>
       )}
@@ -292,8 +363,8 @@ const ContalinkIntegration = () => {
       {status?.connected && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp size={18} /> Balanza de Comprobación
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingUp size={16} /> Balanza de Comprobación
             </CardTitle>
             <CardDescription>
               Consulta la balanza contable directamente desde Contalink
@@ -329,7 +400,7 @@ const ContalinkIntegration = () => {
                 <p className="font-medium text-gray-700 mb-2">
                   Balanza {balanceDates.start_date} → {balanceDates.end_date}
                 </p>
-                <pre className="text-xs text-gray-600 max-h-40 overflow-y-auto">
+                <pre className="text-xs text-gray-600 max-h-48 overflow-y-auto">
                   {JSON.stringify(trialBalance.data, null, 2)}
                 </pre>
               </div>
@@ -351,7 +422,12 @@ const ContalinkIntegration = () => {
                 <li>Recibirás el API Key por correo</li>
                 <li>Ingresa el API Key y RFC aquí y guarda las credenciales</li>
               </ol>
-              <p className="mt-2 text-xs">Documentación técnica: <a href="https://apidocs.contalink.com" target="_blank" rel="noreferrer" className="underline">apidocs.contalink.com</a></p>
+              <p className="mt-2 text-xs">
+                Documentación técnica:{' '}
+                <a href="https://apidocs.contalink.com" target="_blank" rel="noreferrer" className="underline">
+                  apidocs.contalink.com
+                </a>
+              </p>
             </div>
           </div>
         </CardContent>
