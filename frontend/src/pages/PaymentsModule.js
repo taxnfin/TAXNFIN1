@@ -197,8 +197,8 @@ const PaymentsModule = () => {
       }
       
       setPayments(filteredPayments);
-      setSummary(summaryRes.data);
-      setBreakdown(breakdownRes.data);
+      setSummary(summaryRes.data || {});
+      setBreakdown(breakdownRes.data || {});
     } catch (error) {
       toast.error('Error cargando pagos');
     } finally {
@@ -532,6 +532,7 @@ const PaymentsModule = () => {
         ...restFormData,
         monto: parseFloat(formData.monto),
         cfdi_id: cfdi_ids?.length >= 1 ? cfdi_ids[0] : null,
+        metodo_pago: formData.metodo_pago || 'transferencia',
         bank_account_id: formData.bank_account_id || null
       });
       toast.success('Pago actualizado');
@@ -1837,15 +1838,17 @@ const PaymentsModule = () => {
               </div>
               <div className="space-y-2">
                 <Label>Método de Pago</Label>
-                <Select value={formData.metodo_pago} onValueChange={(v) => setFormData({...formData, metodo_pago: v})}>
+                <Select value={formData.metodo_pago || 'transferencia'} onValueChange={(v) => setFormData({...formData, metodo_pago: v})}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Seleccionar método..." />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="transferencia">Transferencia</SelectItem>
+                    <SelectItem value="spei">SPEI</SelectItem>
                     <SelectItem value="efectivo">Efectivo</SelectItem>
                     <SelectItem value="cheque">Cheque</SelectItem>
                     <SelectItem value="tarjeta">Tarjeta</SelectItem>
+                    <SelectItem value="domiciliacion">Domiciliación</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
