@@ -1,6 +1,6 @@
 """Authentication utilities - JWT, password hashing, user verification"""
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, List
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import bcrypt
@@ -17,17 +17,15 @@ security = HTTPBearer()
 
 
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt"""
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    """Verify a password against its hash"""
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
 
 
 def create_token(user_id: str, company_id: str, role: str) -> str:
-    """Create a JWT token for a user"""
+    """Create a JWT token — backwards compatible"""
     payload = {
         'user_id': user_id,
         'company_id': company_id,
@@ -45,6 +43,17 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         user = await db.users.find_one({'id': payload['user_id']}, {'_id': 0, 'password_hash': 0})
         if not user or not user.get('activo'):
             raise HTTPException(status_code=401, detail="Usuario inválido")
+
+        # ── Ensure company_ids is always populated ─────────────────────────
+        # If user doesn't have company_ids yet, initialize from company_id
+        if not user.get('company_ids'):
+            user['company_ids'] = [user['company_id']] if user.get('company_id') else []
+            # Persist migration silently
+            await db.users.update_one(
+                {'id': user['id']},
+                {'$set': {'company_ids': user['company_ids']}}
+            )
+
         return user
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expirado")
@@ -53,19 +62,29 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 
 async def get_active_company_id(request: Request, current_user: Dict = Depends(get_current_user)) -> str:
-    """Get the active company ID from header or fallback to user's company"""
-    # Check for X-Company-ID header first
-    company_id = request.headers.get('X-Company-ID')
-    
+    """
+    Get the active company ID from X-Company-ID header.
+    Verifies the user has access to that company.
+    Falls back to user's primary company_id.
+    """
+    company_id = request.headers.get('X-Company-ID') or request.headers.get('x-company-id')
+
     if company_id:
-        # Verify user has access to this company (admin can access all, others only their own)
+        user_company_ids = current_user.get('company_ids', [current_user['company_id']])
+
+        # Admin can access any company
         if current_user['role'] == 'admin':
-            # Verify company exists
-            company = await db.companies.find_one({'id': company_id}, {'_id': 0})
+            company = await db.companies.find_one({'id': company_id}, {'_id': 0, 'id': 1})
             if company:
                 return company_id
-        elif company_id == current_user['company_id']:
+
+        # Regular user — must be in their company_ids list
+        elif company_id in user_company_ids:
             return company_id
-    
-    # Fallback to user's company
+
+        # Backwards compat — check old company_id field
+        elif company_id == current_user.get('company_id'):
+            return company_id
+
+    # Fallback to primary company
     return current_user['company_id']
