@@ -20,6 +20,7 @@ import TreasuryDecisions from './pages/TreasuryDecisions';
 import FinancialMetrics from './pages/FinancialMetrics';
 import BoardReport from './pages/BoardReport';
 import ContalinkIntegration from './pages/ContalinkIntegration';
+import Integrations from './pages/Integrations';
 import Layout from './components/Layout';
 import { Toaster } from './components/ui/sonner';
 import api from './api/axios';
@@ -135,6 +136,7 @@ function App() {
             <Route path="admin" element={<AdminDashboard />} />
             <Route path="audit-logs" element={<AuditLogsPage />} />
             <Route path="contalink" element={<ContalinkIntegration />} />
+            <Route path="integrations" element={<Integrations />} />
           </Route>
         </Routes>
       </BrowserRouter>
