@@ -61,8 +61,9 @@ async def register(user_data: UserCreate):
             'created_at': datetime.now(timezone.utc).isoformat()
         }
         await db.companies.insert_one(company_doc)
-        # First user of a brand-new company becomes admin
-        role = UserRole.ADMIN
+        # First user of a brand-new company becomes CFO (not admin)
+        # Only platform admin (kvillafuerte@taxnfin.com) should have admin role
+        role = UserRole.CFO
     
     password_hash = hash_password(user_data.password)
     user = User(
