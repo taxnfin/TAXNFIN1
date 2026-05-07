@@ -90,9 +90,12 @@ class ContalinkClient:
                         'page': page
                     }
                 )
+                logger.info(f"Contalink invoices HTTP {res.status_code} - response: {res.text[:500]}")
                 if res.status_code == 200:
-                    return res.json()
-                return {'status': 0, 'message': f'Error HTTP {res.status_code}'}
+                    data = res.json()
+                    logger.info(f"Contalink invoices data type: {type(data).__name__}, keys: {list(data.keys()) if isinstance(data, dict) else 'list len='+str(len(data))}")
+                    return data
+                return {'status': 0, 'message': f'Error HTTP {res.status_code}: {res.text[:200]}'}
         except Exception as e:
             logger.error(f"ContalinkClient.get_invoices error: {e}")
             return {'status': 0, 'message': str(e)}
