@@ -278,10 +278,11 @@ async def sync_contalink_invoices(
     # Contalink API uses E=emitidas, R=recibidas
     tx_type_map = {"issued": "E", "received": "R", "E": "E", "R": "R"}
     contalink_tx_type = tx_type_map.get(transaction_type, "E")
-    # Contalink API document_type values
-    doc_type_map = {"I": "ingreso", "E": "egreso", "N": "nomina", "P": "pago",
-                    "ingreso": "ingreso", "egreso": "egreso", "nomina": "nomina", "pago": "pago"}
-    contalink_doc_type = doc_type_map.get(document_type, "ingreso")
+    # Contalink API document_type values (exact case required)
+    doc_type_map = {"I": "Ingreso", "E": "Egreso", "N": "Nomina", "P": "Pago",
+                    "ingreso": "Ingreso", "egreso": "Egreso", "nomina": "Nomina", "pago": "Pago",
+                    "Ingreso": "Ingreso", "Egreso": "Egreso", "Nomina": "Nomina", "Pago": "Pago"}
+    contalink_doc_type = doc_type_map.get(document_type, "Ingreso")
     logger.info(f"Sync invoices: transaction_type={transaction_type} -> contalink={contalink_tx_type}, document_type={document_type} -> {contalink_doc_type}, days_back={days_back}")
 
     synced = created = updated = errors = 0
