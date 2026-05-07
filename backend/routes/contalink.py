@@ -205,9 +205,11 @@ async def save_contalink_credentials(
     # Test connection first
     client = ContalinkClient(credentials.api_key)
     result = await client.test_connection()
+    logger.info(f"Contalink test_connection result: {result}")
     if result["status"] != "connected":
         raise HTTPException(status_code=400, detail=f"Credenciales inválidas: {result['message']}")
 
+    logger.info(f"Saving contalink credentials for company_id: {company_id}, rfc: {credentials.rfc}")
     await db.integrations.update_one(
         {"company_id": company_id, "type": "contalink"},
         {"$set": {
@@ -235,6 +237,7 @@ async def get_contalink_status(
         {"company_id": company_id, "type": "contalink"},
         {"_id": 0, "api_key": 0}
     )
+    logger.info(f"Contalink status check for company_id: {company_id}, integration found: {integration is not None}")
     if not integration:
         return {"connected": False, "message": "No configurado"}
 
