@@ -154,8 +154,11 @@ async def list_cfdis(
     
     for c in cfdis:
         for field in ['fecha_emision', 'fecha_timbrado', 'created_at']:
-            if isinstance(c.get(field), str):
-                c[field] = datetime.fromisoformat(c[field])
+            if isinstance(c.get(field), str) and c[field]:
+                try:
+                    c[field] = datetime.fromisoformat(c[field])
+                except ValueError:
+                    c[field] = None
     return cfdis
 
 
