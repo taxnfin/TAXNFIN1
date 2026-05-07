@@ -83,6 +83,7 @@ class ContalinkClient:
                     headers=self.headers,
                     params={
                         'transaction_type': transaction_type,
+                        'document_type': document_type,
                         'rfc': rfc,
                         'start_date': start_date,
                         'end_date': end_date,
@@ -277,7 +278,11 @@ async def sync_contalink_invoices(
     # Contalink API uses E=emitidas, R=recibidas
     tx_type_map = {"issued": "E", "received": "R", "E": "E", "R": "R"}
     contalink_tx_type = tx_type_map.get(transaction_type, "E")
-    logger.info(f"Sync invoices: transaction_type={transaction_type} -> contalink={contalink_tx_type}, document_type={document_type}, days_back={days_back}")
+    # Contalink API document_type values
+    doc_type_map = {"I": "ingreso", "E": "egreso", "N": "nomina", "P": "pago",
+                    "ingreso": "ingreso", "egreso": "egreso", "nomina": "nomina", "pago": "pago"}
+    contalink_doc_type = doc_type_map.get(document_type, "ingreso")
+    logger.info(f"Sync invoices: transaction_type={transaction_type} -> contalink={contalink_tx_type}, document_type={document_type} -> {contalink_doc_type}, days_back={days_back}")
 
     synced = created = updated = errors = 0
     page = 0
@@ -286,7 +291,7 @@ async def sync_contalink_invoices(
         result = await client.get_invoices(
             rfc=creds["rfc"],
             transaction_type=contalink_tx_type,
-            document_type=document_type,
+            document_type=contalink_doc_type,
             start_date=start_date,
             end_date=end_date,
             page=page
