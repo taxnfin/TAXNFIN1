@@ -83,7 +83,6 @@ class ContalinkClient:
                     headers=self.headers,
                     params={
                         'transaction_type': transaction_type,
-                        'document_type': document_type,
                         'rfc': rfc,
                         'start_date': start_date,
                         'end_date': end_date,
