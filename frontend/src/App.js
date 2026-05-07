@@ -19,12 +19,19 @@ import DIOTModule from './pages/DIOTModule';
 import TreasuryDecisions from './pages/TreasuryDecisions';
 import FinancialMetrics from './pages/FinancialMetrics';
 import BoardReport from './pages/BoardReport';
-import ContalinkIntegration from './pages/ContalinkIntegration';
 import Integrations from './pages/Integrations';
 import Layout from './components/Layout';
 import { Toaster } from './components/ui/sonner';
 import api from './api/axios';
 import './App.css';
+
+// Protege rutas solo para admin
+const AdminRoute = ({ user, children }) => {
+  if (!user || user.role !== 'admin') {
+    return null; // No renderiza nada si no es admin
+  }
+  return children;
+};
 
 function App() {
   const [user, setUser] = useState(null);
@@ -133,9 +140,8 @@ function App() {
             <Route path="financial-metrics" element={<FinancialMetrics />} />
             <Route path="diot" element={<DIOTModule />} />
             <Route path="advanced" element={<AdvancedFeatures />} />
-            <Route path="admin" element={<AdminDashboard />} />
+            <Route path="admin" element={<AdminRoute user={user}><AdminDashboard /></AdminRoute>} />
             <Route path="audit-logs" element={<AuditLogsPage />} />
-            <Route path="contalink" element={<ContalinkIntegration />} />
             <Route path="integrations" element={<Integrations />} />
           </Route>
         </Routes>
