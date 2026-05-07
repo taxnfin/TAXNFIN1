@@ -324,22 +324,38 @@ async def sync_contalink_invoices(
 
                 tipo_cfdi = {"I": "ingreso", "E": "egreso", "N": "nomina", "P": "pago"}.get(document_type, "ingreso")
 
+                # Normalize fecha fields - Contalink uses fecha_expedicion
+                fecha_raw = (inv.get("fecha_expedicion") or inv.get("fecha") or 
+                             inv.get("fecha_emision") or "")
+                fecha_timbrado_raw = (inv.get("fecha_timbrado") or fecha_raw or "")
+                
+                # Normalize estatus - Contalink uses Vigente/Cancelado (capitalized)
+                estatus_raw = (inv.get("estatus") or inv.get("status") or "vigente").lower()
+                if estatus_raw not in ["vigente", "cancelado"]:
+                    estatus_raw = "vigente"
+
+                # impuestos - calculate if not present
+                total_val = float(inv.get("total") or 0)
+                subtotal_val = float(inv.get("subtotal") or 0)
+                impuestos_val = float(inv.get("impuestos") or (total_val - subtotal_val))
+
                 doc = {
                     "company_id": company_id,
                     "uuid": uuid_val,
                     "tipo_cfdi": tipo_cfdi,
-                    "emisor_rfc": inv.get("emisor_rfc") or inv.get("rfc_emisor", ""),
-                    "emisor_nombre": inv.get("emisor_nombre") or inv.get("nombre_emisor", ""),
-                    "receptor_rfc": inv.get("receptor_rfc") or inv.get("rfc_receptor", creds["rfc"]),
-                    "receptor_nombre": inv.get("receptor_nombre") or inv.get("nombre_receptor", ""),
-                    "fecha_emision": inv.get("fecha") or inv.get("fecha_emision", ""),
-                    "fecha_timbrado": inv.get("fecha_timbrado") or inv.get("fecha", ""),
-                    "total": float(inv.get("total") or inv.get("monto", 0)),
-                    "subtotal": float(inv.get("subtotal") or 0),
+                    "emisor_rfc": inv.get("rfc_emisor") or inv.get("emisor_rfc", ""),
+                    "emisor_nombre": inv.get("nombre_emisor") or inv.get("emisor_nombre", ""),
+                    "receptor_rfc": inv.get("rfc_receptor") or inv.get("receptor_rfc") or creds["rfc"],
+                    "receptor_nombre": inv.get("nombre_receptor") or inv.get("receptor_nombre", ""),
+                    "fecha_emision": fecha_raw or datetime.now(timezone.utc).isoformat(),
+                    "fecha_timbrado": fecha_timbrado_raw or datetime.now(timezone.utc).isoformat(),
+                    "total": total_val,
+                    "subtotal": subtotal_val,
+                    "impuestos": impuestos_val,
                     "moneda": inv.get("moneda", "MXN"),
                     "tipo_cambio": float(inv.get("tipo_cambio") or 1),
-                    "estatus": inv.get("estatus") or inv.get("status", "vigente"),
-                    "estado_cancelacion": "cancelado" if inv.get("cancelado") else "vigente",
+                    "estatus": estatus_raw,
+                    "estado_cancelacion": "cancelado" if estatus_raw == "cancelado" else "vigente",
                     "metodo_pago": inv.get("metodo_pago", "PUE"),
                     "forma_pago": inv.get("forma_pago", "03"),
                     "fuente": "contalink",
