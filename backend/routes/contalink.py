@@ -302,8 +302,15 @@ async def sync_contalink_invoices(
             logger.error(f"Contalink invoices error: {result.get('message')}")
             break
 
-        invoices = result if isinstance(result, list) else \
-                   result.get("data", result.get("invoices", result.get("documents", [])))
+        # Contalink response: {"list": {"total": N, "invoices": [...]}}
+        if isinstance(result, list):
+            invoices = result
+        elif "list" in result:
+            invoices = result["list"].get("invoices", [])
+        else:
+            invoices = result.get("data", result.get("invoices", result.get("documents", [])))
+        
+        logger.info(f"Page {page}: {len(invoices)} invoices found")
         if not invoices:
             break
 
