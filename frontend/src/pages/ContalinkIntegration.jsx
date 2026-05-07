@@ -115,7 +115,7 @@ const ContalinkIntegration = () => {
       icon: FileText,
       color: 'text-green-600',
       bg: 'hover:bg-green-50 border-green-200',
-      params: { transaction_type: 'issued', document_type: 'I' }
+      params: { transaction_type: 'issued', document_type: 'Ingreso' }
     },
     {
       key: 'cxp',
@@ -124,7 +124,7 @@ const ContalinkIntegration = () => {
       icon: FileText,
       color: 'text-red-600',
       bg: 'hover:bg-red-50 border-red-200',
-      params: { transaction_type: 'received', document_type: 'I' }
+      params: { transaction_type: 'received', document_type: 'Ingreso' }
     },
     {
       key: 'complementos',
@@ -133,7 +133,7 @@ const ContalinkIntegration = () => {
       icon: CreditCard,
       color: 'text-blue-600',
       bg: 'hover:bg-blue-50 border-blue-200',
-      params: { transaction_type: 'received', document_type: 'P' }
+      params: { transaction_type: 'received', document_type: 'Pago' }
     },
   ];
 
