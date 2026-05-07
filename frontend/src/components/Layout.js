@@ -37,6 +37,9 @@ import NotificationBell from './NotificationBell';
 const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange }) => {
   const location = useLocation();
 
+  const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const isAdmin = storedUser?.role === 'admin';
+
   const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
     { name: 'Proyecciones', href: '/projections', icon: TrendingUp, highlight: true },
@@ -56,7 +59,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
     { name: 'Bitácora', href: '/audit-logs', icon: ScrollText },
     { name: 'IA & Avanzado', href: '/advanced', icon: Sparkles },
     { name: 'Integraciones', href: '/integrations', icon: Link2 },
-    { name: 'Admin', href: '/admin', icon: Settings },
+    ...(isAdmin ? [{ name: 'Admin', href: '/admin', icon: Settings }] : []),
   ];
 
   return (
