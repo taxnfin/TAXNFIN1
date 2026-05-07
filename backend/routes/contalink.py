@@ -271,13 +271,18 @@ async def sync_contalink_invoices(
     end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     start_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
+    # Contalink API uses E=emitidas, R=recibidas
+    tx_type_map = {"issued": "E", "received": "R", "E": "E", "R": "R"}
+    contalink_tx_type = tx_type_map.get(transaction_type, "E")
+    logger.info(f"Sync invoices: transaction_type={transaction_type} -> contalink={contalink_tx_type}, document_type={document_type}, days_back={days_back}")
+
     synced = created = updated = errors = 0
     page = 0
 
     while True:
         result = await client.get_invoices(
             rfc=creds["rfc"],
-            transaction_type=transaction_type,
+            transaction_type=contalink_tx_type,
             document_type=document_type,
             start_date=start_date,
             end_date=end_date,
@@ -373,7 +378,7 @@ async def sync_all_contalink(
 ):
     """Sync all: issued + received invoices"""
     results = {}
-    for tx_type, doc_type in [("received", "I"), ("issued", "I"), ("received", "E")]:
+    for tx_type, doc_type in [("R", "I"), ("E", "I"), ("R", "E")]:  # R=recibidas, E=emitidas
         try:
             results[f"{tx_type}_{doc_type}"] = await sync_contalink_invoices(
                 request, current_user,
