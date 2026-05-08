@@ -130,7 +130,7 @@ const AgingModule = () => {
       return new Date(cfdi.fecha_vencimiento);
     }
     
-    const fechaEmision = new Date(cfdi.fecha_emision);
+    const fechaEmision = cfdi.fecha_emision ? new Date(cfdi.fecha_emision) : new Date();
     let plazoDias = 30; // Default: 30 days
     
     if (tipo === 'cxc') {
@@ -293,7 +293,7 @@ const AgingModule = () => {
       const fromDate = parseISO(filters.fechaDesde);
       if (isValid(fromDate)) {
         filtered = filtered.filter(cfdi => {
-          const emisionDate = new Date(cfdi.fecha_emision);
+          const emisionDate = cfdi.fecha_emision ? new Date(cfdi.fecha_emision) : new Date();
           return !isBefore(emisionDate, fromDate);
         });
       }
@@ -304,7 +304,7 @@ const AgingModule = () => {
       const toDate = parseISO(filters.fechaHasta);
       if (isValid(toDate)) {
         filtered = filtered.filter(cfdi => {
-          const emisionDate = new Date(cfdi.fecha_emision);
+          const emisionDate = cfdi.fecha_emision ? new Date(cfdi.fecha_emision) : new Date();
           return !isAfter(emisionDate, toDate);
         });
       }
@@ -403,7 +403,7 @@ const AgingModule = () => {
         'Antigüedad': bucketLabel,
         [tipo === 'cxc' ? 'Cliente' : 'Proveedor']: getPartyName(cfdi, tipo),
         'UUID': cfdi.uuid || '',
-        'Fecha Emisión': format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy'),
+        'Fecha Emisión': (cfdi.fecha_emision ? format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy') : 'N/A'),
         'Plazo': cfdi.plazo === 0 ? 'Contado' : `${cfdi.plazo} días`,
         'Vencimiento': format(cfdi.fechaVencimiento, 'dd/MM/yyyy'),
         'Días Vencido': cfdi.diasVencido,
@@ -681,7 +681,7 @@ const AgingModule = () => {
                           </div>
                         </TableCell>
                         <TableCell className="font-mono text-xs">{cfdi.uuid?.substring(0, 8)}...</TableCell>
-                        <TableCell className="text-xs">{format(new Date(cfdi.fecha_emision), 'dd/MM/yy')}</TableCell>
+                        <TableCell className="text-xs">{(cfdi.fecha_emision ? format(new Date(cfdi.fecha_emision), 'dd/MM/yy') : 'N/A')}</TableCell>
                         <TableCell className="text-center">
                           <span className={`text-xs px-1.5 py-0.5 rounded ${cfdi.plazo === 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>
                             {cfdi.plazo === 0 ? 'Contado' : `${cfdi.plazo}d`}
