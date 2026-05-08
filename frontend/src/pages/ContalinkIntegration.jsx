@@ -124,7 +124,7 @@ const ContalinkIntegration = () => {
       icon: FileText,
       color: 'text-red-600',
       bg: 'hover:bg-red-50 border-red-200',
-      params: { transaction_type: 'received', document_type: 'Ingreso' }
+      params: { transaction_type: 'received', document_type: 'Egreso' }
     },
     {
       key: 'complementos',
