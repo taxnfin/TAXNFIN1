@@ -322,7 +322,9 @@ async def sync_contalink_invoices(
                 if not uuid_val:
                     continue
 
-                tipo_cfdi = {"I": "ingreso", "E": "egreso", "N": "nomina", "P": "pago"}.get(document_type, "ingreso")
+                # Use original document_type param (before Contalink mapping) to determine tipo_cfdi
+                tipo_cfdi_map = {"I": "ingreso", "Ingreso": "ingreso", "E": "egreso", "Egreso": "egreso", "N": "nomina", "Nomina": "nomina", "P": "pago", "Pago": "pago"}
+                tipo_cfdi = tipo_cfdi_map.get(document_type, "ingreso")
 
                 # Normalize fecha fields - Contalink uses fecha_expedicion
                 fecha_raw = (inv.get("fecha_expedicion") or inv.get("fecha") or 
