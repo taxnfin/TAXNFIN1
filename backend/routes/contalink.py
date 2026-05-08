@@ -322,9 +322,12 @@ async def sync_contalink_invoices(
                 if not uuid_val:
                     continue
 
-                # Use original document_type param (before Contalink mapping) to determine tipo_cfdi
-                tipo_cfdi_map = {"I": "ingreso", "Ingreso": "ingreso", "E": "egreso", "Egreso": "egreso", "N": "nomina", "Nomina": "nomina", "P": "pago", "Pago": "pago"}
-                tipo_cfdi = tipo_cfdi_map.get(document_type, "ingreso")
+                # transaction_type R=recibidas=egreso, E=emitidas=ingreso
+                if contalink_tx_type == "R":
+                    tipo_cfdi = "egreso"
+                else:
+                    tipo_cfdi_map = {"I": "ingreso", "Ingreso": "ingreso", "E": "egreso", "Egreso": "egreso", "N": "nomina", "Nomina": "nomina", "P": "pago", "Pago": "pago"}
+                    tipo_cfdi = tipo_cfdi_map.get(document_type, "ingreso")
 
                 # Normalize fecha fields - Contalink uses fecha_expedicion
                 fecha_raw = (inv.get("fecha_expedicion") or inv.get("fecha") or 
@@ -412,7 +415,7 @@ async def sync_all_contalink(
 ):
     """Sync all: issued + received invoices"""
     results = {}
-    for tx_type, doc_type in [("R", "I"), ("E", "I"), ("R", "E")]:  # R=recibidas, E=emitidas
+    for tx_type, doc_type in [("E", "Ingreso"), ("R", "Ingreso"), ("R", "Egreso")]:  # E=emitidas, R=recibidas
         try:
             results[f"{tx_type}_{doc_type}"] = await sync_contalink_invoices(
                 request, current_user,
