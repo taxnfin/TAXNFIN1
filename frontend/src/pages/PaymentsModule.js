@@ -1382,9 +1382,37 @@ const PaymentsModule = () => {
       {/* Payments Table */}
       <Card className="border-[#E2E8F0]">
         <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Listado de Cobranza y Pagos</CardTitle>
-            <CardDescription>{payments.length} registros encontrados</CardDescription>
+          <div className="flex items-center gap-4">
+            <div>
+              <CardTitle>Cobranza y Pagos</CardTitle>
+              <CardDescription>
+                {payments.filter(p => {
+                  if (activeTab === 'cobrar') return p.tipo === 'cobro';
+                  if (activeTab === 'pagar') return p.tipo === 'pago';
+                  return true;
+                }).length} registros
+              </CardDescription>
+            </div>
+            {/* Tabs */}
+            <div className="flex gap-1 bg-[#F1F5F9] rounded-lg p-1">
+              {[
+                { key: 'todos',   label: 'Todos' },
+                { key: 'cobrar',  label: '↑ Por Cobrar' },
+                { key: 'pagar',   label: '↓ Por Pagar' },
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                    activeTab === tab.key
+                      ? 'bg-white text-[#0F172A] shadow-sm'
+                      : 'text-[#64748B] hover:text-[#0F172A]'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
           <Button 
             variant="outline" 
@@ -1433,6 +1461,11 @@ const PaymentsModule = () => {
                 </TableRow>
               ) : (
                 payments.filter(p => {
+                  // Tab filter
+                  if (activeTab === 'cobrar' && p.tipo !== 'cobro') return false;
+                  if (activeTab === 'pagar'  && p.tipo !== 'pago')  return false;
+                  // Existing filters
+                  if (filterTipo !== 'all' && p.tipo !== filterTipo) return false;
                   if (filterEsReal === 'real') return p.es_real === true;
                   if (filterEsReal === 'proyeccion') return p.es_real === false;
                   return true;
