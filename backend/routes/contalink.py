@@ -520,6 +520,101 @@ async def delete_contalink_credentials(
 
 
 # ── Invoice Status ─────────────────────────────────────────────────────────────
+
+
+@router.post("/import-excel")
+async def import_excel_egresos(
+    file: UploadFile = File(...),
+    current_user: Dict = Depends(get_current_user)
+):
+    """Import egresos from Contalink Excel report"""
+    company_id = current_user['company_id']
+    
+    try:
+        import openpyxl
+        content_bytes = await file.read()
+        wb = openpyxl.load_workbook(io.BytesIO(content_bytes))
+        ws = wb.active
+        
+        # Find header row (row 4 in standard Contalink export)
+        headers = [ws.cell(4, c).value for c in range(1, ws.max_column + 1)]
+        
+        created = updated = skipped = 0
+        seen_uuids = set()
+        
+        for row in range(5, ws.max_row + 1):
+            uuid_val = ws.cell(row, 11).value  # UUID column
+            if not uuid_val or uuid_val in seen_uuids:
+                skipped += 1
+                continue
+            seen_uuids.add(uuid_val)
+            
+            def get_cell(col_idx):
+                v = ws.cell(row, col_idx).value
+                return v if v is not None else ""
+            
+            fecha_raw = str(get_cell(10)) if get_cell(10) else None
+            if fecha_raw:
+                from datetime import datetime as dt
+                for fmt in ["%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y"]:
+                    try:
+                        fecha_raw = dt.strptime(fecha_raw, fmt).replace(tzinfo=timezone.utc).isoformat()
+                        break
+                    except:
+                        pass
+            
+            total = float(get_cell(41) or 0)
+            subtotal = float(get_cell(30) or 0)
+            impuestos = float(get_cell(40) or (total - subtotal))
+            estatus_raw = str(get_cell(15)).lower() if get_cell(15) else "vigente"
+            if estatus_raw not in ["vigente", "cancelado"]:
+                estatus_raw = "vigente"
+            
+            doc = {
+                "company_id": company_id,
+                "uuid": str(uuid_val),
+                "tipo_cfdi": "egreso",
+                "emisor_rfc": str(get_cell(2)),
+                "emisor_nombre": str(get_cell(3)),
+                "receptor_rfc": current_user.get("company_rfc", ""),
+                "receptor_nombre": "",
+                "fecha_emision": fecha_raw or datetime.now(timezone.utc).isoformat(),
+                "fecha_timbrado": fecha_raw or datetime.now(timezone.utc).isoformat(),
+                "total": total,
+                "subtotal": subtotal,
+                "impuestos": impuestos,
+                "moneda": str(get_cell(26)) or "MXN",
+                "tipo_cambio": float(get_cell(27) or 1),
+                "estatus": estatus_raw,
+                "forma_pago": str(get_cell(18)) or "",
+                "metodo_pago": str(get_cell(19)) or "",
+                "fuente": "contalink_excel",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            
+            existing = await db.cfdis.find_one(
+                {"company_id": company_id, "uuid": str(uuid_val)},
+                {"_id": 0, "id": 1}
+            )
+            if existing:
+                await db.cfdis.update_one(
+                    {"company_id": company_id, "uuid": str(uuid_val)},
+                    {"$set": doc}
+                )
+                updated += 1
+            else:
+                doc["id"] = str(uuid.uuid4())
+                doc["created_at"] = datetime.now(timezone.utc).isoformat()
+                await db.cfdis.insert_one(doc)
+                created += 1
+        
+        return {"created": created, "updated": updated, "skipped": skipped}
+        
+    except Exception as e:
+        logger.error(f"Excel import error: {e}")
+        raise HTTPException(status_code=400, detail=f"Error procesando Excel: {str(e)}")
+
+
 @router.get("/invoice-status/{cfdi_uuid}")
 async def check_invoice_status(
     cfdi_uuid: str,
