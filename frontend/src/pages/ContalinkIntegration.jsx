@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { RefreshCw, CheckCircle2, XCircle, Link2, FileText, TrendingUp, AlertCircle, CreditCard, Trash2 } from 'lucide-react';
+import { RefreshCw, CheckCircle2, XCircle, Link2, FileText, TrendingUp, AlertCircle, CreditCard, Trash2, Upload } from 'lucide-react';
 import { format } from 'date-fns';
 
 const ContalinkIntegration = () => {
@@ -22,6 +22,8 @@ const ContalinkIntegration = () => {
   const [dateTo, setDateTo] = useState('');
 
   const [syncResults, setSyncResults] = useState({});
+  const [importingExcel, setImportingExcel] = useState(false);
+  const [importResult, setImportResult] = useState(null);
   const [trialBalance, setTrialBalance] = useState(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [balanceDates, setBalanceDates] = useState({
@@ -30,6 +32,27 @@ const ContalinkIntegration = () => {
   });
 
   useEffect(() => { loadStatus(); }, []);
+
+  const handleExcelImport = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImportingExcel(true);
+    setImportResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await api.post('/contalink/import-excel', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setImportResult(res.data);
+      toast.success(`✅ ${res.data.created} facturas importadas, ${res.data.updated} actualizadas`);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error importando Excel');
+    } finally {
+      setImportingExcel(false);
+      e.target.value = '';
+    }
+  };
 
   const loadStatus = async () => {
     try {
@@ -355,6 +378,40 @@ const ContalinkIntegration = () => {
                 : <><RefreshCw size={16} className="mr-2" />Sincronizar Todo</>
               }
             </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Excel Import */}
+      {status?.connected && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Upload size={16} /> Importar Egresos desde Excel
+            </CardTitle>
+            <p className="text-xs text-[#64748B]">
+              Sube el reporte de egresos de Contalink (.xlsx) para importar facturas recibidas
+            </p>
+          </CardHeader>
+          <CardContent>
+            <label className="flex flex-col items-center gap-3 p-6 border-2 border-dashed border-[#E2E8F0] rounded-lg cursor-pointer hover:bg-[#F8FAFC] transition-colors">
+              <Upload size={24} className="text-[#64748B]" />
+              <span className="text-sm text-[#64748B]">
+                {importingExcel ? 'Importando...' : 'Haz clic o arrastra tu archivo Excel aquí'}
+              </span>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={handleExcelImport}
+                disabled={importingExcel}
+              />
+            </label>
+            {importResult && (
+              <div className="mt-3 p-3 bg-green-50 rounded-lg text-sm text-green-800">
+                ✅ {importResult.created} creadas · {importResult.updated} actualizadas · {importResult.skipped} omitidas
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
