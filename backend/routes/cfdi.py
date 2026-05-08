@@ -137,7 +137,7 @@ async def get_cfdi_summary(
     }
 
 
-@router.get("", response_model=List[CFDI])
+@router.get("")
 async def list_cfdis(
     request: Request,
     current_user: Dict = Depends(get_current_user),
