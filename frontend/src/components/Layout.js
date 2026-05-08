@@ -87,15 +87,8 @@ const buildNav = (isAdmin) => [
           { name: 'Por cliente/proveedor', href: '/projections?view=entity' },
         ],
       },
-      {
-        name: 'Cobranza y Pagos',
-        icon: CreditCard,
-        sub: [
-          { name: 'Por cobrar (CxC)', href: '/payments?tab=cobrar' },
-          { name: 'Por pagar (CxP)',  href: '/payments?tab=pagar' },
-          { name: 'Aging CxC / CxP', href: '/transactions' },
-        ],
-      },
+      { name: 'Cobranza y Pagos', href: '/payments', icon: CreditCard },
+      { name: 'Aging CxC / CxP',  href: '/transactions', icon: ArrowRightLeft },
     ],
   },
   {
@@ -117,10 +110,9 @@ const buildNav = (isAdmin) => [
         badge: 'MX',
         badgeStyle: 'mx',
         sub: [
-          { name: 'CFDI emitidos',                href: '/cfdi?tab=emitidos' },
-          { name: 'CFDI recibidos',               href: '/cfdi?tab=recibidos' },
+          { name: 'CFDI emitidos',                     href: '/cfdi?tab=emitidos' },
+          { name: 'CFDI recibidos',                    href: '/cfdi?tab=recibidos' },
           { name: 'Integraciones (Alegra · Contalink)', href: '/integrations' },
-          { name: 'DIOT',                         href: '/diot', tag: 'v2' },
         ],
       },
     ],
@@ -135,7 +127,6 @@ const buildNav = (isAdmin) => [
           { name: 'Reporte Board',        href: '/board-report' },
           { name: 'Métricas financieras', href: '/financial-metrics' },
           { name: 'Decisiones / Alertas', href: '/treasury' },
-          { name: 'Bitácora',             href: '/audit-logs' },
         ],
       },
       {
@@ -497,6 +488,16 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
             >
               <Settings size={13} color={t.text3} />
               <span>Admin</span>
+            </Link>
+          )}
+
+          {isAdmin && (
+            <Link to="/audit-logs" style={S.footItem}
+              onMouseEnter={(e) => e.currentTarget.style.background = t.hover}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <ScrollText size={13} color={t.text3} />
+              <span>Bitácora</span>
             </Link>
           )}
 
