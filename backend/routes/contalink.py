@@ -8,7 +8,7 @@ import os
 import uuid as uuid_lib
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, HTTPException, Depends, Request, Query
+from fastapi import APIRouter, HTTPException, Depends, Request, Query, UploadFile, File
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
