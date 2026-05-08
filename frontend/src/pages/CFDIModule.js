@@ -1105,7 +1105,7 @@ const CFDIModule = () => {
                         <div className="font-medium">{cfdi.receptor_nombre || cfdi.receptor_rfc}</div>
                         <div className="text-xs text-[#94A3B8] mono">{cfdi.receptor_rfc}</div>
                       </TableCell>
-                      <TableCell className="mono text-sm">{format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy')}</TableCell>
+                      <TableCell className="mono text-sm">{(cfdi.fecha_emision ? format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy') : 'N/A')}</TableCell>
                       <TableCell className={`mono ${
                         cfdi.tipo_cfdi === 'ingreso' ? 'text-green-600' : 'text-red-600'
                       }`}>
@@ -1855,7 +1855,7 @@ const CFDIModule = () => {
               <div className="grid grid-cols-4 gap-4">
                 <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
                   <Label className="text-xs text-[#94A3B8]">FECHA DE EMISIÓN</Label>
-                  <div className="font-mono text-[#0F172A]">{format(new Date(cfdiDetail.fecha_emision), 'dd/MM/yyyy HH:mm')}</div>
+                  <div className="font-mono text-[#0F172A]">{(cfdiDetail.fecha_emision ? format(new Date(cfdiDetail.fecha_emision), 'dd/MM/yyyy HH:mm') : 'N/A')}</div>
                 </div>
                 <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
                   <Label className="text-xs text-[#94A3B8]">FECHA TIMBRADO</Label>
