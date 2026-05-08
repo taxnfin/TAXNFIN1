@@ -113,6 +113,7 @@ const buildNav = (isAdmin) => [
           { name: 'CFDI emitidos',                     href: '/cfdi?tab=emitidos' },
           { name: 'CFDI recibidos',                    href: '/cfdi?tab=recibidos' },
           { name: 'Integraciones (Alegra · Contalink)', href: '/integrations' },
+          { name: 'Estados Financieros',               href: '/contalink-financial' },
         ],
       },
     ],
