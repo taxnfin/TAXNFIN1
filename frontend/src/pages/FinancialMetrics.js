@@ -37,6 +37,9 @@ const FinancialMetrics = () => {
   const [uploadType, setUploadType] = useState('');
   const [uploadPeriodo, setUploadPeriodo] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [contalinkDialogOpen, setContalinkDialogOpen] = useState(false);
+  const [contalinkPeriodo, setContalinkPeriodo] = useState('');
+  const [contalinkUploading, setContalinkUploading] = useState(false);
   
   const t = financialTranslations[language];
 
@@ -121,6 +124,30 @@ const FinancialMetrics = () => {
       toast.error(error.response?.data?.detail || t.errorUploadingFile);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleContalinkUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !contalinkPeriodo) {
+      toast.error('Selecciona el archivo y el período');
+      return;
+    }
+    setContalinkUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await api.post(`/contalink-financial/upload-to-metrics?periodo=${contalinkPeriodo}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success(`✓ ${res.data.tipo === 'balance_general' ? 'Balance General' : 'Estado de Resultados'} importado desde Contalink para ${contalinkPeriodo}`);
+      setContalinkDialogOpen(false);
+      loadPeriods();
+      if (contalinkPeriodo === selectedPeriod) loadMetrics(selectedPeriod);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error importando desde Contalink');
+    } finally {
+      setContalinkUploading(false);
     }
   };
 
@@ -334,6 +361,55 @@ const FinancialMetrics = () => {
                 {t.uploadExcel}
               </Button>
             </DialogTrigger>
+
+          {/* Contalink Import Button */}
+          <Dialog open={contalinkDialogOpen} onOpenChange={setContalinkDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="gap-2 border-teal-500 text-teal-600 hover:bg-teal-50">
+                <Upload className="w-4 h-4" />
+                Importar Contalink
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Importar desde Contalink</DialogTitle>
+                <DialogDescription>
+                  Sube el Excel exportado desde Contalink. Detecta automáticamente Balance General o Estado de Resultados.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Período (YYYY-MM)</Label>
+                  <Input
+                    type="month"
+                    value={contalinkPeriodo}
+                    onChange={(e) => setContalinkPeriodo(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Archivo Excel de Contalink (.xlsx o .xls)</Label>
+                  <Input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={handleContalinkUpload}
+                    disabled={!contalinkPeriodo || contalinkUploading}
+                  />
+                  {contalinkUploading && <p className="text-sm text-gray-500">Procesando...</p>}
+                </div>
+                <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700">
+                  <p className="font-semibold mb-1">Reportes soportados:</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    <li>Balance General (.xlsx)</li>
+                    <li>Estado de Resultados (.xls)</li>
+                    <li>ER por Centro de Costo (.xls)</li>
+                  </ul>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setContalinkDialogOpen(false)}>Cancelar</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>{t.uploadStatement}</DialogTitle>
