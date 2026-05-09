@@ -102,8 +102,7 @@ const buildNav = (isAdmin) => [
         badge: 'MX',
         badgeStyle: 'mx',
         sub: [
-          { name: 'CFDI emitidos',                     href: '/cfdi?tab=emitidos' },
-          { name: 'CFDI recibidos',                    href: '/cfdi?tab=recibidos' },
+          { name: 'CFDI',                              href: '/cfdi' },
           { name: 'Integraciones (Alegra · Contalink)', href: '/integrations' },
           { name: 'Estados Financieros',               href: '/contalink-financial' },
         ],
