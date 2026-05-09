@@ -135,7 +135,15 @@ const BoardReport = () => {
         api.get('/fx-rates/latest').catch(() => ({ data: { rates: null } }))
       ]);
       
-      if (companyRes.data?.length > 0) setCompany(companyRes.data[0]);
+      // Use active company from localStorage, fallback to first
+      const storedCompany = localStorage.getItem('selectedCompany');
+      const activeCompany = storedCompany ? JSON.parse(storedCompany) : null;
+      if (activeCompany && companyRes.data?.length > 0) {
+        const matched = companyRes.data.find(c => c.id === activeCompany.id) || companyRes.data[0];
+        setCompany(matched);
+      } else if (companyRes.data?.length > 0) {
+        setCompany(companyRes.data[0]);
+      }
       if (ratesRes?.data?.rates) {
         setFxRates(prev => ({ ...prev, ...ratesRes.data.rates }));
       }
