@@ -148,6 +148,9 @@ def parse_balance_general(ws) -> dict:
             (i['value'] for i in activo_items if i['level'] == 0), 0.0
         )
     if total_pasivo == 0:
+        # Sum level-1 pasivo sections (Corto + Largo plazo)
+        total_pasivo = sum(i['value'] for i in pasivo_items if i['level'] == 1)
+    if total_pasivo == 0:
         total_pasivo = next(
             (i['value'] for i in pasivo_items if i['level'] == 0), 0.0
         )
@@ -532,8 +535,9 @@ async def import_estado_financiero(
         # ER por Centro de Costo — hoja llamada 'DATOS'
         ws = get_ws('datos') if any('datos' in s for s in sheet_names) else get_ws('centro')
         result = parse_er_centro_costo(ws, is_xls=is_xls)
-    elif any('resultado' in s for s in sheet_names):
-        ws = get_ws('resultado')
+    elif any('resultado' in s or 'reportdemo' in s for s in sheet_names):
+        ws_name = next((s for s in (wb_xls.sheet_names() if is_xls else wb.sheetnames) if 'resultado' in s.lower() or 'reportdemo' in s.lower()), None)
+        ws = wb_xls.sheet_by_name(ws_name) if is_xls else wb[ws_name]
         result = parse_estado_resultados(ws, is_xls=is_xls)
     else:
         ws = get_ws('')
