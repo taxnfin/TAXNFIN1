@@ -699,7 +699,7 @@ async def upload_contalink_to_metrics(
             'mes':         int(periodo.split('-')[1]),
             'fuente':      'contalink',
             'archivo':     file.filename,
-            'data':        balance_doc,
+            'datos':        balance_doc,
             'created_at':  datetime.utcnow().isoformat(),
             'updated_at':  datetime.utcnow().isoformat(),
         }
@@ -765,7 +765,7 @@ async def upload_contalink_to_metrics(
             'mes':         int(periodo.split('-')[1]),
             'fuente':      'contalink',
             'archivo':     file.filename,
-            'data':        income_doc,
+            'datos':        income_doc,
             'created_at':  datetime.utcnow().isoformat(),
             'updated_at':  datetime.utcnow().isoformat(),
         }
