@@ -15,7 +15,7 @@ from typing import Optional
 from core.auth import get_current_user, get_active_company_id
 from core.database import db
 
-router = APIRouter(prefix="/api/contalink-financial", tags=["Contalink Financial"])
+router = APIRouter(prefix="/contalink-financial", tags=["Contalink Financial"])
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
