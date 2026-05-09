@@ -12,8 +12,8 @@ import io
 import re
 from datetime import datetime
 from typing import Optional
-from core.auth import get_current_user, get_active_company_id
-from core.database import db
+from auth import get_current_user
+from database import get_db_empresa
 
 router = APIRouter(prefix="/api/contalink-financial", tags=["Contalink Financial"])
 
@@ -561,11 +561,12 @@ async def save_estado_financiero(
     """
     Guarda el estado financiero parseado en MongoDB para historial.
     """
+    db = await get_db_empresa(current_user)
     collection = db['estados_financieros_contalink']
 
     doc = {
         **payload,
-        'empresa_id':   get_active_company_id(current_user),
+        'empresa_id':   current_user.get('empresa_id'),
         'usuario_id':   current_user.get('id'),
         'importado_en': datetime.utcnow().isoformat(),
     }
@@ -588,6 +589,7 @@ async def save_estado_financiero(
 @router.get("/history")
 async def get_history(current_user: dict = Depends(get_current_user)):
     """Retorna historial de estados financieros importados."""
+    db = await get_db_empresa(current_user)
     collection = db['estados_financieros_contalink']
     docs = await collection.find(
         {'empresa_id': current_user.get('empresa_id')},
