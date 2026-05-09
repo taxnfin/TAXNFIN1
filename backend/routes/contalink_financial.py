@@ -594,3 +594,192 @@ async def get_history(current_user: dict = Depends(get_current_user)):
         {'_id': 0, 'tipo': 1, 'fecha': 1, 'empresa': 1, 'importado_en': 1, 'resumen': 1}
     ).sort('importado_en', -1).limit(24).to_list(24)
     return {'success': True, 'data': docs}
+
+
+# ─── Endpoints para alimentar Financial Statements (Métricas + Reporte Board) ──
+
+@router.post("/upload-to-metrics")
+async def upload_contalink_to_metrics(
+    file: UploadFile = File(...),
+    periodo: str = Query(..., description="Período YYYY-MM, ej: 2026-01"),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Procesa un Excel de Contalink y lo guarda en financial_statements
+    para que lo lean Métricas Financieras y Reporte Board.
+    Acepta: Balance General, Estado de Resultados, ER por Centro de Costo.
+    """
+    import xlrd as _xlrd
+    from core.auth import get_active_company_id
+
+    fname = (file.filename or '').lower()
+    if not fname.endswith(('.xlsx', '.xls')):
+        raise HTTPException(400, "Solo se aceptan archivos Excel (.xlsx, .xls)")
+
+    contents = await file.read()
+    is_xls   = fname.endswith('.xls')
+    company_id = get_active_company_id(current_user)
+
+    try:
+        if is_xls:
+            wb_xls = _xlrd.open_workbook(file_contents=contents)
+            sheet_names = [s.lower() for s in wb_xls.sheet_names()]
+        else:
+            wb = openpyxl.load_workbook(io.BytesIO(contents), data_only=True)
+            sheet_names = [s.lower() for s in wb.sheetnames]
+    except Exception as e:
+        raise HTTPException(400, f"Error leyendo archivo: {str(e)}")
+
+    # Detectar tipo
+    if any('balance' in s for s in sheet_names):
+        # Balance General → guardar como balance_general
+        if is_xls:
+            ws = wb_xls.sheet_by_index(0)
+            rows = [[ws.cell_value(r, c) for c in range(ws.ncols)] for r in range(ws.nrows)]
+        else:
+            ws_obj = wb[next(s for s in wb.sheetnames if 'balance' in s.lower())]
+            rows = [list(r) for r in ws_obj.iter_rows(values_only=True)]
+
+        # Parse con nuestro parser existente
+        parsed = parse_balance_general_from_rows(rows) if hasattr(parse_balance_general_from_rows, '__call__') else parse_balance_general(ws_obj if not is_xls else None)
+
+        # Convertir al formato de financial_statements
+        res = parsed.get('resumen', {})
+        activo  = parsed.get('activo', {})
+        pasivo  = parsed.get('pasivo', {})
+        capital = parsed.get('capital', {})
+
+        # Extraer valores del detalle
+        def find_val(items, *keywords):
+            for item in (items or []):
+                label = item.get('label', '').lower()
+                if all(k in label for k in keywords):
+                    v = item.get('value', 0)
+                    if v and abs(v) > 0.01:
+                        return abs(v)
+            return 0
+
+        activo_det  = activo.get('detalle', [])
+        pasivo_det  = pasivo.get('detalle', [])
+        capital_det = capital.get('detalle', [])
+
+        balance_doc = {
+            'activo_circulante':         res.get('activo_circulante', 0),
+            'efectivo':                  find_val(activo_det, 'banco') or find_val(activo_det, 'efectivo') or find_val(activo_det, 'caja'),
+            'cuentas_por_cobrar':        find_val(activo_det, 'cliente'),
+            'inventarios':               find_val(activo_det, 'inventario'),
+            'otros_activos_circulantes': 0,
+            'activo_fijo':               res.get('activo_fijo', 0),
+            'activo_total':              res.get('total_activo', 0),
+            'pasivo_circulante':         res.get('pasivo_corto_plazo', 0),
+            'cuentas_por_pagar':         find_val(pasivo_det, 'proveedor'),
+            'deuda_corto_plazo':         0,
+            'otros_pasivos_circulantes': 0,
+            'pasivo_largo_plazo':        res.get('pasivo_largo_plazo', 0),
+            'deuda_largo_plazo':         0,
+            'pasivo_total':              res.get('total_pasivo', 0),
+            'capital_social':            find_val(capital_det, 'capital'),
+            'utilidades_retenidas':      find_val(capital_det, 'resultado') or find_val(capital_det, 'utilidad'),
+            'capital_contable':          res.get('total_capital', 0),
+            'raw_data':                  [],
+        }
+
+        doc = {
+            'company_id':  company_id,
+            'tipo':        'balance_general',
+            'periodo':     periodo,
+            'año':         int(periodo.split('-')[0]),
+            'mes':         int(periodo.split('-')[1]),
+            'fuente':      'contalink',
+            'archivo':     file.filename,
+            'data':        balance_doc,
+            'created_at':  datetime.utcnow().isoformat(),
+            'updated_at':  datetime.utcnow().isoformat(),
+        }
+
+        existing = await db.financial_statements.find_one({
+            'company_id': company_id, 'tipo': 'balance_general', 'periodo': periodo
+        })
+        if existing:
+            await db.financial_statements.replace_one({'_id': existing['_id']}, doc)
+            action = 'actualizado'
+        else:
+            await db.financial_statements.insert_one(doc)
+            action = 'guardado'
+
+        return JSONResponse({'success': True, 'tipo': 'balance_general', 'periodo': periodo, 'action': action,
+                             'activo_total': balance_doc['activo_total'], 'pasivo_total': balance_doc['pasivo_total']})
+
+    elif any(s in sheet_names for s in ['reportdemo', 'datos', 'resultado']):
+        # Estado de Resultados → guardar como estado_resultados
+        if is_xls:
+            ws = wb_xls.sheet_by_index(0)
+        else:
+            ws_obj = wb[wb.sheetnames[0]]
+
+        parsed = parse_estado_resultados(ws, is_xls=is_xls) if is_xls else parse_estado_resultados(ws_obj, is_xls=False)
+        res = parsed.get('resumen', {})
+
+        # Si es ER por centro de costo, usar parse_er_centro_costo
+        if any('datos' in s for s in sheet_names):
+            parsed = parse_er_centro_costo(ws if is_xls else ws_obj, is_xls=is_xls)
+            res = parsed.get('resumen', {})
+
+        ingresos = res.get('ventas_netas', 0) or res.get('ingresos', 0)
+        ebitda   = res.get('ebitda', 0)
+        gastos_admin = res.get('gastos_admin', 0)
+        gastos_venta = res.get('gastos_venta', 0)
+        gastos_fin   = res.get('gastos_fin', 0)
+        depreciacion = res.get('depreciacion', 0)
+        util_op = round(ebitda - depreciacion, 2) if ebitda else 0
+        util_neta = res.get('utilidad_neta', 0) or res.get('ebita', 0) or res.get('ebitda', 0)
+
+        income_doc = {
+            'ingresos':                 ingresos,
+            'costo_ventas':             res.get('costo_ventas', 0),
+            'utilidad_bruta':           res.get('utilidad_bruta', 0),
+            'gastos_venta':             gastos_venta,
+            'gastos_administracion':    gastos_admin,
+            'gastos_generales':         round((gastos_admin or 0) + (gastos_venta or 0), 2),
+            'utilidad_operativa':       util_op,
+            'otros_ingresos':           0,
+            'gastos_financieros':       gastos_fin,
+            'otros_gastos':             0,
+            'utilidad_antes_impuestos': util_neta,
+            'impuestos':                0,
+            'utilidad_neta':            util_neta,
+            'depreciacion':             depreciacion,
+            'amortizacion':             0,
+            'intereses':                gastos_fin,
+            'ebitda':                   ebitda,
+            'raw_data':                 [],
+        }
+
+        doc = {
+            'company_id':  company_id,
+            'tipo':        'estado_resultados',
+            'periodo':     periodo,
+            'año':         int(periodo.split('-')[0]),
+            'mes':         int(periodo.split('-')[1]),
+            'fuente':      'contalink',
+            'archivo':     file.filename,
+            'data':        income_doc,
+            'created_at':  datetime.utcnow().isoformat(),
+            'updated_at':  datetime.utcnow().isoformat(),
+        }
+
+        existing = await db.financial_statements.find_one({
+            'company_id': company_id, 'tipo': 'estado_resultados', 'periodo': periodo
+        })
+        if existing:
+            await db.financial_statements.replace_one({'_id': existing['_id']}, doc)
+            action = 'actualizado'
+        else:
+            await db.financial_statements.insert_one(doc)
+            action = 'guardado'
+
+        return JSONResponse({'success': True, 'tipo': 'estado_resultados', 'periodo': periodo, 'action': action,
+                             'ingresos': income_doc['ingresos'], 'utilidad_neta': income_doc['utilidad_neta']})
+
+    else:
+        raise HTTPException(400, "No se pudo detectar el tipo de reporte. Sube Balance General o Estado de Resultados de Contalink.")
