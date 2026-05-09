@@ -529,7 +529,7 @@ async def import_estado_financiero(
     if any('balance' in s for s in sheet_names):
         ws = get_ws('balance')
         result = parse_balance_general(ws) if not is_xls else _parse_balance_xls(ws)
-        elif any('datos' in s for s in sheet_names) or any('centro' in s for s in sheet_names):
+    elif any('datos' in s for s in sheet_names) or any('centro' in s for s in sheet_names):
         # ER por Centro de Costo — hoja llamada 'DATOS'
         ws = get_ws('datos') if any('datos' in s for s in sheet_names) else get_ws('centro')
         result = parse_er_centro_costo(ws, is_xls=is_xls)
@@ -541,7 +541,7 @@ async def import_estado_financiero(
         flat = get_flat(ws)
         if 'BALANCE' in flat or 'ACTIVO' in flat:
             result = parse_balance_general(ws) if not is_xls else _parse_balance_xls(ws)
-                elif 'CENTRO DE COSTO' in flat or 'SUBTITULO' in flat:
+        elif 'CENTRO DE COSTO' in flat or 'SUBTITULO' in flat:
             result = parse_er_centro_costo(ws, is_xls=is_xls)
         elif 'RESULTADO' in flat or 'INGRESO' in flat or 'VENTA' in flat:
             result = parse_estado_resultados(ws, is_xls=is_xls)
