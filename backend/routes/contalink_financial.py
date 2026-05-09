@@ -124,11 +124,12 @@ def parse_balance_general(ws) -> dict:
         # Procesar columna derecha (PASIVO / CAPITAL)
         if label_der and label_der.upper() not in ('PASIVO', 'CAPITAL'):
             if 'Total' in label_der:
-                # 'Total de Pasivo + Capital' contains 'Activo' — use Pasivo/Capital check instead
-                if 'Pasivo' in label_der or ('Capital' in label_der and 'Activo' not in label_der):
+                # Ignorar "Total de Pasivo + Capital" (gran total del lado derecho)
+                is_grand_total = 'Pasivo' in label_der and 'Capital' in label_der
+                if not is_grand_total:
                     if current_section_derecha == 'capital':
                         total_capital = val_der
-                    else:
+                    elif 'Pasivo' in label_der:
                         total_pasivo = val_der
             else:
                 level = detect_indent_level(str(col_d) if col_d else '')
