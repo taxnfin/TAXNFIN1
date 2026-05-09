@@ -626,8 +626,6 @@ async def upload_contalink_to_metrics(
     contents = await file.read()
     is_xls   = fname.endswith('.xls')
     company_id = str(request.headers.get('X-Company-ID') or request.headers.get('x-company-id') or current_user.get('company_id', ''))
-    import logging
-    logging.warning(f"CONTALINK UPLOAD: company_id={company_id}, periodo={periodo}, user={current_user.get('id')}, headers={dict(request.headers)}")
 
     try:
         if is_xls:
@@ -782,3 +780,25 @@ async def upload_contalink_to_metrics(
 
     else:
         raise HTTPException(400, "No se pudo detectar el tipo de reporte. Sube Balance General o Estado de Resultados de Contalink.")
+
+
+@router.get("/debug/{periodo}")
+async def debug_financial_statement(
+    request: Request,
+    periodo: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Debug endpoint to see what was saved in financial_statements collection."""
+    company_id = str(request.headers.get('X-Company-ID') or request.headers.get('x-company-id') or current_user.get('company_id', ''))
+    
+    docs = await db.financial_statements.find(
+        {'company_id': company_id, 'periodo': periodo},
+        {'_id': 0, 'tipo': 1, 'periodo': 1, 'fuente': 1, 'data': 1}
+    ).to_list(10)
+    
+    return {
+        'company_id': company_id,
+        'periodo': periodo,
+        'count': len(docs),
+        'docs': docs,
+    }
