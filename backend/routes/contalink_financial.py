@@ -621,7 +621,7 @@ async def upload_contalink_to_metrics(
 
     contents = await file.read()
     is_xls   = fname.endswith('.xls')
-    company_id = await get_active_company_id(current_user)
+    company_id = get_active_company_id(current_user)
 
     try:
         if is_xls:
