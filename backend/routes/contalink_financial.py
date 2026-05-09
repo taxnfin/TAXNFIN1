@@ -5,7 +5,7 @@ Soporta: Balance General, Estado de Resultados.
 Detecta el tipo automáticamente por el nombre de la hoja.
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse
 import openpyxl
 import io
