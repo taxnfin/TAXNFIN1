@@ -97,7 +97,7 @@ def parse_balance_general(ws) -> dict:
     total_pasivo  = 0.0
     total_capital = 0.0
 
-    for row in rows[6:]:  # Skip primeras 6 filas (metadata + encabezados)
+    for row in rows[7:]:  # Skip primeras 7 filas (metadata + encabezados + ACTIVO/PASIVO header)
         col_a, col_b, _, col_d, col_e = (row + (None,)*5)[:5]
 
         label_izq = clean_label(str(col_a)) if col_a else ''
@@ -123,10 +123,9 @@ def parse_balance_general(ws) -> dict:
 
         # Procesar columna derecha (PASIVO / CAPITAL)
         if label_der and label_der.upper() not in ('PASIVO', 'CAPITAL'):
-            if label_der.startswith('Total'):
-                if 'Activo' in label_der:
-                    pass  # ya capturado
-                else:
+            if 'Total' in label_der:
+                # 'Total de Pasivo + Capital' contains 'Activo' — use Pasivo/Capital check instead
+                if 'Pasivo' in label_der or ('Capital' in label_der and 'Activo' not in label_der):
                     if current_section_derecha == 'capital':
                         total_capital = val_der
                     else:
@@ -709,7 +708,7 @@ async def upload_contalink_to_metrics(
         return JSONResponse({'success': True, 'tipo': 'balance_general', 'periodo': periodo, 'action': 'guardado',
                              'activo_total': balance_doc['activo_total'], 'pasivo_total': balance_doc['pasivo_total']})
 
-    elif any(s in sheet_names for s in ['reportdemo', 'datos', 'resultado']):
+    elif any('resultado' in s or 'reportdemo' in s or 'datos' in s for s in sheet_names):
         # Estado de Resultados → guardar como estado_resultados
         if is_xls:
             ws = wb_xls.sheet_by_index(0)
