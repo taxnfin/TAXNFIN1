@@ -626,6 +626,8 @@ async def upload_contalink_to_metrics(
     contents = await file.read()
     is_xls   = fname.endswith('.xls')
     company_id = str(request.headers.get('X-Company-ID') or request.headers.get('x-company-id') or current_user.get('company_id', ''))
+    import logging
+    logging.warning(f"CONTALINK UPLOAD: company_id={company_id}, periodo={periodo}, user={current_user.get('id')}, headers={dict(request.headers)}")
 
     try:
         if is_xls:
