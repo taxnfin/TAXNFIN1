@@ -17,6 +17,13 @@ from core.database import db
 
 router = APIRouter(prefix="/contalink-financial", tags=["Contalink Financial"])
 
+def _parse_balance_xls(ws_xls):
+    rows = [[ws_xls.cell_value(r, c) for c in range(ws_xls.ncols)] for r in range(ws_xls.nrows)]
+    class _M:
+        def iter_rows(self, values_only=True): return iter(rows)
+    return parse_balance_general(_M())
+
+
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -521,8 +528,7 @@ async def import_estado_financiero(
 
     if any('balance' in s for s in sheet_names):
         ws = get_ws('balance')
-        result = parse_balance_general(ws) if not is_xls else parse_balance_general_from_rows(
-            [[ws.cell_value(r, c) for c in range(ws.ncols)] for r in range(ws.nrows)]
+        result = parse_balance_general(ws) if not is_xls else _parse_balance_xls(ws)
         )
     elif any('datos' in s for s in sheet_names) or any('centro' in s for s in sheet_names):
         # ER por Centro de Costo — hoja llamada 'DATOS'
@@ -535,8 +541,7 @@ async def import_estado_financiero(
         ws = get_ws('')
         flat = get_flat(ws)
         if 'BALANCE' in flat or 'ACTIVO' in flat:
-            result = parse_balance_general(ws) if not is_xls else parse_balance_general_from_rows(
-                [[ws.cell_value(r, c) for c in range(ws.ncols)] for r in range(ws.nrows)]
+            result = parse_balance_general(ws) if not is_xls else _parse_balance_xls(ws)
             )
         elif 'CENTRO DE COSTO' in flat or 'SUBTITULO' in flat:
             result = parse_er_centro_costo(ws, is_xls=is_xls)
@@ -618,7 +623,7 @@ async def upload_contalink_to_metrics(
 
     contents = await file.read()
     is_xls   = fname.endswith('.xls')
-    company_id = get_active_company_id(current_user)
+    company_id = await get_active_company_id(current_user)
 
     try:
         if is_xls:
@@ -641,7 +646,7 @@ async def upload_contalink_to_metrics(
             rows = [list(r) for r in ws_obj.iter_rows(values_only=True)]
 
         # Parse con nuestro parser existente
-        parsed = parse_balance_general_from_rows(rows) if hasattr(parse_balance_general_from_rows, '__call__') else parse_balance_general(ws_obj if not is_xls else None)
+        parsed = _parse_balance_xls(ws) if is_xls else parse_balance_general(ws)
 
         # Convertir al formato de financial_statements
         res = parsed.get('resumen', {})
