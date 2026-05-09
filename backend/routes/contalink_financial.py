@@ -621,7 +621,7 @@ async def upload_contalink_to_metrics(
 
     contents = await file.read()
     is_xls   = fname.endswith('.xls')
-    company_id = get_active_company_id(current_user)
+    company_id = str(await get_active_company_id(current_user))
 
     try:
         if is_xls:
@@ -700,15 +700,12 @@ async def upload_contalink_to_metrics(
             'updated_at':  datetime.utcnow().isoformat(),
         }
 
-        existing = await db.financial_statements.find_one({
+        # Delete existing and insert fresh
+        await db.financial_statements.delete_many({
             'company_id': company_id, 'tipo': 'balance_general', 'periodo': periodo
         })
-        if existing:
-            await db.financial_statements.replace_one({'_id': existing['_id']}, doc)
-            action = 'actualizado'
-        else:
-            await db.financial_statements.insert_one(doc)
-            action = 'guardado'
+        await db.financial_statements.insert_one(doc)
+        action = 'guardado'
 
         return JSONResponse({'success': True, 'tipo': 'balance_general', 'periodo': periodo, 'action': action,
                              'activo_total': balance_doc['activo_total'], 'pasivo_total': balance_doc['pasivo_total']})
@@ -771,15 +768,12 @@ async def upload_contalink_to_metrics(
             'updated_at':  datetime.utcnow().isoformat(),
         }
 
-        existing = await db.financial_statements.find_one({
+        # Delete existing and insert fresh
+        await db.financial_statements.delete_many({
             'company_id': company_id, 'tipo': 'estado_resultados', 'periodo': periodo
         })
-        if existing:
-            await db.financial_statements.replace_one({'_id': existing['_id']}, doc)
-            action = 'actualizado'
-        else:
-            await db.financial_statements.insert_one(doc)
-            action = 'guardado'
+        await db.financial_statements.insert_one(doc)
+        action = 'guardado'
 
         return JSONResponse({'success': True, 'tipo': 'estado_resultados', 'periodo': periodo, 'action': action,
                              'ingresos': income_doc['ingresos'], 'utilidad_neta': income_doc['utilidad_neta']})
