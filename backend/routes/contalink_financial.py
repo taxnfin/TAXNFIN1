@@ -644,7 +644,7 @@ async def upload_contalink_to_metrics(
             rows = [list(r) for r in ws_obj.iter_rows(values_only=True)]
 
         # Parse con nuestro parser existente
-        parsed = _parse_balance_xls(ws) if is_xls else parse_balance_general(ws)
+        parsed = _parse_balance_xls(ws) if is_xls else parse_balance_general(ws_obj)
 
         # Convertir al formato de financial_statements
         res = parsed.get('resumen', {})
