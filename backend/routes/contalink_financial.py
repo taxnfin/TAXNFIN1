@@ -5,7 +5,7 @@ Soporta: Balance General, Estado de Resultados.
 Detecta el tipo automáticamente por el nombre de la hoja.
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query, Request
 from fastapi.responses import JSONResponse
 import openpyxl
 import io
@@ -603,6 +603,7 @@ async def get_history(current_user: dict = Depends(get_current_user)):
 
 @router.post("/upload-to-metrics")
 async def upload_contalink_to_metrics(
+    request: Request,
     file: UploadFile = File(...),
     periodo: str = Query(..., description="Período YYYY-MM, ej: 2026-01"),
     current_user: dict = Depends(get_current_user),
@@ -621,7 +622,7 @@ async def upload_contalink_to_metrics(
 
     contents = await file.read()
     is_xls   = fname.endswith('.xls')
-    company_id = str(await get_active_company_id(current_user))
+    company_id = str(request.headers.get('X-Company-ID') or request.headers.get('x-company-id') or current_user.get('company_id', ''))
 
     try:
         if is_xls:
@@ -700,14 +701,12 @@ async def upload_contalink_to_metrics(
             'updated_at':  datetime.utcnow().isoformat(),
         }
 
-        # Delete existing and insert fresh
         await db.financial_statements.delete_many({
             'company_id': company_id, 'tipo': 'balance_general', 'periodo': periodo
         })
         await db.financial_statements.insert_one(doc)
-        action = 'guardado'
 
-        return JSONResponse({'success': True, 'tipo': 'balance_general', 'periodo': periodo, 'action': action,
+        return JSONResponse({'success': True, 'tipo': 'balance_general', 'periodo': periodo, 'action': 'guardado',
                              'activo_total': balance_doc['activo_total'], 'pasivo_total': balance_doc['pasivo_total']})
 
     elif any(s in sheet_names for s in ['reportdemo', 'datos', 'resultado']):
@@ -768,14 +767,12 @@ async def upload_contalink_to_metrics(
             'updated_at':  datetime.utcnow().isoformat(),
         }
 
-        # Delete existing and insert fresh
         await db.financial_statements.delete_many({
             'company_id': company_id, 'tipo': 'estado_resultados', 'periodo': periodo
         })
         await db.financial_statements.insert_one(doc)
-        action = 'guardado'
 
-        return JSONResponse({'success': True, 'tipo': 'estado_resultados', 'periodo': periodo, 'action': action,
+        return JSONResponse({'success': True, 'tipo': 'estado_resultados', 'periodo': periodo, 'action': 'guardado',
                              'ingresos': income_doc['ingresos'], 'utilidad_neta': income_doc['utilidad_neta']})
 
     else:
