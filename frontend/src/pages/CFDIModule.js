@@ -67,6 +67,7 @@ const CFDIModule = () => {
   const [cfdiDetail, setCfdiDetail] = useState(null);
   const [cfdiNotes, setCfdiNotes] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [activeTab, setActiveTab] = useState('todos'); // 'todos', 'emitidos', 'recibidos'
   const [linkXmlDialog, setLinkXmlDialog] = useState({ open: false, cfdi: null });
   const [linkingXml, setLinkingXml] = useState(false);
   const linkXmlInputRef = useRef(null);
@@ -558,6 +559,9 @@ const CFDIModule = () => {
 
   // Filter CFDIs
   const filteredCfdis = cfdis.filter(cfdi => {
+    // Tab filter
+    if (activeTab === 'emitidos'  && cfdi.tipo_cfdi !== 'ingreso') return false;
+    if (activeTab === 'recibidos' && cfdi.tipo_cfdi !== 'egreso')  return false;
     // Category filter
     if (filterCategory !== 'all' && cfdi.category_id !== filterCategory) return false;
     
@@ -1003,9 +1007,32 @@ const CFDIModule = () => {
       </Card>
 
       <Card className="border-[#E2E8F0]">
-        <CardHeader>
-          <CardTitle>Listado de CFDIs</CardTitle>
-          <CardDescription>{filteredCfdis.length} de {cfdis.length} facturas electrónicas</CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div>
+              <CardTitle>CFDIs</CardTitle>
+              <CardDescription>{filteredCfdis.length} de {cfdis.length} facturas</CardDescription>
+            </div>
+            <div className="flex gap-1 bg-[#F1F5F9] rounded-lg p-1">
+              {[
+                { key: 'todos',     label: 'Todos' },
+                { key: 'emitidos',  label: '↑ Emitidos' },
+                { key: 'recibidos', label: '↓ Recibidos' },
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                    activeTab === tab.key
+                      ? 'bg-white text-[#0F172A] shadow-sm'
+                      : 'text-[#64748B] hover:text-[#0F172A]'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <Table className="data-table">
