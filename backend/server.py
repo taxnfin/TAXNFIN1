@@ -53,6 +53,7 @@ from routes.integrations import router as integrations_router
 from routes.contalink import router as contalink_router
 from routes.contalink_financial import router as contalink_financial_router
 from routes.account_mappings import router as account_mappings_router
+from routes.newsletter import router as newsletter_router
 
 # ===== REGISTER ROUTERS =====
 api_router.include_router(auth_router)
@@ -88,6 +89,7 @@ api_router.include_router(integrations_router)
 api_router.include_router(contalink_router)
 api_router.include_router(contalink_financial_router)
 api_router.include_router(account_mappings_router)
+api_router.include_router(newsletter_router)
 
 # ===== MIDDLEWARE =====
 app.add_middleware(
