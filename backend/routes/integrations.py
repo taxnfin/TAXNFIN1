@@ -282,11 +282,13 @@ async def disconnect_integration(integration_id: str, current_user: Dict = Depen
 
 # ===== ADMIN DASHBOARD =====
 
+PLATFORM_ADMIN_EMAIL = 'kvillafuerte@taxnfin.com'
+
 @router.get("/admin/all-companies")
 async def admin_get_all_companies(current_user: Dict = Depends(get_current_user)):
     """Admin: Get all companies with their integration status and metrics"""
-    if current_user['role'] != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Solo administradores")
+    if current_user['role'] != UserRole.ADMIN or current_user.get('email') != PLATFORM_ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Acceso denegado")
     
     companies = await db.companies.find({}, {'_id': 0}).to_list(100)
     
@@ -333,8 +335,8 @@ async def admin_get_all_companies(current_user: Dict = Depends(get_current_user)
 @router.get("/admin/all-users")
 async def admin_get_all_users(current_user: Dict = Depends(get_current_user)):
     """Admin: Get all users across all companies"""
-    if current_user['role'] != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Solo administradores")
+    if current_user['role'] != UserRole.ADMIN or current_user.get('email') != PLATFORM_ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Acceso denegado")
     
     users = await db.users.find({}, {'_id': 0, 'password_hash': 0}).to_list(200)
     return users
