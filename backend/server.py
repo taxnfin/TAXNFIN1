@@ -54,6 +54,8 @@ from routes.contalink import router as contalink_router
 from routes.contalink_financial import router as contalink_financial_router
 from routes.account_mappings import router as account_mappings_router
 from routes.newsletter import router as newsletter_router
+from routes.payments_conekta import router as billing_router
+from routes.cashflow_sync_service import router as cashflow_sync_router
 
 # ===== REGISTER ROUTERS =====
 api_router.include_router(auth_router)
@@ -90,6 +92,8 @@ api_router.include_router(contalink_router)
 api_router.include_router(contalink_financial_router)
 api_router.include_router(account_mappings_router)
 api_router.include_router(newsletter_router)
+api_router.include_router(billing_router)
+api_router.include_router(cashflow_sync_router)
 
 # ===== MIDDLEWARE =====
 app.add_middleware(
