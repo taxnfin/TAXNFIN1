@@ -474,7 +474,7 @@ const CategoriesModule = () => {
                 </TableRow>
               ) : (
                 categories.map((category) => (
-                  <TableRow key={category.code || category.id} data-testid={`category-row-${category.id}`}>
+                  <TableRow key={category.id} data-testid={`category-row-${category.id}`}>
                     <TableCell>
                       <div 
                         className="w-6 h-6 rounded-full"
