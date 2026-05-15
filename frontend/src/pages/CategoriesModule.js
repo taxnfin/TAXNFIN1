@@ -65,7 +65,7 @@ const CategoriesModule = () => {
 
   const loadCategories = async () => {
     try {
-      let url = '/categories';
+      let url = '/cashflow-sync/categories';
       if (filterTipo !== 'all') url += `?tipo=${filterTipo}`;
       const response = await api.get(url);
       setCategories(response.data);
@@ -80,10 +80,10 @@ const CategoriesModule = () => {
     e.preventDefault();
     try {
       if (editingCategory) {
-        await api.put(`/categories/${editingCategory.id}`, formData);
+        await api.put(`/cashflow-sync/categories/${editingCategory.code || editingCategory.id}`, formData);
         toast.success('Categoría actualizada');
       } else {
-        await api.post('/categories', formData);
+        await api.post('/cashflow-sync/categories', formData);
         toast.success('Categoría creada');
       }
       setDialogOpen(false);
@@ -111,7 +111,7 @@ const CategoriesModule = () => {
   const handleDelete = async (categoryId) => {
     if (!window.confirm('¿Eliminar esta categoría? Las subcategorías también serán eliminadas.')) return;
     try {
-      await api.delete(`/categories/${categoryId}`);
+      await api.delete(`/cashflow-sync/categories/${categoryId}`);
       toast.success('Categoría eliminada');
       loadCategories();
     } catch (error) {
@@ -143,7 +143,7 @@ const CategoriesModule = () => {
 
   const openSubcatDialog = (category) => {
     setSelectedCategoryForSubcat(category);
-    setSubcatFormData({ category_id: category.id, nombre: '' });
+    setSubcatFormData({ category_id: category.code || category.id, nombre: '' });
     setSubcatDialogOpen(true);
   };
 
@@ -474,7 +474,7 @@ const CategoriesModule = () => {
                 </TableRow>
               ) : (
                 categories.map((category) => (
-                  <TableRow key={category.id} data-testid={`category-row-${category.id}`}>
+                  <TableRow key={category.code || category.id} data-testid={`category-row-${category.id}`}>
                     <TableCell>
                       <div 
                         className="w-6 h-6 rounded-full"
@@ -537,7 +537,7 @@ const CategoriesModule = () => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDelete(category.id)}
+                          onClick={() => handleDelete(category.code || category.id)}
                           title="Eliminar categoría"
                           data-testid={`delete-category-${category.id}`}
                         >
