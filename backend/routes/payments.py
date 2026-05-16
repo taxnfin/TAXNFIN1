@@ -867,18 +867,24 @@ async def sync_payments_from_contalink(
         try:
             issued = await client.get_invoices(
                 rfc=rfc,
-                transaction_type="issued",
-                document_type="I",
+                transaction_type="E",       # E=Emitidas
+                document_type="Ingreso",    # Contalink usa nombre completo
                 start_date=start,
                 end_date=end,
             )
-            # La API puede devolver lista directa o dict con "data"
-            inv_list = issued if isinstance(issued, list) else issued.get("data", issued.get("invoices", issued.get("results", [])))
+            # Contalink response: {"list": {"total": N, "invoices": [...]}}
+            if isinstance(issued, list):
+                inv_list = issued
+            elif "list" in issued:
+                inv_list = issued["list"].get("invoices", [])
+            else:
+                inv_list = issued.get("data", issued.get("invoices", []))
             logger.info(f"Contalink issued {start}: {len(inv_list)} facturas")
 
             for inv in inv_list:
                 monto = float(inv.get("total", 0) or 0)
-                if monto <= 0:
+                estatus = (inv.get("estatus") or inv.get("status") or "vigente").lower()
+                if monto <= 0 or estatus == "cancelado":
                     continue
                 ref = f"contalink-issued-{inv.get('uuid', inv.get('id', str(inv.get('folio',''))))}-{start}"
                 if await db.payments.find_one({"company_id": company_id, "referencia_contalink": ref}):
@@ -888,20 +894,22 @@ async def sync_payments_from_contalink(
                     fecha = datetime.strptime(str(inv.get("date", end))[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
                 except:
                     fecha = datetime.now(timezone.utc)
+                uuid_val = (inv.get("uuid") or inv.get("UUID") or inv.get("folio_fiscal") or "")
+                receptor = inv.get("nombre_receptor") or inv.get("receptor_nombre", "")
                 await db.payments.insert_one({
                     "id":                   str(uuid.uuid4()),
                     "company_id":           company_id,
                     "tipo":                 "cobro",
                     "monto":                monto,
-                    "moneda":               inv.get("currency", "MXN"),
-                    "tipo_cambio_historico": float(inv.get("exchange_rate", 1) or 1),
+                    "moneda":               inv.get("moneda", "MXN"),
+                    "tipo_cambio_historico": float(inv.get("tipo_cambio", 1) or 1),
                     "fecha":                fecha.isoformat(),
-                    "concepto":             f"Cobranza {inv.get('folio','')} - {inv.get('customer_name', inv.get('receiver_name',''))}".strip(" -"),
-                    "beneficiario":         inv.get("customer_name") or inv.get("receiver_name", ""),
+                    "concepto":             f"Cobranza {inv.get('folio','')} - {receptor}".strip(" -"),
+                    "beneficiario":         receptor,
                     "status":               "pendiente",
                     "source":               "contalink",
                     "referencia_contalink": ref,
-                    "cfdi_uuid":            inv.get("uuid", ""),
+                    "cfdi_uuid":            uuid_val,
                     "created_at":           datetime.now(timezone.utc).isoformat(),
                     "created_by":           current_user["id"],
                 })
@@ -914,17 +922,23 @@ async def sync_payments_from_contalink(
         try:
             received = await client.get_invoices(
                 rfc=rfc,
-                transaction_type="received",
-                document_type="I",
+                transaction_type="R",       # R=Recibidas
+                document_type="Ingreso",
                 start_date=start,
                 end_date=end,
             )
-            rec_list = received if isinstance(received, list) else received.get("data", received.get("invoices", received.get("results", [])))
+            if isinstance(received, list):
+                rec_list = received
+            elif "list" in received:
+                rec_list = received["list"].get("invoices", [])
+            else:
+                rec_list = received.get("data", received.get("invoices", []))
             logger.info(f"Contalink received {start}: {len(rec_list)} facturas")
 
             for inv in rec_list:
                 monto = float(inv.get("total", 0) or 0)
-                if monto <= 0:
+                estatus = (inv.get("estatus") or inv.get("status") or "vigente").lower()
+                if monto <= 0 or estatus == "cancelado":
                     continue
                 ref = f"contalink-received-{inv.get('uuid', inv.get('id', str(inv.get('folio',''))))}-{start}"
                 if await db.payments.find_one({"company_id": company_id, "referencia_contalink": ref}):
@@ -934,20 +948,22 @@ async def sync_payments_from_contalink(
                     fecha = datetime.strptime(str(inv.get("date", end))[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
                 except:
                     fecha = datetime.now(timezone.utc)
+                uuid_val = (inv.get("uuid") or inv.get("UUID") or inv.get("folio_fiscal") or "")
+                emisor = inv.get("nombre_emisor") or inv.get("emisor_nombre", "")
                 await db.payments.insert_one({
                     "id":                   str(uuid.uuid4()),
                     "company_id":           company_id,
                     "tipo":                 "pago",
                     "monto":                monto,
-                    "moneda":               inv.get("currency", "MXN"),
-                    "tipo_cambio_historico": float(inv.get("exchange_rate", 1) or 1),
+                    "moneda":               inv.get("moneda", "MXN"),
+                    "tipo_cambio_historico": float(inv.get("tipo_cambio", 1) or 1),
                     "fecha":                fecha.isoformat(),
-                    "concepto":             f"Pago {inv.get('folio','')} - {inv.get('supplier_name', inv.get('issuer_name',''))}".strip(" -"),
-                    "beneficiario":         inv.get("supplier_name") or inv.get("issuer_name", ""),
+                    "concepto":             f"Pago {inv.get('folio','')} - {emisor}".strip(" -"),
+                    "beneficiario":         emisor,
                     "status":               "pendiente",
                     "source":               "contalink",
                     "referencia_contalink": ref,
-                    "cfdi_uuid":            inv.get("uuid", ""),
+                    "cfdi_uuid":            uuid_val,
                     "created_at":           datetime.now(timezone.utc).isoformat(),
                     "created_by":           current_user["id"],
                 })
