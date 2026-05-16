@@ -52,7 +52,8 @@ const PaymentsModule = () => {
   const [fxRates, setFxRates] = useState({ USD: 17.5, EUR: 19.0 });
   const [customTc, setCustomTc] = useState(''); // Custom exchange rate for current transaction
   const [useCustomTc, setUseCustomTc] = useState(false);
-  const [activeTab, setActiveTab] = useState('real'); // 'real', 'proyeccion', 'breakdown'
+  const [activeTab, setActiveTab] = useState('real');
+  const [syncingContalink, setSyncingContalink] = useState(false); // 'real', 'proyeccion', 'breakdown'
   
   // Import from bank movements dialog
   const [importBankDialogOpen, setImportBankDialogOpen] = useState(false);
@@ -203,6 +204,19 @@ const PaymentsModule = () => {
       toast.error('Error cargando pagos');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSyncContalink = async () => {
+    setSyncingContalink(true);
+    try {
+      const res = await api.post('/payments/sync-contalink');
+      toast.success(res.data.message);
+      loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error sincronizando Contalink');
+    } finally {
+      setSyncingContalink(false);
     }
   };
 
@@ -713,6 +727,15 @@ const PaymentsModule = () => {
           <p className="text-[#64748B]">Gestión de cobros y pagos (reales y proyectados)</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="gap-2 text-blue-600 border-blue-300 hover:bg-blue-50"
+            onClick={handleSyncContalink}
+            disabled={syncingContalink}
+            data-testid="sync-contalink-btn"
+          >
+            {syncingContalink ? '⟳ Sincronizando...' : '⬇ Sync Contalink'}
+          </Button>
           <Button 
             variant="outline" 
             className="gap-2 text-red-600 border-red-300 hover:bg-red-50"
