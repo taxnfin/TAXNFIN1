@@ -908,6 +908,7 @@ async def sync_payments_from_contalink(
                     "beneficiario":         receptor,
                     "status":               "pendiente",
                     "source":               "contalink",
+                    "es_real":              True,
                     "referencia_contalink": ref,
                     "cfdi_uuid":            uuid_val,
                     "created_at":           datetime.now(timezone.utc).isoformat(),
@@ -962,6 +963,7 @@ async def sync_payments_from_contalink(
                     "beneficiario":         emisor,
                     "status":               "pendiente",
                     "source":               "contalink",
+                    "es_real":              True,
                     "referencia_contalink": ref,
                     "cfdi_uuid":            uuid_val,
                     "created_at":           datetime.now(timezone.utc).isoformat(),
@@ -985,7 +987,7 @@ async def fix_contalink_status(request: Request, current_user: Dict = Depends(ge
     """Actualiza pagos importados de Contalink de pendiente a completado"""
     company_id = current_user["company_id"]
     result = await db.payments.update_many(
-        {"company_id": company_id, "source": "contalink", "status": "pendiente"},
-        {"$set": {"status": "completado"}}
+        {"company_id": company_id, "source": "contalink"},
+        {"$set": {"status": "completado", "es_real": True}}
     )
     return {"success": True, "updated": result.modified_count, "message": f"{result.modified_count} pagos actualizados a completado"}
