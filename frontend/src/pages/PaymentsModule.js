@@ -207,19 +207,6 @@ const PaymentsModule = () => {
     }
   };
 
-  const handleSyncContalink = async () => {
-    setSyncingContalink(true);
-    try {
-      const res = await api.post('/payments/sync-contalink');
-      toast.success(res.data.message);
-      loadData();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error sincronizando Contalink');
-    } finally {
-      setSyncingContalink(false);
-    }
-  };
-
   const loadPartiesData = async () => {
     try {
       const [customersRes, vendorsRes, categoriesRes] = await Promise.all([
@@ -641,6 +628,19 @@ const PaymentsModule = () => {
   };
 
   // Delete all payments
+  const handleSyncContalink = async () => {
+    setSyncingContalink(true);
+    try {
+      const res = await api.post('/payments/sync-contalink');
+      toast.success(res.data.message);
+      loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error sincronizando Contalink');
+    } finally {
+      setSyncingContalink(false);
+    }
+  };
+
   const handleDeleteAllPayments = async () => {
     if (!window.confirm('⚠️ ¿Estás SEGURO de que quieres ELIMINAR TODOS los pagos y cobranzas?\n\nEsta acción NO se puede deshacer.')) {
       return;
@@ -729,7 +729,7 @@ const PaymentsModule = () => {
         <div className="flex gap-2">
           <Button
             variant="outline"
-            className="gap-2 text-blue-600 border-blue-300 hover:bg-blue-50"
+            className="gap-2 text-green-600 border-green-300 hover:bg-green-50"
             onClick={handleSyncContalink}
             disabled={syncingContalink}
             data-testid="sync-contalink-btn"
