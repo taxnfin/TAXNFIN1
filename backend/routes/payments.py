@@ -815,3 +815,162 @@ async def get_payments_breakdown(request: Request, current_user: Dict = Depends(
             'total_equiv_mxn': round(proy_cobros_mxn, 2),
         },
     }
+
+
+@router.post("/sync-contalink")
+async def sync_payments_from_contalink(
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Sincroniza cobranza y pagos desde Contalink.
+    - Facturas emitidas cobradas → tipo: 'cobro'
+    - Facturas recibidas pagadas → tipo: 'pago'
+    Usa upsert por referencia para evitar duplicados.
+    """
+    company_id = current_user["company_id"]
+
+    # Buscar integración de Contalink activa
+    integration = await db.integrations.find_one({
+        "company_id":       company_id,
+        "integration_type": "contalink",
+        "is_active":        True,
+    })
+    if not integration:
+        raise HTTPException(
+            status_code=404,
+            detail="No tienes Contalink conectado. Ve a Admin → Integraciones."
+        )
+
+    from services.contalink import ContalinkClient
+    import calendar
+
+    api_key = integration.get("credentials", {}).get("api_key", "")
+    client  = ContalinkClient(api_key)
+
+    # Obtener RFC de la empresa
+    company = await db.companies.find_one({"id": company_id}, {"_id": 0, "rfc": 1})
+    rfc = company.get("rfc", "") if company else ""
+    if not rfc or rfc == "PENDIENTE":
+        raise HTTPException(status_code=400, detail="La empresa no tiene RFC configurado. Actualízalo en configuración.")
+
+    created  = 0
+    skipped  = 0
+    errors   = []
+
+    # Últimos 3 meses
+    now = datetime.now(timezone.utc)
+    for months_back in range(3):
+        target    = now.replace(day=1) - timedelta(days=30 * months_back)
+        year      = target.year
+        month     = target.month
+        last_day  = calendar.monthrange(year, month)[1]
+        start     = f"{year}-{month:02d}-01"
+        end       = f"{year}-{month:02d}-{last_day:02d}"
+
+        # ── Facturas emitidas (cobranza) ──────────────────────────────
+        try:
+            issued = await client.get_invoices(
+                rfc=rfc,
+                transaction_type="issued",
+                document_type="I",   # Ingreso
+                start_date=start,
+                end_date=end,
+            )
+            for inv in issued.get("data", []):
+                total   = float(inv.get("total", 0) or 0)
+                cobrado = float(inv.get("amount_paid", 0) or inv.get("total", 0) or 0)
+                if cobrado <= 0:
+                    continue
+
+                ref = f"contalink-issued-{inv.get('uuid', inv.get('id', ''))}"
+                existing = await db.payments.find_one({"company_id": company_id, "referencia_contalink": ref})
+                if existing:
+                    skipped += 1
+                    continue
+
+                fecha_str = inv.get("date", end)
+                try:
+                    fecha = datetime.strptime(fecha_str[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                except:
+                    fecha = datetime.now(timezone.utc)
+
+                doc = {
+                    "id":                    str(uuid.uuid4()),
+                    "company_id":            company_id,
+                    "tipo":                  "cobro",
+                    "monto":                 cobrado,
+                    "moneda":                inv.get("currency", "MXN"),
+                    "tipo_cambio_historico": float(inv.get("exchange_rate", 1) or 1),
+                    "fecha":                 fecha.isoformat(),
+                    "concepto":              f"Cobranza {inv.get('folio', '')} - {inv.get('customer_name', inv.get('receiver_name', ''))}".strip(" -"),
+                    "beneficiario":          inv.get("customer_name") or inv.get("receiver_name", ""),
+                    "status":                "completado",
+                    "source":                "contalink",
+                    "referencia_contalink":  ref,
+                    "cfdi_uuid":             inv.get("uuid", ""),
+                    "created_at":            datetime.now(timezone.utc).isoformat(),
+                    "created_by":            current_user["id"],
+                }
+                await db.payments.insert_one(doc)
+                created += 1
+
+        except Exception as e:
+            errors.append(f"Error facturas emitidas {start}: {str(e)}")
+
+        # ── Facturas recibidas (pagos a proveedores) ──────────────────
+        try:
+            received = await client.get_invoices(
+                rfc=rfc,
+                transaction_type="received",
+                document_type="I",
+                start_date=start,
+                end_date=end,
+            )
+            for inv in received.get("data", []):
+                pagado = float(inv.get("amount_paid", 0) or inv.get("total", 0) or 0)
+                if pagado <= 0:
+                    continue
+
+                ref = f"contalink-received-{inv.get('uuid', inv.get('id', ''))}"
+                existing = await db.payments.find_one({"company_id": company_id, "referencia_contalink": ref})
+                if existing:
+                    skipped += 1
+                    continue
+
+                fecha_str = inv.get("date", end)
+                try:
+                    fecha = datetime.strptime(fecha_str[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                except:
+                    fecha = datetime.now(timezone.utc)
+
+                doc = {
+                    "id":                    str(uuid.uuid4()),
+                    "company_id":            company_id,
+                    "tipo":                  "pago",
+                    "monto":                 pagado,
+                    "moneda":                inv.get("currency", "MXN"),
+                    "tipo_cambio_historico": float(inv.get("exchange_rate", 1) or 1),
+                    "fecha":                 fecha.isoformat(),
+                    "concepto":              f"Pago {inv.get('folio', '')} - {inv.get('supplier_name', inv.get('issuer_name', ''))}".strip(" -"),
+                    "beneficiario":          inv.get("supplier_name") or inv.get("issuer_name", ""),
+                    "status":                "completado",
+                    "source":                "contalink",
+                    "referencia_contalink":  ref,
+                    "cfdi_uuid":             inv.get("uuid", ""),
+                    "created_at":            datetime.now(timezone.utc).isoformat(),
+                    "created_by":            current_user["id"],
+                }
+                await db.payments.insert_one(doc)
+                created += 1
+
+        except Exception as e:
+            errors.append(f"Error facturas recibidas {start}: {str(e)}")
+
+    return {
+        "success": True,
+        "created": created,
+        "skipped": skipped,
+        "errors":  errors,
+        "message": f"Contalink sync: {created} movimientos importados, {skipped} ya existían.",
+    }
