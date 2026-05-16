@@ -830,12 +830,18 @@ async def sync_payments_from_contalink(
     """
     company_id = current_user["company_id"]
 
-    # Buscar integración de Contalink activa
+    # Buscar integración de Contalink conectada (preferir connected sobre pending)
     integration = await db.integrations.find_one({
         "company_id":       company_id,
         "integration_type": "contalink",
-        "is_active":        True,
+        "connection_status": "connected",
     })
+    if not integration:
+        integration = await db.integrations.find_one({
+            "company_id":       company_id,
+            "integration_type": "contalink",
+            "is_active":        True,
+        })
     if not integration:
         raise HTTPException(
             status_code=404,
@@ -848,11 +854,29 @@ async def sync_payments_from_contalink(
     api_key = integration.get("credentials", {}).get("api_key", "")
     client  = ContalinkClient(api_key)
 
-    # Obtener RFC de la empresa
-    company = await db.companies.find_one({"id": company_id}, {"_id": 0, "rfc": 1})
-    rfc = company.get("rfc", "") if company else ""
+    # Obtener RFC — primero desde credenciales Contalink, luego desde empresa
+    contalink_creds = await db.contalink_credentials.find_one(
+        {"company_id": company_id}, {"_id": 0, "rfc": 1}
+    )
+    if not contalink_creds:
+        # Buscar también en colección legacy
+        contalink_creds = await db.contalink.find_one(
+            {"company_id": company_id}, {"_id": 0, "rfc": 1}
+        )
+    rfc = (contalink_creds or {}).get("rfc", "")
+
+    # Fallback a RFC de la empresa
     if not rfc or rfc == "PENDIENTE":
-        raise HTTPException(status_code=400, detail="La empresa no tiene RFC configurado. Actualízalo en configuración.")
+        company = await db.companies.find_one({"id": company_id}, {"_id": 0, "rfc": 1})
+        rfc = (company or {}).get("rfc", "")
+
+    # También buscar en integrations
+    if not rfc or rfc == "PENDIENTE":
+        integ_creds = integration.get("credentials", {})
+        rfc = integ_creds.get("rfc", "")
+
+    if not rfc or rfc == "PENDIENTE":
+        raise HTTPException(status_code=400, detail="La empresa no tiene RFC configurado. Ve a Integraciones → Contalink y guarda el RFC.")
 
     created  = 0
     skipped  = 0
