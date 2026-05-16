@@ -979,3 +979,13 @@ async def sync_payments_from_contalink(
         "errors":  errors,
         "message": f"Contalink sync: {created} movimientos importados, {skipped} ya existian.",
     }
+
+@router.post("/fix-contalink-status")
+async def fix_contalink_status(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Actualiza pagos importados de Contalink de pendiente a completado"""
+    company_id = current_user["company_id"]
+    result = await db.payments.update_many(
+        {"company_id": company_id, "source": "contalink", "status": "pendiente"},
+        {"$set": {"status": "completado"}}
+    )
+    return {"success": True, "updated": result.modified_count, "message": f"{result.modified_count} pagos actualizados a completado"}
