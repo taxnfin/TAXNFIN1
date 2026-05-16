@@ -879,16 +879,21 @@ async def sync_payments_from_contalink(
 
         # ── Facturas emitidas (cobranza) ──────────────────────────────
         try:
-            issued = await client.get_invoices(
+            for doc_type in ["I", "E", "P"]:  # Ingreso, Egreso, Pago
+              issued_batch = await client.get_invoices(
                 rfc=rfc,
                 transaction_type="issued",
-                document_type="I",   # Ingreso
+                document_type=doc_type,
                 start_date=start,
                 end_date=end,
-            )
+              )
+              if not hasattr(issued_batch.get("data"), "__iter__"):
+                  continue
+              issued = {"data": issued_batch.get("data", [])}
+              if True:
             for inv in issued.get("data", []):
                 total   = float(inv.get("total", 0) or 0)
-                cobrado = float(inv.get("amount_paid", 0) or inv.get("total", 0) or 0)
+                cobrado = float(inv.get("amount_paid", 0) or total or 0)
                 if cobrado <= 0:
                     continue
 
@@ -929,13 +934,18 @@ async def sync_payments_from_contalink(
 
         # ── Facturas recibidas (pagos a proveedores) ──────────────────
         try:
-            received = await client.get_invoices(
+            received_all = []
+            for doc_type in ["I", "E", "P"]:
+              batch = await client.get_invoices(
                 rfc=rfc,
                 transaction_type="received",
-                document_type="I",
+                document_type=doc_type,
                 start_date=start,
                 end_date=end,
-            )
+              )
+              received_all.extend(batch.get("data", []))
+            received = {"data": received_all}
+            if True:
             for inv in received.get("data", []):
                 pagado = float(inv.get("amount_paid", 0) or inv.get("total", 0) or 0)
                 if pagado <= 0:
