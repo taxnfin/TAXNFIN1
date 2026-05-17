@@ -974,7 +974,7 @@ const PaymentsModule = () => {
                                   {cfdi.uuid?.substring(0, 8)}...
                                 </TableCell>
                                 <TableCell className="text-sm">
-                                  {format(new Date(cfdi.fecha_emision), 'dd/MM/yy')}
+                                  {(cfdi.fecha_emision ? format(new Date(cfdi.fecha_emision), 'dd/MM/yy') : '-')}
                                 </TableCell>
                                 <TableCell className="text-sm max-w-[150px] truncate">
                                   {formData.tipo === 'cobro' ? cfdi.receptor_nombre : cfdi.emisor_nombre}
