@@ -1502,7 +1502,7 @@ const PaymentsModule = () => {
                   return (
                   <TableRow key={payment.id} className={payment.es_real === false ? 'bg-blue-50/30' : ''}>
                     <TableCell className="mono text-sm">
-                      {format(new Date(payment.fecha_vencimiento), 'dd/MM/yyyy')}
+                      {(payment.fecha_vencimiento ? format(new Date(payment.fecha_vencimiento), 'dd/MM/yyyy') : (payment.fecha ? format(new Date(payment.fecha), 'dd/MM/yyyy') : 'Sin fecha'))}
                       {payment.domiciliacion_activa && (
                         <span className="ml-2 text-xs px-1 py-0.5 bg-blue-100 text-blue-800 rounded">DOM</span>
                       )}
@@ -1732,7 +1732,7 @@ const PaymentsModule = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-gray-500">Fecha Vencimiento</p>
-                  <p className="font-medium">{format(new Date(selectedPayment.fecha_vencimiento), 'dd/MM/yyyy HH:mm')}</p>
+                  <p className="font-medium">{(selectedPayment.fecha_vencimiento ? format(new Date(selectedPayment.fecha_vencimiento), 'dd/MM/yyyy HH:mm') : (selectedPayment.fecha ? format(new Date(selectedPayment.fecha), 'dd/MM/yyyy HH:mm') : 'Sin fecha'))}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Fecha de Pago</p>
@@ -2016,7 +2016,7 @@ const PaymentsModule = () => {
                         {match.payment.tipo === 'cobro' ? 'Cobro' : 'Pago'} - {match.payment.beneficiario}
                       </p>
                       <p className="text-xs text-gray-400">
-                        Vencimiento: {format(new Date(match.payment.fecha_vencimiento), 'dd/MM/yyyy')}
+                        Vencimiento: {(match.payment.fecha_vencimiento ? format(new Date(match.payment.fecha_vencimiento), 'dd/MM/yyyy') : 'Sin fecha')}
                       </p>
                     </div>
                     <div className="text-right">
