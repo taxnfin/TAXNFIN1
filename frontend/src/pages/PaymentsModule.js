@@ -1502,7 +1502,7 @@ const PaymentsModule = () => {
                   return (
                   <TableRow key={payment.id} className={payment.es_real === false ? 'bg-blue-50/30' : ''}>
                     <TableCell className="mono text-sm">
-                      {(payment.fecha_vencimiento && payment.fecha_vencimiento !== 'undefined' ? format(new Date(payment.fecha_vencimiento), 'dd/MM/yyyy') : payment.fecha ? format(new Date(payment.fecha), 'dd/MM/yyyy') : 'Sin fecha')}
+                      {(payment.fecha_vencimiento ? format(new Date(payment.fecha_vencimiento), 'dd/MM/yyyy') : payment.fecha ? format(new Date(payment.fecha), 'dd/MM/yyyy') : 'Sin fecha')}
                       {payment.domiciliacion_activa && (
                         <span className="ml-2 text-xs px-1 py-0.5 bg-blue-100 text-blue-800 rounded">DOM</span>
                       )}
@@ -2016,7 +2016,7 @@ const PaymentsModule = () => {
                         {match.payment.tipo === 'cobro' ? 'Cobro' : 'Pago'} - {match.payment.beneficiario}
                       </p>
                       <p className="text-xs text-gray-400">
-                        Vencimiento: {(match.payment.fecha_vencimiento ? format(new Date(match.payment.fecha_vencimiento), 'dd/MM/yyyy') : match.payment.fecha ? format(new Date(match.payment.fecha), 'dd/MM/yyyy') : 'Sin fecha')}
+                        Vencimiento: {(match.payment.fecha_vencimiento ? format(new Date(match.payment.fecha_vencimiento), 'dd/MM/yyyy') : 'Sin fecha')}
                       </p>
                     </div>
                     <div className="text-right">
