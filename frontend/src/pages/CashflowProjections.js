@@ -135,7 +135,7 @@ const CashflowProjections = () => {
     try {
       const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes, fxRes, paymentsRes, bankTxnsRes, reconRes, bankAccountsRes] = await Promise.all([
         api.get('/cfdi?limit=500'),
-        api.get('/categories'),
+        api.get('/cashflow-sync/categories'),
         api.get('/customers'),
         api.get('/vendors'),
         api.get('/bank-accounts/summary'),
@@ -432,8 +432,8 @@ const CashflowProjections = () => {
       const week = weeks[weekIdx];
       if (!week.isPast && !week.isCurrent) return;
       
-      const isCompraUSD = payment.category_id === compraUSDId;
-      const isVentaUSD = payment.category_id === ventaUSDId;
+      const isCompraUSD = payment.category_id && compraUSDId && payment.category_id === compraUSDId;
+      const isVentaUSD = payment.category_id && ventaUSDId && payment.category_id === ventaUSDId;
       
       if (!weekCurrencyOps[weekIdx]) {
         weekCurrencyOps[weekIdx] = { ventaMXN: 0, compraUSD: 0 };
@@ -489,9 +489,9 @@ const CashflowProjections = () => {
       const subcategoryInfo = subcategoryMap[payment.subcategory_id];
       const subcategoryName = subcategoryInfo?.nombre || null;
       
-      // Check if USD operation
-      const isCompraUSD = payment.category_id === compraUSDId;
-      const isVentaUSD = payment.category_id === ventaUSDId;
+      // Check if USD operation (only if category_id is not null)
+      const isCompraUSD = payment.category_id && compraUSDId && payment.category_id === compraUSDId;
+      const isVentaUSD = payment.category_id && ventaUSDId && payment.category_id === ventaUSDId;
       
       if (isVentaUSD) {
         // Venta de USD: el monto ya está en MXN
