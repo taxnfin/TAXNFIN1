@@ -1561,14 +1561,14 @@ const PaymentsModule = () => {
                         >
                           <option value="">Sin categoría</option>
                           {categories.filter(c => (payment.tipo === 'cobro' ? c.tipo === 'ingreso' : c.tipo === 'egreso')).map(cat => (
-                            <optgroup key={cat.id} label={cat.nombre}>
+                            <optgroup key={cat.code || cat.id} label={cat.nombre}>
                               {cat.subcategorias?.map(sub => (
-                                <option key={sub.id} value={`${cat.id}|${sub.id}`}>
+                                <option key={sub.id} value={`${cat.code || cat.id}|${sub.id}`}>
                                   {sub.nombre}
                                 </option>
                               ))}
                               {(!cat.subcategorias || cat.subcategorias.length === 0) && (
-                                <option value={`${cat.id}|`}>{cat.nombre}</option>
+                                <option value={`${cat.code || cat.id}|`}>{cat.nombre}</option>
                               )}
                             </optgroup>
                           ))}
