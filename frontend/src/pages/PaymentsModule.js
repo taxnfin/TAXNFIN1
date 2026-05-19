@@ -648,7 +648,7 @@ const PaymentsModule = () => {
   const handleAutoCategorize = async () => {
     setAutoCategorizing(true);
     try {
-      const res = await api.post('/cashflow-sync/payments/auto-categorize?limit=100');
+      const res = await api.post('/cashflow-sync/auto-categorize?limit=100');
       const { updated, processed, errors } = res.data;
       if (updated > 0) {
         toast.success(`✅ ${updated} de ${processed} pagos categorizados con IA`);
