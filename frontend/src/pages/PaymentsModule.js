@@ -36,6 +36,7 @@ const PaymentsModule = () => {
   const [payments, setPayments] = useState([]);
   const [summary, setSummary] = useState(null);
   const [breakdown, setBreakdown] = useState(null);
+  const [agingSummary, setAgingSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -152,11 +153,12 @@ const PaymentsModule = () => {
       let url = '/payments/with-reconciliation-status?limit=1000';
       if (filterTipo !== 'all') url += `&tipo=${filterTipo}`;
       
-      const [paymentsRes, summaryRes, breakdownRes, bankTxnsRes] = await Promise.all([
+      const [paymentsRes, summaryRes, breakdownRes, bankTxnsRes, agingRes] = await Promise.all([
         api.get(url),
         api.get('/payments/summary'),
         api.get('/payments/breakdown'),
-        api.get('/bank-transactions?limit=500')
+        api.get('/bank-transactions?limit=500'),
+        api.get('/contalink/aging-summary').catch(() => ({ data: null }))
       ]);
       
       // Build set of reconciled bank transaction IDs
@@ -200,6 +202,7 @@ const PaymentsModule = () => {
       setPayments(filteredPayments);
       setSummary(summaryRes.data || {});
       setBreakdown(breakdownRes.data || {});
+      setAgingSummary(agingRes?.data || null);
     } catch (error) {
       toast.error('Error cargando pagos');
     } finally {
@@ -1180,7 +1183,7 @@ const PaymentsModule = () => {
 
       {/* Summary Cards - 6 tarjetas */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {/* Por Pagar (CFDI) */}
+        {/* Por Pagar */}
         <Card className="border-[#EF4444] bg-red-50">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-[#DC2626] flex items-center gap-2">
@@ -1188,18 +1191,22 @@ const PaymentsModule = () => {
               Por Pagar
             </CardTitle>
             <CardDescription className="text-xs">
-              Facturas CFDI pendientes
+              {agingSummary?.cxp ? 'Contalink · Aging CxP' : 'Facturas CFDI pendientes'}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold mono text-[#DC2626]">
-              ${(breakdown?.cfdi_por_pagar?.total_equiv_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              ${(agingSummary?.cxp ? agingSummary.cxp.total : (breakdown?.cfdi_por_pagar?.total_equiv_mxn || 0)).toLocaleString('es-MX', {minimumFractionDigits: 2})}
             </div>
-            <div className="text-xs text-[#64748B] mt-1">{breakdown?.cfdi_por_pagar?.total_count || 0} facturas</div>
+            <div className="text-xs text-[#64748B] mt-1">
+              {agingSummary?.cxp
+                ? `${agingSummary.cxp.count} proveedores · vencido $${agingSummary.cxp.vencido.toLocaleString('es-MX', {minimumFractionDigits: 0})}`
+                : `${breakdown?.cfdi_por_pagar?.total_count || 0} facturas`}
+            </div>
           </CardContent>
         </Card>
 
-        {/* Por Cobrar (CFDI) */}
+        {/* Por Cobrar */}
         <Card className="border-[#10B981] bg-green-50">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-[#059669] flex items-center gap-2">
@@ -1207,14 +1214,18 @@ const PaymentsModule = () => {
               Por Cobrar
             </CardTitle>
             <CardDescription className="text-xs">
-              Facturas CFDI pendientes
+              {agingSummary?.cxc ? 'Contalink · Aging CxC' : 'Facturas CFDI pendientes'}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold mono text-[#059669]">
-              ${(breakdown?.cfdi_por_cobrar?.total_equiv_mxn || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+              ${(agingSummary?.cxc ? agingSummary.cxc.total : (breakdown?.cfdi_por_cobrar?.total_equiv_mxn || 0)).toLocaleString('es-MX', {minimumFractionDigits: 2})}
             </div>
-            <div className="text-xs text-[#64748B] mt-1">{breakdown?.cfdi_por_cobrar?.total_count || 0} facturas</div>
+            <div className="text-xs text-[#64748B] mt-1">
+              {agingSummary?.cxc
+                ? `${agingSummary.cxc.count} clientes · vencido $${agingSummary.cxc.vencido.toLocaleString('es-MX', {minimumFractionDigits: 0})}`
+                : `${breakdown?.cfdi_por_cobrar?.total_count || 0} facturas`}
+            </div>
           </CardContent>
         </Card>
 
