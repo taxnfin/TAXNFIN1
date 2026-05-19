@@ -11,7 +11,7 @@ ERPs soportados:
   - QuickBooks 🔜 próximamente (OAuth2)
   - SAP B1     🔜 próximamente (Service Layer)
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import JSONResponse
 from typing import Dict, List, Optional
 from datetime import datetime, timezone, timedelta
@@ -19,7 +19,7 @@ from pydantic import BaseModel
 import logging
 
 from core.database import db
-from core.auth import get_current_user
+from core.auth import get_current_user, get_active_company_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cashflow-sync", tags=["Cashflow Sync"])
@@ -572,4 +572,148 @@ async def get_cashflow_movements(
         "total_egresos":  total_egresos,
         "flujo_neto":     total_ingresos - total_egresos,
         "count":          len(movs),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════
+# AUTO-CATEGORIZACIÓN CON IA
+# ══════════════════════════════════════════════════════════════════════
+
+@router.post("/payments/auto-categorize")
+async def auto_categorize_payments(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    limit: int = Query(100, le=500, description="Pagos a procesar por lote")
+):
+    """
+    Auto-categoriza pagos sin categoría usando Claude AI.
+    Funciona con pagos de Contalink, banco, o cualquier fuente.
+    """
+    import httpx
+    import os
+    import json
+
+    company_id = await get_active_company_id(request, current_user)
+
+    # 1. Obtener pagos sin categoría
+    uncategorized = await db.payments.find(
+        {
+            "company_id": company_id,
+            "$or": [
+                {"category_id": None},
+                {"category_id": {"$exists": False}},
+                {"category_id": ""}
+            ]
+        },
+        {"_id": 0, "id": 1, "concepto": 1, "beneficiario": 1, "tipo": 1, "monto": 1, "source": 1}
+    ).limit(limit).to_list(limit)
+
+    if not uncategorized:
+        return {"success": True, "message": "No hay pagos sin categoría", "categorizados": 0}
+
+    # 2. Obtener categorías custom de la empresa + defaults
+    custom_cats = await db.cashflow_categories.find(
+        {"company_id": company_id, "activa": True},
+        {"_id": 0, "code": 1, "nombre": 1, "tipo": 1}
+    ).to_list(200)
+
+    all_categories = [
+        {"code": c["code"], "nombre": c["nombre"], "tipo": c["tipo"]}
+        for c in DEFAULT_CATEGORIES
+    ] + [
+        {"code": c["code"], "nombre": c["nombre"], "tipo": c["tipo"]}
+        for c in custom_cats
+        if not any(d["code"] == c["code"] for d in DEFAULT_CATEGORIES)
+    ]
+
+    cats_str = "\n".join([f'- {c["code"]} | {c["nombre"]} | {c["tipo"]}' for c in all_categories])
+
+    # 3. Preparar batch para Claude
+    payments_str = "\n".join([
+        f'{i+1}. id={p["id"]} | tipo={p.get("tipo","?")} | concepto={p.get("concepto","?")} | beneficiario={p.get("beneficiario","?")} | monto={p.get("monto",0)}'
+        for i, p in enumerate(uncategorized)
+    ])
+
+    prompt = f"""Eres un experto en contabilidad mexicana. Categoriza cada pago con el código más apropiado.
+
+CATEGORÍAS DISPONIBLES (código | nombre | tipo):
+{cats_str}
+
+REGLAS:
+- Si tipo=cobro → usa categorías de ingreso (ING-xxx)
+- Si tipo=pago → usa categorías de egreso (EGR-xxx)
+- Usa el concepto y beneficiario para inferir la categoría correcta
+- Si no puedes determinar, usa ING-099 (cobros) o EGR-099 (pagos)
+
+PAGOS A CATEGORIZAR:
+{payments_str}
+
+Responde ÚNICAMENTE con un JSON array sin markdown, sin explicaciones:
+[{{"id": "uuid-del-pago", "code": "EGR-001"}}, ...]"""
+
+    # 4. Llamar Claude API
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not anthropic_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY no configurada en Railway")
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": anthropic_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            },
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": 4096,
+                "messages": [{"role": "user", "content": prompt}]
+            }
+        )
+        resp.raise_for_status()
+        result = resp.json()
+
+    raw_text = result["content"][0]["text"].strip()
+    # Limpiar posibles backticks
+    raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+    assignments = json.loads(raw_text)
+
+    # 5. Construir mapa code → category info
+    cat_map = {c["code"]: c for c in all_categories}
+
+    # 6. Actualizar pagos en DB
+    updated = 0
+    errors = []
+    for item in assignments:
+        try:
+            pay_id = item["id"]
+            code = item["code"]
+            cat = cat_map.get(code)
+            if not cat:
+                errors.append(f"Código inválido {code} para pago {pay_id}")
+                continue
+
+            await db.payments.update_one(
+                {"id": pay_id, "company_id": company_id},
+                {"$set": {
+                    "category_id": code,
+                    "category_name": cat["nombre"],
+                    "categorized_by": "ai",
+                    "categorized_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+            updated += 1
+        except Exception as e:
+            errors.append(str(e))
+
+    await audit_log(company_id, "Payment", "AUTO_CATEGORIZE", "UPDATE", current_user["id"],
+                    {"categorizados": updated, "errores": len(errors)})
+
+    return {
+        "success": True,
+        "total_sin_categoria": len(uncategorized),
+        "categorizados": updated,
+        "errores": len(errors),
+        "detalle_errores": errors[:5],
+        "message": f"{updated} pagos categorizados automáticamente con IA"
     }
