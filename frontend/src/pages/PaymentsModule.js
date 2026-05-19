@@ -212,7 +212,7 @@ const PaymentsModule = () => {
       const [customersRes, vendorsRes, categoriesRes] = await Promise.all([
         api.get('/customers'),
         api.get('/vendors'),
-        api.get('/categories')
+        api.get('/cashflow-sync/categories')
       ]);
       const cleanName = (obj) => (obj.nombre || obj.name || '').replace(/\s+/g, ' ').trim();
       setCustomers([...customersRes.data].sort((a, b) => cleanName(a).localeCompare(cleanName(b), 'es', { sensitivity: 'base' })));
