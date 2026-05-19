@@ -11,7 +11,7 @@ ERPs soportados:
   - QuickBooks 🔜 próximamente (OAuth2)
   - SAP B1     🔜 próximamente (Service Layer)
 """
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from typing import Dict, List, Optional
 from datetime import datetime, timezone, timedelta
@@ -19,7 +19,7 @@ from pydantic import BaseModel
 import logging
 
 from core.database import db
-from core.auth import get_current_user, get_active_company_id
+from core.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cashflow-sync", tags=["Cashflow Sync"])
@@ -576,144 +576,244 @@ async def get_cashflow_movements(
 
 
 # ══════════════════════════════════════════════════════════════════════
-# AUTO-CATEGORIZACIÓN CON IA
+# AUTO-CATEGORIZACIÓN CON IA (Claude API)
 # ══════════════════════════════════════════════════════════════════════
 
-@router.post("/payments/auto-categorize")
+class CategorizationOverride(BaseModel):
+    """Para corrección manual de categoría de un pago"""
+    payment_id:   str
+    category_id:  str
+
+
+@router.post("/auto-categorize")
 async def auto_categorize_payments(
-    request: Request,
     current_user: Dict = Depends(get_current_user),
-    limit: int = Query(100, le=500, description="Pagos a procesar por lote")
+    limit: int = 100,
+    solo_sin_categoria: bool = True,
 ):
     """
-    Auto-categoriza pagos sin categoría usando Claude AI.
-    Funciona con pagos de Contalink, banco, o cualquier fuente.
+    Toma los pagos sin categoría y usa Claude API para asignarles
+    la categoría más apropiada del catálogo.
+
+    - limit: máximo de pagos a procesar por llamada (default 100)
+    - solo_sin_categoria: si False, re-categoriza todos los pagos
     """
-    import httpx
-    import os
-    import json
+    import httpx, os, json
 
-    company_id = await get_active_company_id(request, current_user)
+    company_id = current_user["company_id"]
 
-    # 1. Obtener pagos sin categoría
-    uncategorized = await db.payments.find(
-        {
-            "company_id": company_id,
-            "$or": [
-                {"category_id": None},
-                {"category_id": {"$exists": False}},
-                {"category_id": ""}
-            ]
-        },
-        {"_id": 0, "id": 1, "concepto": 1, "beneficiario": 1, "tipo": 1, "monto": 1, "source": 1}
-    ).limit(limit).to_list(limit)
-
-    if not uncategorized:
-        return {"success": True, "message": "No hay pagos sin categoría", "categorizados": 0}
-
-    # 2. Obtener categorías custom de la empresa + defaults
+    # 1. Cargar categorías disponibles
     custom_cats = await db.cashflow_categories.find(
-        {"company_id": company_id, "activa": True},
-        {"_id": 0, "code": 1, "nombre": 1, "tipo": 1}
+        {"company_id": company_id, "activa": True}, {"_id": 0}
     ).to_list(200)
+    custom_codes = {c["code"] for c in custom_cats}
 
-    all_categories = [
-        {"code": c["code"], "nombre": c["nombre"], "tipo": c["tipo"]}
-        for c in DEFAULT_CATEGORIES
-    ] + [
-        {"code": c["code"], "nombre": c["nombre"], "tipo": c["tipo"]}
-        for c in custom_cats
-        if not any(d["code"] == c["code"] for d in DEFAULT_CATEGORIES)
-    ]
+    all_categories = list(custom_cats)
+    for cat in DEFAULT_CATEGORIES:
+        if cat["code"] not in custom_codes:
+            all_categories.append(cat)
 
-    cats_str = "\n".join([f'- {c["code"]} | {c["nombre"]} | {c["tipo"]}' for c in all_categories])
+    cat_list_text = "\n".join(
+        f'- id="{cat["code"]}" | nombre="{cat["nombre"]}" | tipo={cat["tipo"]}'
+        for cat in all_categories
+    )
 
-    # 3. Preparar batch para Claude
-    payments_str = "\n".join([
-        f'{i+1}. id={p["id"]} | tipo={p.get("tipo","?")} | concepto={p.get("concepto","?")} | beneficiario={p.get("beneficiario","?")} | monto={p.get("monto",0)}'
-        for i, p in enumerate(uncategorized)
-    ])
+    # 2. Cargar payments a categorizar
+    query: dict = {"company_id": company_id}
+    if solo_sin_categoria:
+        query["$or"] = [
+            {"category_id": None},
+            {"category_id": {"$exists": False}},
+        ]
 
-    prompt = f"""Eres un experto en contabilidad mexicana. Categoriza cada pago con el código más apropiado.
+    payments_raw = await db.payments.find(query, {"_id": 0}).limit(limit).to_list(limit)
 
-CATEGORÍAS DISPONIBLES (código | nombre | tipo):
-{cats_str}
+    if not payments_raw:
+        return {"success": True, "message": "No hay pagos para categorizar", "updated": 0}
 
-REGLAS:
-- Si tipo=cobro → usa categorías de ingreso (ING-xxx)
-- Si tipo=pago → usa categorías de egreso (EGR-xxx)
-- Usa el concepto y beneficiario para inferir la categoría correcta
-- Si no puedes determinar, usa ING-099 (cobros) o EGR-099 (pagos)
+    # 3. Construir prompt para Claude
+    payments_text = "\n".join(
+        f'[{i}] id="{p["id"]}" | tipo={p.get("tipo","?")} | '
+        f'concepto="{p.get("concepto","")}" | '
+        f'beneficiario="{p.get("beneficiario","")}" | '
+        f'monto={p.get("monto",0)} {p.get("moneda","MXN")}'
+        for i, p in enumerate(payments_raw)
+    )
 
-PAGOS A CATEGORIZAR:
-{payments_str}
+    prompt = f"""Eres un experto en contabilidad y finanzas mexicanas.
+Tu tarea es categorizar movimientos de flujo de efectivo de una empresa mexicana.
 
-Responde ÚNICAMENTE con un JSON array sin markdown, sin explicaciones:
-[{{"id": "uuid-del-pago", "code": "EGR-001"}}, ...]"""
+CATEGORÍAS DISPONIBLES:
+{cat_list_text}
 
-    # 4. Llamar Claude API
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not anthropic_key:
+MOVIMIENTOS A CATEGORIZAR:
+{payments_text}
+
+INSTRUCCIONES:
+- Para cada movimiento, elige la categoría más apropiada de la lista.
+- Los cobros (tipo=cobro) son ingresos → usa categorías de tipo ingreso.
+- Los pagos (tipo=pago) son egresos → usa categorías de tipo egreso.
+- Si el concepto menciona "Cobranza" o es de un cliente → ING-001 (Ventas de productos).
+- Si el beneficiario es un banco → EGR-018 (Comisiones bancarias).
+- Si el concepto menciona nómina, salarios, IMSS → EGR-001 o EGR-002.
+- Si no puedes determinar → ING-099 para ingresos, EGR-099 para egresos.
+
+Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
+[{{"id": "payment_id", "category_code": "ING-001"}}, ...]
+"""
+
+    # 4. Llamar a Claude API
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY no configurada en Railway")
 
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": anthropic_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            },
-            json={
-                "model": "claude-sonnet-4-20250514",
-                "max_tokens": 4096,
-                "messages": [{"role": "user", "content": prompt}]
-            }
-        )
-        resp.raise_for_status()
-        result = resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=60) as http:
+            res = await http.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-sonnet-4-5-20251001",
+                    "max_tokens": 4096,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+            res.raise_for_status()
+            data = res.json()
+            raw_text = data["content"][0]["text"].strip()
+    except Exception as e:
+        logger.error(f"auto_categorize Claude API error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error llamando a Claude API: {str(e)}")
 
-    raw_text = result["content"][0]["text"].strip()
-    # Limpiar posibles backticks
-    raw_text = raw_text.replace("```json", "").replace("```", "").strip()
-    assignments = json.loads(raw_text)
+    # 5. Parsear respuesta
+    try:
+        # Limpiar posibles backticks
+        clean = raw_text.replace("```json", "").replace("```", "").strip()
+        assignments = json.loads(clean)
+    except Exception as e:
+        logger.error(f"auto_categorize JSON parse error: {e} — raw: {raw_text[:500]}")
+        raise HTTPException(status_code=500, detail=f"Error parseando respuesta de IA: {str(e)}")
 
-    # 5. Construir mapa code → category info
-    cat_map = {c["code"]: c for c in all_categories}
+    # 6. Construir mapa code → category doc
+    cat_by_code = {c["code"]: c for c in all_categories}
 
-    # 6. Actualizar pagos en DB
+    # 7. Actualizar payments en MongoDB
     updated = 0
     errors = []
-    for item in assignments:
-        try:
-            pay_id = item["id"]
-            code = item["code"]
-            cat = cat_map.get(code)
-            if not cat:
-                errors.append(f"Código inválido {code} para pago {pay_id}")
-                continue
+    results = []
 
+    for assignment in assignments:
+        payment_id   = assignment.get("id")
+        category_code = assignment.get("category_code")
+
+        if not payment_id or not category_code:
+            continue
+
+        cat_doc = cat_by_code.get(category_code)
+        if not cat_doc:
+            errors.append(f"Código desconocido: {category_code} para payment {payment_id}")
+            continue
+
+        try:
             await db.payments.update_one(
-                {"id": pay_id, "company_id": company_id},
+                {"id": payment_id, "company_id": company_id},
                 {"$set": {
-                    "category_id": code,
-                    "category_name": cat["nombre"],
+                    "category_id":   category_code,
+                    "category_name": cat_doc["nombre"],
                     "categorized_by": "ai",
-                    "categorized_at": datetime.now(timezone.utc).isoformat()
+                    "categorized_at": datetime.now(timezone.utc).isoformat(),
                 }}
             )
             updated += 1
+            results.append({
+                "payment_id":   payment_id,
+                "category_code": category_code,
+                "category_name": cat_doc["nombre"],
+            })
         except Exception as e:
-            errors.append(str(e))
+            errors.append(f"Error actualizando {payment_id}: {str(e)}")
 
-    await audit_log(company_id, "Payment", "AUTO_CATEGORIZE", "UPDATE", current_user["id"],
-                    {"categorizados": updated, "errores": len(errors)})
+    logger.info(f"auto_categorize: company={company_id} processed={len(payments_raw)} updated={updated} errors={len(errors)}")
 
     return {
-        "success": True,
-        "total_sin_categoria": len(uncategorized),
-        "categorizados": updated,
-        "errores": len(errors),
-        "detalle_errores": errors[:5],
-        "message": f"{updated} pagos categorizados automáticamente con IA"
+        "success":   True,
+        "processed": len(payments_raw),
+        "updated":   updated,
+        "errors":    errors,
+        "results":   results,
+    }
+
+
+@router.post("/recategorize")
+async def recategorize_payment(
+    data: CategorizationOverride,
+    current_user: Dict = Depends(get_current_user),
+):
+    """
+    Corrección manual de categoría para un pago específico.
+    El usuario puede corregir lo que asignó la IA.
+    """
+    company_id = current_user["company_id"]
+
+    # Buscar categoría
+    cat_doc = await db.cashflow_categories.find_one(
+        {"code": data.category_id, "company_id": company_id}, {"_id": 0}
+    )
+    if not cat_doc:
+        # Buscar en defaults
+        cat_doc = next((c for c in DEFAULT_CATEGORIES if c["code"] == data.category_id), None)
+    if not cat_doc:
+        raise HTTPException(status_code=404, detail=f"Categoría '{data.category_id}' no encontrada")
+
+    result = await db.payments.update_one(
+        {"id": data.payment_id, "company_id": company_id},
+        {"$set": {
+            "category_id":   data.category_id,
+            "category_name": cat_doc["nombre"],
+            "categorized_by": "manual",
+            "categorized_at": datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+
+    return {
+        "success":       True,
+        "payment_id":    data.payment_id,
+        "category_code": data.category_id,
+        "category_name": cat_doc["nombre"],
+    }
+
+
+@router.get("/categorization-status")
+async def get_categorization_status(
+    current_user: Dict = Depends(get_current_user),
+):
+    """Muestra cuántos pagos están categorizados vs sin categoría"""
+    company_id = current_user["company_id"]
+
+    total = await db.payments.count_documents({"company_id": company_id})
+    sin_cat = await db.payments.count_documents({
+        "company_id": company_id,
+        "$or": [{"category_id": None}, {"category_id": {"$exists": False}}]
+    })
+    por_ia = await db.payments.count_documents({
+        "company_id": company_id, "categorized_by": "ai"
+    })
+    manual = await db.payments.count_documents({
+        "company_id": company_id, "categorized_by": "manual"
+    })
+
+    return {
+        "total":           total,
+        "categorizados":   total - sin_cat,
+        "sin_categoria":   sin_cat,
+        "por_ia":          por_ia,
+        "manual":          manual,
+        "pct_completado":  round((total - sin_cat) / max(total, 1) * 100, 1),
     }
