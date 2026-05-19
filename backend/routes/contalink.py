@@ -633,3 +633,43 @@ async def check_invoice_status(
         result = res.json() if res.status_code == 200 else {"status": 0, "message": res.text}
 
     return {"success": True, "uuid": cfdi_uuid, "data": result}
+
+
+@router.get("/probe-endpoints")
+async def probe_contalink_endpoints(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Probe Contalink API endpoints to find CxC/CxP aging reports"""
+    company_id = await get_active_company_id(request, current_user)
+    creds = await get_contalink_credentials(company_id)
+    api_key = creds["api_key"]
+    rfc = creds["rfc"]
+    headers = {"Authorization": api_key, "Content-Type": "application/json", "Accept": "application/json"}
+
+    endpoints = [
+        f"/accounting/accounts-receivable/",
+        f"/accounting/accounts-payable/",
+        f"/invoices/aging/",
+        f"/reports/aging/",
+        f"/reports/cxc/",
+        f"/reports/cxp/",
+        f"/accounting/aging/",
+        f"/invoices/balances/",
+        f"/invoices/list/?transaction_type=E&document_type=Ingreso&rfc={rfc}&page=0",
+    ]
+
+    results = {}
+    async with httpx.AsyncClient(timeout=15) as http_client:
+        for ep in endpoints:
+            try:
+                res = await http_client.get(
+                    f"{CONTALINK_BASE_URL}{ep}",
+                    headers=headers
+                )
+                sample = res.text[:300] if res.status_code == 200 else res.text[:100]
+                results[ep] = {"status": res.status_code, "sample": sample}
+            except Exception as e:
+                results[ep] = {"status": "error", "sample": str(e)}
+
+    return {"rfc": rfc, "results": results}
