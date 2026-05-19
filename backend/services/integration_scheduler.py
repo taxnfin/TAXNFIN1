@@ -162,7 +162,7 @@ async def run_all_syncs(db):
     logger.info("=" * 50)
     
     integrations = await db.integrations.find(
-        {'is_active': True},
+        {'$or': [{'is_active': True}, {'active': True}]},
         {'_id': 0}
     ).to_list(100)
     
