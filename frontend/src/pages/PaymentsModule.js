@@ -1494,8 +1494,8 @@ const PaymentsModule = () => {
                   return true;
                 }).map((payment) => {
                   // Find category and subcategory names
-                  const category = categories.find(c => c.id === payment.category_id);
-                  const categoryName = category?.nombre || '';
+                  const category = categories.find(c => (c.code || c.id) === payment.category_id);
+                  const categoryName = category?.nombre || payment.category_name || '';
                   const subcategory = category?.subcategorias?.find(s => s.id === payment.subcategory_id);
                   const subcategoryName = subcategory?.nombre || '';
                   
