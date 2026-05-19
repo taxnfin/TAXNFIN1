@@ -673,3 +673,45 @@ async def probe_contalink_endpoints(
                 results[ep] = {"status": "error", "sample": str(e)}
 
     return {"rfc": rfc, "results": results}
+
+
+@router.get("/raw-invoice-sample")
+async def get_raw_invoice_sample(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    transaction_type: str = Query("E", description="E=emitidas, R=recibidas"),
+    document_type: str = Query("Ingreso"),
+    days_back: int = Query(30),
+):
+    """Get raw invoice data from Contalink to inspect all fields"""
+    company_id = await get_active_company_id(request, current_user)
+    creds = await get_contalink_credentials(company_id)
+    
+    end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    start_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    
+    client = ContalinkClient(creds["api_key"])
+    result = await client.get_invoices(
+        rfc=creds["rfc"],
+        transaction_type=transaction_type,
+        document_type=document_type,
+        start_date=start_date,
+        end_date=end_date,
+        page=0
+    )
+    
+    # Return raw first 3 invoices with ALL fields
+    if isinstance(result, list):
+        invoices = result[:3]
+    elif "list" in result:
+        invoices = result["list"].get("invoices", [])[:3]
+    else:
+        invoices = result.get("invoices", result.get("data", []))[:3]
+    
+    return {
+        "transaction_type": transaction_type,
+        "document_type": document_type,
+        "total_found": len(invoices),
+        "raw_fields": list(invoices[0].keys()) if invoices else [],
+        "sample": invoices
+    }
