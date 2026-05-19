@@ -55,6 +55,7 @@ const PaymentsModule = () => {
   const [useCustomTc, setUseCustomTc] = useState(false);
   const [activeTab, setActiveTab] = useState('real');
   const [syncingContalink, setSyncingContalink] = useState(false); // 'real', 'proyeccion', 'breakdown'
+  const [autoCategorizing, setAutoCategorizing] = useState(false);
   
   // Import from bank movements dialog
   const [importBankDialogOpen, setImportBankDialogOpen] = useState(false);
@@ -644,6 +645,27 @@ const PaymentsModule = () => {
     }
   };
 
+  const handleAutoCategorize = async () => {
+    setAutoCategorizing(true);
+    try {
+      const res = await api.post('/cashflow-sync/payments/auto-categorize?limit=100');
+      const { updated, processed, errors } = res.data;
+      if (updated > 0) {
+        toast.success(`✅ ${updated} de ${processed} pagos categorizados con IA`);
+        loadData();
+      } else {
+        toast.info('No hay pagos sin categoría o ya están todos categorizados');
+      }
+      if (errors?.length > 0) {
+        toast.warning(`${errors.length} errores al categorizar`);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error en auto-categorización');
+    } finally {
+      setAutoCategorizing(false);
+    }
+  };
+
   const handleDeleteAllPayments = async () => {
     if (!window.confirm('⚠️ ¿Estás SEGURO de que quieres ELIMINAR TODOS los pagos y cobranzas?\n\nEsta acción NO se puede deshacer.')) {
       return;
@@ -738,6 +760,15 @@ const PaymentsModule = () => {
             data-testid="sync-contalink-btn"
           >
             {syncingContalink ? '⟳ Sincronizando...' : '⬇ Sync Contalink'}
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2 text-purple-600 border-purple-300 hover:bg-purple-50"
+            onClick={handleAutoCategorize}
+            disabled={autoCategorizing}
+            data-testid="auto-categorize-btn"
+          >
+            {autoCategorizing ? '⟳ Categorizando...' : '🤖 Auto-categorizar'}
           </Button>
           <Button 
             variant="outline" 
