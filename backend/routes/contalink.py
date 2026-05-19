@@ -1,19 +1,15 @@
-"""
-AGREGAR A backend/routes/contalink.py
-─────────────────────────────────────
-Dos endpoints nuevos:
-
-  POST /contalink/import-aging   → sube XLS de CxC o CxP de Contalink
-  GET  /contalink/aging-summary  → devuelve resumen para Dashboard
-
-Agregar también el import de io al inicio del archivo si no está:
-  import io
-"""
-
-import io  # ya debe estar en contalink.py — agregar si falta
 
 
 # ── Aging Import (CxC / CxP desde XLS de Contalink) ───────────────────────────
+
+def _isna(val) -> bool:
+    import math
+    if val is None:
+        return True
+    if isinstance(val, float) and math.isnan(val):
+        return True
+    return False
+
 
 def _parse_money(val) -> float:
     """Convierte '$1,234.56' o 1234.56 a float"""
@@ -27,22 +23,12 @@ def _parse_money(val) -> float:
 
 
 def _parse_cxc_xls(content: bytes) -> dict:
-    """
-    Parsea el XLS 'Reporte Saldos por Cobrar' de Contalink.
-    Estructura: header en fila 3 (0-based), datos desde fila 4.
-    Columnas: 0=Clave, 1=Cliente, 2=Crédito/Anticipo, 3=PorVencer,
-              4=Vencido, 5=1-30, (6=vacío), 7=31-60, 8=61-90,
-              (9=vacío), 10=91-120, 11=Sobre120, 12=Total
-    """
+    import io
     import pandas as pd
-
     df = pd.read_excel(io.BytesIO(content), engine="xlrd", header=None)
-
-    # Metadata del reporte
     empresa = str(df.iloc[1, 3]) if not _isna(df.iloc[1, 3]) else ""
     rfc     = str(df.iloc[2, 3]) if not _isna(df.iloc[2, 3]) else ""
     fecha   = str(df.iloc[1, 9])[:10] if not _isna(df.iloc[1, 9]) else ""
-
     items = []
     for i in range(4, len(df)):
         nombre = df.iloc[i, 1]
@@ -50,7 +36,7 @@ def _parse_cxc_xls(content: bytes) -> dict:
         if _isna(nombre) or _isna(total):
             continue
         nombre_s = str(nombre).strip()
-        if not nombre_s or nombre_s in ("nan",) or "Total" in nombre_s or "Porcentaje" in nombre_s:
+        if not nombre_s or nombre_s == "nan" or "Total" in nombre_s or "Porcentaje" in nombre_s:
             continue
         items.append({
             "nombre":           nombre_s,
@@ -63,13 +49,9 @@ def _parse_cxc_xls(content: bytes) -> dict:
             "sobre_120":        _parse_money(df.iloc[i, 11]),
             "total":            _parse_money(total),
         })
-
     total_general = sum(r["total"] for r in items)
     return {
-        "empresa": empresa,
-        "rfc":     rfc,
-        "fecha":   fecha,
-        "items":   items,
+        "empresa": empresa, "rfc": rfc, "fecha": fecha, "items": items,
         "totals": {
             "credito_anticipo": sum(r["credito_anticipo"] for r in items),
             "por_vencer":       sum(r["por_vencer"]       for r in items),
@@ -84,22 +66,13 @@ def _parse_cxc_xls(content: bytes) -> dict:
 
 
 def _parse_cxp_xls(content: bytes) -> dict:
-    """
-    Parsea el XLS 'Cuentas por Pagar' de Contalink.
-    Estructura: fila 0=empresa/rfc, fila 2=headers, datos desde fila 3.
-    Columnas: 0=#, 1=Proveedor, 2=Nota/Anticipo, 3=PorVencer,
-              4=1-30, 5=31-60, 6=61-90, 7=>90, 8=Total
-    """
+    import io
     import pandas as pd
-
     df = pd.read_excel(io.BytesIO(content), engine="xlrd", header=None)
-
     empresa = str(df.iloc[0, 0]) if not _isna(df.iloc[0, 0]) else ""
     rfc     = str(df.iloc[0, 1]) if not _isna(df.iloc[0, 1]) else ""
     fecha   = str(df.iloc[0, 2])[:10] if not _isna(df.iloc[0, 2]) else ""
-
     SKIP = {"TOTAL", "Porcentajes", "Porcentajes totales"}
-
     items = []
     for i in range(3, len(df)):
         nombre = df.iloc[i, 1]
@@ -107,7 +80,7 @@ def _parse_cxp_xls(content: bytes) -> dict:
         if _isna(nombre) or _isna(total):
             continue
         nombre_s = str(nombre).strip()
-        if not nombre_s or nombre_s in ("nan",) or nombre_s in SKIP:
+        if not nombre_s or nombre_s == "nan" or nombre_s in SKIP:
             continue
         items.append({
             "nombre":           nombre_s,
@@ -119,13 +92,9 @@ def _parse_cxp_xls(content: bytes) -> dict:
             "sobre_90":         _parse_money(df.iloc[i, 7]),
             "total":            _parse_money(total),
         })
-
     total_general = sum(r["total"] for r in items)
     return {
-        "empresa": empresa,
-        "rfc":     rfc,
-        "fecha":   fecha,
-        "items":   items,
+        "empresa": empresa, "rfc": rfc, "fecha": fecha, "items": items,
         "totals": {
             "credito_anticipo": sum(r["credito_anticipo"] for r in items),
             "por_vencer":       sum(r["por_vencer"]       for r in items),
@@ -138,15 +107,6 @@ def _parse_cxp_xls(content: bytes) -> dict:
     }
 
 
-def _isna(val) -> bool:
-    import math
-    if val is None:
-        return True
-    if isinstance(val, float) and math.isnan(val):
-        return True
-    return False
-
-
 @router.post("/import-aging")
 async def import_aging_xls(
     file: UploadFile = File(...),
@@ -154,27 +114,16 @@ async def import_aging_xls(
     request: Request = None,
     current_user: Dict = Depends(get_current_user),
 ):
-    """
-    Importa XLS de aging (CxC o CxP) exportado desde Contalink.
-    tipo=cxc → Reporte Saldos por Cobrar
-    tipo=cxp → Cuentas por Pagar
-    """
+    """Importa XLS de aging (CxC o CxP) exportado desde Contalink."""
     if tipo not in ("cxc", "cxp"):
         raise HTTPException(status_code=400, detail="tipo debe ser 'cxc' o 'cxp'")
-
     company_id = await get_active_company_id(request, current_user)
     content = await file.read()
-
     try:
-        if tipo == "cxc":
-            parsed = _parse_cxc_xls(content)
-        else:
-            parsed = _parse_cxp_xls(content)
+        parsed = _parse_cxc_xls(content) if tipo == "cxc" else _parse_cxp_xls(content)
     except Exception as e:
         logger.error(f"import_aging_xls parse error ({tipo}): {e}")
         raise HTTPException(status_code=400, detail=f"Error al parsear XLS: {str(e)}")
-
-    # Guardar en MongoDB (upsert por company + tipo + fecha)
     doc = {
         "company_id": company_id,
         "tipo":        tipo,
@@ -190,18 +139,14 @@ async def import_aging_xls(
         {"$set": doc},
         upsert=True,
     )
-
-    logger.info(f"import_aging_xls: company={company_id} tipo={tipo} "
-                f"items={len(parsed['items'])} total={parsed['totals']['total']:,.2f}")
-
     return {
-        "success":    True,
-        "tipo":       tipo,
-        "fecha":      parsed["fecha"],
-        "empresa":    parsed["empresa"],
-        "count":      len(parsed["items"]),
-        "total":      parsed["totals"]["total"],
-        "totals":     parsed["totals"],
+        "success": True,
+        "tipo":    tipo,
+        "fecha":   parsed["fecha"],
+        "empresa": parsed["empresa"],
+        "count":   len(parsed["items"]),
+        "total":   parsed["totals"]["total"],
+        "totals":  parsed["totals"],
     }
 
 
@@ -210,37 +155,27 @@ async def get_aging_summary(
     request: Request,
     current_user: Dict = Depends(get_current_user),
 ):
-    """
-    Devuelve CxC + CxP aging para el Dashboard.
-    Lee los últimos imports guardados en contalink_aging.
-    """
+    """Devuelve CxC + CxP aging para el Dashboard."""
     company_id = await get_active_company_id(request, current_user)
-
-    cxc_doc = await db.contalink_aging.find_one(
-        {"company_id": company_id, "tipo": "cxc"}, {"_id": 0}
-    )
-    cxp_doc = await db.contalink_aging.find_one(
-        {"company_id": company_id, "tipo": "cxp"}, {"_id": 0}
-    )
+    cxc_doc = await db.contalink_aging.find_one({"company_id": company_id, "tipo": "cxc"}, {"_id": 0})
+    cxp_doc = await db.contalink_aging.find_one({"company_id": company_id, "tipo": "cxp"}, {"_id": 0})
 
     def aging_bands(doc, tipo):
         if not doc:
             return None
         t = doc.get("totals", {})
         bands = [
-            {"label": "1-30",   "amount": t.get("dias_1_30",  0)},
-            {"label": "31-60",  "amount": t.get("dias_31_60", 0)},
-            {"label": "61-90",  "amount": t.get("dias_61_90", 0)},
+            {"label": "1-30",  "amount": t.get("dias_1_30",  0)},
+            {"label": "31-60", "amount": t.get("dias_31_60", 0)},
+            {"label": "61-90", "amount": t.get("dias_61_90", 0)},
         ]
         if tipo == "cxc":
             bands += [
-                {"label": "91-120",   "amount": t.get("dias_91_120", 0)},
-                {"label": ">120",     "amount": t.get("sobre_120",   0)},
+                {"label": "91-120", "amount": t.get("dias_91_120", 0)},
+                {"label": ">120",   "amount": t.get("sobre_120",   0)},
             ]
         else:
-            bands += [
-                {"label": ">90",  "amount": t.get("sobre_90", 0)},
-            ]
+            bands += [{"label": ">90", "amount": t.get("sobre_90", 0)}]
         return {
             "total":      t.get("total", 0),
             "por_vencer": t.get("por_vencer", 0),
@@ -248,7 +183,7 @@ async def get_aging_summary(
             "bands":      bands,
             "fecha":      doc.get("fecha"),
             "count":      len(doc.get("items", [])),
-            "top5": sorted(doc.get("items", []), key=lambda x: x["total"], reverse=True)[:5],
+            "top5":       sorted(doc.get("items", []), key=lambda x: x["total"], reverse=True)[:5],
         }
 
     return {
