@@ -991,3 +991,31 @@ async def fix_contalink_status(request: Request, current_user: Dict = Depends(ge
         {"$set": {"status": "completado", "es_real": True}}
     )
     return {"success": True, "updated": result.modified_count, "message": f"{result.modified_count} pagos actualizados a completado"}
+
+
+@router.post("/fix-company-id")
+async def fix_company_id(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Fix puntual: reasigna los 412 pagos que quedaron bajo la empresa 'test'
+    (company_id: 381aada7-9180-41fe-b1f8-9b15b4630414) a la empresa activa actual.
+    Ejecutar UNA SOLA VEZ.
+    """
+    OLD_COMPANY_ID = "381aada7-9180-41fe-b1f8-9b15b4630414"
+    company_id = await get_active_company_id(request, current_user)
+
+    result = await db.payments.update_many(
+        {"company_id": OLD_COMPANY_ID},
+        {"$set": {"company_id": company_id}}
+    )
+
+    logger.info(f"fix-company-id: {result.modified_count} pagos reasignados de {OLD_COMPANY_ID} -> {company_id}")
+    await audit_log(company_id, "Payment", "FIX_COMPANY_ID", "UPDATE", current_user["id"],
+                    {"old_company_id": OLD_COMPANY_ID, "new_company_id": company_id, "modified": result.modified_count})
+
+    return {
+        "success": True,
+        "modificados": result.modified_count,
+        "old_company_id": OLD_COMPANY_ID,
+        "new_company_id": company_id,
+        "message": f"{result.modified_count} pagos reasignados correctamente a la empresa activa."
+    }
