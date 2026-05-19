@@ -715,3 +715,47 @@ async def get_raw_invoice_sample(
         "raw_fields": list(invoices[0].keys()) if invoices else [],
         "sample": invoices
     }
+
+
+@router.get("/search-accounts")
+async def search_accounts_in_trial_balance(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    keywords: str = Query("cobrar,pagar,clientes,proveedores"),
+):
+    """Search for CxC/CxP accounts in stored trial balance data"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get latest trial balance from integration_sync_data
+    doc = await db.integration_sync_data.find_one(
+        {"company_id": company_id, "type": "trial_balance"},
+        sort=[("period", -1)]
+    )
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="No hay datos de trial balance guardados")
+    
+    items = doc.get("data", {}).get("trial_balance", {}).get("items", [])
+    kws = [k.strip().lower() for k in keywords.split(",")]
+    
+    matches = []
+    for item in items:
+        cuenta = str(item.get("cuenta", "")).lower()
+        cuenta_num = str(item.get("cuenta_numero", ""))
+        if any(k in cuenta for k in kws) or cuenta_num.startswith("113") or cuenta_num.startswith("211"):
+            matches.append({
+                "cuenta_numero": item.get("cuenta_numero"),
+                "cuenta": item.get("cuenta"),
+                "inicial_saldo": item.get("inicial_saldo"),
+                "final_saldo": item.get("final_saldo"),
+                "debe": item.get("debe"),
+                "haber": item.get("haber"),
+                "final_debe": item.get("final_debe"),
+                "final_haber": item.get("final_haber"),
+            })
+    
+    return {
+        "period": doc.get("period"),
+        "total_items": len(items),
+        "matches": matches
+    }
