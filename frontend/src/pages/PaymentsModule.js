@@ -1535,27 +1535,17 @@ const PaymentsModule = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      {categoryName ? (
-                        <div className="text-xs">
-                          <span className="font-medium text-gray-700">{categoryName}</span>
-                          {subcategoryName && (
-                            <span className="block text-gray-500">{subcategoryName}</span>
-                          )}
-                        </div>
-                      ) : (
-                        <select
-                          className="text-xs border rounded px-1 py-0.5 bg-amber-50 text-amber-700 cursor-pointer"
-                          defaultValue=""
+                      <select
+                          className={`text-xs border rounded px-1 py-0.5 cursor-pointer ${categoryName ? 'bg-white text-gray-700 border-gray-200' : 'bg-amber-50 text-amber-700'}`}
+                          value={payment.category_id ? `${payment.category_id}|${payment.subcategory_id || ''}` : ''}
                           onChange={async (e) => {
                             const [catId, subcatId] = e.target.value.split('|');
-                            if (catId) {
-                              try {
-                                await api.put(`/payments/${payment.id}/categorize?category_id=${catId}${subcatId ? `&subcategory_id=${subcatId}` : ''}`);
-                                toast.success('Pago categorizado');
-                                loadData();
-                              } catch (error) {
-                                toast.error('Error categorizando');
-                              }
+                            try {
+                              await api.put(`/payments/${payment.id}/categorize?category_id=${catId}${subcatId ? `&subcategory_id=${subcatId}` : ''}`);
+                              toast.success('Categoría actualizada');
+                              loadData();
+                            } catch (error) {
+                              toast.error('Error categorizando');
                             }
                           }}
                         >
@@ -1573,7 +1563,6 @@ const PaymentsModule = () => {
                             </optgroup>
                           ))}
                         </select>
-                      )}
                     </TableCell>
                     <TableCell className="max-w-[150px] truncate text-sm">{payment.concepto}</TableCell>
                     <TableCell className="text-sm">{payment.beneficiario || '-'}</TableCell>
