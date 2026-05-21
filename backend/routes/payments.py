@@ -823,7 +823,7 @@ async def sync_payments_from_contalink(
     current_user: Dict = Depends(get_current_user)
 ):
     """Sincroniza cobranza y pagos desde Contalink"""
-    company_id = current_user["company_id"]
+    company_id = await get_active_company_id(request, current_user)
 
     # Buscar credenciales con formato de contalink.py (type="contalink")
     creds_doc = await db.integrations.find_one(
