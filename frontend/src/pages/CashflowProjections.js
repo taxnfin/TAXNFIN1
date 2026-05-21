@@ -1,3349 +1,1251 @@
-import React, { useState, useEffect, useRef } from 'react';
-import api from '@/api/axios';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import { toast } from 'sonner';
-import { TrendingUp, TrendingDown, Calendar, Building2, User, FileText, ChevronDown, ChevronRight, Download, Plus, Trash2, Settings, AlertTriangle, BarChart3, Target, Activity, FileDown, ExternalLink, Check, X as XIcon, Eye, ToggleLeft, ToggleRight, FileSpreadsheet, Layers, Filter, Search, Globe } from 'lucide-react';
-import { format, addWeeks, startOfWeek, addMonths, startOfMonth } from 'date-fns';
-import { es, enUS, ptBR } from 'date-fns/locale';
-import { exportProjections, exportToExcel } from '@/utils/excelExport';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, ReferenceLine } from 'recharts';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
-import { financialTranslations, languages } from '../utils/financialTranslations';
+"""Payment routes with full CFDI reversal logic"""
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from typing import Dict, List, Optional
+from datetime import datetime, timezone, timedelta
+import logging
+import uuid
 
-const DIAS_SEMANA = [
-  { value: 0, label: 'Domingo' },
-  { value: 1, label: 'Lunes' },
-  { value: 2, label: 'Martes' },
-  { value: 3, label: 'Miércoles' },
-  { value: 4, label: 'Jueves' },
-  { value: 5, label: 'Viernes' },
-  { value: 6, label: 'Sábado' }
-];
+from core.database import db
+from core.auth import get_current_user, get_active_company_id
+from models.payment import Payment, PaymentCreate
+from services.audit import audit_log
 
-const CashflowProjections = () => {
-  const [language, setLanguage] = useState('es');
-  const [loading, setLoading] = useState(true);
-  const [weeklyData, setWeeklyData] = useState([]);
-  const [monthlyData, setMonthlyData] = useState([]);
-  const [cfdis, setCfdis] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [vendors, setVendors] = useState([]);
-  const [viewMode, setViewMode] = useState('weekly');
-  const [expandedRows, setExpandedRows] = useState({});
-  const [selectedPartyType, setSelectedPartyType] = useState('all');
-  const [selectedParty, setSelectedParty] = useState('');
-  
-  // Translation helper
-  const t = financialTranslations[language];
-  const dateLocale = language === 'es' ? es : language === 'pt' ? ptBR : enUS;
-  
-  // Company config
-  const [companyConfig, setCompanyConfig] = useState({ inicio_semana: 1 });
-  const [configDialogOpen, setConfigDialogOpen] = useState(false);
-  
-  // User-selected starting date for the 18-week window (overrides auto-detection).
-  // Empty string = automatic (default: 4 weeks before today, snapped to weekStart).
-  const [customStartDate, setCustomStartDate] = useState(() => {
-    try { return localStorage.getItem('cashflow_custom_start_date') || ''; } catch { return ''; }
-  });
-  
-  // Currency selector for projections
-  const [selectedCurrency, setSelectedCurrency] = useState('MXN');
-  const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.4545, EUR: 20.4852, GBP: 22.00, JPY: 0.13, CHF: 20.00, CAD: 13.00, CNY: 2.40 });
-  
-  // Custom concepts state
-  const [customConcepts, setCustomConcepts] = useState([]);
-  const [conceptDialogOpen, setConceptDialogOpen] = useState(false);
-  const [saldoInicialBancos, setSaldoInicialBancos] = useState(0);
-  
-  // PDF export state
-  const [exportingPdf, setExportingPdf] = useState(false);
-  const reportRef = useRef(null);
-  const [newConcept, setNewConcept] = useState({
-    nombre: '',
-    tipo: 'egreso',
-    monto: '',
-    semana: 1,
-    mes: 1,
-    recurrente: false
-  });
-  
-  // CFO KPIs configuration
-  const [umbralMinimoCaja, setUmbralMinimoCaja] = useState(500000); // Default 500K MXN
+router = APIRouter(prefix="/payments")
+logger = logging.getLogger(__name__)
 
-  // Drill-down dialog state
-  const [drillDownOpen, setDrillDownOpen] = useState(false);
-  const [drillDownData, setDrillDownData] = useState({
-    weekNum: null,
-    weekLabel: '',
-    dateLabel: '',
-    tipo: '', // 'ingreso' | 'egreso'
-    categoryName: '',
-    subcategoryName: '',
-    items: [],
-    total: 0
-  });
 
-  // View mode toggle: 'categoria' | 'tercero'
-  const [tableViewMode, setTableViewMode] = useState('categoria');
+@router.post("", response_model=Payment)
+async def create_payment(payment_data: PaymentCreate, request: Request, current_user: Dict = Depends(get_current_user)):
+    """Create a new payment with automatic CFDI amount updates and category inheritance"""
+    company_id = await get_active_company_id(request, current_user)
+    payment = Payment(company_id=company_id, **payment_data.model_dump())
+    doc = payment.model_dump()
+    
+    # If linked to a CFDI, INHERIT category, subcategory, and UUID from the CFDI
+    if doc.get('cfdi_id'):
+        cfdi = await db.cfdis.find_one({'id': doc['cfdi_id']}, {'_id': 0})
+        if cfdi:
+            # Inherit category and subcategory from CFDI if not already set
+            if not doc.get('category_id') and cfdi.get('category_id'):
+                doc['category_id'] = cfdi['category_id']
+            if not doc.get('subcategory_id') and cfdi.get('subcategory_id'):
+                doc['subcategory_id'] = cfdi['subcategory_id']
+            # Store CFDI UUID for reference
+            if cfdi.get('uuid'):
+                doc['cfdi_uuid'] = cfdi['uuid']
+            # Set emisor/receptor info
+            if cfdi.get('emisor_nombre'):
+                doc['cfdi_emisor'] = cfdi['emisor_nombre']
+            if cfdi.get('receptor_nombre'):
+                doc['cfdi_receptor'] = cfdi['receptor_nombre']
+            logger.info(f"Payment inheriting from CFDI {doc['cfdi_id']}: cat={doc.get('category_id')}, subcat={doc.get('subcategory_id')}")
+    
+    # Automatically capture historical exchange rate for non-MXN currencies
+    if doc.get('moneda') and doc['moneda'] != 'MXN' and not doc.get('tipo_cambio_historico'):
+        rate = await db.fx_rates.find_one(
+            {'company_id': company_id, '$or': [
+                {'moneda_cotizada': doc['moneda']},
+                {'moneda_origen': doc['moneda']}
+            ]},
+            {'_id': 0},
+            sort=[('fecha_vigencia', -1)]
+        )
+        if rate:
+            doc['tipo_cambio_historico'] = rate.get('tipo_cambio') or rate.get('tasa') or 1
+        else:
+            default_rates = {'USD': 17.50, 'EUR': 19.00}
+            doc['tipo_cambio_historico'] = default_rates.get(doc['moneda'], 1)
+    
+    # If payment is "Real", automatically mark as completed
+    if doc.get('es_real') == True:
+        doc['estatus'] = 'completado'
+        if not doc.get('fecha_pago'):
+            doc['fecha_pago'] = doc.get('fecha_vencimiento') or datetime.now(timezone.utc).isoformat()
+    
+    for field in ['fecha_vencimiento', 'created_at']:
+        if doc.get(field):
+            doc[field] = doc[field].isoformat()
+    if doc.get('fecha_pago') and not isinstance(doc['fecha_pago'], str):
+        doc['fecha_pago'] = doc['fecha_pago'].isoformat()
+    
+    await db.payments.insert_one(doc)
+    
+    # If payment is real and linked to a CFDI, update the CFDI's collected/paid amount
+    if doc.get('es_real') == True and doc.get('cfdi_id'):
+        cfdi = await db.cfdis.find_one({'id': doc['cfdi_id']}, {'_id': 0})
+        if cfdi:
+            if doc['tipo'] == 'cobro':
+                current_cobrado = cfdi.get('monto_cobrado', 0) or 0
+                new_cobrado = current_cobrado + doc['monto']
+                await db.cfdis.update_one(
+                    {'id': doc['cfdi_id']},
+                    {'$set': {'monto_cobrado': new_cobrado}}
+                )
+                logger.info(f"Auto-completed payment: Updated CFDI {doc['cfdi_id']} monto_cobrado: {current_cobrado} -> {new_cobrado}")
+            else:
+                current_pagado = cfdi.get('monto_pagado', 0) or 0
+                new_pagado = current_pagado + doc['monto']
+                await db.cfdis.update_one(
+                    {'id': doc['cfdi_id']},
+                    {'$set': {'monto_pagado': new_pagado}}
+                )
+                logger.info(f"Auto-completed payment: Updated CFDI {doc['cfdi_id']} monto_pagado: {current_pagado} -> {new_pagado}")
+    
+    await audit_log(company_id, 'Payment', payment.id, 'CREATE', current_user['id'])
+    return payment
 
-  // Filters for "Por Proveedor/Cliente" view
-  const [partyFilters, setPartyFilters] = useState({
-    searchTerm: '',
-    tipoTercero: 'todos', // 'todos' | 'cliente' | 'proveedor'
-    saldoTipo: 'todos' // 'todos' | 'positivo' | 'negativo'
-  });
 
-  // Payments and bank transactions for drill-down
-  const [allPayments, setAllPayments] = useState([]);
-  const [bankTransactions, setBankTransactions] = useState([]);
-  const [reconciliations, setReconciliations] = useState([]);
-  const [bankAccounts, setBankAccounts] = useState([]);
+@router.get("")
+async def list_payments(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    tipo: Optional[str] = Query(None, description="cobro o pago"),
+    estatus: Optional[str] = Query(None),
+    es_real: Optional[str] = Query(None, description="real o proyeccion"),
+    fecha_desde: Optional[str] = Query(None),
+    fecha_hasta: Optional[str] = Query(None),
+    limit: int = Query(100, le=1000),
+    skip: int = Query(0, ge=0)
+):
+    """List payments with optional filters"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    query = {'company_id': company_id}
+    if tipo:
+        query['tipo'] = tipo
+    if estatus:
+        query['estatus'] = estatus
+    if es_real == 'real':
+        query['es_real'] = True
+    elif es_real == 'proyeccion':
+        query['es_real'] = False
+    if fecha_desde:
+        query['fecha_vencimiento'] = {'$gte': fecha_desde}
+    if fecha_hasta:
+        if 'fecha_vencimiento' in query:
+            query['fecha_vencimiento']['$lte'] = fecha_hasta
+        else:
+            query['fecha_vencimiento'] = {'$lte': fecha_hasta}
+    
+    payments = await db.payments.find(query, {'_id': 0}).sort('fecha_vencimiento', -1).skip(skip).limit(limit).to_list(limit)
+    
+    for p in payments:
+        for field in ['fecha_vencimiento', 'fecha_pago', 'created_at']:
+            if isinstance(p.get(field), str):
+                p[field] = datetime.fromisoformat(p[field])
+    return payments
 
-  // Currency list - All available currencies
-  const CURRENCIES = [
-    { code: 'MXN', name: 'Peso Mexicano', symbol: '$' },
-    { code: 'USD', name: 'Dólar USA', symbol: 'US$' },
-    { code: 'EUR', name: 'Euro', symbol: '€' },
-    { code: 'GBP', name: 'Libra Esterlina', symbol: '£' },
-    { code: 'JPY', name: 'Yen Japonés', symbol: '¥' },
-    { code: 'CHF', name: 'Franco Suizo', symbol: 'Fr' },
-    { code: 'CAD', name: 'Dólar Canadiense', symbol: 'C$' },
-    { code: 'CNY', name: 'Yuan Chino', symbol: '¥' },
-  ];
 
-  useEffect(() => {
-    loadData();
-    // Re-run whenever the user-selected start date changes so the 18-week
-    // window updates without needing a manual page refresh.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customStartDate]);
+@router.post("/backfill-from-cfdis")
+async def backfill_payments_from_cfdis(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Backfill payments desde CFDIs que ya tienen monto_cobrado/monto_pagado > 0
+    pero no tienen un payment registrado en la colección payments.
+    Ejecutar UNA SOLA VEZ. Es idempotente (no crea duplicados).
+    """
+    company_id = await get_active_company_id(request, current_user)
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes, fxRes, paymentsRes, bankTxnsRes, reconRes, bankAccountsRes] = await Promise.all([
-        api.get('/cfdi?limit=500'),
-        api.get('/cashflow-sync/categories'),
-        api.get('/customers'),
-        api.get('/vendors'),
-        api.get('/bank-accounts/summary'),
-        api.get('/manual-projections'),
-        api.get('/fx-rates/latest'),
-        api.get('/payments?limit=1000'),
-        api.get('/bank-transactions?limit=500'),
-        api.get('/reconciliations'),
-        api.get('/bank-accounts')
-      ]);
-      
-      setCfdis(cfdiRes.data);
-      setCategories(catRes.data);
-      setCustomers(custRes.data);
-      setVendors(vendRes.data);
-      
-      // Store payments and bank transactions for drill-down
-      setAllPayments(paymentsRes.data || []);
-      setBankTransactions(bankTxnsRes.data || []);
-      setReconciliations(reconRes.data || []);
-      setBankAccounts(bankAccountsRes.data || []);
-      
-      // Get initial bank balance
-      const totalBancosMXN = bankSummaryRes.data?.total_mxn || 0;
-      setSaldoInicialBancos(totalBancosMXN);
-      
-      // Load FX rates - ensure all currencies have values
-      const loadedRates = fxRes.data?.rates || {};
-      setFxRates(prev => ({ ...prev, ...loadedRates, MXN: 1 }));
-      
-      // Load custom concepts from backend
-      setCustomConcepts(conceptsRes.data || []);
-      
-      // Build set of truly conciliated bank transaction IDs
-      const bankTxns = bankTxnsRes.data || [];
-      const conciliatedBankTxnIds = new Set(
-        bankTxns.filter(t => t.conciliado === true).map(t => t.id)
-      );
-      
-      // Filter payments: only include those with TRULY conciliated bank transactions
-      // A payment is valid if:
-      // 1. It has no bank_transaction_id (manual payment without reconciliation)
-      // 2. OR its bank_transaction_id is in the set of conciliated transactions
-      const allPayments = paymentsRes.data || [];
-      const validPayments = allPayments.filter(p => {
-        if (!p.bank_transaction_id) return true; // Manual payment, include
-        return conciliatedBankTxnIds.has(p.bank_transaction_id); // Only if truly conciliated
-      });
-      
-      console.log(`=== FILTRO DE PAGOS ===`);
-      console.log(`Total pagos: ${allPayments.length}`);
-      console.log(`Pagos válidos (conciliados): ${validPayments.length}`);
-      console.log(`Pagos excluidos (txn pendiente): ${allPayments.length - validPayments.length}`);
-      
-      const categoriesLoaded = catRes.data || [];
-      
-      // Get company config for week start day.
-      // The active company is stored as JSON under 'selectedCompany' (set by App.js).
-      // We also fall back to the user's company_id from the stored auth user.
-      const getActiveCompanyId = () => {
-        try {
-          const sel = localStorage.getItem('selectedCompany');
-          if (sel) {
-            const parsed = JSON.parse(sel);
-            if (parsed?.id) return parsed.id;
-          }
-        } catch {/* ignore */}
-        try {
-          const u = localStorage.getItem('user');
-          if (u) {
-            const parsed = JSON.parse(u);
-            if (parsed?.company_id) return parsed.company_id;
-          }
-        } catch {/* ignore */}
-        return null;
-      };
-      
-      const companyId = getActiveCompanyId();
-      if (companyId) {
-        try {
-          const compRes = await api.get(`/companies/${companyId}`);
-          const weekStart = compRes.data?.inicio_semana ?? 1;
-          setCompanyConfig({ ...compRes.data, inicio_semana: weekStart });
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, validPayments, customStartDate);
-          setWeeklyData(weeks);
-        } catch {
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate);
-          setWeeklyData(weeks);
-        }
-      } else {
-        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate);
-        setWeeklyData(weeks);
-      }
-      
-      processMonthlyData(cfdiRes.data, catRes.data, customStartDate);
-    } catch (error) {
-      toast.error(t?.errorLoadingData || 'Error loading data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSaveCustomStartDate = (newDate) => {
-    try {
-      if (newDate) {
-        localStorage.setItem('cashflow_custom_start_date', newDate);
-      } else {
-        localStorage.removeItem('cashflow_custom_start_date');
-      }
-    } catch {/* ignore */}
-    // setState triggers the useEffect below which calls loadData with the fresh value.
-    setCustomStartDate(newDate);
-    if (newDate) {
-      toast.success(`Inicio del flujo establecido al ${newDate}`);
-    } else {
-      toast.success('Inicio del flujo restaurado a automático');
-    }
-  };
-
-  const handleSaveWeekStart = async (newWeekStart) => {
-    try {
-      // Resolve active company id from localStorage (selectedCompany JSON, then user.company_id)
-      let companyId = null;
-      try {
-        const sel = localStorage.getItem('selectedCompany');
-        if (sel) companyId = JSON.parse(sel)?.id || null;
-      } catch {/* ignore */}
-      if (!companyId) {
-        try {
-          const u = localStorage.getItem('user');
-          if (u) companyId = JSON.parse(u)?.company_id || null;
-        } catch {/* ignore */}
-      }
-      if (!companyId) {
-        toast.error('No se encontró la empresa activa');
-        return;
-      }
-      await api.put(`/companies/${companyId}`, { inicio_semana: newWeekStart });
-      setCompanyConfig(prev => ({ ...prev, inicio_semana: newWeekStart }));
-      // Also keep the cached `selectedCompany` in localStorage in sync, so other
-      // pages (e.g. Dashboard) pick up the new inicio_semana without re-login.
-      try {
-        const sel = localStorage.getItem('selectedCompany');
-        if (sel) {
-          const parsed = JSON.parse(sel);
-          parsed.inicio_semana = newWeekStart;
-          localStorage.setItem('selectedCompany', JSON.stringify(parsed));
-        }
-      } catch {/* ignore */}
-      // Reload data to reprocess with new week start
-      loadData();
-      setConfigDialogOpen(false);
-      toast.success(`Inicio de semana cambiado a ${DIAS_SEMANA.find(d => d.value === newWeekStart)?.label}`);
-    } catch (error) {
-      toast.error('Error al guardar configuración');
-    }
-  };
-
-  // Helper function to convert amount to MXN
-  const convertToMXN = (amount, currency, rates = {}) => {
-    if (!amount) return 0;
-    if (currency === 'MXN' || !currency) return amount;
-    // Try rates passed in, then fxRates state, then default
-    const rate = rates[currency] || fxRates[currency] || 17.4545;
-    return amount * rate;
-  };
-
-  const processWeeklyData = (cfdisData, categoriesData, weekStartDay = 1, rates = {}, payments = [], customStart = '') => {
-    // =====================================================================
-    // NUEVA LÓGICA: ÚNICA FUENTE DE VERDAD
-    // - Semanas pasadas/actuales: SOLO datos de Cobranza y Pagos
-    // - Semanas futuras: CFDIs pendientes (proyecciones)
-    // - TOTAL INGRESOS = Suma exacta de sublíneas por categoría
-    // =====================================================================
-    
-    const effectiveRates = { MXN: 1, USD: 17.599, EUR: 20.4852, ...fxRates, ...rates };
-    
-    // Returns the start of the week for `date` according to `weekStartDay`.
-    // weekStartDay: 0=Sunday, 1=Monday, 2=Tuesday, ..., 6=Saturday
-    const getWeekStart = (date, startDay = 1) => {
-      const d = new Date(date);
-      d.setHours(0, 0, 0, 0);
-      const day = d.getDay(); // 0 (Sun) - 6 (Sat)
-      let diff = day - startDay;
-      if (diff < 0) diff += 7;
-      d.setDate(d.getDate() - diff);
-      return d;
-    };
-    
-    const today = new Date();
-    const currentWeekStart = getWeekStart(today, weekStartDay);
-    
-    // Find earliest payment date for starting point
-    let earliestDate = null;
-    payments.filter(p => p.estatus === 'completado').forEach(p => {
-      const fecha = p.fecha_pago;
-      if (fecha) {
-        const d = new Date(fecha);
-        if (!earliestDate || d < earliestDate) earliestDate = d;
-      }
-    });
-    
-    const fourWeeksAgo = addWeeks(currentWeekStart, -17);
-    
-    // Priority order for window start:
-    // 1. Explicit user override (customStart) — lets the user choose any week (e.g., Jan 2026)
-    // 2. Earliest payment date (clamped to >= 17 weeks ago, to show full quarter of history)
-    // 3. Default: 17 weeks before today
-    let startWeek;
-    if (customStart) {
-      const parsed = new Date(customStart);
-      if (!isNaN(parsed.getTime())) {
-        startWeek = getWeekStart(parsed, weekStartDay);
-      }
-    }
-    if (!startWeek) {
-      startWeek = earliestDate
-        ? getWeekStart(earliestDate < fourWeeksAgo ? fourWeeksAgo : earliestDate, weekStartDay)
-        : fourWeeksAgo;
-    }
-    
-    // Generate 30 weeks: up to 17 historical (Real) + 1 current (Actual) + 12 projected
-    const weeks = [];
-    for (let i = 0; i < 30; i++) {
-      const weekStart = addWeeks(startWeek, i);
-      const weekEnd = addWeeks(weekStart, 1);
-      const isPast = weekEnd <= today;
-      const isCurrent = weekStart <= today && today < weekEnd;
-      
-      // Determine data source type for CFO KPIs
-      // S1-S4: Historical (Real), S5: Current (Actual), S6-S18: Projected (Proyectado)
-      let dataType = 'proyectado';
-      if (isPast) dataType = 'real';
-      else if (isCurrent) dataType = 'actual';
-      
-      weeks.push({
-        weekNum: i + 1,
-        weekStart,
-        weekEnd,
-        label: `S${i + 1}`,
-        dateLabel: format(weekStart, 'dd MMM', { locale: es }),
-        isPast,
-        isCurrent,
-        dataType, // 'real' | 'actual' | 'proyectado'
-        // INGRESOS structure by category/subcategory
-        ingresos: { total: 0, byCategory: {} },
-        // EGRESOS structure by category/subcategory
-        egresos: { total: 0, byCategory: {} },
-        // USD operations tracked separately
-        compraUSD: 0,
-        ventaUSD: 0,
-        // Source flags
-        hasRealData: false
-      });
-    }
-    
-    // Build category/subcategory lookup maps
-    const categoryMap = {};
-    const subcategoryMap = {};
-    categoriesData.forEach(cat => {
-      categoryMap[cat.id] = cat;
-      cat.subcategorias?.forEach(sub => {
-        subcategoryMap[sub.id] = { ...sub, categoryName: cat.nombre, categoryId: cat.id };
-      });
-    });
-    
-    // Find USD operation categories
-    const compraUSDCategory = categoriesData.find(c => c.nombre?.toLowerCase().includes('compra de usd') || c.nombre?.toLowerCase().includes('compra usd'));
-    const ventaUSDCategory = categoriesData.find(c => c.nombre?.toLowerCase().includes('venta de usd') || c.nombre?.toLowerCase().includes('venta usd'));
-    const compraUSDId = compraUSDCategory?.id;
-    const ventaUSDId = ventaUSDCategory?.id;
-    
-    // Track processed bank transactions to avoid duplicates
-    const processedBankTxns = new Set();
-    
-    // =====================================================================
-    // PASO 0: Pre-procesar operaciones de divisas para calcular TC implícito
-    // El TC implícito = MXN recibidos (Venta USD) / USD pagados (Compra USD)
-    // Esto hace que el efecto neto de las operaciones de cambio sea 0
-    // =====================================================================
-    const weekCurrencyOps = {}; // { weekIdx: { ventaMXN: 0, compraUSD: 0 } }
-    
-    payments.forEach(payment => {
-      if (payment.estatus !== 'completado') return;
-      if (!payment.fecha_pago) return;
-      
-      const paymentDate = new Date(payment.fecha_pago);
-      if (isNaN(paymentDate.getTime())) return;
-      
-      const weekIdx = weeks.findIndex(w => paymentDate >= w.weekStart && paymentDate < w.weekEnd);
-      if (weekIdx === -1) return;
-      
-      const week = weeks[weekIdx];
-      if (!week.isPast && !week.isCurrent) return;
-      
-      const isCompraUSD = payment.category_id && compraUSDId && payment.category_id === compraUSDId;
-      const isVentaUSD = payment.category_id && ventaUSDId && payment.category_id === ventaUSDId;
-      
-      if (!weekCurrencyOps[weekIdx]) {
-        weekCurrencyOps[weekIdx] = { ventaMXN: 0, compraUSD: 0 };
-      }
-      
-      if (isVentaUSD) {
-        // Venta de USD: el monto es en MXN (entrada de pesos)
-        weekCurrencyOps[weekIdx].ventaMXN += payment.monto;
-      }
-      if (isCompraUSD && payment.moneda === 'USD') {
-        // Compra de USD: el monto es en USD (dólares que compramos)
-        weekCurrencyOps[weekIdx].compraUSD += payment.monto;
-      }
-    });
-    
-    // Calcular TC implícito por semana
-    const weekImplicitTC = {};
-    Object.entries(weekCurrencyOps).forEach(([weekIdx, ops]) => {
-      if (ops.compraUSD > 0 && ops.ventaMXN > 0) {
-        // TC implícito = MXN recibidos / USD pagados
-        weekImplicitTC[weekIdx] = ops.ventaMXN / ops.compraUSD;
-      }
-    });
-    
-    // =====================================================================
-    // PASO 1: Procesar Cobranza y Pagos (DATOS REALES para semanas pasadas)
-    // =====================================================================
-    payments.forEach(payment => {
-      if (payment.estatus !== 'completado') return;
-      if (!payment.fecha_pago) return;
-      
-      // Deduplicate by bank_transaction_id
-      const bankTxnId = payment.bank_transaction_id;
-      if (bankTxnId) {
-        if (processedBankTxns.has(bankTxnId)) return;
-        processedBankTxns.add(bankTxnId);
-      }
-      
-      const paymentDate = new Date(payment.fecha_pago);
-      if (isNaN(paymentDate.getTime())) return;
-      
-      const weekIdx = weeks.findIndex(w => paymentDate >= w.weekStart && paymentDate < w.weekEnd);
-      if (weekIdx === -1) return;
-      
-      const week = weeks[weekIdx];
-      if (!week.isPast && !week.isCurrent) return; // Only process real data for past/current weeks
-      
-      week.hasRealData = true;
-      
-      // Get category and subcategory names from payment's inherited data
-      const category = categoryMap[payment.category_id];
-      const categoryName = category?.nombre || 'Sin categoría';
-      const subcategoryInfo = subcategoryMap[payment.subcategory_id];
-      const subcategoryName = subcategoryInfo?.nombre || null;
-      
-      // Check if USD operation (only if category_id is not null)
-      const isCompraUSD = payment.category_id && compraUSDId && payment.category_id === compraUSDId;
-      const isVentaUSD = payment.category_id && ventaUSDId && payment.category_id === ventaUSDId;
-      
-      if (isVentaUSD) {
-        // Venta de USD: el monto ya está en MXN
-        week.ventaUSD += payment.monto;
-        return; // Don't add to regular ingresos/egresos
-      }
-      
-      if (isCompraUSD) {
-        // Compra de USD: usar TC implícito para que el efecto neto sea 0
-        // Si hay TC implícito, usarlo; si no, usar el TC del pago o el estándar
-        const implicitTC = weekImplicitTC[weekIdx];
-        let montoMXN;
-        
-        if (implicitTC && payment.moneda === 'USD') {
-          // Usar TC implícito para efecto neto = 0
-          montoMXN = payment.monto * implicitTC;
-        } else if (payment.moneda === 'USD') {
-          // Usar TC histórico del pago o el estándar
-          const tc = payment.tipo_cambio_historico || effectiveRates.USD || 17.5;
-          montoMXN = payment.monto * tc;
-        } else {
-          montoMXN = payment.monto;
-        }
-        
-        week.compraUSD += montoMXN;
-        return; // Don't add to regular ingresos/egresos
-      }
-      
-      const montoMXN = convertToMXN(payment.monto, payment.moneda, effectiveRates);
-      
-      // Determine section (ingresos or egresos)
-      const section = payment.tipo === 'cobro' ? week.ingresos : week.egresos;
-      
-      // Add to category total
-      if (!section.byCategory[categoryName]) {
-        section.byCategory[categoryName] = { total: 0, bySubcategory: {}, items: [] };
-      }
-      section.byCategory[categoryName].total += montoMXN;
-      section.byCategory[categoryName].items.push({
-        id: payment.id,
-        monto: montoMXN,
-        concepto: payment.concepto,
-        beneficiario: payment.beneficiario,
-        uuid: payment.cfdi_uuid,
-        bankAccountId: payment.bank_account_id,
-        source: 'payment'
-      });
-      
-      // Add to subcategory
-      const subKey = subcategoryName || 'General';
-      if (!section.byCategory[categoryName].bySubcategory[subKey]) {
-        section.byCategory[categoryName].bySubcategory[subKey] = { total: 0, items: [] };
-      }
-      section.byCategory[categoryName].bySubcategory[subKey].total += montoMXN;
-      section.byCategory[categoryName].bySubcategory[subKey].items.push({
-        id: payment.id,
-        monto: montoMXN,
-        beneficiario: payment.beneficiario,
-        bankAccountId: payment.bank_account_id,
-        source: 'payment'
-      });
-      
-      // Add to section total
-      section.total += montoMXN;
-    });
-    
-    // =====================================================================
-    // PASO 2: Procesar CFDIs (PROYECCIONES para semanas futuras)
-    // =====================================================================
-    cfdisData.forEach(cfdi => {
-      // For projections, use fecha_vencimiento or estimated date
-      let projectedDate;
-      if (cfdi.fecha_vencimiento) {
-        projectedDate = new Date(cfdi.fecha_vencimiento);
-      } else {
-        // Default: 30 days after emission
-        projectedDate = new Date(cfdi.fecha_emision);
-        projectedDate.setDate(projectedDate.getDate() + 30);
-      }
-      
-      const weekIdx = weeks.findIndex(w => projectedDate >= w.weekStart && projectedDate < w.weekEnd);
-      if (weekIdx === -1) return;
-      
-      const week = weeks[weekIdx];
-      
-      // Only add CFDIs to FUTURE weeks (projections)
-      // For past weeks, we already have real payment data
-      if (week.isPast || week.isCurrent) return;
-      
-      // Check if USD operation - SKIP projecting currency operations
-      // Currency operations (buy/sell USD) are spot transactions that settle immediately
-      // They should only appear when the bank transaction is reconciled (from payments data)
-      const isCompraUSD = cfdi.category_id === compraUSDId;
-      const isVentaUSD = cfdi.category_id === ventaUSDId;
-      
-      if (isCompraUSD || isVentaUSD) {
-        // Skip - currency operations should not be projected, only show when reconciled
-        return;
-      }
-      
-      // Calculate pending amount
-      const total = cfdi.total || 0;
-      const pagado = cfdi.monto_pagado || 0;
-      const cobrado = cfdi.monto_cobrado || 0;
-      
-      let pendiente = 0;
-      if (cfdi.tipo_cfdi === 'ingreso') {
-        pendiente = total - cobrado;
-      } else {
-        pendiente = total - pagado;
-      }
-      
-      if (pendiente <= 0) return; // Already fully paid/collected
-      
-      const montoMXN = convertToMXN(pendiente, cfdi.moneda, effectiveRates);
-      
-      const category = categoryMap[cfdi.category_id];
-      const categoryName = category?.nombre || 'Sin categoría';
-      const subcategoryInfo = subcategoryMap[cfdi.subcategory_id];
-      const subcategoryName = subcategoryInfo?.nombre || null;
-      
-      // Determine section
-      const section = cfdi.tipo_cfdi === 'ingreso' ? week.ingresos : week.egresos;
-      
-      // Add to category
-      if (!section.byCategory[categoryName]) {
-        section.byCategory[categoryName] = { total: 0, bySubcategory: {}, items: [] };
-      }
-      section.byCategory[categoryName].total += montoMXN;
-      section.byCategory[categoryName].items.push({
-        id: cfdi.id,
-        monto: montoMXN,
-        uuid: cfdi.uuid,
-        emisor: cfdi.emisor_nombre,
-        receptor: cfdi.receptor_nombre,
-        fecha: cfdi.fecha_emision,
-        moneda: cfdi.moneda,
-        source: 'cfdi'
-      });
-      
-      // Add to subcategory
-      const subKey = subcategoryName || 'General';
-      if (!section.byCategory[categoryName].bySubcategory[subKey]) {
-        section.byCategory[categoryName].bySubcategory[subKey] = { total: 0, items: [] };
-      }
-      section.byCategory[categoryName].bySubcategory[subKey].total += montoMXN;
-      section.byCategory[categoryName].bySubcategory[subKey].items.push({
-        id: cfdi.id,
-        monto: montoMXN,
-        uuid: cfdi.uuid,
-        emisor: cfdi.emisor_nombre,
-        receptor: cfdi.receptor_nombre,
-        fecha: cfdi.fecha_emision,
-        moneda: cfdi.moneda,
-        source: 'cfdi'
-      });
-      
-      // Add to section total
-      section.total += montoMXN;
-    });
-    
-    // Log for debugging
-    console.log('=== DATOS POR SEMANA (Única Fuente de Verdad) ===');
-    weeks.forEach(w => {
-      const status = w.isPast ? 'REAL' : (w.isCurrent ? 'ACTUAL' : 'PROY');
-      console.log(`${w.label} (${status}): Ingresos=${w.ingresos.total.toFixed(2)}, Egresos=${w.egresos.total.toFixed(2)}, VentaUSD=${w.ventaUSD.toFixed(2)}`);
-    });
-    
-    return weeks;
-  };
-
-  const processMonthlyData = (cfdisData, categoriesData, customMonthlyStart = '') => {
-    // Generate 6 months. If user picked a custom start date for the cashflow,
-    // anchor the monthly view to the same month (e.g., enero 2026).
-    const months = [];
-    const today = new Date();
-    let startDate = startOfMonth(today);
-    if (customMonthlyStart) {
-      const parsed = new Date(customMonthlyStart);
-      if (!isNaN(parsed.getTime())) {
-        startDate = startOfMonth(parsed);
-      }
-    }
-    
-    for (let i = 0; i < 6; i++) {
-      const monthStart = addMonths(startDate, i);
-      const monthEnd = addMonths(monthStart, 1);
-      
-      months.push({
-        monthNum: i + 1,
-        monthStart,
-        monthEnd,
-        label: format(monthStart, 'MMM yyyy', { locale: es }),
-        ingresos: { total: 0, byCategory: {}, byParty: {} },
-        egresos: { total: 0, byCategory: {}, byParty: {} }
-      });
-    }
-    
-    // Classify CFDIs by month
-    cfdisData.forEach(cfdi => {
-      const cfdiDate = new Date(cfdi.fecha_emision);
-      const monthIdx = months.findIndex(m => cfdiDate >= m.monthStart && cfdiDate < m.monthEnd);
-      
-      if (monthIdx !== -1) {
-        const month = months[monthIdx];
-        const isIngreso = cfdi.tipo_cfdi === 'ingreso';
-        const section = isIngreso ? month.ingresos : month.egresos;
-        
-        // Get category name
-        const category = categoriesData.find(c => c.id === cfdi.category_id);
-        const categoryName = category?.nombre || 'Sin categoría';
-        
-        // Get party name
-        const partyName = isIngreso ? cfdi.receptor_nombre : cfdi.emisor_nombre;
-        
-        section.total += cfdi.total;
-        
-        // By category
-        if (!section.byCategory[categoryName]) {
-          section.byCategory[categoryName] = 0;
-        }
-        section.byCategory[categoryName] += cfdi.total;
-        
-        // By party
-        if (!section.byParty[partyName]) {
-          section.byParty[partyName] = { total: 0, cfdis: [] };
-        }
-        section.byParty[partyName].total += cfdi.total;
-        section.byParty[partyName].cfdis.push(cfdi);
-      }
-    });
-    
-    setMonthlyData(months);
-  };
-
-  const toggleRow = (key) => {
-    setExpandedRows(prev => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const formatCurrency = (amount) => {
-    const converted = convertToCurrency(amount || 0);
-    const currencyInfo = CURRENCIES.find(c => c.code === selectedCurrency);
-    const symbol = currencyInfo?.symbol || '$';
-    return `${symbol}${converted.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
-
-  // Add custom concept - saves to backend
-  const handleAddConcept = async () => {
-    if (!newConcept.nombre || !newConcept.monto) {
-      toast.error('Completa nombre y monto');
-      return;
-    }
-    
-    try {
-      const conceptData = {
-        nombre: newConcept.nombre,
-        tipo: newConcept.tipo,
-        monto: parseFloat(newConcept.monto),
-        semana: viewMode === 'weekly' ? parseInt(newConcept.semana) : null,
-        mes: viewMode === 'monthly' ? parseInt(newConcept.mes) : null,
-        recurrente: newConcept.recurrente
-      };
-      
-      const response = await api.post('/manual-projections', conceptData);
-      setCustomConcepts([...customConcepts, response.data]);
-      setNewConcept({ nombre: '', tipo: 'egreso', monto: '', semana: 1, mes: 1, recurrente: false });
-      setConceptDialogOpen(false);
-      toast.success('Concepto agregado');
-    } catch (error) {
-      toast.error('Error al guardar concepto');
-    }
-  };
-
-  const handleDeleteConcept = async (id) => {
-    try {
-      await api.delete(`/manual-projections/${id}`);
-      setCustomConcepts(customConcepts.filter(c => c.id !== id));
-      toast.success('Concepto eliminado');
-    } catch (error) {
-      toast.error('Error al eliminar concepto');
-    }
-  };
-
-  // Export projections to Excel using XLSX
-  const exportProjectionsToExcel = () => {
-    const totals = calculateRunningTotals();
-    
-    if (weeklyData.length === 0) {
-      toast.error('No hay datos para exportar');
-      return;
-    }
-    
-    try {
-      // Use the utility function from excelExport
-      const success = exportProjections(totals, saldoInicialBancos, selectedCurrency, fxRates[selectedCurrency] || 1);
-      if (success) {
-        toast.success(`Proyección exportada a Excel en ${selectedCurrency}`);
-      } else {
-        toast.error('Error al exportar');
-      }
-    } catch (error) {
-      console.error('Export error:', error);
-      toast.error('Error al exportar: ' + (error.message || 'Error desconocido'));
-    }
-  };
-
-  // Convert amount from MXN to selected currency
-  const convertToCurrency = (amountMXN) => {
-    if (selectedCurrency === 'MXN') return amountMXN;
-    const rate = fxRates[selectedCurrency] || 1;
-    return amountMXN / rate; // Divide to convert FROM MXN TO target currency
-  };
-
-  // Get CFDIs for selected party
-  const getPartyCfdis = () => {
-    if (!selectedParty) return [];
-    
-    return cfdis.filter(cfdi => {
-      if (selectedPartyType === 'customer') {
-        const customer = customers.find(c => c.id === selectedParty);
-        return customer && (cfdi.customer_id === selectedParty || cfdi.receptor_rfc === customer.rfc);
-      } else if (selectedPartyType === 'vendor') {
-        const vendor = vendors.find(v => v.id === selectedParty);
-        return vendor && (cfdi.vendor_id === selectedParty || cfdi.emisor_rfc === vendor.rfc);
-      }
-      return false;
-    });
-  };
-
-  // Calculate running totals including custom concepts
-  // NUEVA LÓGICA SIMPLIFICADA:
-  // - Usa directamente ingresos.total y egresos.total de processWeeklyData
-  // - TOTAL = Suma exacta de categorías (ya calculado correctamente)
-  const calculateRunningTotals = () => {
-    let saldoInicial = saldoInicialBancos;
-    const totals = [];
-    
-    weeklyData.forEach((week, idx) => {
-      // Add custom concepts for this week
-      const customIngresos = customConcepts
-        .filter(c => c.tipo === 'ingreso' && (c.semana === idx + 1 || c.recurrente))
-        .reduce((sum, c) => sum + c.monto, 0);
-      const customEgresos = customConcepts
-        .filter(c => c.tipo === 'egreso' && (c.semana === idx + 1 || c.recurrente))
-        .reduce((sum, c) => sum + c.monto, 0);
-      
-      // Get USD operations for this week
-      const compraUSD = week.compraUSD || 0;
-      const ventaUSD = week.ventaUSD || 0;
-      
-      // TOTALES DIRECTOS: ya vienen calculados como suma de categorías
-      const totalIngresos = (week.ingresos.total || 0) + customIngresos;
-      const totalEgresos = (week.egresos.total || 0) + customEgresos;
-      
-      // Net cash flow from operations (excluding USD conversions)
-      const flujoNetoOperativo = totalIngresos - totalEgresos;
-      const flujoDivisas = ventaUSD - compraUSD;
-      const flujoNeto = flujoNetoOperativo + flujoDivisas;
-      const saldoFinal = saldoInicial + flujoNeto;
-      
-      totals.push({
-        ...week,
-        ingresos: { 
-          ...week.ingresos, 
-          total: totalIngresos,
-          custom: customIngresos
+    cfdis = await db.cfdis.find(
+        {
+            'company_id': company_id,
+            'estado_cancelacion': {'$ne': 'cancelado'},
+            '$or': [
+                {'monto_cobrado': {'$gt': 0.01}},
+                {'monto_pagado': {'$gt': 0.01}}
+            ]
         },
-        egresos: { 
-          ...week.egresos, 
-          total: totalEgresos,
-          custom: customEgresos
-        },
-        compraUSD,
-        ventaUSD,
-        flujoDivisas,
-        saldoInicial,
-        flujoNeto,
-        saldoFinal
-      });
-      
-      saldoInicial = saldoFinal;
-    });
-    
-    return totals;
-  };
+        {'_id': 0}
+    ).to_list(10000)
 
-  // =====================================================================
-  // CÁLCULO DE KPIs "GRADO CFO"
-  // =====================================================================
-  const calculateCFOKPIs = (totals) => {
-    if (!totals || totals.length === 0) return null;
-    
-    // Separar semanas por tipo de dato
-    const semanasReales = totals.filter(w => w.dataType === 'real' || w.dataType === 'actual');
-    const semanasProyectadas = totals.filter(w => w.dataType === 'proyectado');
-    
-    // 1. NET BURN RATE - Promedio semanal de flujo neto
-    const burnRateReal = semanasReales.length > 0 
-      ? semanasReales.reduce((sum, w) => sum + w.flujoNeto, 0) / semanasReales.length 
-      : 0;
-    const burnRateProyectado = semanasProyectadas.length > 0 
-      ? semanasProyectadas.reduce((sum, w) => sum + w.flujoNeto, 0) / semanasProyectadas.length 
-      : 0;
-    
-    // 2. FORECAST ACCURACY - Variación % Real vs Proyectado (solo para semanas que tienen ambos)
-    // Para calcular accuracy, comparamos ingresos/egresos reales vs lo que se había proyectado
-    // Aquí usamos las semanas reales como proxy, dado que no tenemos los datos originales proyectados
-    const totalIngresosReales = semanasReales.reduce((sum, w) => sum + w.ingresos.total, 0);
-    const totalEgresosReales = semanasReales.reduce((sum, w) => sum + w.egresos.total, 0);
-    const totalFlujoNetoReal = semanasReales.reduce((sum, w) => sum + w.flujoNeto, 0);
-    
-    const totalIngresosProyectados = semanasProyectadas.reduce((sum, w) => sum + w.ingresos.total, 0);
-    const totalEgresosProyectados = semanasProyectadas.reduce((sum, w) => sum + w.egresos.total, 0);
-    const totalFlujoNetoProyectado = semanasProyectadas.reduce((sum, w) => sum + w.flujoNeto, 0);
-    
-    // Accuracy: qué tan cerca están los ingresos reales del promedio proyectado (escalado)
-    // Si no hay proyecciones previas, mostrar N/A
-    const promedioIngresosSemanal = totalIngresosProyectados / Math.max(semanasProyectadas.length, 1);
-    const promedioEgresosSemanal = totalEgresosProyectados / Math.max(semanasProyectadas.length, 1);
-    
-    // 3. CASH GAP ANALYSIS - Diferencia vs umbral mínimo por semana
-    const cashGapByWeek = totals.map(w => ({
-      semana: w.label,
-      saldoFinal: w.saldoFinal,
-      gap: w.saldoFinal - umbralMinimoCaja,
-      enRiesgo: w.saldoFinal < umbralMinimoCaja
-    }));
-    
-    const semanasEnRiesgo = cashGapByWeek.filter(w => w.enRiesgo);
-    const semanaCritica = cashGapByWeek.reduce((min, w) => 
-      w.saldoFinal < min.saldoFinal ? w : min, 
-      cashGapByWeek[0] || { saldoFinal: 0, semana: 'N/A' }
-    );
-    
-    // 4. FLUJO DE CAJA ACUMULADO - Real vs Proyectado
-    let acumuladoReal = 0;
-    let acumuladoProyectado = 0;
-    const flujoAcumulado = totals.map(w => {
-      if (w.dataType === 'real' || w.dataType === 'actual') {
-        acumuladoReal += w.flujoNeto;
-        return { ...w, acumuladoReal, acumuladoProyectado };
-      } else {
-        acumuladoProyectado += w.flujoNeto;
-        return { ...w, acumuladoReal, acumuladoProyectado: acumuladoReal + acumuladoProyectado };
-      }
-    });
-    
-    // 5. VOLATILIDAD - Desviación estándar del flujo neto real
-    let volatilidad = 0;
-    if (semanasReales.length > 1) {
-      const mediaFlujo = totalFlujoNetoReal / semanasReales.length;
-      const sumaCuadrados = semanasReales.reduce((sum, w) => sum + Math.pow(w.flujoNeto - mediaFlujo, 2), 0);
-      volatilidad = Math.sqrt(sumaCuadrados / semanasReales.length);
+    creados = 0
+    omitidos = 0
+    errores = []
+
+    for cfdi in cfdis:
+        try:
+            cfdi_id = cfdi.get('id')
+            tipo_cfdi = cfdi.get('tipo_cfdi', '')
+            tipo_pago = 'cobro' if tipo_cfdi == 'ingreso' else 'pago'
+            monto_field = 'monto_cobrado' if tipo_cfdi == 'ingreso' else 'monto_pagado'
+            monto = float(cfdi.get(monto_field, 0) or 0)
+
+            if monto < 0.01:
+                continue
+
+            existing = await db.payments.find_one(
+                {'company_id': company_id, 'cfdi_id': cfdi_id},
+                {'_id': 0, 'id': 1}
+            )
+            if existing:
+                omitidos += 1
+                continue
+
+            if tipo_cfdi == 'ingreso':
+                beneficiario = cfdi.get('receptor_nombre', '') or cfdi.get('emisor_nombre', '')
+            else:
+                beneficiario = cfdi.get('emisor_nombre', '') or cfdi.get('receptor_nombre', '')
+
+            fecha_pago = cfdi.get('fecha_emision') or cfdi.get('fecha_timbrado') or datetime.now(timezone.utc).isoformat()
+            if len(fecha_pago) == 10:
+                fecha_pago = f"{fecha_pago}T12:00:00"
+
+            moneda = cfdi.get('moneda', 'MXN') or 'MXN'
+            tc = cfdi.get('tipo_cambio', 1) or 1
+
+            payment_doc = {
+                'id': str(uuid.uuid4()),
+                'company_id': company_id,
+                'cfdi_id': cfdi_id,
+                'tipo': tipo_pago,
+                'concepto': (
+                    f"{cfdi.get('folio_alegra') or cfdi.get('referencia') or ''} - {beneficiario}".strip(' -')
+                ),
+                'monto': monto,
+                'moneda': moneda,
+                'tipo_cambio_historico': tc if moneda != 'MXN' else 1,
+                'metodo_pago': cfdi.get('metodo_pago', 'transferencia'),
+                'fecha_vencimiento': fecha_pago,
+                'fecha_pago': fecha_pago,
+                'estatus': 'completado',
+                'referencia': cfdi.get('uuid', '')[:36],
+                'beneficiario': beneficiario,
+                'es_real': True,
+                'bank_transaction_id': None,
+                'cfdi_uuid': cfdi.get('uuid'),
+                'cfdi_emisor': cfdi.get('emisor_nombre'),
+                'cfdi_receptor': cfdi.get('receptor_nombre'),
+                'category_id': cfdi.get('category_id'),
+                'subcategory_id': cfdi.get('subcategory_id'),
+                'fuente': 'backfill_from_cfdi',
+                'auto_created_from_reconciliation': False,
+                'created_at': datetime.now(timezone.utc).isoformat()
+            }
+
+            await db.payments.insert_one(payment_doc)
+            creados += 1
+            logger.info(f"Backfill payment creado: CFDI={cfdi_id} tipo={tipo_pago} monto={monto}")
+
+        except Exception as e:
+            errores.append(f"CFDI {cfdi.get('id', '?')}: {str(e)}")
+            logger.error(f"Error en backfill CFDI {cfdi.get('id')}: {str(e)}", exc_info=True)
+
+    await audit_log(company_id, 'Payment', 'BACKFILL_FROM_CFDIS', 'CREATE', current_user['id'],
+                    {'creados': creados, 'omitidos': omitidos, 'errores': len(errores)})
+
+    return {
+        'status': 'success',
+        'message': f'Backfill completado: {creados} payments creados, {omitidos} ya existían.',
+        'creados': creados,
+        'omitidos': omitidos,
+        'errores': len(errores),
+        'detalle_errores': errores[:10]
     }
+
+
+@router.post("/fix-backfill-concepts")
+async def fix_backfill_concepts(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Corrige el concepto de payments creados por backfill. Ejecutar UNA SOLA VEZ."""
+    company_id = await get_active_company_id(request, current_user)
+
+    backfill_payments = await db.payments.find(
+        {'company_id': company_id, 'fuente': 'backfill_from_cfdi'},
+        {'_id': 0}
+    ).to_list(10000)
+
+    actualizados = 0
+    omitidos = 0
+    errores = []
+
+    for p in backfill_payments:
+        try:
+            cfdi_id = p.get('cfdi_id')
+            if not cfdi_id:
+                omitidos += 1
+                continue
+
+            cfdi = await db.cfdis.find_one({'id': cfdi_id}, {'_id': 0})
+            if not cfdi:
+                omitidos += 1
+                continue
+
+            if p.get('tipo') == 'cobro':
+                beneficiario = cfdi.get('receptor_nombre', '') or cfdi.get('emisor_nombre', '')
+            else:
+                beneficiario = cfdi.get('emisor_nombre', '') or cfdi.get('receptor_nombre', '')
+
+            folio = cfdi.get('folio_alegra') or cfdi.get('referencia') or ''
+            nuevo_concepto = f"{folio} - {beneficiario}".strip(' -')
+
+            await db.payments.update_one(
+                {'id': p['id']},
+                {'$set': {'concepto': nuevo_concepto}}
+            )
+            actualizados += 1
+
+        except Exception as e:
+            errores.append(f"Payment {p.get('id', '?')}: {str(e)}")
+
+    return {
+        'status': 'success',
+        'message': f'{actualizados} conceptos actualizados.',
+        'actualizados': actualizados,
+        'omitidos': omitidos,
+        'errores': len(errores),
+        'detalle_errores': errores[:10]
+    }
+
+
+@router.post("/borrar-contalink")
+async def borrar_payments_contalink(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Borra SOLO los payments importados desde Contalink (source='contalink').
+    Deja intactos los de banco, PDF y manuales.
+    Después re-sincroniza desde Contalink con las fechas correctas.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    result = await db.payments.delete_many(
+        {"company_id": company_id, "source": "contalink"}
+    )
+    return {
+        "success": True,
+        "deleted": result.deleted_count,
+        "message": f"{result.deleted_count} payments de Contalink eliminados. Ya puedes re-sincronizar."
+    }
+
+
+@router.put("/{payment_id}")
+async def update_payment(payment_id: str, payment_data: PaymentCreate, request: Request, current_user: Dict = Depends(get_current_user)):
+    """Update a payment with CFDI amount adjustment"""
+    company_id = await get_active_company_id(request, current_user)
+    existing = await db.payments.find_one({'id': payment_id, 'company_id': company_id}, {'_id': 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
     
-    // Coeficiente de variación (volatilidad relativa)
-    const coeficienteVariacion = burnRateReal !== 0 ? (volatilidad / Math.abs(burnRateReal)) * 100 : 0;
+    old_monto = existing.get('monto', 0)
+    old_cfdi_id = existing.get('cfdi_id')
+    old_estatus = existing.get('estatus')
     
-    // 6. RUNWAY - Semanas de operación con saldo actual
-    const saldoActual = totals.find(w => w.dataType === 'actual')?.saldoFinal || totals[0]?.saldoFinal || 0;
-    const egresoPromedio = (totalEgresosReales + totalEgresosProyectados) / totals.length;
-    const runway = egresoPromedio > 0 ? Math.floor(saldoActual / egresoPromedio) : 999;
+    update_data = payment_data.model_dump()
+    for field in ['fecha_vencimiento', 'fecha_pago']:
+        if update_data.get(field):
+            update_data[field] = update_data[field].isoformat()
     
-    // 7. RATIO COBRANZA VS PAGOS
-    const ratioCobranzaPagos = totalEgresosReales > 0 
-      ? (totalIngresosReales / totalEgresosReales) 
-      : totalIngresosReales > 0 ? 999 : 1;
+    await db.payments.update_one(
+        {'id': payment_id, 'company_id': company_id},
+        {'$set': update_data}
+    )
+    
+    # If payment was completed and linked to a CFDI, update the CFDI's collected/paid amount
+    if old_estatus == 'completado' and old_cfdi_id:
+        cfdi = await db.cfdis.find_one({'id': old_cfdi_id}, {'_id': 0})
+        if cfdi:
+            # Calculate the difference between old and new amount
+            new_monto = update_data.get('monto', old_monto)
+            diff = new_monto - old_monto
+            
+            if existing['tipo'] == 'cobro':
+                current_cobrado = cfdi.get('monto_cobrado', 0) or 0
+                new_cobrado = max(0, current_cobrado + diff)
+                await db.cfdis.update_one(
+                    {'id': old_cfdi_id},
+                    {'$set': {'monto_cobrado': new_cobrado}}
+                )
+                logger.info(f"Updated CFDI {old_cfdi_id} monto_cobrado after payment edit: {current_cobrado} -> {new_cobrado}")
+            else:
+                current_pagado = cfdi.get('monto_pagado', 0) or 0
+                new_pagado = max(0, current_pagado + diff)
+                await db.cfdis.update_one(
+                    {'id': old_cfdi_id},
+                    {'$set': {'monto_pagado': new_pagado}}
+                )
+                logger.info(f"Updated CFDI {old_cfdi_id} monto_pagado after payment edit: {current_pagado} -> {new_pagado}")
+    
+    await audit_log(company_id, 'Payment', payment_id, 'UPDATE', current_user['id'])
+    return {'status': 'success', 'message': 'Pago actualizado'}
+
+
+@router.post("/{payment_id}/complete")
+async def complete_payment(payment_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
+    """Mark a payment as completed with CFDI amount update"""
+    company_id = await get_active_company_id(request, current_user)
+    existing = await db.payments.find_one({'id': payment_id, 'company_id': company_id}, {'_id': 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    
+    # Use fecha_vencimiento as fecha_pago if available, otherwise use current date
+    fecha_pago = existing.get('fecha_vencimiento') or datetime.now(timezone.utc).isoformat()
+    
+    # Update payment status
+    await db.payments.update_one(
+        {'id': payment_id},
+        {'$set': {
+            'estatus': 'completado',
+            'fecha_pago': fecha_pago
+        }}
+    )
+    
+    # If payment is linked to a CFDI, update the paid/collected amount
+    if existing.get('cfdi_id'):
+        cfdi = await db.cfdis.find_one({'id': existing['cfdi_id']}, {'_id': 0})
+        if cfdi:
+            if existing['tipo'] == 'cobro':
+                # Update monto_cobrado for income CFDI
+                current_cobrado = cfdi.get('monto_cobrado', 0) or 0
+                new_cobrado = current_cobrado + existing['monto']
+                await db.cfdis.update_one(
+                    {'id': existing['cfdi_id']},
+                    {'$set': {'monto_cobrado': new_cobrado}}
+                )
+                logger.info(f"Updated CFDI {existing['cfdi_id']} monto_cobrado: {current_cobrado} -> {new_cobrado}")
+            else:
+                # Update monto_pagado for expense CFDI
+                current_pagado = cfdi.get('monto_pagado', 0) or 0
+                new_pagado = current_pagado + existing['monto']
+                await db.cfdis.update_one(
+                    {'id': existing['cfdi_id']},
+                    {'$set': {'monto_pagado': new_pagado}}
+                )
+                logger.info(f"Updated CFDI {existing['cfdi_id']} monto_pagado: {current_pagado} -> {new_pagado}")
+    
+    await audit_log(company_id, 'Payment', payment_id, 'COMPLETE', current_user['id'])
+    return {'status': 'success', 'message': 'Pago completado'}
+
+
+@router.delete("/{payment_id}")
+async def delete_payment(payment_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
+    """Delete a payment with CFDI amount reversal"""
+    company_id = await get_active_company_id(request, current_user)
+    existing = await db.payments.find_one({'id': payment_id, 'company_id': company_id}, {'_id': 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    
+    # If payment was completed and linked to a CFDI, reverse the collected/paid amount
+    if existing.get('estatus') == 'completado' and existing.get('cfdi_id'):
+        cfdi = await db.cfdis.find_one({'id': existing['cfdi_id']}, {'_id': 0})
+        if cfdi:
+            if existing['tipo'] == 'cobro':
+                current_cobrado = cfdi.get('monto_cobrado', 0) or 0
+                new_cobrado = max(0, current_cobrado - existing['monto'])
+                await db.cfdis.update_one(
+                    {'id': existing['cfdi_id']},
+                    {'$set': {'monto_cobrado': new_cobrado}}
+                )
+                logger.info(f"Reversed CFDI {existing['cfdi_id']} monto_cobrado after payment delete: {current_cobrado} -> {new_cobrado}")
+            else:
+                current_pagado = cfdi.get('monto_pagado', 0) or 0
+                new_pagado = max(0, current_pagado - existing['monto'])
+                await db.cfdis.update_one(
+                    {'id': existing['cfdi_id']},
+                    {'$set': {'monto_pagado': new_pagado}}
+                )
+                logger.info(f"Reversed CFDI {existing['cfdi_id']} monto_pagado after payment delete: {current_pagado} -> {new_pagado}")
+    
+    await db.payments.delete_one({'id': payment_id})
+    await audit_log(company_id, 'Payment', payment_id, 'DELETE', current_user['id'])
+    return {'status': 'success', 'message': 'Pago eliminado'}
+
+
+@router.delete("/bulk/all")
+async def delete_all_payments(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Delete ALL payments/collections for the current company with CFDI reset"""
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Reset all CFDIs monto_cobrado and monto_pagado
+    await db.cfdis.update_many(
+        {'company_id': company_id},
+        {'$set': {'monto_cobrado': 0, 'monto_pagado': 0}}
+    )
+    
+    # Delete all payments
+    result = await db.payments.delete_many({'company_id': company_id})
+    
+    await audit_log(company_id, 'Payment', 'BULK_DELETE', 'DELETE', current_user['id'], 
+                    {'count': result.deleted_count, 'action': 'delete_all_payments'})
     
     return {
-      // Net Burn Rate
-      burnRateReal,
-      burnRateProyectado,
-      burnRateDelta: burnRateProyectado - burnRateReal,
-      
-      // Totales
-      totalIngresosReales,
-      totalEgresosReales,
-      totalFlujoNetoReal,
-      totalIngresosProyectados,
-      totalEgresosProyectados,
-      totalFlujoNetoProyectado,
-      
-      // Promedios
-      promedioIngresosSemanal,
-      promedioEgresosSemanal,
-      
-      // Cash Gap
-      cashGapByWeek,
-      semanasEnRiesgo,
-      semanaCritica,
-      
-      // Flujo Acumulado
-      flujoAcumulado,
-      acumuladoRealFinal: acumuladoReal,
-      acumuladoProyectadoFinal: acumuladoReal + acumuladoProyectado,
-      
-      // Volatilidad
-      volatilidad,
-      coeficienteVariacion,
-      
-      // Operacionales
-      runway,
-      ratioCobranzaPagos,
-      
-      // Metadata
-      semanasRealesCount: semanasReales.length,
-      semanasProyectadasCount: semanasProyectadas.length
-    };
-  };
-
-  // =====================================================================
-  // PREPARAR DATOS PARA GRÁFICOS
-  // =====================================================================
-  const prepareChartData = (totals) => {
-    if (!totals || totals.length === 0) return [];
-    
-    let acumuladoReal = 0;
-    let acumuladoProyectado = 0;
-    
-    return totals.map((week, idx) => {
-      const ingresosMXN = convertToCurrency(week.ingresos.total || 0);
-      const egresosMXN = convertToCurrency(week.egresos.total || 0);
-      const flujoNeto = convertToCurrency(week.flujoNeto || 0);
-      const saldoFinal = convertToCurrency(week.saldoFinal || 0);
-      const umbral = convertToCurrency(umbralMinimoCaja);
-      
-      // Calcular acumulados
-      if (week.dataType === 'real' || week.dataType === 'actual') {
-        acumuladoReal += flujoNeto;
-      } else {
-        acumuladoProyectado += flujoNeto;
-      }
-      
-      return {
-        semana: week.label,
-        fecha: week.dateLabel,
-        tipo: week.dataType,
-        ingresos: ingresosMXN,
-        egresos: egresosMXN,
-        flujoNeto: flujoNeto,
-        saldoFinal: saldoFinal,
-        umbralMinimo: umbral,
-        cashGap: saldoFinal - umbral,
-        acumuladoReal: week.dataType === 'real' || week.dataType === 'actual' ? acumuladoReal : null,
-        acumuladoProyectado: acumuladoReal + acumuladoProyectado,
-        // For area chart fill
-        flujoNetoPositivo: flujoNeto >= 0 ? flujoNeto : 0,
-        flujoNetoNegativo: flujoNeto < 0 ? flujoNeto : 0
-      };
-    });
-  };
-
-  // =====================================================================
-  // EXPORTAR A PDF
-  // =====================================================================
-  const exportToPDF = async () => {
-    if (!reportRef.current) {
-      toast.error('No se pudo encontrar el contenido para exportar');
-      return;
+        'status': 'success',
+        'message': f'Se eliminaron {result.deleted_count} pagos/cobranzas',
+        'deleted_count': result.deleted_count
     }
-    
-    setExportingPdf(true);
-    toast.info('Generando PDF, por favor espere...');
-    
-    try {
-      // Capturar el contenido como imagen
-      const canvas = await html2canvas(reportRef.current, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#F8FAFC'
-      });
-      
-      const imgData = canvas.toDataURL('image/png');
-      
-      // Crear PDF en formato landscape para mejor visualización de la tabla
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'mm',
-        format: 'a4'
-      });
-      
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      
-      // Calcular dimensiones manteniendo proporción
-      const imgWidth = pageWidth - 20; // Margen de 10mm a cada lado
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      
-      // Si la imagen es más alta que la página, dividir en múltiples páginas
-      let heightLeft = imgHeight;
-      let position = 10;
-      
-      // Primera página
-      pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
-      heightLeft -= (pageHeight - 20);
-      
-      // Páginas adicionales si es necesario
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight + 10;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
-        heightLeft -= (pageHeight - 20);
-      }
-      
-      // Agregar pie de página con fecha
-      const totalPages = pdf.internal.getNumberOfPages();
-      for (let i = 1; i <= totalPages; i++) {
-        pdf.setPage(i);
-        pdf.setFontSize(8);
-        pdf.setTextColor(128);
-        pdf.text(
-          `Generado: ${format(new Date(), 'dd/MM/yyyy HH:mm')} | Página ${i} de ${totalPages}`,
-          pageWidth / 2,
-          pageHeight - 5,
-          { align: 'center' }
-        );
-      }
-      
-      // Descargar el PDF
-      const fileName = `Proyeccion_Flujo_Efectivo_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
-      pdf.save(fileName);
-      
-      toast.success('PDF exportado exitosamente');
-    } catch (error) {
-      console.error('Error exportando PDF:', error);
-      toast.error('Error al exportar PDF: ' + error.message);
-    } finally {
-      setExportingPdf(false);
+
+
+@router.post("/reset-empresa")
+async def reset_empresa(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Reset COMPLETO de la empresa activa:
+    - Borra todos los payments
+    - Borra todos los CFDIs
+    - Borra categorías custom (conserva defaults del sistema)
+    - Borra estados financieros
+    - Borra movimientos de cashflow sync
+    SOLO afecta a la empresa activa (X-Company-ID header).
+    """
+    company_id = await get_active_company_id(request, current_user)
+
+    # 1. Payments
+    r_payments = await db.payments.delete_many({"company_id": company_id})
+
+    # 2. CFDIs
+    r_cfdis = await db.cfdis.delete_many({"company_id": company_id})
+
+    # 3. Categorías custom (no las del sistema/defaults)
+    r_cats = await db.cashflow_categories.delete_many({"company_id": company_id})
+
+    # 4. Estados financieros
+    r_fin = await db.financial_statements.delete_many({"company_id": company_id})
+
+    # 5. Movimientos de cashflow sync
+    r_cf = await db.cashflow_movements.delete_many({"company_id": company_id})
+
+    await audit_log(company_id, 'Company', 'RESET_EMPRESA', 'DELETE', current_user['id'], {
+        'payments': r_payments.deleted_count,
+        'cfdis': r_cfdis.deleted_count,
+        'categorias': r_cats.deleted_count,
+        'financial_statements': r_fin.deleted_count,
+        'cashflow_movements': r_cf.deleted_count,
+    })
+
+    return {
+        "success": True,
+        "company_id": company_id,
+        "eliminados": {
+            "payments": r_payments.deleted_count,
+            "cfdis": r_cfdis.deleted_count,
+            "categorias_custom": r_cats.deleted_count,
+            "estados_financieros": r_fin.deleted_count,
+            "cashflow_movements": r_cf.deleted_count,
+        },
+        "message": "Reset completo. Ya puedes re-sincronizar desde Contalink."
     }
-  };
 
-  // =====================================================================
-  // DRILL-DOWN: Abrir detalle de una celda
-  // =====================================================================
-  const handleCellClick = (weekIdx, tipo, categoryName, subcategoryName = null) => {
-    const week = weeklyData[weekIdx];
-    if (!week) return;
+
+@router.post("/backfill-categories")
+async def backfill_payment_categories(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Backfill category/subcategory from linked CFDIs to existing payments.
+    This updates payments that have cfdi_id but are missing category_id/subcategory_id.
+    """
+    company_id = await get_active_company_id(request, current_user)
     
-    const section = tipo === 'ingreso' ? week.ingresos : week.egresos;
-    const category = section.byCategory[categoryName];
+    # Find all payments with cfdi_id but missing category
+    payments_to_update = await db.payments.find({
+        'company_id': company_id,
+        'cfdi_id': {'$ne': None, '$exists': True},
+        '$or': [
+            {'category_id': None},
+            {'category_id': {'$exists': False}}
+        ]
+    }, {'_id': 0, 'id': 1, 'cfdi_id': 1}).to_list(10000)
     
-    if (!category) return;
+    updated_count = 0
+    errors = []
     
-    let items = [];
-    let total = 0;
+    for payment in payments_to_update:
+        cfdi = await db.cfdis.find_one({'id': payment['cfdi_id']}, {'_id': 0, 'category_id': 1, 'subcategory_id': 1, 'uuid': 1, 'emisor_nombre': 1, 'receptor_nombre': 1})
+        if cfdi and cfdi.get('category_id'):
+            update_data = {
+                'category_id': cfdi.get('category_id'),
+                'subcategory_id': cfdi.get('subcategory_id'),
+                'cfdi_uuid': cfdi.get('uuid'),
+                'cfdi_emisor': cfdi.get('emisor_nombre'),
+                'cfdi_receptor': cfdi.get('receptor_nombre')
+            }
+            # Remove None values
+            update_data = {k: v for k, v in update_data.items() if v is not None}
+            
+            if update_data:
+                result = await db.payments.update_one(
+                    {'id': payment['id']},
+                    {'$set': update_data}
+                )
+                if result.modified_count > 0:
+                    updated_count += 1
+        else:
+            errors.append(f"Payment {payment['id']}: CFDI {payment['cfdi_id']} not found or has no category")
     
-    if (subcategoryName) {
-      // Drill-down to subcategory level
-      const subcategory = category.bySubcategory?.[subcategoryName];
-      if (subcategory) {
-        items = subcategory.items || [];
-        total = subcategory.total || 0;
-      }
-    } else {
-      // Drill-down to category level
-      items = category.items || [];
-      total = category.total || 0;
+    await audit_log(company_id, 'Payment', 'BACKFILL', 'UPDATE', current_user['id'],
+                    {'updated_count': updated_count, 'total_checked': len(payments_to_update)})
+    
+    return {
+        'status': 'success',
+        'message': f'Se actualizaron {updated_count} de {len(payments_to_update)} pagos',
+        'updated_count': updated_count,
+        'total_checked': len(payments_to_update),
+        'errors': errors[:10] if errors else []  # Return first 10 errors
     }
-    
-    // Enrich items with full details from payments, CFDIs, and reconciliations
-    const enrichedItems = items.map(item => {
-      const payment = allPayments.find(p => p.id === item.id);
-      const cfdi = cfdis.find(c => c.uuid === item.uuid || c.id === item.cfdiId);
-      const bankTxn = payment?.bank_transaction_id 
-        ? bankTransactions.find(t => t.id === payment.bank_transaction_id)
-        : null;
-      const reconciliation = bankTxn 
-        ? reconciliations.find(r => r.bank_transaction_id === bankTxn.id)
-        : null;
-      
-      // Get bank account info
-      const bankAccountId = item.bankAccountId || payment?.bank_account_id;
-      const bankAccount = bankAccountId ? bankAccounts.find(b => b.id === bankAccountId) : null;
-      
-      // Get vendor/customer info - prioritize item's own data first
-      let tercero = '';
-      let terceroTipo = '';
-      
-      // First try: Use item's direct emisor/receptor data (from CFDI processing)
-      if (tipo === 'ingreso') {
-        tercero = item.receptor || item.beneficiario || '';
-        terceroTipo = 'cliente';
-      } else {
-        tercero = item.emisor || item.beneficiario || '';
-        terceroTipo = 'proveedor';
-      }
-      
-      // Second try: Get from payment's vendor/customer
-      if (!tercero && payment?.vendor_id) {
-        const vendor = vendors.find(v => v.id === payment.vendor_id);
-        tercero = vendor?.nombre || payment.beneficiario || '';
-        terceroTipo = 'proveedor';
-      } else if (!tercero && payment?.customer_id) {
-        const customer = customers.find(c => c.id === payment.customer_id);
-        tercero = customer?.nombre || payment.beneficiario || '';
-        terceroTipo = 'cliente';
-      }
-      
-      // Third try: Get from CFDI emisor/receptor
-      if (!tercero && cfdi) {
-        if (tipo === 'ingreso') {
-          const customer = customers.find(c => c.rfc === cfdi.receptor_rfc);
-          tercero = customer?.nombre || cfdi.receptor_nombre || '';
-          terceroTipo = 'cliente';
-        } else {
-          const vendor = vendors.find(v => v.rfc === cfdi.emisor_rfc);
-          tercero = vendor?.nombre || cfdi.emisor_nombre || '';
-          terceroTipo = 'proveedor';
-        }
-      }
-      
-      // Fourth try: Use beneficiario from payment
-      if (!tercero && payment?.beneficiario) {
-        tercero = payment.beneficiario;
-        terceroTipo = tipo === 'ingreso' ? 'cliente' : 'proveedor';
-      }
-      
-      // Fifth try: For bank fees, use bank name
-      if (!tercero && bankAccount) {
-        tercero = bankAccount.banco || bankAccount.nombre || 'Banco';
-        terceroTipo = 'proveedor'; // Bank fees are always providers
-      }
-      
-      // Sixth try: Extract from concepto if it's a bank fee
-      if (!tercero && item.concepto) {
-        const concepto = item.concepto.toLowerCase();
-        if (concepto.includes('comisión') || concepto.includes('comision') || 
-            concepto.includes('iva') || concepto.includes('cargo')) {
-          // Use bank name from bank account or default
-          tercero = bankAccount?.banco || 'Cargo Bancario';
-          terceroTipo = 'proveedor';
-        }
-      }
-      
-      return {
-        ...item,
-        paymentId: payment?.id,
-        concepto: item.concepto || payment?.concepto || cfdi?.concepto || '',
-        tercero: tercero || 'Sin asignar',
-        terceroTipo: terceroTipo || (tipo === 'ingreso' ? 'cliente' : 'proveedor'),
-        uuid: item.uuid || cfdi?.uuid || '',
-        folio: cfdi?.folio || '',
-        fechaFactura: cfdi?.fecha_emision || payment?.fecha_pago || item.fecha,
-        montoOriginal: payment?.monto || cfdi?.total || item.monto,
-        moneda: payment?.moneda || cfdi?.moneda || item.moneda || 'MXN',
-        // Bank transaction info
-        bankTxnId: bankTxn?.id,
-        bankTxnDescripcion: bankTxn?.descripcion,
-        bankTxnFecha: bankTxn?.fecha,
-        bankTxnMonto: bankTxn?.monto,
-        // Bank account info
-        bankAccountName: bankAccount?.banco || bankAccount?.nombre || '',
-        // Reconciliation status
-        conciliado: !!reconciliation,
-        reconciliacionId: reconciliation?.id,
-        tipoConciliacion: reconciliation?.tipo_conciliacion,
-        // Source
-        source: item.source
-      };
-    });
-    
-    setDrillDownData({
-      weekNum: weekIdx + 1,
-      weekLabel: week.label || `S${weekIdx + 1}`,
-      dateLabel: week.dateLabel || '',
-      dataType: week.dataType,
-      tipo,
-      categoryName,
-      subcategoryName,
-      items: enrichedItems,
-      total
-    });
-    setDrillDownOpen(true);
-  };
 
-  // =====================================================================
-  // VISTA POR PROVEEDOR/CLIENTE: Procesar datos agrupados por tercero
-  // =====================================================================
-  const processDataByParty = () => {
-    // Create a map: { terceroId: { nombre, tipo, weeks: { weekIdx: { ingresos, egresos } } } }
-    const partyMap = {};
-    
-    weeklyData.forEach((week, weekIdx) => {
-      // Process ingresos
-      Object.entries(week.ingresos.byCategory).forEach(([catName, catData]) => {
-        (catData.items || []).forEach(item => {
-          const payment = allPayments.find(p => p.id === item.id);
-          let terceroId = 'sin-asignar';
-          let terceroNombre = 'Sin Asignar';
-          let terceroTipo = 'cliente';
-          
-          if (payment?.customer_id) {
-            const customer = customers.find(c => c.id === payment.customer_id);
-            if (customer) {
-              terceroId = customer.id;
-              terceroNombre = customer.nombre;
-              terceroTipo = 'cliente';
-            }
-          } else {
-            // Try to find customer by RFC from CFDI
-            const cfdi = cfdis.find(c => c.uuid === item.uuid);
-            if (cfdi?.receptor_rfc) {
-              const customer = customers.find(c => c.rfc === cfdi.receptor_rfc);
-              if (customer) {
-                terceroId = customer.id;
-                terceroNombre = customer.nombre;
-                terceroTipo = 'cliente';
-              }
-            }
-          }
-          
-          if (!partyMap[terceroId]) {
-            partyMap[terceroId] = {
-              id: terceroId,
-              nombre: terceroNombre,
-              tipo: terceroTipo,
-              weeks: {}
-            };
-          }
-          
-          if (!partyMap[terceroId].weeks[weekIdx]) {
-            partyMap[terceroId].weeks[weekIdx] = { ingresos: 0, egresos: 0, items: [] };
-          }
-          
-          partyMap[terceroId].weeks[weekIdx].ingresos += item.monto || 0;
-          partyMap[terceroId].weeks[weekIdx].items.push({ ...item, tipo: 'ingreso' });
-        });
-      });
-      
-      // Process egresos
-      Object.entries(week.egresos.byCategory).forEach(([catName, catData]) => {
-        (catData.items || []).forEach(item => {
-          const payment = allPayments.find(p => p.id === item.id);
-          let terceroId = 'sin-asignar';
-          let terceroNombre = 'Sin Asignar';
-          let terceroTipo = 'proveedor';
-          
-          if (payment?.vendor_id) {
-            const vendor = vendors.find(v => v.id === payment.vendor_id);
-            if (vendor) {
-              terceroId = vendor.id;
-              terceroNombre = vendor.nombre;
-              terceroTipo = 'proveedor';
-            }
-          } else {
-            // Try to find vendor by RFC from CFDI
-            const cfdi = cfdis.find(c => c.uuid === item.uuid);
-            if (cfdi?.emisor_rfc) {
-              const vendor = vendors.find(v => v.rfc === cfdi.emisor_rfc);
-              if (vendor) {
-                terceroId = vendor.id;
-                terceroNombre = vendor.nombre;
-                terceroTipo = 'proveedor';
-              }
-            }
-          }
-          
-          if (!partyMap[terceroId]) {
-            partyMap[terceroId] = {
-              id: terceroId,
-              nombre: terceroNombre,
-              tipo: terceroTipo,
-              weeks: {}
-            };
-          }
-          
-          if (!partyMap[terceroId].weeks[weekIdx]) {
-            partyMap[terceroId].weeks[weekIdx] = { ingresos: 0, egresos: 0, items: [] };
-          }
-          
-          partyMap[terceroId].weeks[weekIdx].egresos += item.monto || 0;
-          partyMap[terceroId].weeks[weekIdx].items.push({ ...item, tipo: 'egreso' });
-        });
-      });
-    });
-    
-    return Object.values(partyMap);
-  };
 
-  // Filter party data based on current filters
-  const filterPartyData = (partyData) => {
-    return partyData.filter(party => {
-      // Filter by search term
-      if (partyFilters.searchTerm.trim() !== '') {
-        const searchLower = partyFilters.searchTerm.toLowerCase();
-        if (!party.nombre.toLowerCase().includes(searchLower)) {
-          return false;
-        }
-      }
-      
-      // Filter by tipo tercero
-      if (partyFilters.tipoTercero !== 'todos') {
-        if (party.tipo !== partyFilters.tipoTercero) {
-          return false;
-        }
-      }
-      
-      // Filter by saldo tipo
-      if (partyFilters.saldoTipo !== 'todos') {
-        const totalIngresos = Object.values(party.weeks).reduce((s, w) => s + w.ingresos, 0);
-        const totalEgresos = Object.values(party.weeks).reduce((s, w) => s + w.egresos, 0);
-        const netTotal = totalIngresos - totalEgresos;
+@router.put("/{payment_id}/categorize")
+async def categorize_payment_direct(
+    payment_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    category_id: str = Query(None),
+    subcategory_id: str = Query(None)
+):
+    """
+    Categorize a payment directly (for payments without CFDI).
+    This is useful for bank fees, manual entries, etc.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    payment = await db.payments.find_one({'id': payment_id, 'company_id': company_id}, {'_id': 0})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    
+    update_data = {}
+    if category_id:
+        update_data['category_id'] = category_id
+    if subcategory_id:
+        update_data['subcategory_id'] = subcategory_id
+    
+    if update_data:
+        await db.payments.update_one(
+            {'id': payment_id, 'company_id': company_id},
+            {'$set': update_data}
+        )
+        await audit_log(company_id, 'Payment', payment_id, 'CATEGORIZE', current_user['id'], update_data)
+    
+    return {'status': 'success', 'message': 'Pago categorizado correctamente'}
+
+
+
+@router.post("/sync-reconciliation-status")
+async def sync_reconciliation_status(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Synchronize payment status with bank transaction reconciliation status.
+    If a payment has a bank_transaction_id pointing to a non-reconciled transaction,
+    the payment status should be 'pendiente', not 'completado'.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get all bank transactions and build a set of truly reconciled IDs
+    bank_txns = await db.bank_transactions.find({'company_id': company_id}, {'_id': 0}).to_list(5000)
+    reconciled_txn_ids = set(t['id'] for t in bank_txns if t.get('conciliado') == True)
+    
+    # Find all payments with bank_transaction_id
+    payments = await db.payments.find({'company_id': company_id, 'bank_transaction_id': {'$ne': None}}, {'_id': 0}).to_list(5000)
+    
+    updated_count = 0
+    for payment in payments:
+        bank_txn_id = payment.get('bank_transaction_id')
+        current_status = payment.get('estatus')
         
-        if (partyFilters.saldoTipo === 'positivo' && netTotal <= 0) {
-          return false;
-        }
-        if (partyFilters.saldoTipo === 'negativo' && netTotal >= 0) {
-          return false;
-        }
-      }
-      
-      return true;
-    });
-  };
-
-  // Check if party filters are active
-  const hasPartyFiltersActive = () => {
-    return partyFilters.searchTerm.trim() !== '' || 
-           partyFilters.tipoTercero !== 'todos' || 
-           partyFilters.saldoTipo !== 'todos';
-  };
-
-  // Reset party filters
-  const resetPartyFilters = () => {
-    setPartyFilters({
-      searchTerm: '',
-      tipoTercero: 'todos',
-      saldoTipo: 'todos'
-    });
-  };
-
-  // Export party data (filtered or all)
-  const exportPartyReport = () => {
-    const partyData = processDataByParty();
-    const filteredParties = filterPartyData(partyData);
-    
-    if (filteredParties.length === 0) {
-      toast.error('No hay datos para exportar');
-      return;
-    }
-    
-    const reportData = [];
-    
-    filteredParties.forEach(party => {
-      // Calculate totals for this party
-      const totalIngresos = Object.values(party.weeks).reduce((s, w) => s + w.ingresos, 0);
-      const totalEgresos = Object.values(party.weeks).reduce((s, w) => s + w.egresos, 0);
-      const netTotal = totalIngresos - totalEgresos;
-      
-      // Create a row for each week with data
-      weeklyData.forEach((week, weekIdx) => {
-        const weekData = party.weeks[weekIdx];
-        if (!weekData || (weekData.ingresos === 0 && weekData.egresos === 0)) return;
+        # If the bank transaction is NOT reconciled, payment should be 'pendiente'
+        if bank_txn_id and bank_txn_id not in reconciled_txn_ids:
+            if current_status == 'completado':
+                await db.payments.update_one(
+                    {'id': payment['id']},
+                    {'$set': {'estatus': 'pendiente'}}
+                )
+                updated_count += 1
+                logger.info(f"Payment {payment['id']} status changed from 'completado' to 'pendiente' (bank txn not reconciled)")
         
-        const weekLabel = `S${weekIdx + 1}`;
-        const dataType = week.dataType === 'real' ? 'Real' : week.dataType === 'actual' ? 'Actual' : 'Proyectado';
+        # If the bank transaction IS reconciled, payment should be 'completado'
+        elif bank_txn_id and bank_txn_id in reconciled_txn_ids:
+            if current_status == 'pendiente':
+                await db.payments.update_one(
+                    {'id': payment['id']},
+                    {'$set': {'estatus': 'completado'}}
+                )
+                updated_count += 1
+                logger.info(f"Payment {payment['id']} status changed from 'pendiente' to 'completado' (bank txn reconciled)")
+    
+    return {
+        'status': 'success',
+        'message': f'Sincronización completada. {updated_count} pagos actualizados.',
+        'updated_count': updated_count
+    }
+
+
+@router.get("/with-reconciliation-status")
+async def get_payments_with_reconciliation_status(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    tipo: Optional[str] = Query(None),
+    limit: int = Query(100, le=1000)
+):
+    """
+    Get payments with their TRUE reconciliation status from bank transactions.
+    This includes a computed 'estado_real' field that reflects whether the
+    associated bank transaction is actually reconciled.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get all bank transactions for this company
+    bank_txns = await db.bank_transactions.find({'company_id': company_id}, {'_id': 0}).to_list(5000)
+    bank_txn_map = {t['id']: t for t in bank_txns}
+    
+    # Build query
+    query = {'company_id': company_id}
+    if tipo:
+        query['tipo'] = tipo
+    
+    payments = await db.payments.find(query, {'_id': 0}).sort('fecha_vencimiento', -1).limit(limit).to_list(limit)
+    
+    # Add computed 'estado_real' based on bank transaction status
+    for p in payments:
+        bank_txn_id = p.get('bank_transaction_id')
+        if bank_txn_id:
+            bank_txn = bank_txn_map.get(bank_txn_id)
+            if bank_txn:
+                p['estado_real'] = 'completado' if bank_txn.get('conciliado') == True else 'pendiente'
+                p['conciliacion_real'] = bank_txn.get('conciliado', False)
+            else:
+                # Bank transaction not found, mark as unknown
+                p['estado_real'] = 'desconocido'
+                p['conciliacion_real'] = False
+        else:
+            # No bank transaction linked, use payment's own status
+            p['estado_real'] = p.get('estatus', 'pendiente')
+            p['conciliacion_real'] = None  # Not applicable
         
-        reportData.push({
-          'Proveedor/Cliente': party.nombre,
-          'Tipo Tercero': party.tipo === 'cliente' ? 'Cliente' : 'Proveedor',
-          'Semana': weekLabel,
-          'Fecha': week.dateLabel,
-          'Tipo Dato': dataType,
-          'Ingresos': weekData.ingresos,
-          'Egresos': weekData.egresos,
-          'Neto Semana': weekData.ingresos - weekData.egresos,
-          'Total Ingresos': totalIngresos,
-          'Total Egresos': totalEgresos,
-          'Saldo Neto Total': netTotal
-        });
-      });
-    });
+        # Convert datetime fields
+        for field in ['fecha_vencimiento', 'fecha_pago', 'created_at']:
+            if isinstance(p.get(field), str):
+                p[field] = datetime.fromisoformat(p[field])
     
-    if (reportData.length === 0) {
-      toast.error('No hay movimientos para exportar');
-      return;
+    return payments
+
+
+@router.post("/cleanup-duplicates")
+async def cleanup_duplicate_payments(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Remove duplicate payments that reference the same bank_transaction_id.
+    Keeps only the first (oldest) payment for each bank transaction.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    
+    # Get all payments with bank_transaction_id
+    payments = await db.payments.find(
+        {'company_id': company_id, 'bank_transaction_id': {'$ne': None}},
+        {'_id': 0}
+    ).sort('created_at', 1).to_list(10000)  # Sort by created_at to keep oldest
+    
+    # Group by bank_transaction_id
+    from collections import defaultdict
+    grouped = defaultdict(list)
+    for p in payments:
+        bank_txn_id = p.get('bank_transaction_id')
+        if bank_txn_id:
+            grouped[bank_txn_id].append(p)
+    
+    # Find and delete duplicates (keep first, delete rest)
+    deleted_count = 0
+    deleted_ids = []
+    
+    for bank_txn_id, payment_list in grouped.items():
+        if len(payment_list) > 1:
+            # Keep the first one (oldest by created_at), delete the rest
+            to_delete = payment_list[1:]  # All except first
+            for p in to_delete:
+                await db.payments.delete_one({'id': p['id']})
+                deleted_ids.append(p['id'])
+                deleted_count += 1
+                logger.info(f"Deleted duplicate payment {p['id']} for bank_txn {bank_txn_id}")
+    
+    return {
+        'status': 'success',
+        'message': f'Limpieza completada. {deleted_count} pagos duplicados eliminados.',
+        'deleted_count': deleted_count,
+        'deleted_ids': deleted_ids[:20]  # Show first 20 for reference
     }
+
+
+
+@router.get("/summary")
+async def get_payments_summary(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Summary of payments for dashboard cards"""
+    company_id = await get_active_company_id(request, current_user)
+    payments = await db.payments.find({'company_id': company_id}, {'_id': 0}).to_list(10000)
     
-    const isFiltered = hasPartyFiltersActive();
-    const filename = isFiltered ? 'Terceros_Filtrado' : 'Terceros_18_Semanas';
+    total_pagado = sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'pago' and p.get('estatus') == 'completado')
+    total_cobrado = sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'cobro' and p.get('estatus') == 'completado')
+    total_proy_pagos = sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'pago' and p.get('es_real') == False)
+    total_proy_cobros = sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'cobro' and p.get('es_real') == False)
     
-    const success = exportToExcel(reportData, filename, 'Por Tercero');
-    if (success) {
-      toast.success(isFiltered ? 'Terceros filtrados exportados a Excel' : 'Datos de terceros exportados a Excel');
-    } else {
-      toast.error('Error al exportar');
+    return {
+        'total_pagado': total_pagado,
+        'total_cobrado': total_cobrado,
+        'total_proy_pagos': total_proy_pagos,
+        'total_proy_cobros': total_proy_cobros,
     }
-  };
 
-  // =====================================================================
-  // EXPORTAR REPORTE DETALLADO
-  // =====================================================================
-  const exportDetailReport = () => {
-    const reportData = [];
+
+@router.get("/breakdown")
+async def get_payments_breakdown(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Breakdown of CFDI pending amounts and payment totals for dashboard cards.
+    Uses REAL pending balances (total - monto_cobrado/pagado)."""
+    company_id = await get_active_company_id(request, current_user)
     
-    weeklyData.forEach((week, weekIdx) => {
-      const weekLabel = `S${weekIdx + 1}`;
-      const dataType = week.dataType === 'real' ? 'Real' : week.dataType === 'actual' ? 'Actual' : 'Proyectado';
-      
-      // Process ingresos
-      Object.entries(week.ingresos.byCategory).forEach(([catName, catData]) => {
-        (catData.items || []).forEach(item => {
-          const payment = allPayments.find(p => p.id === item.id);
-          const cfdi = cfdis.find(c => c.uuid === item.uuid);
-          const bankTxn = payment?.bank_transaction_id ? bankTransactions.find(t => t.id === payment.bank_transaction_id) : null;
-          
-          let tercero = item.beneficiario || payment?.beneficiario || '';
-          if (payment?.customer_id) {
-            const customer = customers.find(c => c.id === payment.customer_id);
-            tercero = customer?.nombre || tercero;
-          }
-          
-          reportData.push({
-            'Semana': weekLabel,
-            'Fecha': week.dateLabel,
-            'Tipo Dato': dataType,
-            'Categoría': catName,
-            'Tipo': 'Ingreso',
-            'Cliente/Proveedor': tercero,
-            'UUID': item.uuid || cfdi?.uuid || '',
-            'Folio': cfdi?.folio || '',
-            'Fecha Factura': cfdi?.fecha_emision ? format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy') : '',
-            'Monto': item.monto,
-            'Moneda': payment?.moneda || cfdi?.moneda || 'MXN',
-            'Monto MXN': item.monto,
-            'Cuenta Bancaria': bankTxn?.banco || '',
-            'Conciliado': bankTxn ? 'Sí' : 'No',
-            'Movimiento Bancario': bankTxn?.descripcion || ''
-          });
-        });
-      });
-      
-      // Process egresos
-      Object.entries(week.egresos.byCategory).forEach(([catName, catData]) => {
-        (catData.items || []).forEach(item => {
-          const payment = allPayments.find(p => p.id === item.id);
-          const cfdi = cfdis.find(c => c.uuid === item.uuid);
-          const bankTxn = payment?.bank_transaction_id ? bankTransactions.find(t => t.id === payment.bank_transaction_id) : null;
-          
-          let tercero = item.beneficiario || payment?.beneficiario || '';
-          if (payment?.vendor_id) {
-            const vendor = vendors.find(v => v.id === payment.vendor_id);
-            tercero = vendor?.nombre || tercero;
-          }
-          
-          reportData.push({
-            'Semana': weekLabel,
-            'Fecha': week.dateLabel,
-            'Tipo Dato': dataType,
-            'Categoría': catName,
-            'Tipo': 'Egreso',
-            'Cliente/Proveedor': tercero,
-            'UUID': item.uuid || cfdi?.uuid || '',
-            'Folio': cfdi?.folio || '',
-            'Fecha Factura': cfdi?.fecha_emision ? format(new Date(cfdi.fecha_emision), 'dd/MM/yyyy') : '',
-            'Monto': item.monto,
-            'Moneda': payment?.moneda || cfdi?.moneda || 'MXN',
-            'Monto MXN': item.monto,
-            'Cuenta Bancaria': bankTxn?.banco || '',
-            'Conciliado': bankTxn ? 'Sí' : 'No',
-            'Movimiento Bancario': bankTxn?.descripcion || ''
-          });
-        });
-      });
-    });
-    
-    if (reportData.length === 0) {
-      toast.error('No hay datos para exportar');
-      return;
+    # Get FX rates
+    rates_docs = await db.fx_rates.find({'company_id': company_id}).to_list(100)
+    fx = {'MXN': 1.0, 'USD': 17.5, 'EUR': 19.0}
+    for r in rates_docs:
+        moneda = r.get('moneda_cotizada') or r.get('moneda_origen')
+        tasa = r.get('tipo_cambio') or r.get('tasa')
+        if moneda and tasa:
+            fx[moneda] = tasa
+
+    def to_mxn(amount, moneda):
+        if not moneda or moneda == 'MXN':
+            return amount
+        tc = fx.get(moneda, 1)
+        return amount * tc
+
+    # Get all active CFDIs
+    cfdis = await db.cfdis.find(
+        {'company_id': company_id, 'estado_cancelacion': {'$ne': 'cancelado'}},
+        {'_id': 0, 'tipo_cfdi': 1, 'total': 1, 'moneda': 1, 'tipo_cambio': 1,
+         'monto_cobrado': 1, 'monto_pagado': 1}
+    ).to_list(10000)
+
+    cfdi_por_cobrar_mxn = 0.0
+    cfdi_por_cobrar_count = 0
+    cfdi_por_pagar_mxn = 0.0
+    cfdi_por_pagar_count = 0
+
+    for c in cfdis:
+        total = c.get('total', 0) or 0
+        moneda = c.get('moneda', 'MXN') or 'MXN'
+        tc = c.get('tipo_cambio', 1) or 1
+
+        if c.get('tipo_cfdi') == 'ingreso':
+            ya_cobrado = c.get('monto_cobrado', 0) or 0
+            pendiente = max(0, total - ya_cobrado)
+            if pendiente > 0.01:
+                # Use row-level tipo_cambio for accuracy
+                mxn = pendiente * tc if moneda != 'MXN' else pendiente
+                cfdi_por_cobrar_mxn += mxn
+                cfdi_por_cobrar_count += 1
+        else:
+            ya_pagado = c.get('monto_pagado', 0) or 0
+            pendiente = max(0, total - ya_pagado)
+            if pendiente > 0.01:
+                mxn = pendiente * tc if moneda != 'MXN' else pendiente
+                cfdi_por_pagar_mxn += mxn
+                cfdi_por_pagar_count += 1
+
+    # Get real payments from payments collection
+    payments = await db.payments.find(
+        {'company_id': company_id, 'es_real': True, 'estatus': 'completado'},
+        {'_id': 0, 'tipo': 1, 'monto': 1, 'moneda': 1}
+    ).to_list(10000)
+
+    total_pagado_mxn = sum(to_mxn(p.get('monto', 0) or 0, p.get('moneda', 'MXN')) for p in payments if p.get('tipo') == 'pago')
+    total_cobrado_mxn = sum(to_mxn(p.get('monto', 0) or 0, p.get('moneda', 'MXN')) for p in payments if p.get('tipo') == 'cobro')
+
+    # FIX A: Si no hay payments registrados pero los CFDIs tienen monto_cobrado/pagado
+    # (vienen de Alegra/Contalink), leer directamente de los CFDIs para que las tarjetas
+    # Pagado/Cobrado no aparezcan en $0.
+    if total_pagado_mxn == 0 and total_cobrado_mxn == 0:
+        for c in cfdis:
+            moneda = c.get('moneda', 'MXN') or 'MXN'
+            tc = c.get('tipo_cambio', 1) or 1
+            mxn_factor = tc if moneda != 'MXN' else 1
+            if c.get('tipo_cfdi') == 'ingreso':
+                cobrado = c.get('monto_cobrado', 0) or 0
+                if cobrado > 0.01:
+                    total_cobrado_mxn += cobrado * mxn_factor
+            else:
+                pagado = c.get('monto_pagado', 0) or 0
+                if pagado > 0.01:
+                    total_pagado_mxn += pagado * mxn_factor
+
+    # Projected payments
+    proj_payments = await db.payments.find(
+        {'company_id': company_id, 'es_real': False},
+        {'_id': 0, 'tipo': 1, 'monto': 1, 'moneda': 1}
+    ).to_list(10000)
+
+    proy_pagos_mxn = sum(to_mxn(p.get('monto', 0) or 0, p.get('moneda', 'MXN')) for p in proj_payments if p.get('tipo') == 'pago')
+    proy_cobros_mxn = sum(to_mxn(p.get('monto', 0) or 0, p.get('moneda', 'MXN')) for p in proj_payments if p.get('tipo') == 'cobro')
+
+    return {
+        'cfdi_por_cobrar': {
+            'total_equiv_mxn': round(cfdi_por_cobrar_mxn, 2),
+            'total_count': cfdi_por_cobrar_count,
+        },
+        'cfdi_por_pagar': {
+            'total_equiv_mxn': round(cfdi_por_pagar_mxn, 2),
+            'total_count': cfdi_por_pagar_count,
+        },
+        'pagado': {
+            'total_equiv_mxn': round(total_pagado_mxn, 2),
+        },
+        'cobrado': {
+            'total_equiv_mxn': round(total_cobrado_mxn, 2),
+        },
+        'proy_pagos': {
+            'total_equiv_mxn': round(proy_pagos_mxn, 2),
+        },
+        'proy_cobros': {
+            'total_equiv_mxn': round(proy_cobros_mxn, 2),
+        },
     }
-    
-    const success = exportToExcel(reportData, 'Detalle_Cashflow', 'Detalle');
-    if (success) {
-      toast.success('Reporte de detalle exportado a Excel');
-    } else {
-      toast.error('Error al exportar');
+
+
+@router.post("/sync-contalink")
+async def sync_payments_from_contalink(
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Sincroniza cobranza y pagos desde Contalink"""
+    company_id = await get_active_company_id(request, current_user)
+
+    # Buscar credenciales con formato de contalink.py (type="contalink")
+    creds_doc = await db.integrations.find_one(
+        {"company_id": company_id, "type": "contalink", "active": True},
+        {"_id": 0}
+    )
+    if not creds_doc:
+        raise HTTPException(status_code=404, detail="No tienes Contalink conectado. Ve a Integraciones y guarda tu API Key.")
+
+    api_key = creds_doc.get("api_key", "")
+    rfc = creds_doc.get("rfc", "")
+
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API Key de Contalink no configurada.")
+    if not rfc or rfc == "PENDIENTE":
+        raise HTTPException(status_code=400, detail="RFC no configurado. Ve a Integraciones → Contalink y guarda el RFC.")
+
+    from services.contalink import ContalinkClient
+    import calendar as cal
+
+    client = ContalinkClient(api_key)
+    created = 0
+    skipped = 0
+    errors = []
+
+    now = datetime.now(timezone.utc)
+    for months_back in range(3):
+        if months_back == 0:
+            target = now
+        else:
+            first_of_month = now.replace(day=1)
+            target = first_of_month - timedelta(days=30 * months_back)
+
+        year = target.year
+        month = target.month
+        last_day = cal.monthrange(year, month)[1]
+        start = f"{year}-{month:02d}-01"
+        end = f"{year}-{month:02d}-{last_day:02d}"
+
+        # Facturas emitidas (cobranza CxC)
+        try:
+            issued = await client.get_invoices(
+                rfc=rfc,
+                transaction_type="E",       # E=Emitidas
+                document_type="Ingreso",    # Contalink usa nombre completo
+                start_date=start,
+                end_date=end,
+            )
+            # Contalink response: {"list": {"total": N, "invoices": [...]}}
+            if isinstance(issued, list):
+                inv_list = issued
+            elif "list" in issued:
+                inv_list = issued["list"].get("invoices", [])
+            else:
+                inv_list = issued.get("data", issued.get("invoices", []))
+            logger.info(f"Contalink issued {start}: {len(inv_list)} facturas")
+            if inv_list:
+                sample = inv_list[0]
+                logger.info(f"Contalink sample invoice keys: {list(sample.keys())}")
+                logger.info(f"Contalink sample date fields: date={sample.get('date')} fecha={sample.get('fecha')} fecha_expedicion={sample.get('fecha_expedicion')} fecha_emision={sample.get('fecha_emision')}")
+
+            for inv in inv_list:
+                monto = float(inv.get("total", 0) or 0)
+                estatus = (inv.get("estatus") or inv.get("status") or "vigente").lower()
+                if monto <= 0 or estatus == "cancelado":
+                    continue
+                ref = f"contalink-issued-{inv.get('uuid', inv.get('id', str(inv.get('folio',''))))}-{start}"
+                if await db.payments.find_one({"company_id": company_id, "referencia_contalink": ref}):
+                    skipped += 1
+                    continue
+                try:
+                    fecha_str = (inv.get("fecha_expedicion") or inv.get("fecha") or
+                                 inv.get("date") or inv.get("fecha_emision") or end)
+                    fecha = datetime.strptime(str(fecha_str)[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                except:
+                    fecha = datetime.now(timezone.utc)
+                uuid_val = (inv.get("uuid") or inv.get("UUID") or inv.get("folio_fiscal") or "")
+                receptor = inv.get("nombre_receptor") or inv.get("receptor_nombre", "")
+                await db.payments.insert_one({
+                    "id":                   str(uuid.uuid4()),
+                    "company_id":           company_id,
+                    "tipo":                 "cobro",
+                    "monto":                monto,
+                    "moneda":               inv.get("moneda", "MXN"),
+                    "tipo_cambio_historico": float(inv.get("tipo_cambio", 1) or 1),
+                    "fecha":                fecha.isoformat(),
+                    "fecha_pago":           fecha.isoformat(),
+                    "fecha_vencimiento":    fecha.isoformat(),
+                    "concepto":             f"Cobranza {inv.get('folio','')} - {receptor}".strip(" -"),
+                    "beneficiario":         receptor,
+                    "estatus":              "completado",
+                    "source":               "contalink",
+                    "es_real":              True,
+                    "referencia_contalink": ref,
+                    "cfdi_uuid":            uuid_val,
+                    "created_at":           datetime.now(timezone.utc).isoformat(),
+                    "created_by":           current_user["id"],
+                })
+                created += 1
+
+                # También guardar en cfdis para proyecciones futuras
+                if uuid_val and not await db.cfdis.find_one({"company_id": company_id, "uuid": uuid_val}):
+                    # Calcular fecha de vencimiento (30 días después de expedición)
+                    fecha_venc = fecha + timedelta(days=30)
+                    await db.cfdis.insert_one({
+                        "id":                  str(uuid.uuid4()),
+                        "company_id":          company_id,
+                        "uuid":                uuid_val,
+                        "tipo_cfdi":           "ingreso",
+                        "fecha_emision":       fecha.isoformat(),
+                        "fecha_expedicion":    fecha.isoformat(),
+                        "fecha_vencimiento":   fecha_venc.isoformat(),
+                        "total":               monto,
+                        "moneda":              inv.get("moneda", "MXN"),
+                        "tipo_cambio":         float(inv.get("tipo_cambio", 1) or 1),
+                        "monto_cobrado":       monto,  # ya cobrado = no proyectar
+                        "monto_pagado":        0,
+                        "nombre_receptor":     receptor,
+                        "nombre_emisor":       inv.get("nombre_emisor") or inv.get("emisor_nombre", ""),
+                        "rfc_receptor":        inv.get("rfc_receptor", ""),
+                        "rfc_emisor":          inv.get("rfc_emisor", rfc),
+                        "folio":               str(inv.get("folio", "")),
+                        "estado_cancelacion":  "vigente",
+                        "source":              "contalink",
+                        "created_at":          datetime.now(timezone.utc).isoformat(),
+                    })
+        except Exception as e:
+            errors.append(f"Emitidas {start}: {str(e)}")
+            logger.error(f"sync-contalink issued error: {e}")
+
+        # Facturas recibidas (pagos CxP)
+        try:
+            received = await client.get_invoices(
+                rfc=rfc,
+                transaction_type="R",       # R=Recibidas
+                document_type="Ingreso",
+                start_date=start,
+                end_date=end,
+            )
+            if isinstance(received, list):
+                rec_list = received
+            elif "list" in received:
+                rec_list = received["list"].get("invoices", [])
+            else:
+                rec_list = received.get("data", received.get("invoices", []))
+            logger.info(f"Contalink received {start}: {len(rec_list)} facturas")
+
+            for inv in rec_list:
+                monto = float(inv.get("total", 0) or 0)
+                estatus = (inv.get("estatus") or inv.get("status") or "vigente").lower()
+                if monto <= 0 or estatus == "cancelado":
+                    continue
+                ref = f"contalink-received-{inv.get('uuid', inv.get('id', str(inv.get('folio',''))))}-{start}"
+                if await db.payments.find_one({"company_id": company_id, "referencia_contalink": ref}):
+                    skipped += 1
+                    continue
+                try:
+                    fecha_str = (inv.get("fecha_expedicion") or inv.get("fecha") or
+                                 inv.get("date") or inv.get("fecha_emision") or end)
+                    fecha = datetime.strptime(str(fecha_str)[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                except:
+                    fecha = datetime.now(timezone.utc)
+                uuid_val = (inv.get("uuid") or inv.get("UUID") or inv.get("folio_fiscal") or "")
+                emisor = inv.get("nombre_emisor") or inv.get("emisor_nombre", "")
+                await db.payments.insert_one({
+                    "id":                   str(uuid.uuid4()),
+                    "company_id":           company_id,
+                    "tipo":                 "pago",
+                    "monto":                monto,
+                    "moneda":               inv.get("moneda", "MXN"),
+                    "tipo_cambio_historico": float(inv.get("tipo_cambio", 1) or 1),
+                    "fecha":                fecha.isoformat(),
+                    "fecha_pago":           fecha.isoformat(),
+                    "fecha_vencimiento":    fecha.isoformat(),
+                    "concepto":             f"Pago {inv.get('folio','')} - {emisor}".strip(" -"),
+                    "beneficiario":         emisor,
+                    "estatus":              "completado",
+                    "source":               "contalink",
+                    "es_real":              True,
+                    "referencia_contalink": ref,
+                    "cfdi_uuid":            uuid_val,
+                    "created_at":           datetime.now(timezone.utc).isoformat(),
+                    "created_by":           current_user["id"],
+                })
+                created += 1
+
+                # También guardar en cfdis para proyecciones futuras
+                if uuid_val and not await db.cfdis.find_one({"company_id": company_id, "uuid": uuid_val}):
+                    fecha_venc = fecha + timedelta(days=30)
+                    await db.cfdis.insert_one({
+                        "id":                  str(uuid.uuid4()),
+                        "company_id":          company_id,
+                        "uuid":                uuid_val,
+                        "tipo_cfdi":           "egreso",
+                        "fecha_emision":       fecha.isoformat(),
+                        "fecha_expedicion":    fecha.isoformat(),
+                        "fecha_vencimiento":   fecha_venc.isoformat(),
+                        "total":               monto,
+                        "moneda":              inv.get("moneda", "MXN"),
+                        "tipo_cambio":         float(inv.get("tipo_cambio", 1) or 1),
+                        "monto_cobrado":       0,
+                        "monto_pagado":        monto,  # ya pagado = no proyectar
+                        "nombre_emisor":       emisor,
+                        "nombre_receptor":     inv.get("nombre_receptor") or inv.get("receptor_nombre", ""),
+                        "rfc_emisor":          inv.get("rfc_emisor", ""),
+                        "rfc_receptor":        inv.get("rfc_receptor", rfc),
+                        "folio":               str(inv.get("folio", "")),
+                        "estado_cancelacion":  "vigente",
+                        "source":              "contalink",
+                        "created_at":          datetime.now(timezone.utc).isoformat(),
+                    })
+        except Exception as e:
+            errors.append(f"Recibidas {start}: {str(e)}")
+            logger.error(f"sync-contalink received error: {e}")
+
+    return {
+        "success": True,
+        "created": created,
+        "skipped": skipped,
+        "errors":  errors,
+        "message": f"Contalink sync: {created} movimientos importados, {skipped} ya existian.",
     }
-  };
 
-  if (loading) return <div className="p-8">{t.loading}</div>;
+@router.post("/fix-contalink-status")
+async def fix_contalink_status(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Actualiza pagos importados de Contalink de pendiente a completado"""
+    company_id = await get_active_company_id(request, current_user)
+    result = await db.payments.update_many(
+        {"company_id": company_id, "source": "contalink"},
+        {"$set": {"estatus": "completado", "es_real": True}}
+    )
+    return {"success": True, "updated": result.modified_count, "message": f"{result.modified_count} pagos actualizados a completado"}
 
-  const weeklyTotals = calculateRunningTotals();
-  const cfoKPIs = calculateCFOKPIs(weeklyTotals);
-  const chartData = prepareChartData(weeklyTotals);
-  const customConceptsIngresos = customConcepts.filter(c => c.tipo === 'ingreso');
-  const customConceptsEgresos = customConcepts.filter(c => c.tipo === 'egreso');
-  const grandTotalIngresos = weeklyTotals.reduce((sum, w) => sum + w.ingresos.total, 0);
-  const grandTotalEgresos = weeklyTotals.reduce((sum, w) => sum + w.egresos.total, 0);
-  const grandTotalCompraUSD = weeklyTotals.reduce((sum, w) => sum + (w.compraUSD || 0), 0);
-  const grandTotalVentaUSD = weeklyTotals.reduce((sum, w) => sum + (w.ventaUSD || 0), 0);
-  const grandTotalFlujoDivisas = grandTotalVentaUSD - grandTotalCompraUSD;
-  const grandTotalFlujo = grandTotalIngresos - grandTotalEgresos + grandTotalFlujoDivisas;
 
-  // Days of week translated
-  const DIAS_SEMANA_TR = [
-    { value: 0, label: t.sunday },
-    { value: 1, label: t.monday },
-    { value: 2, label: t.tuesday },
-    { value: 3, label: t.wednesday },
-    { value: 4, label: t.thursday },
-    { value: 5, label: t.friday },
-    { value: 6, label: t.saturday }
-  ];
+@router.post("/fix-contalink-fecha-pago")
+async def fix_contalink_fecha_pago(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Migración: agrega fecha_pago y fecha_vencimiento a payments de Contalink
+    que solo tienen 'fecha'. Necesario para que aparezcan en el modelo de cashflow.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    payments = await db.payments.find(
+        {
+            "company_id": company_id,
+            "source": "contalink",
+            "$or": [
+                {"fecha_pago": {"$exists": False}},
+                {"fecha_pago": None},
+            ]
+        },
+        {"_id": 0, "id": 1, "fecha": 1}
+    ).to_list(5000)
 
-  return (
-    <div className="p-6 space-y-6 bg-[#F8FAFC] min-h-screen" data-testid="cashflow-projections-page">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-[#0F172A]" style={{fontFamily: 'Manrope'}}>
-            {t.cashflowProjections}
-          </h1>
-          <p className="text-[#64748B]">
-            {language === 'es' ? `Modelo Rolling 18 semanas (4 Real + 1 Actual + 13 Proyectado) | Inicio: ${DIAS_SEMANA_TR.find(d => d.value === companyConfig.inicio_semana)?.label || t.monday}` :
-             language === 'en' ? `18-week Rolling Model (4 Real + 1 Current + 13 Projected) | Start: ${DIAS_SEMANA_TR.find(d => d.value === companyConfig.inicio_semana)?.label || t.monday}` :
-             `Modelo Rolling 18 semanas (4 Real + 1 Atual + 13 Projetado) | Início: ${DIAS_SEMANA_TR.find(d => d.value === companyConfig.inicio_semana)?.label || t.monday}`}
-            {selectedCurrency !== 'MXN' && (
-              <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-sm">
-                TC: 1 {selectedCurrency} = ${fxRates[selectedCurrency]?.toFixed(4) || '?'} MXN
-              </span>
-            )}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {/* Language Selector */}
-          <Select value={language} onValueChange={setLanguage}>
-            <SelectTrigger className="w-36" data-testid="language-selector">
-              <Globe className="w-4 h-4 mr-2" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {languages.map(lang => (
-                <SelectItem key={lang.code} value={lang.code}>
-                  {lang.flag} {lang.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          
-          {/* Config Dialog for Week Start */}
-          <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="gap-2" data-testid="config-week-start-btn">
-                <Settings size={16} />
-                {t.configure}
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>{t.configureProjections}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>{t.weekStartDay}</Label>
-                  <Select 
-                    value={companyConfig.inicio_semana?.toString()} 
-                    onValueChange={(v) => handleSaveWeekStart(parseInt(v))}
-                  >
-                    <SelectTrigger data-testid="week-start-select">
-                      <SelectValue placeholder={t.selectPeriod} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DIAS_SEMANA_TR.map(dia => (
-                        <SelectItem key={dia.value} value={dia.value.toString()}>
-                          {dia.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2 mt-4 pt-4 border-t">
-                  <Label htmlFor="cashflow-start-date">
-                    {language === 'es' ? 'Fecha de inicio del flujo' : language === 'pt' ? 'Data de início do fluxo' : 'Cashflow start date'}
-                  </Label>
-                  
-                  {/* Quick preset buttons */}
-                  <div className="flex flex-wrap gap-2 pb-1">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="h-7 text-xs"
-                      data-testid="cashflow-preset-current-year"
-                      onClick={() => {
-                        const d = new Date(new Date().getFullYear(), 0, 1);
-                        handleSaveCustomStartDate(d.toISOString().slice(0, 10));
-                      }}
-                    >
-                      {language === 'es' ? 'Año Actual' : language === 'pt' ? 'Ano Atual' : 'Current Year'}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="h-7 text-xs"
-                      data-testid="cashflow-preset-fiscal-year"
-                      title={language === 'es' ? 'Año fiscal cerrado anterior (Ene 1 año anterior)' : language === 'pt' ? 'Ano fiscal anterior fechado' : 'Previous closed fiscal year'}
-                      onClick={() => {
-                        const d = new Date(new Date().getFullYear() - 1, 0, 1);
-                        handleSaveCustomStartDate(d.toISOString().slice(0, 10));
-                      }}
-                    >
-                      {language === 'es' ? 'Año Fiscal' : language === 'pt' ? 'Ano Fiscal' : 'Fiscal Year'}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="h-7 text-xs"
-                      data-testid="cashflow-preset-last-6-months"
-                      onClick={() => {
-                        const today = new Date();
-                        const d = new Date(today.getFullYear(), today.getMonth() - 6, 1);
-                        handleSaveCustomStartDate(d.toISOString().slice(0, 10));
-                      }}
-                    >
-                      {language === 'es' ? 'Últimos 6 meses' : language === 'pt' ? 'Últimos 6 meses' : 'Last 6 months'}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="h-7 text-xs"
-                      data-testid="cashflow-preset-last-12-months"
-                      onClick={() => {
-                        const today = new Date();
-                        const d = new Date(today.getFullYear() - 1, today.getMonth(), 1);
-                        handleSaveCustomStartDate(d.toISOString().slice(0, 10));
-                      }}
-                    >
-                      {language === 'es' ? 'Últimos 12 meses' : language === 'pt' ? 'Últimos 12 meses' : 'Last 12 months'}
-                    </Button>
-                  </div>
-                  
-                  <div className="flex gap-2">
-                    <Input
-                      id="cashflow-start-date"
-                      data-testid="cashflow-start-date-input"
-                      type="date"
-                      value={customStartDate}
-                      onChange={(e) => handleSaveCustomStartDate(e.target.value)}
-                    />
-                    {customStartDate && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        data-testid="cashflow-start-date-reset"
-                        onClick={() => handleSaveCustomStartDate('')}
-                      >
-                        {language === 'es' ? 'Auto' : language === 'pt' ? 'Auto' : 'Auto'}
-                      </Button>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {language === 'es'
-                      ? 'Elige cualquier fecha (ej. 5 ene 2026). Las 18 semanas se generarán a partir del día de inicio que configuraste arriba. Deja vacío para automático.'
-                      : language === 'pt'
-                        ? 'Escolha qualquer data (ex. 5 jan 2026). As 18 semanas começarão a partir do dia configurado acima. Deixe em branco para automático.'
-                        : 'Pick any date (e.g. Jan 5, 2026). The 18 weeks will start from the configured weekday above. Leave empty for automatic.'}
-                  </p>
-                </div>
-                <div className="space-y-2 mt-4 pt-4 border-t">
-                  <Label>{t.minimumCashThreshold}</Label>
-                  <Input 
-                    type="number"
-                    value={umbralMinimoCaja}
-                    onChange={(e) => setUmbralMinimoCaja(parseFloat(e.target.value) || 0)}
-                    placeholder="Ej: 500000"
-                  />
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-          
-          {/* Currency Selector */}
-          <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
-            <SelectTrigger className="w-32" data-testid="currency-select">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CURRENCIES.map(c => (
-                <SelectItem key={c.code} value={c.code}>
-                  {c.symbol} {c.code}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          
-          <Button 
-            variant="outline" 
-            className="gap-2"
-            onClick={exportProjectionsToExcel}
-            data-testid="export-projections-btn"
-          >
-            <Download size={16} />
-            Exportar Excel
-          </Button>
-          
-          <Button 
-            variant="outline" 
-            className="gap-2 border-red-200 text-red-700 hover:bg-red-50"
-            onClick={exportToPDF}
-            disabled={exportingPdf}
-            data-testid="export-pdf-btn"
-          >
-            <FileDown size={16} />
-            {exportingPdf ? (t.exporting || 'Generando...') : t.exportPdf}
-          </Button>
-          
-          <Dialog open={conceptDialogOpen} onOpenChange={setConceptDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2 bg-[#0F172A]" data-testid="add-concept-btn">
-                <Plus size={16} />
-                {t.addConcept}
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>{t.addManualConcept}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>{t.conceptName}</Label>
-                  <Input 
-                    value={newConcept.nombre}
-                    onChange={(e) => setNewConcept({...newConcept, nombre: e.target.value})}
-                    placeholder={language === 'es' ? 'Ej: Nómina, Renta, Venta proyectada...' : 'E.g.: Payroll, Rent, Projected sale...'}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>{t.conceptType}</Label>
-                    <Select value={newConcept.tipo} onValueChange={(v) => setNewConcept({...newConcept, tipo: v})}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ingreso">
-                          <span className="flex items-center gap-2"><TrendingUp size={14} className="text-green-500" /> {t.income}</span>
-                        </SelectItem>
-                        <SelectItem value="egreso">
-                          <span className="flex items-center gap-2"><TrendingDown size={14} className="text-red-500" /> {t.expense}</span>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t.amount}</Label>
-                    <Input 
-                      type="number"
-                      step="0.01"
-                      value={newConcept.monto}
-                      onChange={(e) => setNewConcept({...newConcept, monto: e.target.value})}
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>{t.week}</Label>
-                    <Select value={String(newConcept.semana)} onValueChange={(v) => setNewConcept({...newConcept, semana: parseInt(v)})}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[1,2,3,4,5,6,7,8,9,10,11,12,13].map(s => (
-                          <SelectItem key={s} value={String(s)}>{t.week} {s}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2 flex items-end">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={newConcept.recurrente}
-                        onChange={(e) => setNewConcept({...newConcept, recurrente: e.target.checked})}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-sm">{t.recurring} ({language === 'es' ? 'todas las semanas' : 'all weeks'})</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setConceptDialogOpen(false)}>{t.cancel}</Button>
-                <Button onClick={handleAddConcept}>{t.add}</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+    updated = 0
+    for p in payments:
+        fecha = p.get("fecha")
+        if not fecha:
+            continue
+        await db.payments.update_one(
+            {"id": p["id"], "company_id": company_id},
+            {"$set": {
+                "fecha_pago":        fecha,
+                "fecha_vencimiento": fecha,
+                "estatus":           "completado",
+                "es_real":           True,
+            }}
+        )
+        updated += 1
 
-      {/* Custom Concepts Summary */}
-      {customConcepts.length > 0 && (
-        <Card className="border-blue-200 bg-blue-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-blue-800">Conceptos Manuales Agregados ({customConcepts.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {customConcepts.map(c => (
-                <div key={c.id} className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${c.tipo === 'ingreso' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                  {c.tipo === 'ingreso' ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-                  {c.nombre}: {formatCurrency(c.monto)}
-                  {c.recurrente && <span className="text-xs">(Rec.)</span>}
-                  <button onClick={() => handleDeleteConcept(c.id)} className="ml-1 hover:text-red-600">
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+    return {
+        "success": True,
+        "updated": updated,
+        "message": f"{updated} payments de Contalink actualizados con fecha_pago y fecha_vencimiento."
+    }
 
-      {/* View Mode Tabs */}
-      <Tabs value={viewMode} onValueChange={setViewMode}>
-        <TabsList>
-          <TabsTrigger value="weekly" className="gap-2">
-            <Calendar size={16} />
-            Vista Semanal (18 semanas)
-          </TabsTrigger>
-          <TabsTrigger value="monthly" className="gap-2">
-            <Calendar size={16} />
-            Vista Mensual
-          </TabsTrigger>
-          <TabsTrigger value="byParty" className="gap-2">
-            <Building2 size={16} />
-            Por Cliente/Proveedor
-          </TabsTrigger>
-        </TabsList>
 
-        {/* WEEKLY VIEW */}
-        <TabsContent value="weekly" className="mt-4 space-y-4">
-          <div ref={reportRef}>
-          
-          {/* ===== CFO KPIs DASHBOARD ===== */}
-          {cfoKPIs && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4" data-testid="cfo-kpis-section">
-              {/* Net Burn Rate */}
-              <Card className="border-l-4 border-l-blue-500">
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-                    <Activity size={14} />
-                    Net Burn Rate
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-xs text-gray-400">Real (S1-S4):</span>
-                      <span className={`text-lg font-bold ${cfoKPIs.burnRateReal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatCurrency(cfoKPIs.burnRateReal)}/sem
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-xs text-gray-400">Proy (S6-S18):</span>
-                      <span className={`text-lg font-bold ${cfoKPIs.burnRateProyectado >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatCurrency(cfoKPIs.burnRateProyectado)}/sem
-                      </span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
 
-              {/* Cash Gap Analysis */}
-              <Card className={`border-l-4 ${cfoKPIs.semanasEnRiesgo.length > 0 ? 'border-l-red-500' : 'border-l-green-500'}`}>
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-                    <AlertTriangle size={14} />
-                    Cash Gap Analysis
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-xs text-gray-400">Umbral mínimo:</span>
-                      <span className="text-sm font-medium">{formatCurrency(umbralMinimoCaja)}</span>
-                    </div>
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-xs text-gray-400">Semanas en riesgo:</span>
-                      <span className={`text-lg font-bold ${cfoKPIs.semanasEnRiesgo.length > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        {cfoKPIs.semanasEnRiesgo.length} de 18
-                      </span>
-                    </div>
-                    {cfoKPIs.semanaCritica && (
-                      <div className="flex justify-between items-baseline">
-                        <span className="text-xs text-gray-400">Semana crítica:</span>
-                        <span className="text-sm font-medium text-red-500">
-                          {cfoKPIs.semanaCritica.semana} ({formatCurrency(cfoKPIs.semanaCritica.saldoFinal)})
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
 
-              {/* Volatilidad del Flujo */}
-              <Card className="border-l-4 border-l-purple-500">
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-                    <BarChart3 size={14} />
-                    Volatilidad del Flujo
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-xs text-gray-400">Desv. Estándar:</span>
-                      <span className="text-lg font-bold text-purple-600">
-                        {formatCurrency(cfoKPIs.volatilidad)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-xs text-gray-400">Coef. Variación:</span>
-                      <span className={`text-sm font-medium ${cfoKPIs.coeficienteVariacion > 50 ? 'text-red-500' : cfoKPIs.coeficienteVariacion > 25 ? 'text-amber-500' : 'text-green-500'}`}>
-                        {cfoKPIs.coeficienteVariacion.toFixed(1)}%
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {cfoKPIs.coeficienteVariacion > 50 ? '⚠️ Alta volatilidad' : cfoKPIs.coeficienteVariacion > 25 ? '⚡ Volatilidad moderada' : '✅ Flujo estable'}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+@router.post("/fix-contalink-dates")
+async def fix_contalink_dates(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Migración puntual: corrige la fecha de los payments de Contalink que quedaron
+    con la fecha de import (hoy) en lugar de la fecha del CFDI.
+    Usa cfdi_uuid para buscar la fecha real en la colección de CFDIs.
+    Ejecutar UNA VEZ después de sincronizar.
+    """
+    company_id = await get_active_company_id(request, current_user)
 
-              {/* Runway & Ratio */}
-              <Card className="border-l-4 border-l-amber-500">
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-                    <Target size={14} />
-                    Indicadores Operativos
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-xs text-gray-400">Runway:</span>
-                      <span className={`text-lg font-bold ${cfoKPIs.runway < 8 ? 'text-red-600' : cfoKPIs.runway < 16 ? 'text-amber-600' : 'text-green-600'}`}>
-                        {cfoKPIs.runway > 100 ? '100+' : cfoKPIs.runway} semanas
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-xs text-gray-400">Ratio Cobranza/Pagos:</span>
-                      <span className={`text-lg font-bold ${cfoKPIs.ratioCobranzaPagos >= 1 ? 'text-green-600' : 'text-red-600'}`}>
-                        {cfoKPIs.ratioCobranzaPagos > 10 ? '>10' : cfoKPIs.ratioCobranzaPagos.toFixed(2)}x
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {cfoKPIs.ratioCobranzaPagos >= 1 ? '✅ Cobranza > Pagos' : '⚠️ Pagos > Cobranza'}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
+    # Traer payments de Contalink con cfdi_uuid
+    payments = await db.payments.find(
+        {"company_id": company_id, "source": "contalink", "cfdi_uuid": {"$exists": True, "$ne": ""}},
+        {"_id": 0, "id": 1, "cfdi_uuid": 1, "fecha": 1}
+    ).to_list(5000)
 
-          {/* ===== FLUJO ACUMULADO RESUMEN ===== */}
-          {cfoKPIs && (
-            <Card className="bg-gradient-to-r from-slate-50 to-blue-50" data-testid="flujo-acumulado-section">
-              <CardHeader className="py-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <TrendingUp size={18} />
-                  Flujo de Caja Acumulado: Real vs Proyectado
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="py-2">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">Ingresos Reales (S1-S5)</div>
-                    <div className="text-xl font-bold text-green-600">{formatCurrency(cfoKPIs.totalIngresosReales)}</div>
-                  </div>
-                  <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">Egresos Reales (S1-S5)</div>
-                    <div className="text-xl font-bold text-red-600">{formatCurrency(cfoKPIs.totalEgresosReales)}</div>
-                  </div>
-                  <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">Ingresos Proyectados (S6-S18)</div>
-                    <div className="text-xl font-bold text-green-500">{formatCurrency(cfoKPIs.totalIngresosProyectados)}</div>
-                  </div>
-                  <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">Egresos Proyectados (S6-S18)</div>
-                    <div className="text-xl font-bold text-red-500">{formatCurrency(cfoKPIs.totalEgresosProyectados)}</div>
-                  </div>
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-4">
-                  <div className="text-center p-4 bg-blue-100 rounded-lg">
-                    <div className="text-sm text-blue-700 mb-1">Flujo Neto Real Acumulado</div>
-                    <div className={`text-2xl font-bold ${cfoKPIs.totalFlujoNetoReal >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                      {formatCurrency(cfoKPIs.totalFlujoNetoReal)}
-                    </div>
-                  </div>
-                  <div className="text-center p-4 bg-indigo-100 rounded-lg">
-                    <div className="text-sm text-indigo-700 mb-1">Flujo Neto Proyectado Total</div>
-                    <div className={`text-2xl font-bold ${cfoKPIs.acumuladoProyectadoFinal >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                      {formatCurrency(cfoKPIs.acumuladoProyectadoFinal)}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+    updated = 0
+    not_found = 0
+    for p in payments:
+        cfdi_uuid = p.get("cfdi_uuid")
+        if not cfdi_uuid:
+            continue
+        cfdi = await db.cfdis.find_one(
+            {"company_id": company_id, "$or": [
+                {"uuid": cfdi_uuid}, {"folio_fiscal": cfdi_uuid}
+            ]},
+            {"_id": 0, "fecha_expedicion": 1, "fecha": 1}
+        )
+        if not cfdi:
+            not_found += 1
+            continue
+        fecha_real = cfdi.get("fecha_expedicion") or cfdi.get("fecha")
+        if not fecha_real:
+            not_found += 1
+            continue
+        if not isinstance(fecha_real, str):
+            fecha_real = fecha_real.isoformat()
+        await db.payments.update_one(
+            {"id": p["id"], "company_id": company_id},
+            {"$set": {"fecha": fecha_real, "fecha_pago": fecha_real}}
+        )
+        updated += 1
 
-          {/* ===== GRÁFICOS COMPARATIVOS ===== */}
-          {chartData.length > 0 && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-testid="charts-section">
-              {/* Gráfico 1: Flujo Acumulado Real vs Proyectado */}
-              <Card>
-                <CardHeader className="py-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <TrendingUp size={18} className="text-blue-600" />
-                    Flujo Acumulado: Real vs Proyectado
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <ComposedChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                      <XAxis dataKey="semana" tick={{ fontSize: 11 }} />
-                      <YAxis 
-                        tick={{ fontSize: 10 }} 
-                        tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
-                      />
-                      <Tooltip 
-                        formatter={(value, name) => [
-                          `$${value?.toLocaleString('es-MX', { minimumFractionDigits: 0 })}`,
-                          name === 'acumuladoReal' ? 'Real Acumulado' : 
-                          name === 'acumuladoProyectado' ? 'Proyectado Total' : name
-                        ]}
-                        labelFormatter={(label) => `Semana ${label}`}
-                      />
-                      <Legend />
-                      <Area 
-                        type="monotone" 
-                        dataKey="acumuladoReal" 
-                        fill="#22c55e" 
-                        fillOpacity={0.3}
-                        stroke="#16a34a" 
-                        strokeWidth={2}
-                        name="Real Acumulado"
-                        connectNulls={false}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="acumuladoProyectado" 
-                        stroke="#6366f1" 
-                        strokeWidth={2}
-                        strokeDasharray="5 5"
-                        name="Proyectado Total"
-                        dot={{ fill: '#6366f1', r: 3 }}
-                      />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
+    return {
+        "success": True,
+        "updated": updated,
+        "not_found": not_found,
+        "message": f"{updated} pagos con fecha corregida desde CFDI. {not_found} sin CFDI encontrado."
+    }
 
-              {/* Gráfico 2: Ingresos vs Egresos por Semana */}
-              <Card>
-                <CardHeader className="py-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <BarChart3 size={18} className="text-purple-600" />
-                    Ingresos vs Egresos Semanal
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                      <XAxis dataKey="semana" tick={{ fontSize: 11 }} />
-                      <YAxis 
-                        tick={{ fontSize: 10 }} 
-                        tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
-                      />
-                      <Tooltip 
-                        formatter={(value) => [`$${value?.toLocaleString('es-MX', { minimumFractionDigits: 0 })}`]}
-                        labelFormatter={(label) => `Semana ${label}`}
-                      />
-                      <Legend />
-                      <Bar dataKey="ingresos" fill="#22c55e" name="Ingresos" radius={[2, 2, 0, 0]} />
-                      <Bar dataKey="egresos" fill="#ef4444" name="Egresos" radius={[2, 2, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
 
-              {/* Gráfico 3: Saldo Final vs Umbral Mínimo (Cash Gap) */}
-              <Card>
-                <CardHeader className="py-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <AlertTriangle size={18} className="text-amber-600" />
-                    Saldo Final vs Umbral Mínimo (Cash Gap)
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <ComposedChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                      <XAxis dataKey="semana" tick={{ fontSize: 11 }} />
-                      <YAxis 
-                        tick={{ fontSize: 10 }} 
-                        tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
-                      />
-                      <Tooltip 
-                        formatter={(value, name) => [
-                          `$${value?.toLocaleString('es-MX', { minimumFractionDigits: 0 })}`,
-                          name === 'saldoFinal' ? 'Saldo Final' : 
-                          name === 'umbralMinimo' ? 'Umbral Mínimo' : name
-                        ]}
-                        labelFormatter={(label) => `Semana ${label}`}
-                      />
-                      <Legend />
-                      <Area 
-                        type="monotone" 
-                        dataKey="saldoFinal" 
-                        fill="#3b82f6" 
-                        fillOpacity={0.3}
-                        stroke="#2563eb" 
-                        strokeWidth={2}
-                        name="Saldo Final"
-                      />
-                      <ReferenceLine 
-                        y={chartData[0]?.umbralMinimo || 0} 
-                        stroke="#ef4444" 
-                        strokeWidth={2}
-                        strokeDasharray="5 5"
-                        label={{ value: 'Umbral Mínimo', fill: '#ef4444', fontSize: 10 }}
-                      />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
 
-              {/* Gráfico 4: Flujo Neto Semanal */}
-              <Card>
-                <CardHeader className="py-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Activity size={18} className="text-indigo-600" />
-                    Flujo Neto Semanal
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <ComposedChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                      <XAxis dataKey="semana" tick={{ fontSize: 11 }} />
-                      <YAxis 
-                        tick={{ fontSize: 10 }} 
-                        tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
-                      />
-                      <Tooltip 
-                        formatter={(value) => [`$${value?.toLocaleString('es-MX', { minimumFractionDigits: 0 })}`]}
-                        labelFormatter={(label) => `Semana ${label}`}
-                      />
-                      <Legend />
-                      <ReferenceLine y={0} stroke="#666" strokeWidth={1} />
-                      <Bar 
-                        dataKey="flujoNetoPositivo" 
-                        fill="#22c55e"
-                        name="Flujo Positivo"
-                        stackId="flujo"
-                        radius={[2, 2, 0, 0]}
-                      />
-                      <Bar 
-                        dataKey="flujoNetoNegativo" 
-                        fill="#ef4444"
-                        name="Flujo Negativo"
-                        stackId="flujo"
-                        radius={[2, 2, 0, 0]}
-                      />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            </div>
-          )}
 
-          {/* ===== MAIN CASH FLOW TABLE ===== */}
-          <Card>
-            <CardHeader className="bg-[#0F172A] text-white rounded-t-lg">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-3">
-                  <span>Modelo de Flujo de Efectivo - 18 Semanas</span>
-                  <div className="flex items-center gap-2 ml-4">
-                    <Button
-                      variant={tableViewMode === 'categoria' ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className={`h-7 text-xs ${tableViewMode === 'categoria' ? 'bg-white text-[#0F172A]' : 'text-white/70 hover:text-white hover:bg-white/10'}`}
-                      onClick={() => setTableViewMode('categoria')}
-                    >
-                      <Layers size={14} className="mr-1" />
-                      Por Categoría
-                    </Button>
-                    <Button
-                      variant={tableViewMode === 'tercero' ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className={`h-7 text-xs ${tableViewMode === 'tercero' ? 'bg-white text-[#0F172A]' : 'text-white/70 hover:text-white hover:bg-white/10'}`}
-                      onClick={() => setTableViewMode('tercero')}
-                    >
-                      <Building2 size={14} className="mr-1" />
-                      Por Proveedor/Cliente
-                    </Button>
-                  </div>
-                </CardTitle>
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 text-xs text-white/80 hover:text-white hover:bg-white/10 gap-1"
-                    onClick={exportDetailReport}
-                  >
-                    <FileSpreadsheet size={14} />
-                    Exportar Detalle
-                  </Button>
-                  <span className="text-sm font-normal opacity-70">
-                    {format(new Date(), 'MMMM yyyy', { locale: es })}
-                  </span>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gray-100">
-                      <TableHead className="sticky left-0 bg-gray-100 min-w-[200px] font-bold">CONCEPTO</TableHead>
-                      {weeklyTotals.map((week, idx) => (
-                        <TableHead key={idx} className={`text-center min-w-[90px] ${
-                          week.dataType === 'real' ? 'bg-yellow-50' : 
-                          week.dataType === 'actual' ? 'bg-blue-50' : 'bg-gray-50'
-                        }`}>
-                          <div className="font-bold">{week.label}</div>
-                          <div className="text-xs text-gray-500">{week.dateLabel}</div>
-                          <div className={`text-xs font-semibold ${
-                            week.dataType === 'real' ? 'text-yellow-600' : 
-                            week.dataType === 'actual' ? 'text-blue-600' : 'text-gray-400'
-                          }`}>
-                            {week.dataType === 'real' ? 'Real' : week.dataType === 'actual' ? 'Actual' : 'Proy'}
-                          </div>
-                        </TableHead>
-                      ))}
-                      <TableHead className="text-center min-w-[120px] bg-blue-50 font-bold">TOTAL</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {tableViewMode === 'categoria' ? (
-                      <>
-                        {/* SALDO INICIAL POR SEMANA Row */}
-                        <TableRow className="bg-blue-100 font-bold border-b-2 border-blue-300">
-                          <TableCell className="sticky left-0 bg-blue-100">
-                            <div className="flex items-center gap-2">
-                              <Building2 className="text-blue-600" size={16} />
-                              SALDO INICIAL SEMANA
-                            </div>
-                          </TableCell>
-                          {weeklyTotals.map((week, idx) => (
-                            <TableCell key={idx} className="text-center text-blue-700 font-bold text-sm">
-                              {formatCurrency(week.saldoInicial)}
-                            </TableCell>
-                          ))}
-                          <TableCell className="text-center bg-blue-200 text-blue-800 font-bold">
-                            {formatCurrency(saldoInicialBancos)}
-                          </TableCell>
-                        </TableRow>
+@router.post("/fix-company-id")
+async def fix_company_id(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Fix puntual: reasigna los 412 pagos que quedaron bajo la empresa 'test'
+    (company_id: 381aada7-9180-41fe-b1f8-9b15b4630414) a la empresa activa actual.
+    Ejecutar UNA SOLA VEZ.
+    """
+    OLD_COMPANY_ID = "381aada7-9180-41fe-b1f8-9b15b4630414"
+    company_id = await get_active_company_id(request, current_user)
 
-                        {/* RECEIPTS / INGRESOS Section */}
-                    <TableRow className="bg-green-50 font-bold">
-                      <TableCell className="sticky left-0 bg-green-50">
-                        <div className="flex items-center gap-2">
-                          <TrendingUp className="text-green-600" size={16} />
-                          INGRESOS
-                          {weeklyTotals.some(w => w.dataType === 'real' || w.dataType === 'actual') && (
-                            <span className="text-xs px-2 py-0.5 bg-green-200 text-green-800 rounded">S1-S5 Real</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      {weeklyTotals.map((week, idx) => (
-                        <TableCell key={idx} className={`text-center font-bold text-sm ${
-                          week.dataType === 'real' ? 'text-green-800 bg-green-100' : 
-                          week.dataType === 'actual' ? 'text-green-700 bg-green-50' : 'text-green-600'
-                        }`}>
-                          {formatCurrency(week.ingresos.total)}
-                        </TableCell>
-                      ))}
-                      <TableCell className="text-center bg-green-100 text-green-800 font-bold">
-                        {formatCurrency(grandTotalIngresos)}
-                      </TableCell>
-                    </TableRow>
-                    
-                    {/* Ingresos by Category - Show "Cobranza" or category name, also show "Sin categoría" */}
-                    {/* Exclude "Compra de USD" category as it's shown separately */}
-                    {(() => {
-                      // Collect all unique category names from ingresos including "Sin categoría"
-                      const allIngresoCategories = new Set();
-                      weeklyData.forEach(w => {
-                        Object.keys(w.ingresos.byCategory).forEach(cat => {
-                          // Exclude USD operations from INGRESOS section
-                          if (!cat.toLowerCase().includes('compra de usd') && !cat.toLowerCase().includes('compra usd')) {
-                            allIngresoCategories.add(cat);
-                          }
-                        });
-                      });
-                      
-                      return Array.from(allIngresoCategories).map(categoryName => {
-                        const categoryKey = `ing-${categoryName}`;
-                        const isExpanded = expandedRows[categoryKey];
-                        const weekTotals = weeklyData.map(w => w.ingresos.byCategory[categoryName]?.total || 0);
-                        const categoryTotal = weekTotals.reduce((sum, t) => sum + t, 0);
-                        
-                        if (categoryTotal === 0) return null;
-                        
-                        return (
-                          <React.Fragment key={categoryKey}>
-                            <TableRow className="hover:bg-green-50/50">
-                              <TableCell className="sticky left-0 bg-white pl-8">
-                                <button 
-                                  onClick={() => toggleRow(categoryKey)}
-                                  className="flex items-center gap-1 text-gray-700 hover:text-green-600"
-                                >
-                                  {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                  {categoryName === 'Sin categoría' ? 'Cobranza' : categoryName}
-                                </button>
-                              </TableCell>
-                              {weekTotals.map((total, idx) => (
-                                <TableCell 
-                                  key={idx} 
-                                  className={`text-center text-green-600 ${total > 0 ? 'cursor-pointer hover:bg-green-100 hover:underline' : ''}`}
-                                  onClick={() => total > 0 && handleCellClick(idx, 'ingreso', categoryName)}
-                                >
-                                  {total > 0 ? formatCurrency(total) : '-'}
-                                </TableCell>
-                              ))}
-                              <TableCell className="text-center bg-green-50 text-green-700">
-                                {formatCurrency(categoryTotal)}
-                              </TableCell>
-                            </TableRow>
-                            {/* Subcategorías expandibles */}
-                            {isExpanded && (() => {
-                              const allSubcategories = new Set();
-                              weeklyData.forEach(w => {
-                                const cat = w.ingresos.byCategory[categoryName];
-                                if (cat?.bySubcategory) {
-                                  Object.keys(cat.bySubcategory).forEach(sub => allSubcategories.add(sub));
-                                }
-                              });
-                              
-                              return Array.from(allSubcategories).map(subName => {
-                                const subTotals = weeklyData.map(w => 
-                                  w.ingresos.byCategory[categoryName]?.bySubcategory?.[subName]?.total || 0
-                                );
-                                const subTotal = subTotals.reduce((s, t) => s + t, 0);
-                                if (subTotal === 0) return null;
-                                
-                                return (
-                                  <TableRow key={`${categoryKey}-${subName}`} className="bg-green-50/30">
-                                    <TableCell className="sticky left-0 bg-green-50/30 pl-14 text-sm text-gray-600">
-                                      └ {subName}
-                                    </TableCell>
-                                    {subTotals.map((total, idx) => (
-                                      <TableCell 
-                                        key={idx} 
-                                        className={`text-center text-green-500 text-sm ${total > 0 ? 'cursor-pointer hover:bg-green-100 hover:underline' : ''}`}
-                                        onClick={() => total > 0 && handleCellClick(idx, 'ingreso', categoryName, subName)}
-                                      >
-                                        {total > 0 ? formatCurrency(total) : '-'}
-                                      </TableCell>
-                                    ))}
-                                    <TableCell className="text-center bg-green-50 text-green-600 text-sm">
-                                      {formatCurrency(subTotal)}
-                                    </TableCell>
-                                  </TableRow>
-                                );
-                              });
-                            })()}
-                          </React.Fragment>
-                        );
-                      });
-                    })()}
+    result = await db.payments.update_many(
+        {"company_id": OLD_COMPANY_ID},
+        {"$set": {"company_id": company_id}}
+    )
 
-                    {/* OPERATING DISBURSEMENTS / EGRESOS Section */}
-                    <TableRow className="bg-red-50 font-bold">
-                      <TableCell className="sticky left-0 bg-red-50">
-                        <div className="flex items-center gap-2">
-                          <TrendingDown className="text-red-600" size={16} />
-                          EGRESOS
-                          {weeklyTotals.some(w => w.dataType === 'real' || w.dataType === 'actual') && (
-                            <span className="text-xs px-2 py-0.5 bg-red-200 text-red-800 rounded">S1-S5 Real</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      {weeklyTotals.map((week, idx) => (
-                        <TableCell key={idx} className={`text-center font-bold text-sm ${
-                          week.dataType === 'real' ? 'text-red-800 bg-red-100' : 
-                          week.dataType === 'actual' ? 'text-red-700 bg-red-50' : 'text-red-600'
-                        }`}>
-                          {formatCurrency(week.egresos.total)}
-                        </TableCell>
-                      ))}
-                      <TableCell className="text-center bg-red-100 text-red-800 font-bold">
-                        {formatCurrency(grandTotalEgresos)}
-                      </TableCell>
-                    </TableRow>
-                    
-                    {/* Egresos by Category - Show all including "Sin categoría" as "Proveedores Costo" */}
-                    {/* Exclude "Venta de USD" category as it's shown separately */}
-                    {(() => {
-                      // Collect all unique category names from egresos including "Sin categoría"
-                      const allEgresoCategories = new Set();
-                      weeklyData.forEach(w => {
-                        Object.keys(w.egresos.byCategory).forEach(cat => {
-                          // Exclude USD operations from EGRESOS section
-                          if (!cat.toLowerCase().includes('venta de usd') && !cat.toLowerCase().includes('venta usd')) {
-                            allEgresoCategories.add(cat);
-                          }
-                        });
-                      });
-                      
-                      return Array.from(allEgresoCategories).map(categoryName => {
-                        const categoryKey = `egr-${categoryName}`;
-                        const isExpanded = expandedRows[categoryKey];
-                        const weekTotals = weeklyData.map(w => w.egresos.byCategory[categoryName]?.total || 0);
-                        const categoryTotal = weekTotals.reduce((sum, t) => sum + t, 0);
-                        
-                        if (categoryTotal === 0) return null;
-                        
-                        return (
-                          <React.Fragment key={categoryKey}>
-                            <TableRow className="hover:bg-red-50/50">
-                              <TableCell className="sticky left-0 bg-white pl-8">
-                                <button 
-                                  onClick={() => toggleRow(categoryKey)}
-                                  className="flex items-center gap-1 text-gray-700 hover:text-red-600"
-                                >
-                                  {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                  {categoryName === 'Sin categoría' ? 'Proveedores Costo' : categoryName}
-                                </button>
-                              </TableCell>
-                              {weekTotals.map((total, idx) => (
-                                <TableCell 
-                                  key={idx} 
-                                  className={`text-center text-red-600 ${total > 0 ? 'cursor-pointer hover:bg-red-100 hover:underline' : ''}`}
-                                  onClick={() => total > 0 && handleCellClick(idx, 'egreso', categoryName)}
-                                >
-                                  {total > 0 ? formatCurrency(total) : '-'}
-                                </TableCell>
-                              ))}
-                              <TableCell className="text-center bg-red-50 text-red-700">
-                                {formatCurrency(categoryTotal)}
-                              </TableCell>
-                            </TableRow>
-                            {/* Subcategorías expandibles */}
-                            {isExpanded && (() => {
-                              const allSubcategories = new Set();
-                              weeklyData.forEach(w => {
-                                const cat = w.egresos.byCategory[categoryName];
-                                if (cat?.bySubcategory) {
-                                  Object.keys(cat.bySubcategory).forEach(sub => allSubcategories.add(sub));
-                                }
-                              });
-                              
-                              return Array.from(allSubcategories).map(subName => {
-                                const subTotals = weeklyData.map(w => 
-                                  w.egresos.byCategory[categoryName]?.bySubcategory?.[subName]?.total || 0
-                                );
-                                const subTotal = subTotals.reduce((s, t) => s + t, 0);
-                                if (subTotal === 0) return null;
-                                
-                                return (
-                                  <TableRow key={`${categoryKey}-${subName}`} className="bg-red-50/30">
-                                    <TableCell className="sticky left-0 bg-red-50/30 pl-14 text-sm text-gray-600">
-                                      └ {subName}
-                                    </TableCell>
-                                    {subTotals.map((total, idx) => (
-                                      <TableCell 
-                                        key={idx} 
-                                        className={`text-center text-red-500 text-sm ${total > 0 ? 'cursor-pointer hover:bg-red-100 hover:underline' : ''}`}
-                                        onClick={() => total > 0 && handleCellClick(idx, 'egreso', categoryName, subName)}
-                                      >
-                                        {total > 0 ? formatCurrency(total) : '-'}
-                                      </TableCell>
-                                    ))}
-                                    <TableCell className="text-center bg-red-50 text-red-600 text-sm">
-                                      {formatCurrency(subTotal)}
-                                    </TableCell>
-                                  </TableRow>
-                                );
-                              });
-                            })()}
-                          </React.Fragment>
-                        );
-                      });
-                    })()}
+    logger.info(f"fix-company-id: {result.modified_count} pagos reasignados de {OLD_COMPANY_ID} -> {company_id}")
+    await audit_log(company_id, "Payment", "FIX_COMPANY_ID", "UPDATE", current_user["id"],
+                    {"old_company_id": OLD_COMPANY_ID, "new_company_id": company_id, "modified": result.modified_count})
 
-                    {/* COMPRA/VENTA DE DIVISAS Section - Separate from Income/Expenses */}
-                    {(grandTotalCompraUSD > 0 || grandTotalVentaUSD > 0) && (
-                      <>
-                        <TableRow className="bg-purple-50 font-bold border-t-2 border-purple-200">
-                          <TableCell className="sticky left-0 bg-purple-50">
-                            <div className="flex items-center gap-2">
-                              <span className="text-purple-600">💱</span>
-                              OPERACIONES CON DIVISAS
-                            </div>
-                          </TableCell>
-                          {weeklyTotals.map((week, idx) => (
-                            <TableCell key={idx} className={`text-center font-bold ${(week.flujoDivisas || 0) >= 0 ? 'text-purple-700' : 'text-purple-700'}`}>
-                              {formatCurrency(week.flujoDivisas || 0)}
-                            </TableCell>
-                          ))}
-                          <TableCell className="text-center bg-purple-100 text-purple-800 font-bold">
-                            {formatCurrency(grandTotalFlujoDivisas)}
-                          </TableCell>
-                        </TableRow>
-                        
-                        {/* Venta de USD row - SIEMPRE MOSTRAR */}
-                        <TableRow className="hover:bg-purple-50/50">
-                          <TableCell className="sticky left-0 bg-white pl-8">
-                            <div className="flex items-center gap-1 text-green-600">
-                              <TrendingUp size={14} />
-                              Venta de USD (entrada MXN)
-                            </div>
-                          </TableCell>
-                          {weeklyTotals.map((week, idx) => (
-                            <TableCell key={idx} className="text-center text-green-600">
-                              {(week.ventaUSD || 0) > 0 ? formatCurrency(week.ventaUSD) : '-'}
-                            </TableCell>
-                          ))}
-                          <TableCell className="text-center bg-green-50 text-green-700">
-                            {formatCurrency(grandTotalVentaUSD)}
-                          </TableCell>
-                        </TableRow>
-                        
-                        {/* Compra de USD row - SIEMPRE MOSTRAR */}
-                        <TableRow className="hover:bg-purple-50/50">
-                          <TableCell className="sticky left-0 bg-white pl-8">
-                            <div className="flex items-center gap-1 text-red-600">
-                              <TrendingDown size={14} />
-                              Compra de USD (salida MXN)
-                            </div>
-                          </TableCell>
-                          {weeklyTotals.map((week, idx) => (
-                            <TableCell key={idx} className="text-center text-red-600">
-                              {(week.compraUSD || 0) > 0 ? `(${formatCurrency(week.compraUSD)})` : '-'}
-                            </TableCell>
-                          ))}
-                          <TableCell className="text-center bg-red-50 text-red-700">
-                            {grandTotalCompraUSD > 0 ? `(${formatCurrency(grandTotalCompraUSD)})` : '$0.00'}
-                          </TableCell>
-                        </TableRow>
-                      </>
-                    )}
-
-                    {/* NET CASH FLOW */}
-                    <TableRow className="bg-blue-100 font-bold border-t-2 border-blue-300">
-                      <TableCell className="sticky left-0 bg-blue-100">
-                        FLUJO NETO
-                      </TableCell>
-                      {weeklyTotals.map((week, idx) => (
-                        <TableCell 
-                          key={idx} 
-                          className={`text-center font-bold ${week.flujoNeto >= 0 ? 'text-green-700' : 'text-red-700'}`}
-                        >
-                          {formatCurrency(week.flujoNeto)}
-                        </TableCell>
-                      ))}
-                      <TableCell className={`text-center font-bold ${grandTotalFlujo >= 0 ? 'text-green-800 bg-green-100' : 'text-red-800 bg-red-100'}`}>
-                        {formatCurrency(grandTotalFlujo)}
-                      </TableCell>
-                    </TableRow>
-
-                    {/* SALDO FINAL POR SEMANA */}
-                    <TableRow className="bg-[#0F172A] text-white font-bold">
-                      <TableCell className="sticky left-0 bg-[#0F172A]">
-                        SALDO FINAL SEMANA
-                      </TableCell>
-                      {weeklyTotals.map((week, idx) => (
-                        <TableCell 
-                          key={idx} 
-                          className={`text-center font-bold text-sm ${week.saldoFinal >= 0 ? 'text-green-400' : 'text-red-400'}`}
-                        >
-                          {formatCurrency(week.saldoFinal)}
-                        </TableCell>
-                      ))}
-                      <TableCell className="text-center font-bold">
-                        {formatCurrency(weeklyTotals[weeklyTotals.length - 1]?.saldoFinal || 0)}
-                      </TableCell>
-                    </TableRow>
-
-                    {/* CASH GAP - Diferencia vs Umbral Mínimo */}
-                    <TableRow className="bg-amber-50 font-medium">
-                      <TableCell className="sticky left-0 bg-amber-50">
-                        <div className="flex items-center gap-2">
-                          <AlertTriangle className="text-amber-600" size={14} />
-                          CASH GAP (vs {formatCurrency(umbralMinimoCaja)})
-                        </div>
-                      </TableCell>
-                      {weeklyTotals.map((week, idx) => {
-                        const gap = week.saldoFinal - umbralMinimoCaja;
-                        const isNegative = gap < 0;
-                        return (
-                          <TableCell 
-                            key={idx} 
-                            className={`text-center text-sm ${isNegative ? 'text-red-600 bg-red-50 font-bold' : 'text-green-600'}`}
-                          >
-                            {isNegative ? `(${formatCurrency(Math.abs(gap))})` : formatCurrency(gap)}
-                          </TableCell>
-                        );
-                      })}
-                      <TableCell className="text-center bg-amber-100 text-amber-800 font-bold">
-                        {(() => {
-                          const finalGap = (weeklyTotals[weeklyTotals.length - 1]?.saldoFinal || 0) - umbralMinimoCaja;
-                          return finalGap < 0 ? `(${formatCurrency(Math.abs(finalGap))})` : formatCurrency(finalGap);
-                        })()}
-                      </TableCell>
-                    </TableRow>
-                      </>
-                    ) : (
-                      /* ===== VISTA POR PROVEEDOR/CLIENTE ===== */
-                      <>
-                        {/* Filters Row */}
-                        <TableRow className="bg-blue-50 border-b-2 border-blue-200">
-                          <TableCell colSpan={weeklyTotals.length + 2} className="py-3">
-                            <div className="flex items-center gap-4 flex-wrap">
-                              <div className="flex items-center gap-2">
-                                <Filter size={16} className="text-blue-600" />
-                                <span className="text-sm font-medium text-blue-800">Filtros:</span>
-                              </div>
-                              
-                              {/* Search by name */}
-                              <div className="relative flex-1 min-w-[200px] max-w-[300px]">
-                                <Search size={14} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                                <Input
-                                  placeholder="Buscar proveedor/cliente..."
-                                  value={partyFilters.searchTerm}
-                                  onChange={(e) => setPartyFilters(prev => ({ ...prev, searchTerm: e.target.value }))}
-                                  className="pl-8 h-8 text-sm"
-                                  data-testid="party-filter-search"
-                                />
-                              </div>
-                              
-                              {/* Filter by tipo */}
-                              <Select
-                                value={partyFilters.tipoTercero}
-                                onValueChange={(value) => setPartyFilters(prev => ({ ...prev, tipoTercero: value }))}
-                              >
-                                <SelectTrigger className="w-[140px] h-8 text-sm" data-testid="party-filter-type">
-                                  <SelectValue placeholder="Tipo" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="todos">Todos</SelectItem>
-                                  <SelectItem value="cliente">
-                                    <div className="flex items-center gap-2">
-                                      <User size={12} className="text-blue-500" />
-                                      Clientes
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="proveedor">
-                                    <div className="flex items-center gap-2">
-                                      <Building2 size={12} className="text-orange-500" />
-                                      Proveedores
-                                    </div>
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
-                              
-                              {/* Filter by saldo */}
-                              <Select
-                                value={partyFilters.saldoTipo}
-                                onValueChange={(value) => setPartyFilters(prev => ({ ...prev, saldoTipo: value }))}
-                              >
-                                <SelectTrigger className="w-[150px] h-8 text-sm" data-testid="party-filter-balance">
-                                  <SelectValue placeholder="Saldo" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="todos">Todos los saldos</SelectItem>
-                                  <SelectItem value="positivo">
-                                    <div className="flex items-center gap-2">
-                                      <TrendingUp size={12} className="text-green-500" />
-                                      Saldo positivo
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="negativo">
-                                    <div className="flex items-center gap-2">
-                                      <TrendingDown size={12} className="text-red-500" />
-                                      Saldo negativo
-                                    </div>
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
-                              
-                              {/* Clear filters button */}
-                              {hasPartyFiltersActive() && (
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
-                                  className="h-8 text-xs text-blue-600 hover:text-blue-800 gap-1"
-                                  onClick={resetPartyFilters}
-                                  data-testid="party-filter-clear"
-                                >
-                                  <XIcon size={14} />
-                                  Limpiar
-                                </Button>
-                              )}
-                              
-                              {/* Export button */}
-                              <div className="ml-auto">
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  className="h-8 text-xs gap-1"
-                                  onClick={exportPartyReport}
-                                  data-testid="party-export-btn"
-                                >
-                                  <Download size={14} />
-                                  {hasPartyFiltersActive() ? 'Exportar Filtrado' : 'Exportar Terceros'}
-                                </Button>
-                              </div>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-
-                        {/* Header row for totals */}
-                        <TableRow className="bg-gray-100 font-bold border-b-2">
-                          <TableCell className="sticky left-0 bg-gray-100">
-                            <div className="flex items-center gap-2">
-                              <Building2 size={16} className="text-gray-600" />
-                              PROVEEDOR / CLIENTE
-                            </div>
-                          </TableCell>
-                          {weeklyTotals.map((week, idx) => (
-                            <TableCell key={idx} className="text-center text-xs text-gray-600">
-                              Tot: {formatCurrency(week.ingresos.total - week.egresos.total)}
-                            </TableCell>
-                          ))}
-                          <TableCell className="text-center bg-gray-200 font-bold">TOTAL</TableCell>
-                        </TableRow>
-
-                        {/* Render each party */}
-                        {(() => {
-                          const partyData = processDataByParty();
-                          // Apply filters
-                          const filteredParties = filterPartyData(partyData);
-                          // Sort by total absolute value (most important first)
-                          const sortedParties = filteredParties.sort((a, b) => {
-                            const totalA = Object.values(a.weeks).reduce((s, w) => s + Math.abs(w.ingresos - w.egresos), 0);
-                            const totalB = Object.values(b.weeks).reduce((s, w) => s + Math.abs(w.ingresos - w.egresos), 0);
-                            return totalB - totalA;
-                          });
-
-                          if (sortedParties.length === 0) {
-                            return (
-                              <TableRow>
-                                <TableCell colSpan={weeklyTotals.length + 2} className="text-center py-8 text-gray-500">
-                                  {hasPartyFiltersActive() 
-                                    ? 'No hay terceros que coincidan con los filtros seleccionados'
-                                    : 'No hay datos de proveedores/clientes para mostrar'}
-                                </TableCell>
-                              </TableRow>
-                            );
-                          }
-
-                          return sortedParties.map(party => {
-                            const totalIngresos = Object.values(party.weeks).reduce((s, w) => s + w.ingresos, 0);
-                            const totalEgresos = Object.values(party.weeks).reduce((s, w) => s + w.egresos, 0);
-                            const netTotal = totalIngresos - totalEgresos;
-                            
-                            if (totalIngresos === 0 && totalEgresos === 0) return null;
-                            
-                            return (
-                              <TableRow 
-                                key={party.id} 
-                                className={`hover:bg-gray-50 ${party.tipo === 'cliente' ? 'hover:bg-green-50/30' : 'hover:bg-red-50/30'}`}
-                              >
-                                <TableCell className="sticky left-0 bg-white">
-                                  <div className="flex items-center gap-2">
-                                    {party.tipo === 'cliente' ? (
-                                      <User size={14} className="text-blue-500" />
-                                    ) : (
-                                      <Building2 size={14} className="text-orange-500" />
-                                    )}
-                                    <span className="truncate max-w-[170px]" title={party.nombre}>
-                                      {party.nombre}
-                                    </span>
-                                    <Badge variant="outline" className="text-xs ml-1">
-                                      {party.tipo === 'cliente' ? 'C' : 'P'}
-                                    </Badge>
-                                  </div>
-                                </TableCell>
-                                {weeklyTotals.map((_, weekIdx) => {
-                                  const weekData = party.weeks[weekIdx] || { ingresos: 0, egresos: 0 };
-                                  const netValue = weekData.ingresos - weekData.egresos;
-                                  const hasItems = weekData.ingresos > 0 || weekData.egresos > 0;
-                                  
-                                  return (
-                                    <TableCell 
-                                      key={weekIdx} 
-                                      className={`text-center text-sm ${
-                                        netValue > 0 ? 'text-green-600' : 
-                                        netValue < 0 ? 'text-red-600' : 'text-gray-400'
-                                      } ${hasItems ? 'cursor-pointer hover:bg-gray-100 hover:underline' : ''}`}
-                                      onClick={() => {
-                                        if (hasItems) {
-                                          // Open drill-down with party's items for this week
-                                          const items = weekData.items || [];
-                                          setDrillDownData({
-                                            weekNum: weekIdx + 1,
-                                            weekLabel: weeklyData[weekIdx]?.label || `S${weekIdx + 1}`,
-                                            dateLabel: weeklyData[weekIdx]?.dateLabel || '',
-                                            dataType: weeklyData[weekIdx]?.dataType,
-                                            tipo: netValue >= 0 ? 'ingreso' : 'egreso',
-                                            categoryName: party.nombre,
-                                            subcategoryName: party.tipo === 'cliente' ? 'Cliente' : 'Proveedor',
-                                            items: items.map(item => ({
-                                              ...item,
-                                              tercero: party.nombre,
-                                              terceroTipo: party.tipo
-                                            })),
-                                            total: netValue
-                                          });
-                                          setDrillDownOpen(true);
-                                        }
-                                      }}
-                                    >
-                                      {netValue !== 0 ? formatCurrency(netValue) : '-'}
-                                    </TableCell>
-                                  );
-                                })}
-                                <TableCell className={`text-center font-bold ${
-                                  netTotal > 0 ? 'bg-green-50 text-green-700' : 
-                                  netTotal < 0 ? 'bg-red-50 text-red-700' : 'text-gray-500'
-                                }`}>
-                                  {formatCurrency(netTotal)}
-                                </TableCell>
-                              </TableRow>
-                            );
-                          });
-                        })()}
-
-                        {/* Totals row */}
-                        <TableRow className="bg-gray-200 font-bold border-t-2">
-                          <TableCell className="sticky left-0 bg-gray-200">
-                            TOTAL NETO
-                          </TableCell>
-                          {weeklyTotals.map((week, idx) => {
-                            const net = week.ingresos.total - week.egresos.total;
-                            return (
-                              <TableCell key={idx} className={`text-center font-bold ${net >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                {formatCurrency(net)}
-                              </TableCell>
-                            );
-                          })}
-                          <TableCell className={`text-center font-bold ${grandTotalFlujo >= 0 ? 'text-green-800 bg-green-100' : 'text-red-800 bg-red-100'}`}>
-                            {formatCurrency(grandTotalFlujo)}
-                          </TableCell>
-                        </TableRow>
-                      </>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-          </div> {/* End of reportRef div for PDF export */}
-        </TabsContent>
-
-        {/* MONTHLY VIEW */}
-        <TabsContent value="monthly" className="mt-4">
-          <Card>
-            <CardHeader className="bg-[#0F172A] text-white rounded-t-lg">
-              <CardTitle>Proyección Mensual</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gray-100">
-                      <TableHead className="sticky left-0 bg-gray-100 min-w-[250px] font-bold">CONCEPTO</TableHead>
-                      {monthlyData.map((month, idx) => (
-                        <TableHead key={idx} className="text-center min-w-[130px] capitalize">
-                          {month.label}
-                        </TableHead>
-                      ))}
-                      <TableHead className="text-center min-w-[130px] bg-blue-50 font-bold">TOTAL</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {/* INGRESOS */}
-                    <TableRow className="bg-green-100 font-bold">
-                      <TableCell className="sticky left-0 bg-green-100">
-                        <TrendingUp className="inline mr-2 text-green-600" size={16} />
-                        INGRESOS
-                      </TableCell>
-                      {monthlyData.map((month, idx) => (
-                        <TableCell key={idx} className="text-center text-green-700">
-                          {formatCurrency(month.ingresos.total)}
-                        </TableCell>
-                      ))}
-                      <TableCell className="text-center bg-green-200 text-green-800">
-                        {formatCurrency(monthlyData.reduce((s, m) => s + m.ingresos.total, 0))}
-                      </TableCell>
-                    </TableRow>
-                    
-                    {/* Ingresos by Category */}
-                    {categories.filter(c => c.tipo === 'ingreso').map(category => {
-                      const monthTotals = monthlyData.map(m => m.ingresos.byCategory[category.nombre] || 0);
-                      const total = monthTotals.reduce((s, t) => s + t, 0);
-                      if (total === 0) return null;
-                      
-                      return (
-                        <TableRow key={`monthly-ing-${category.id}`} className="hover:bg-green-50">
-                          <TableCell className="sticky left-0 bg-white pl-8">{category.nombre}</TableCell>
-                          {monthTotals.map((t, idx) => (
-                            <TableCell key={idx} className="text-center text-green-600">
-                              {t > 0 ? formatCurrency(t) : '-'}
-                            </TableCell>
-                          ))}
-                          <TableCell className="text-center bg-green-50">
-                            {formatCurrency(total)}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-
-                    {/* EGRESOS */}
-                    <TableRow className="bg-red-100 font-bold">
-                      <TableCell className="sticky left-0 bg-red-100">
-                        <TrendingDown className="inline mr-2 text-red-600" size={16} />
-                        EGRESOS
-                      </TableCell>
-                      {monthlyData.map((month, idx) => (
-                        <TableCell key={idx} className="text-center text-red-700">
-                          {formatCurrency(month.egresos.total)}
-                        </TableCell>
-                      ))}
-                      <TableCell className="text-center bg-red-200 text-red-800">
-                        {formatCurrency(monthlyData.reduce((s, m) => s + m.egresos.total, 0))}
-                      </TableCell>
-                    </TableRow>
-                    
-                    {/* Egresos by Category */}
-                    {categories.filter(c => c.tipo === 'egreso').map(category => {
-                      const monthTotals = monthlyData.map(m => m.egresos.byCategory[category.nombre] || 0);
-                      const total = monthTotals.reduce((s, t) => s + t, 0);
-                      if (total === 0) return null;
-                      
-                      return (
-                        <TableRow key={`monthly-egr-${category.id}`} className="hover:bg-red-50">
-                          <TableCell className="sticky left-0 bg-white pl-8">{category.nombre}</TableCell>
-                          {monthTotals.map((t, idx) => (
-                            <TableCell key={idx} className="text-center text-red-600">
-                              {t > 0 ? formatCurrency(t) : '-'}
-                            </TableCell>
-                          ))}
-                          <TableCell className="text-center bg-red-50">
-                            {formatCurrency(total)}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-
-                    {/* FLUJO NETO */}
-                    <TableRow className="bg-blue-100 font-bold border-t-2">
-                      <TableCell className="sticky left-0 bg-blue-100">FLUJO NETO</TableCell>
-                      {monthlyData.map((month, idx) => {
-                        const neto = month.ingresos.total - month.egresos.total;
-                        return (
-                          <TableCell key={idx} className={`text-center ${neto >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                            {formatCurrency(neto)}
-                          </TableCell>
-                        );
-                      })}
-                      <TableCell className="text-center bg-blue-200">
-                        {formatCurrency(monthlyData.reduce((s, m) => s + m.ingresos.total - m.egresos.total, 0))}
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* BY PARTY VIEW */}
-        <TabsContent value="byParty" className="mt-4 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Facturas por Cliente / Proveedor</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-4 mb-4">
-                <div className="w-48">
-                  <Select value={selectedPartyType} onValueChange={(v) => { setSelectedPartyType(v); setSelectedParty(''); }}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Tipo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Seleccionar tipo...</SelectItem>
-                      <SelectItem value="customer">
-                        <div className="flex items-center gap-2">
-                          <User size={14} className="text-blue-500" />
-                          Clientes
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="vendor">
-                        <div className="flex items-center gap-2">
-                          <Building2 size={14} className="text-orange-500" />
-                          Proveedores
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                {selectedPartyType !== 'all' && (
-                  <div className="flex-1">
-                    <Select value={selectedParty} onValueChange={setSelectedParty}>
-                      <SelectTrigger>
-                        <SelectValue placeholder={selectedPartyType === 'customer' ? 'Seleccionar cliente...' : 'Seleccionar proveedor...'} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(selectedPartyType === 'customer' ? customers : vendors).map(party => (
-                          <SelectItem key={party.id} value={party.id}>
-                            <div className="flex flex-col">
-                              <span className="font-medium">{party.nombre}</span>
-                              <span className="text-xs text-gray-500">{party.rfc}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-
-              {/* Party CFDIs Table */}
-              {selectedParty && (
-                <div className="border rounded-lg">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead>UUID</TableHead>
-                        <TableHead>Fecha</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Categoría</TableHead>
-                        <TableHead>Método Pago</TableHead>
-                        <TableHead className="text-right">Subtotal</TableHead>
-                        <TableHead className="text-right">IVA</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
-                        <TableHead className="text-right">Pagado</TableHead>
-                        <TableHead className="text-right">Pendiente</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {getPartyCfdis().length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={10} className="text-center py-8 text-gray-500">
-                            No hay facturas para este {selectedPartyType === 'customer' ? 'cliente' : 'proveedor'}
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        getPartyCfdis().map(cfdi => {
-                          const category = categories.find(c => c.id === cfdi.category_id);
-                          const pagado = cfdi.tipo_cfdi === 'ingreso' ? (cfdi.monto_cobrado || 0) : (cfdi.monto_pagado || 0);
-                          const pendiente = cfdi.total - pagado;
-                          
-                          return (
-                            <TableRow key={cfdi.id} className="hover:bg-gray-50">
-                              <TableCell className="font-mono text-xs">{cfdi.uuid?.substring(0, 8)}...</TableCell>
-                              <TableCell>{format(new Date(cfdi.fecha_emision), 'dd/MM/yy')}</TableCell>
-                              <TableCell>
-                                <span className={`text-xs px-2 py-1 rounded ${cfdi.tipo_cfdi === 'ingreso' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                  {cfdi.tipo_cfdi === 'ingreso' ? '↑ Ingreso' : '↓ Egreso'}
-                                </span>
-                              </TableCell>
-                              <TableCell>{category?.nombre || 'Sin categoría'}</TableCell>
-                              <TableCell className="text-xs">{cfdi.metodo_pago || 'PUE'}</TableCell>
-                              <TableCell className="text-right font-mono">{formatCurrency(cfdi.subtotal)}</TableCell>
-                              <TableCell className="text-right font-mono text-gray-500">{formatCurrency(cfdi.impuestos)}</TableCell>
-                              <TableCell className="text-right font-mono font-bold">{formatCurrency(cfdi.total)}</TableCell>
-                              <TableCell className="text-right font-mono text-green-600">{formatCurrency(pagado)}</TableCell>
-                              <TableCell className={`text-right font-mono font-bold ${pendiente > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                                {formatCurrency(pendiente)}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                  
-                  {/* Summary */}
-                  {getPartyCfdis().length > 0 && (
-                    <div className="p-4 bg-gray-50 border-t">
-                      <div className="flex justify-between items-center">
-                        <div className="text-sm text-gray-600">
-                          <FileText className="inline mr-2" size={14} />
-                          {getPartyCfdis().length} factura(s)
-                        </div>
-                        <div className="flex gap-8">
-                          <div className="text-right">
-                            <div className="text-xs text-gray-500">Total Facturado</div>
-                            <div className="font-bold">{formatCurrency(getPartyCfdis().reduce((s, c) => s + c.total, 0))}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-xs text-gray-500">Total Pagado</div>
-                            <div className="font-bold text-green-600">
-                              {formatCurrency(getPartyCfdis().reduce((s, c) => s + (c.tipo_cfdi === 'ingreso' ? (c.monto_cobrado || 0) : (c.monto_pagado || 0)), 0))}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-xs text-gray-500">Saldo Pendiente</div>
-                            <div className="font-bold text-orange-600">
-                              {formatCurrency(getPartyCfdis().reduce((s, c) => {
-                                const pagado = c.tipo_cfdi === 'ingreso' ? (c.monto_cobrado || 0) : (c.monto_pagado || 0);
-                                return s + (c.total - pagado);
-                              }, 0))}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {/* ===== DRILL-DOWN DIALOG ===== */}
-      <Dialog open={drillDownOpen} onOpenChange={setDrillDownOpen}>
-        <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-3">
-              <Eye size={20} className={drillDownData.tipo === 'ingreso' ? 'text-green-600' : 'text-red-600'} />
-              <span>
-                Detalle: {drillDownData.categoryName}
-                {drillDownData.subcategoryName && ` > ${drillDownData.subcategoryName}`}
-              </span>
-              <Badge variant={drillDownData.dataType === 'real' ? 'default' : drillDownData.dataType === 'actual' ? 'secondary' : 'outline'}>
-                {drillDownData.weekLabel} - {drillDownData.dataType === 'real' ? 'Real' : drillDownData.dataType === 'actual' ? 'Actual' : 'Proyectado'}
-              </Badge>
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="flex-1 overflow-auto">
-            {/* Summary */}
-            <div className="grid grid-cols-3 gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
-              <div>
-                <div className="text-xs text-gray-500">Semana</div>
-                <div className="font-bold">{drillDownData.weekLabel} ({drillDownData.dateLabel})</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">Tipo</div>
-                <div className={`font-bold ${drillDownData.tipo === 'ingreso' ? 'text-green-600' : 'text-red-600'}`}>
-                  {drillDownData.tipo === 'ingreso' ? '↑ Ingreso' : '↓ Egreso'}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">Total</div>
-                <div className="font-bold text-lg">{formatCurrency(drillDownData.total)}</div>
-              </div>
-            </div>
-
-            {/* Items Table */}
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-gray-100">
-                  <TableHead className="w-[180px]">Proveedor/Cliente</TableHead>
-                  <TableHead className="w-[100px]">UUID</TableHead>
-                  <TableHead className="w-[90px]">Fecha</TableHead>
-                  <TableHead className="text-right w-[100px]">Monto</TableHead>
-                  <TableHead className="w-[70px]">Moneda</TableHead>
-                  <TableHead className="text-right w-[110px]">Monto MXN</TableHead>
-                  <TableHead className="w-[180px]">Mov. Bancario</TableHead>
-                  <TableHead className="w-[90px] text-center">Conciliado</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {drillDownData.items.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                      No hay items para mostrar
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  drillDownData.items.map((item, idx) => (
-                    <TableRow key={idx} className="hover:bg-gray-50">
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {item.terceroTipo === 'cliente' ? (
-                            <User size={14} className="text-blue-500" />
-                          ) : (
-                            <Building2 size={14} className="text-orange-500" />
-                          )}
-                          <span className="truncate max-w-[150px]" title={item.tercero}>
-                            {item.tercero || 'Sin asignar'}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {item.uuid ? (
-                          <span title={item.uuid}>{item.uuid.substring(0, 8)}...</span>
-                        ) : '-'}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {item.fechaFactura ? format(new Date(item.fechaFactura), 'dd/MM/yy') : '-'}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {formatCurrency(item.montoOriginal || item.monto)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">
-                          {item.moneda || 'MXN'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm font-bold">
-                        {formatCurrency(item.monto)}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {item.bankTxnDescripcion ? (
-                          <span className="truncate max-w-[170px] block" title={item.bankTxnDescripcion}>
-                            {item.bankTxnDescripcion}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {item.conciliado ? (
-                          <span className="inline-flex items-center justify-center w-6 h-6 bg-green-100 rounded-full">
-                            <Check size={14} className="text-green-600" />
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full">
-                            <XIcon size={14} className="text-gray-400" />
-                          </span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-          
-          <DialogFooter className="border-t pt-4">
-            <div className="flex justify-between items-center w-full">
-              <div className="text-sm text-gray-500">
-                {drillDownData.items.length} movimiento(s)
-              </div>
-              <Button variant="outline" onClick={() => setDrillDownOpen(false)}>
-                Cerrar
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-};
-
-export default CashflowProjections;
+    return {
+        "success": True,
+        "modificados": result.modified_count,
+        "old_company_id": OLD_COMPANY_ID,
+        "new_company_id": company_id,
+        "message": f"{result.modified_count} pagos reasignados correctamente a la empresa activa."
+    }
