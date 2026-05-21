@@ -40,24 +40,54 @@ const AgingModule = () => {
     fechaHasta: ''
   });
 
+  const [syncingContalink, setSyncingContalink] = useState(false);
+  const [lastSync, setLastSync] = useState(null);
+
   useEffect(() => {
     loadData();
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (forceRefresh = false) => {
     setLoading(true);
     try {
-      const [cfdiRes, custRes, vendRes, fxRes] = await Promise.all([
-        api.get('/cfdi?limit=500'),
-        api.get('/customers'),
-        api.get('/vendors'),
-        api.get('/fx-rates/latest')
+      const refreshParam = forceRefresh ? '?refresh=true' : '';
+      const [cxcRes, cxpRes, fxRes] = await Promise.all([
+        api.get(`/contalink/cxc${refreshParam}`),
+        api.get(`/contalink/cxp${refreshParam}`),
+        api.get('/fx-rates/latest'),
       ]);
-      setCfdis(cfdiRes.data);
-      setCustomers(custRes.data);
-      setVendors(vendRes.data);
-      // Extract rates object from response
-      // Normalizar rates — puede venir como array [{moneda, tasa_mxn}] o como objeto {USD: 17.5}
+
+      // Convertir facturas de Contalink al formato que usa el componente
+      const toLocalFormat = (facturas, tipo) =>
+        (facturas || []).map(f => ({
+          id:              f.uuid || f.folio || Math.random().toString(),
+          uuid:            f.uuid || '',
+          fecha_emision:   f.fecha_emision || '',
+          fecha_vencimiento: f.fecha_vencimiento || '',
+          total:           f.total || 0,
+          monto_cobrado:   tipo === 'cxc' ? (f.monto_cobrado || 0) : 0,
+          monto_pagado:    tipo === 'cxp' ? (f.monto_pagado  || 0) : 0,
+          moneda:          f.moneda || 'MXN',
+          tipo_cfdi:       tipo === 'cxc' ? 'ingreso' : 'egreso',
+          // Campos de tercero
+          receptor_nombre: f.cliente_nombre || '',
+          receptor_rfc:    f.cliente_rfc    || '',
+          emisor_nombre:   f.proveedor_nombre || '',
+          emisor_rfc:      f.proveedor_rfc    || '',
+          // Plazo calculado
+          plazo: f.fecha_vencimiento && f.fecha_emision
+            ? Math.round((new Date(f.fecha_vencimiento) - new Date(f.fecha_emision)) / 86400000)
+            : 0,
+        }));
+
+      const cxcFacturas = toLocalFormat(cxcRes.data?.facturas, 'cxc');
+      const cxpFacturas = toLocalFormat(cxpRes.data?.facturas, 'cxp');
+
+      // Unimos en cfdis: el componente filtra por tipo_cfdi
+      setCfdis([...cxcFacturas, ...cxpFacturas]);
+      setLastSync(cxcRes.data?.fetched_at || new Date().toISOString());
+
+      // FX rates
       const rawRates = fxRes.data?.rates;
       let ratesObj = {};
       if (Array.isArray(rawRates)) {
@@ -71,11 +101,20 @@ const AgingModule = () => {
       if (!ratesObj.USD) ratesObj.USD = 17.5;
       if (!ratesObj.EUR) ratesObj.EUR = 19.0;
       setFxRates(ratesObj);
+
+      if (forceRefresh) toast.success('CxC y CxP actualizadas desde Contalink');
     } catch (error) {
-      toast.error('Error cargando datos');
+      console.error('Error cargando CxC/CxP:', error);
+      toast.error('Error cargando datos desde Contalink');
     } finally {
       setLoading(false);
+      setSyncingContalink(false);
     }
+  };
+
+  const syncContalink = async () => {
+    setSyncingContalink(true);
+    await loadData(true);
   };
 
   const syncFxRates = async () => {
@@ -790,6 +829,11 @@ const AgingModule = () => {
             Aging de Cartera
           </h1>
           <p className="text-[#64748B]">Análisis de antigüedad de Cuentas por Cobrar y por Pagar</p>
+          {lastSync && (
+            <p className="text-xs text-gray-400 mt-1">
+              Última actualización: {format(new Date(lastSync), "dd/MM/yyyy HH:mm", { locale: es })}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-4">
           <div className="text-sm text-gray-500 bg-white border rounded px-3 py-1.5">
@@ -813,6 +857,16 @@ const AgingModule = () => {
           >
             <Download size={14} />
             Exportar Excel
+          </Button>
+          <Button 
+            variant="outline" 
+            className="gap-2" 
+            onClick={syncContalink}
+            disabled={syncingContalink}
+            data-testid="sync-contalink-btn"
+          >
+            <RefreshCw size={14} className={syncingContalink ? 'animate-spin' : ''} />
+            {syncingContalink ? 'Sincronizando...' : 'Sync Contalink'}
           </Button>
           <Button 
             variant="outline" 
