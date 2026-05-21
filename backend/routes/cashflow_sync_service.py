@@ -11,7 +11,7 @@ ERPs soportados:
   - QuickBooks 🔜 próximamente (OAuth2)
   - SAP B1     🔜 próximamente (Service Layer)
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from typing import Dict, List, Optional
 from datetime import datetime, timezone, timedelta
@@ -19,7 +19,7 @@ from pydantic import BaseModel
 import logging
 
 from core.database import db
-from core.auth import get_current_user
+from core.auth import get_current_user, get_active_company_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cashflow-sync", tags=["Cashflow Sync"])
@@ -97,6 +97,7 @@ class CategoryUpdate(BaseModel):
 
 @router.get("/categories")
 async def list_categories(
+    request: Request,
     tipo: Optional[str] = None,
     current_user: Dict = Depends(get_current_user)
 ):
@@ -104,7 +105,7 @@ async def list_categories(
     Lista categorías de la empresa.
     Mezcla: defaults del sistema + las que el cliente haya creado/personalizado.
     """
-    company_id = current_user["company_id"]
+    company_id = await get_active_company_id(request, current_user)
 
     # Categorías custom de la empresa
     query = {"company_id": company_id, "activa": True}
@@ -128,10 +129,11 @@ async def list_categories(
 @router.post("/categories")
 async def create_category(
     data: CategoryCreate,
+    request: Request,
     current_user: Dict = Depends(get_current_user)
 ):
     """El cliente agrega una categoría personalizada"""
-    company_id = current_user["company_id"]
+    company_id = await get_active_company_id(request, current_user)
 
     if data.tipo not in ("ingreso", "egreso"):
         raise HTTPException(status_code=400, detail="tipo debe ser 'ingreso' o 'egreso'")
@@ -163,10 +165,11 @@ async def create_category(
 async def update_category(
     code: str,
     data: CategoryUpdate,
+    request: Request,
     current_user: Dict = Depends(get_current_user)
 ):
     """Editar o desactivar una categoría"""
-    company_id = current_user["company_id"]
+    company_id = await get_active_company_id(request, current_user)
     update = {k: v for k, v in data.model_dump().items() if v is not None}
     if not update:
         raise HTTPException(status_code=400, detail="Nada que actualizar")
@@ -197,9 +200,9 @@ async def update_category(
 
 
 @router.delete("/categories/{code}")
-async def delete_category(code: str, current_user: Dict = Depends(get_current_user)):
+async def delete_category(code: str, request: Request, current_user: Dict = Depends(get_current_user)):
     """Desactivar categoría (soft delete)"""
-    company_id = current_user["company_id"]
+    company_id = await get_active_company_id(request, current_user)
     await db.cashflow_categories.update_one(
         {"code": code, "company_id": company_id},
         {"$set": {"activa": False}}
@@ -445,7 +448,8 @@ def _map_account_to_category(account_num: str, tipo: str) -> str:
 @router.post("/sync/{erp_name}")
 async def sync_erp_to_cashflow(
     erp_name: str,
-    periodo: str,                  # Query param: "2026-04"
+    periodo: str,
+    request: Request,
     current_user: Dict = Depends(get_current_user)
 ):
     """
@@ -459,7 +463,7 @@ async def sync_erp_to_cashflow(
             detail=f"ERP '{erp_name}' no reconocido. Disponibles: {list(ERP_SYNC_MAP.keys())}"
         )
 
-    company_id = current_user["company_id"]
+    company_id = await get_active_company_id(request, current_user)
 
     # Buscar integración activa
     # contalink.py guarda con: type="contalink", active=True
@@ -513,10 +517,11 @@ async def sync_erp_to_cashflow(
 @router.post("/sync/all")
 async def sync_all_erps(
     periodo: str,
+    request: Request,
     current_user: Dict = Depends(get_current_user)
 ):
     """Sincroniza TODOS los ERPs conectados en un solo llamado"""
-    company_id = current_user["company_id"]
+    company_id = await get_active_company_id(request, current_user)
     integrations = await db.integrations.find(
         {"company_id": company_id, "active": True},
         {"_id": 0}
@@ -549,13 +554,14 @@ async def sync_all_erps(
 
 @router.get("/movements")
 async def get_cashflow_movements(
+    request: Request,
     periodo: Optional[str] = None,
     tipo: Optional[str] = None,
     source: Optional[str] = None,
     current_user: Dict = Depends(get_current_user)
 ):
     """Lista movimientos sincronizados del cashflow"""
-    company_id = current_user["company_id"]
+    company_id = await get_active_company_id(request, current_user)
     query: dict = {"company_id": company_id}
     if periodo: query["periodo"] = periodo
     if tipo:    query["tipo"]    = tipo
@@ -589,6 +595,7 @@ class CategorizationOverride(BaseModel):
 
 @router.post("/auto-categorize")
 async def auto_categorize_payments(
+    request: Request,
     current_user: Dict = Depends(get_current_user),
     limit: int = 100,
     solo_sin_categoria: bool = True,
@@ -602,8 +609,7 @@ async def auto_categorize_payments(
     """
     import httpx, os, json
 
-    company_id = current_user["company_id"]
-
+    company_id = await get_active_company_id(request, current_user)
     # 1. Cargar categorías disponibles
     custom_cats = await db.cashflow_categories.find(
         {"company_id": company_id, "activa": True}, {"_id": 0}
@@ -753,13 +759,14 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
 @router.post("/recategorize")
 async def recategorize_payment(
     data: CategorizationOverride,
+    request: Request,
     current_user: Dict = Depends(get_current_user),
 ):
     """
     Corrección manual de categoría para un pago específico.
     El usuario puede corregir lo que asignó la IA.
     """
-    company_id = current_user["company_id"]
+    company_id = await get_active_company_id(request, current_user)
 
     # Buscar categoría
     cat_doc = await db.cashflow_categories.find_one(
@@ -794,10 +801,11 @@ async def recategorize_payment(
 
 @router.get("/categorization-status")
 async def get_categorization_status(
+    request: Request,
     current_user: Dict = Depends(get_current_user),
 ):
     """Muestra cuántos pagos están categorizados vs sin categoría"""
-    company_id = current_user["company_id"]
+    company_id = await get_active_company_id(request, current_user)
 
     total = await db.payments.count_documents({"company_id": company_id})
     sin_cat = await db.payments.count_documents({
