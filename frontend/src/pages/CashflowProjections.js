@@ -1106,62 +1106,117 @@ const CashflowProjections = () => {
     toast.info('Generando PDF, por favor espere...');
     
     try {
-      // Capturar el contenido como imagen
+      // ── 1. Capturar el contenido como imagen de alta resolución ──────
       const canvas = await html2canvas(reportRef.current, {
-        scale: 2,
+        scale: 2,           // Retina quality
         useCORS: true,
         logging: false,
-        backgroundColor: '#F8FAFC'
+        backgroundColor: '#FFFFFF',
+        scrollX: 0,
+        scrollY: -window.scrollY, // Capture from top
       });
       
       const imgData = canvas.toDataURL('image/png');
-      
-      // Crear PDF en formato landscape para mejor visualización de la tabla
+
+      // ── 2. Configuración de página ────────────────────────────────────
+      const MARGIN      = 12;   // mm — margen lateral y superior
+      const FOOTER_H    = 10;   // mm — altura reservada para el footer
+      const HEADER_H    = 0;    // mm — sin header extra (el contenido ya lo tiene)
+
       const pdf = new jsPDF({
         orientation: 'landscape',
         unit: 'mm',
-        format: 'a4'
+        format: 'a4',
+        compress: true,
       });
-      
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      
-      // Calcular dimensiones manteniendo proporción
-      const imgWidth = pageWidth - 20; // Margen de 10mm a cada lado
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      
-      // Si la imagen es más alta que la página, dividir en múltiples páginas
-      let heightLeft = imgHeight;
-      let position = 10;
-      
-      // Primera página
-      pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
-      heightLeft -= (pageHeight - 20);
-      
-      // Páginas adicionales si es necesario
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight + 10;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
-        heightLeft -= (pageHeight - 20);
-      }
-      
-      // Agregar pie de página con fecha
-      const totalPages = pdf.internal.getNumberOfPages();
-      for (let i = 1; i <= totalPages; i++) {
-        pdf.setPage(i);
-        pdf.setFontSize(8);
-        pdf.setTextColor(128);
+
+      const pageW = pdf.internal.pageSize.getWidth();   // 297 mm
+      const pageH = pdf.internal.pageSize.getHeight();  // 210 mm
+
+      // Área imprimible (excluyendo márgenes y footer)
+      const printW = pageW - MARGIN * 2;
+      const printH = pageH - MARGIN - FOOTER_H - HEADER_H;
+
+      // ── 3. Calcular dimensiones proporcionales de la imagen ───────────
+      // La imagen completa tiene este alto en mm si la anclamos al ancho imprimible
+      const fullImgH = (canvas.height / canvas.width) * printW;
+
+      // Total de páginas necesarias
+      const totalPages = Math.ceil(fullImgH / printH);
+
+      // Proporción px/mm para saber cuántos px corresponden a printH mm
+      const pxPerMm = canvas.width / printW;
+      const sliceH_px = Math.round(printH * pxPerMm); // px por página
+
+      // ── 4. Crear un canvas temporal para cada "rebanada" de página ────
+      // Esto garantiza que NUNCA se corte texto a mitad — cada página
+      // renderiza exactamente su porción sin overflow.
+      for (let page = 0; page < totalPages; page++) {
+        if (page > 0) pdf.addPage();
+
+        const srcY  = page * sliceH_px;
+        const srcH  = Math.min(sliceH_px, canvas.height - srcY); // última página puede ser más corta
+        const dstH  = (srcH / pxPerMm); // mm que ocupa esta rebanada
+
+        // Canvas temporal con solo el slice de esta página
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width  = canvas.width;
+        sliceCanvas.height = srcH;
+        const ctx = sliceCanvas.getContext('2d');
+        // Fondo blanco
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+        ctx.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+
+        const sliceData = sliceCanvas.toDataURL('image/png');
+        pdf.addImage(sliceData, 'PNG', MARGIN, MARGIN + HEADER_H, printW, dstH);
+
+        // ── 5. Footer CEO-grade ──────────────────────────────────────────
+        // Línea divisoria
+        pdf.setDrawColor(180, 180, 180);
+        pdf.setLineWidth(0.3);
+        pdf.line(MARGIN, pageH - FOOTER_H, pageW - MARGIN, pageH - FOOTER_H);
+
+        // Logo / marca izquierda
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(7);
+        pdf.setTextColor(15, 23, 42);   // slate-900
+        pdf.text('TaxnFin', MARGIN, pageH - FOOTER_H + 4);
+
+        // Documento centro
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(7);
+        pdf.setTextColor(100, 116, 139); // slate-500
         pdf.text(
-          `Generado: ${format(new Date(), 'dd/MM/yyyy HH:mm')} | Página ${i} de ${totalPages}`,
-          pageWidth / 2,
-          pageHeight - 5,
+          `Proyección de Flujo de Efectivo — 18 Semanas Rolling | Generado: ${format(new Date(), "dd 'de' MMMM yyyy, HH:mm", { locale: es })}`,
+          pageW / 2,
+          pageH - FOOTER_H + 4,
           { align: 'center' }
         );
+
+        // Paginación derecha
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(7);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(
+          `${page + 1} / ${totalPages}`,
+          pageW - MARGIN,
+          pageH - FOOTER_H + 4,
+          { align: 'right' }
+        );
       }
+
+      // ── 6. Metadata del documento ────────────────────────────────────
+      pdf.setProperties({
+        title:    'Proyección de Flujo de Efectivo — TaxnFin',
+        subject:  'Modelo Rolling 18 Semanas',
+        author:   'TaxnFin CFO Intelligence',
+        keywords: 'cashflow, proyecciones, flujo de efectivo',
+        creator:  'TaxnFin',
+      });
       
       // Descargar el PDF
-      const fileName = `Proyeccion_Flujo_Efectivo_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
+      const fileName = `TaxnFin_FlujoCaja_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
       pdf.save(fileName);
       
       toast.success('PDF exportado exitosamente');
