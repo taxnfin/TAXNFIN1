@@ -597,7 +597,7 @@ class CategorizationOverride(BaseModel):
 async def auto_categorize_payments(
     request: Request,
     current_user: Dict = Depends(get_current_user),
-    limit: int = 15,
+    limit: int = 100,
     solo_sin_categoria: bool = True,
 ):
     """
