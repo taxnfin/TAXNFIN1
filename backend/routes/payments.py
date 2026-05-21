@@ -823,7 +823,7 @@ async def sync_payments_from_contalink(
     current_user: Dict = Depends(get_current_user)
 ):
     """Sincroniza cobranza y pagos desde Contalink"""
-    company_id = await get_active_company_id(request, current_user)
+    company_id = current_user["company_id"]
 
     # Buscar credenciales con formato de contalink.py (type="contalink")
     creds_doc = await db.integrations.find_one(
@@ -906,7 +906,7 @@ async def sync_payments_from_contalink(
                     "fecha":                fecha.isoformat(),
                     "concepto":             f"Cobranza {inv.get('folio','')} - {receptor}".strip(" -"),
                     "beneficiario":         receptor,
-                    "status":               "pendiente",
+                    "estatus":              "completado",
                     "source":               "contalink",
                     "es_real":              True,
                     "referencia_contalink": ref,
@@ -961,7 +961,7 @@ async def sync_payments_from_contalink(
                     "fecha":                fecha.isoformat(),
                     "concepto":             f"Pago {inv.get('folio','')} - {emisor}".strip(" -"),
                     "beneficiario":         emisor,
-                    "status":               "pendiente",
+                    "estatus":              "completado",
                     "source":               "contalink",
                     "es_real":              True,
                     "referencia_contalink": ref,
@@ -985,10 +985,10 @@ async def sync_payments_from_contalink(
 @router.post("/fix-contalink-status")
 async def fix_contalink_status(request: Request, current_user: Dict = Depends(get_current_user)):
     """Actualiza pagos importados de Contalink de pendiente a completado"""
-    company_id = current_user["company_id"]
+    company_id = await get_active_company_id(request, current_user)
     result = await db.payments.update_many(
         {"company_id": company_id, "source": "contalink"},
-        {"$set": {"status": "completado", "es_real": True}}
+        {"$set": {"estatus": "completado", "es_real": True}}
     )
     return {"success": True, "updated": result.modified_count, "message": f"{result.modified_count} pagos actualizados a completado"}
 
