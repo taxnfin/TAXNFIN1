@@ -8,7 +8,7 @@ import os
 import uuid as uuid_lib
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, HTTPException, Depends, Request, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, Request, Query
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -26,11 +26,10 @@ class ContalinkClient:
     """Client for CONTALink API"""
 
     def __init__(self, api_key: str):
-        # Si el usuario pegó dos UUIDs separados por espacio, usar solo el primero
-        self.api_key = api_key.strip().split()[0] if api_key and ' ' in api_key else api_key.strip()
+        self.api_key = api_key
         self.base_url = CONTALINK_BASE_URL
         self.headers = {
-            'Authorization': self.api_key,
+            'Authorization': api_key,
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         }
@@ -91,16 +90,9 @@ class ContalinkClient:
                         'page': page
                     }
                 )
-                logger.info(f"Contalink invoices HTTP {res.status_code} - raw: {res.text[:800]}")
                 if res.status_code == 200:
-                    try:
-                        data = res.json()
-                        logger.info(f"Contalink invoices parsed OK - type: {type(data).__name__}, sample: {str(data)[:300]}")
-                        return data
-                    except Exception as parse_err:
-                        logger.error(f"Contalink invoices JSON parse error: {parse_err} - raw: {res.text[:300]}")
-                        return {'status': 0, 'message': f'JSON parse error: {parse_err}'}
-                return {'status': 0, 'message': f'Error HTTP {res.status_code}: {res.text[:200]}'}
+                    return res.json()
+                return {'status': 0, 'message': f'Error HTTP {res.status_code}'}
         except Exception as e:
             logger.error(f"ContalinkClient.get_invoices error: {e}")
             return {'status': 0, 'message': str(e)}
@@ -210,11 +202,9 @@ async def save_contalink_credentials(
     # Test connection first
     client = ContalinkClient(credentials.api_key)
     result = await client.test_connection()
-    logger.info(f"Contalink test_connection result: {result}")
     if result["status"] != "connected":
         raise HTTPException(status_code=400, detail=f"Credenciales inválidas: {result['message']}")
 
-    logger.info(f"Saving contalink credentials for company_id: {company_id}, rfc: {credentials.rfc}")
     await db.integrations.update_one(
         {"company_id": company_id, "type": "contalink"},
         {"$set": {
@@ -242,7 +232,6 @@ async def get_contalink_status(
         {"company_id": company_id, "type": "contalink"},
         {"_id": 0, "api_key": 0}
     )
-    logger.info(f"Contalink status check for company_id: {company_id}, integration found: {integration is not None}")
     if not integration:
         return {"connected": False, "message": "No configurado"}
 
@@ -276,24 +265,14 @@ async def sync_contalink_invoices(
     end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     start_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
-    # Contalink API uses E=emitidas, R=recibidas
-    tx_type_map = {"issued": "E", "received": "R", "E": "E", "R": "R"}
-    contalink_tx_type = tx_type_map.get(transaction_type, "E")
-    # Contalink API document_type values (exact case required)
-    doc_type_map = {"I": "Ingreso", "E": "Egreso", "N": "Nomina", "P": "Pago",
-                    "ingreso": "Ingreso", "egreso": "Egreso", "nomina": "Nomina", "pago": "Pago",
-                    "Ingreso": "Ingreso", "Egreso": "Egreso", "Nomina": "Nomina", "Pago": "Pago"}
-    contalink_doc_type = doc_type_map.get(document_type, "Ingreso")
-    logger.info(f"Sync invoices: transaction_type={transaction_type} -> contalink={contalink_tx_type}, document_type={document_type} -> {contalink_doc_type}, days_back={days_back}")
-
     synced = created = updated = errors = 0
     page = 0
 
     while True:
         result = await client.get_invoices(
             rfc=creds["rfc"],
-            transaction_type=contalink_tx_type,
-            document_type=contalink_doc_type,
+            transaction_type=transaction_type,
+            document_type=document_type,
             start_date=start_date,
             end_date=end_date,
             page=page
@@ -303,15 +282,8 @@ async def sync_contalink_invoices(
             logger.error(f"Contalink invoices error: {result.get('message')}")
             break
 
-        # Contalink response: {"list": {"total": N, "invoices": [...]}}
-        if isinstance(result, list):
-            invoices = result
-        elif "list" in result:
-            invoices = result["list"].get("invoices", [])
-        else:
-            invoices = result.get("data", result.get("invoices", result.get("documents", [])))
-        
-        logger.info(f"Page {page}: {len(invoices)} invoices found")
+        invoices = result if isinstance(result, list) else \
+                   result.get("data", result.get("invoices", result.get("documents", [])))
         if not invoices:
             break
 
@@ -323,45 +295,24 @@ async def sync_contalink_invoices(
                 if not uuid_val:
                     continue
 
-                # transaction_type R=recibidas=egreso, E=emitidas=ingreso
-                if contalink_tx_type == "R":
-                    tipo_cfdi = "egreso"
-                else:
-                    tipo_cfdi_map = {"I": "ingreso", "Ingreso": "ingreso", "E": "egreso", "Egreso": "egreso", "N": "nomina", "Nomina": "nomina", "P": "pago", "Pago": "pago"}
-                    tipo_cfdi = tipo_cfdi_map.get(document_type, "ingreso")
-
-                # Normalize fecha fields - Contalink uses fecha_expedicion
-                fecha_raw = (inv.get("fecha_expedicion") or inv.get("fecha") or 
-                             inv.get("fecha_emision") or "")
-                fecha_timbrado_raw = (inv.get("fecha_timbrado") or fecha_raw or "")
-                
-                # Normalize estatus - Contalink uses Vigente/Cancelado (capitalized)
-                estatus_raw = (inv.get("estatus") or inv.get("status") or "vigente").lower()
-                if estatus_raw not in ["vigente", "cancelado"]:
-                    estatus_raw = "vigente"
-
-                # impuestos - calculate if not present
-                total_val = float(inv.get("total") or 0)
-                subtotal_val = float(inv.get("subtotal") or 0)
-                impuestos_val = float(inv.get("impuestos") or (total_val - subtotal_val))
+                tipo_cfdi = {"I": "ingreso", "E": "egreso", "N": "nomina", "P": "pago"}.get(document_type, "ingreso")
 
                 doc = {
                     "company_id": company_id,
                     "uuid": uuid_val,
                     "tipo_cfdi": tipo_cfdi,
-                    "emisor_rfc": inv.get("rfc_emisor") or inv.get("emisor_rfc", ""),
-                    "emisor_nombre": inv.get("nombre_emisor") or inv.get("emisor_nombre", ""),
-                    "receptor_rfc": inv.get("rfc_receptor") or inv.get("receptor_rfc") or creds["rfc"],
-                    "receptor_nombre": inv.get("nombre_receptor") or inv.get("receptor_nombre", ""),
-                    "fecha_emision": fecha_raw or datetime.now(timezone.utc).isoformat(),
-                    "fecha_timbrado": fecha_timbrado_raw or datetime.now(timezone.utc).isoformat(),
-                    "total": total_val,
-                    "subtotal": subtotal_val,
-                    "impuestos": impuestos_val,
+                    "emisor_rfc": inv.get("emisor_rfc") or inv.get("rfc_emisor", ""),
+                    "emisor_nombre": inv.get("emisor_nombre") or inv.get("nombre_emisor", ""),
+                    "receptor_rfc": inv.get("receptor_rfc") or inv.get("rfc_receptor", creds["rfc"]),
+                    "receptor_nombre": inv.get("receptor_nombre") or inv.get("nombre_receptor", ""),
+                    "fecha_emision": inv.get("fecha") or inv.get("fecha_emision", ""),
+                    "fecha_timbrado": inv.get("fecha_timbrado") or inv.get("fecha", ""),
+                    "total": float(inv.get("total") or inv.get("monto", 0)),
+                    "subtotal": float(inv.get("subtotal") or 0),
                     "moneda": inv.get("moneda", "MXN"),
                     "tipo_cambio": float(inv.get("tipo_cambio") or 1),
-                    "estatus": estatus_raw,
-                    "estado_cancelacion": "cancelado" if estatus_raw == "cancelado" else "vigente",
+                    "estatus": inv.get("estatus") or inv.get("status", "vigente"),
+                    "estado_cancelacion": "cancelado" if inv.get("cancelado") else "vigente",
                     "metodo_pago": inv.get("metodo_pago", "PUE"),
                     "forma_pago": inv.get("forma_pago", "03"),
                     "fuente": "contalink",
@@ -416,7 +367,7 @@ async def sync_all_contalink(
 ):
     """Sync all: issued + received invoices"""
     results = {}
-    for tx_type, doc_type in [("E", "Ingreso"), ("R", "Ingreso"), ("R", "Egreso")]:  # E=emitidas, R=recibidas
+    for tx_type, doc_type in [("received", "I"), ("issued", "I"), ("received", "E")]:
         try:
             results[f"{tx_type}_{doc_type}"] = await sync_contalink_invoices(
                 request, current_user,
@@ -521,101 +472,6 @@ async def delete_contalink_credentials(
 
 
 # ── Invoice Status ─────────────────────────────────────────────────────────────
-
-
-@router.post("/import-excel")
-async def import_excel_egresos(
-    file: UploadFile = File(...),
-    current_user: Dict = Depends(get_current_user)
-):
-    """Import egresos from Contalink Excel report"""
-    company_id = current_user['company_id']
-    
-    try:
-        import openpyxl
-        content_bytes = await file.read()
-        wb = openpyxl.load_workbook(io.BytesIO(content_bytes))
-        ws = wb.active
-        
-        # Find header row (row 4 in standard Contalink export)
-        headers = [ws.cell(4, c).value for c in range(1, ws.max_column + 1)]
-        
-        created = updated = skipped = 0
-        seen_uuids = set()
-        
-        for row in range(5, ws.max_row + 1):
-            uuid_val = ws.cell(row, 11).value  # UUID column
-            if not uuid_val or uuid_val in seen_uuids:
-                skipped += 1
-                continue
-            seen_uuids.add(uuid_val)
-            
-            def get_cell(col_idx):
-                v = ws.cell(row, col_idx).value
-                return v if v is not None else ""
-            
-            fecha_raw = str(get_cell(10)) if get_cell(10) else None
-            if fecha_raw:
-                from datetime import datetime as dt
-                for fmt in ["%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y"]:
-                    try:
-                        fecha_raw = dt.strptime(fecha_raw, fmt).replace(tzinfo=timezone.utc).isoformat()
-                        break
-                    except:
-                        pass
-            
-            total = float(get_cell(41) or 0)
-            subtotal = float(get_cell(30) or 0)
-            impuestos = float(get_cell(40) or (total - subtotal))
-            estatus_raw = str(get_cell(15)).lower() if get_cell(15) else "vigente"
-            if estatus_raw not in ["vigente", "cancelado"]:
-                estatus_raw = "vigente"
-            
-            doc = {
-                "company_id": company_id,
-                "uuid": str(uuid_val),
-                "tipo_cfdi": "egreso",
-                "emisor_rfc": str(get_cell(2)),
-                "emisor_nombre": str(get_cell(3)),
-                "receptor_rfc": current_user.get("company_rfc", ""),
-                "receptor_nombre": "",
-                "fecha_emision": fecha_raw or datetime.now(timezone.utc).isoformat(),
-                "fecha_timbrado": fecha_raw or datetime.now(timezone.utc).isoformat(),
-                "total": total,
-                "subtotal": subtotal,
-                "impuestos": impuestos,
-                "moneda": str(get_cell(26)) or "MXN",
-                "tipo_cambio": float(get_cell(27) or 1),
-                "estatus": estatus_raw,
-                "forma_pago": str(get_cell(18)) or "",
-                "metodo_pago": str(get_cell(19)) or "",
-                "fuente": "contalink_excel",
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
-            
-            existing = await db.cfdis.find_one(
-                {"company_id": company_id, "uuid": str(uuid_val)},
-                {"_id": 0, "id": 1}
-            )
-            if existing:
-                await db.cfdis.update_one(
-                    {"company_id": company_id, "uuid": str(uuid_val)},
-                    {"$set": doc}
-                )
-                updated += 1
-            else:
-                doc["id"] = str(uuid.uuid4())
-                doc["created_at"] = datetime.now(timezone.utc).isoformat()
-                await db.cfdis.insert_one(doc)
-                created += 1
-        
-        return {"created": created, "updated": updated, "skipped": skipped}
-        
-    except Exception as e:
-        logger.error(f"Excel import error: {e}")
-        raise HTTPException(status_code=400, detail=f"Error procesando Excel: {str(e)}")
-
-
 @router.get("/invoice-status/{cfdi_uuid}")
 async def check_invoice_status(
     cfdi_uuid: str,
@@ -634,324 +490,3 @@ async def check_invoice_status(
         result = res.json() if res.status_code == 200 else {"status": 0, "message": res.text}
 
     return {"success": True, "uuid": cfdi_uuid, "data": result}
-
-
-@router.get("/probe-endpoints")
-async def probe_contalink_endpoints(
-    request: Request,
-    current_user: Dict = Depends(get_current_user),
-):
-    """Probe Contalink API endpoints to find CxC/CxP aging reports"""
-    company_id = await get_active_company_id(request, current_user)
-    creds = await get_contalink_credentials(company_id)
-    api_key = creds["api_key"]
-    rfc = creds["rfc"]
-    headers = {"Authorization": api_key, "Content-Type": "application/json", "Accept": "application/json"}
-
-    endpoints = [
-        f"/accounting/accounts-receivable/",
-        f"/accounting/accounts-payable/",
-        f"/invoices/aging/",
-        f"/reports/aging/",
-        f"/reports/cxc/",
-        f"/reports/cxp/",
-        f"/accounting/aging/",
-        f"/invoices/balances/",
-        f"/invoices/list/?transaction_type=E&document_type=Ingreso&rfc={rfc}&page=0",
-    ]
-
-    results = {}
-    async with httpx.AsyncClient(timeout=15) as http_client:
-        for ep in endpoints:
-            try:
-                res = await http_client.get(
-                    f"{CONTALINK_BASE_URL}{ep}",
-                    headers=headers
-                )
-                sample = res.text[:300] if res.status_code == 200 else res.text[:100]
-                results[ep] = {"status": res.status_code, "sample": sample}
-            except Exception as e:
-                results[ep] = {"status": "error", "sample": str(e)}
-
-    return {"rfc": rfc, "results": results}
-
-
-@router.get("/raw-invoice-sample")
-async def get_raw_invoice_sample(
-    request: Request,
-    current_user: Dict = Depends(get_current_user),
-    transaction_type: str = Query("E", description="E=emitidas, R=recibidas"),
-    document_type: str = Query("Ingreso"),
-    days_back: int = Query(30),
-):
-    """Get raw invoice data from Contalink to inspect all fields"""
-    company_id = await get_active_company_id(request, current_user)
-    creds = await get_contalink_credentials(company_id)
-    
-    end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    start_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
-    
-    client = ContalinkClient(creds["api_key"])
-    result = await client.get_invoices(
-        rfc=creds["rfc"],
-        transaction_type=transaction_type,
-        document_type=document_type,
-        start_date=start_date,
-        end_date=end_date,
-        page=0
-    )
-    
-    # Return raw first 3 invoices with ALL fields
-    if isinstance(result, list):
-        invoices = result[:3]
-    elif "list" in result:
-        invoices = result["list"].get("invoices", [])[:3]
-    else:
-        invoices = result.get("invoices", result.get("data", []))[:3]
-    
-    return {
-        "transaction_type": transaction_type,
-        "document_type": document_type,
-        "total_found": len(invoices),
-        "raw_fields": list(invoices[0].keys()) if invoices else [],
-        "sample": invoices
-    }
-
-
-@router.get("/search-accounts")
-async def search_accounts_in_trial_balance(
-    request: Request,
-    current_user: Dict = Depends(get_current_user),
-    keywords: str = Query("cobrar,pagar,clientes,proveedores"),
-):
-    """Search for CxC/CxP accounts in stored trial balance data"""
-    company_id = await get_active_company_id(request, current_user)
-    
-    # Get latest trial balance from integration_sync_data
-    doc = await db.integration_sync_data.find_one(
-        {"company_id": company_id, "type": "trial_balance"},
-        sort=[("period", -1)]
-    )
-    
-    if not doc:
-        raise HTTPException(status_code=404, detail="No hay datos de trial balance guardados")
-    
-    items = doc.get("data", {}).get("trial_balance", {}).get("items", [])
-    kws = [k.strip().lower() for k in keywords.split(",")]
-    
-    matches = []
-    for item in items:
-        cuenta = str(item.get("cuenta", "")).lower()
-        cuenta_num = str(item.get("cuenta_numero", ""))
-        if any(k in cuenta for k in kws) or cuenta_num.startswith("113") or cuenta_num.startswith("211"):
-            matches.append({
-                "cuenta_numero": item.get("cuenta_numero"),
-                "cuenta": item.get("cuenta"),
-                "inicial_saldo": item.get("inicial_saldo"),
-                "final_saldo": item.get("final_saldo"),
-                "debe": item.get("debe"),
-                "haber": item.get("haber"),
-                "final_debe": item.get("final_debe"),
-                "final_haber": item.get("final_haber"),
-            })
-    
-    return {
-        "period": doc.get("period"),
-        "total_items": len(items),
-        "matches": matches
-    }
-
-
-# ── Aging Import (CxC / CxP desde XLS de Contalink) ───────────────────────────
-
-def _isna(val) -> bool:
-    import math
-    if val is None:
-        return True
-    if isinstance(val, float) and math.isnan(val):
-        return True
-    return False
-
-
-def _parse_money(val) -> float:
-    if val is None:
-        return 0.0
-    s = str(val).replace(",", "").replace("$", "").strip()
-    try:
-        return float(s)
-    except Exception:
-        return 0.0
-
-
-def _parse_cxc_xls(content: bytes) -> dict:
-    import io
-    import pandas as pd
-    df = pd.read_excel(io.BytesIO(content), engine="xlrd", header=None)
-    empresa = str(df.iloc[1, 3]) if not _isna(df.iloc[1, 3]) else ""
-    rfc     = str(df.iloc[2, 3]) if not _isna(df.iloc[2, 3]) else ""
-    fecha   = str(df.iloc[1, 9])[:10] if not _isna(df.iloc[1, 9]) else ""
-    items = []
-    for i in range(4, len(df)):
-        nombre = df.iloc[i, 1]
-        total  = df.iloc[i, 12]
-        if _isna(nombre) or _isna(total):
-            continue
-        nombre_s = str(nombre).strip()
-        if not nombre_s or nombre_s == "nan" or "Total" in nombre_s or "Porcentaje" in nombre_s:
-            continue
-        items.append({
-            "nombre":           nombre_s,
-            "credito_anticipo": _parse_money(df.iloc[i, 2]),
-            "por_vencer":       _parse_money(df.iloc[i, 3]),
-            "dias_1_30":        _parse_money(df.iloc[i, 5]),
-            "dias_31_60":       _parse_money(df.iloc[i, 7]),
-            "dias_61_90":       _parse_money(df.iloc[i, 8]),
-            "dias_91_120":      _parse_money(df.iloc[i, 10]),
-            "sobre_120":        _parse_money(df.iloc[i, 11]),
-            "total":            _parse_money(total),
-        })
-    total_general = sum(r["total"] for r in items)
-    return {
-        "empresa": empresa, "rfc": rfc, "fecha": fecha, "items": items,
-        "totals": {
-            "credito_anticipo": sum(r["credito_anticipo"] for r in items),
-            "por_vencer":       sum(r["por_vencer"]       for r in items),
-            "dias_1_30":        sum(r["dias_1_30"]        for r in items),
-            "dias_31_60":       sum(r["dias_31_60"]       for r in items),
-            "dias_61_90":       sum(r["dias_61_90"]       for r in items),
-            "dias_91_120":      sum(r["dias_91_120"]      for r in items),
-            "sobre_120":        sum(r["sobre_120"]        for r in items),
-            "total":            total_general,
-        },
-    }
-
-
-def _parse_cxp_xls(content: bytes) -> dict:
-    import io
-    import pandas as pd
-    df = pd.read_excel(io.BytesIO(content), engine="xlrd", header=None)
-    empresa = str(df.iloc[0, 0]) if not _isna(df.iloc[0, 0]) else ""
-    rfc     = str(df.iloc[0, 1]) if not _isna(df.iloc[0, 1]) else ""
-    fecha   = str(df.iloc[0, 2])[:10] if not _isna(df.iloc[0, 2]) else ""
-    SKIP = {"TOTAL", "Porcentajes", "Porcentajes totales"}
-    items = []
-    for i in range(3, len(df)):
-        nombre = df.iloc[i, 1]
-        total  = df.iloc[i, 8]
-        if _isna(nombre) or _isna(total):
-            continue
-        nombre_s = str(nombre).strip()
-        if not nombre_s or nombre_s == "nan" or nombre_s in SKIP:
-            continue
-        items.append({
-            "nombre":           nombre_s,
-            "credito_anticipo": _parse_money(df.iloc[i, 2]),
-            "por_vencer":       _parse_money(df.iloc[i, 3]),
-            "dias_1_30":        _parse_money(df.iloc[i, 4]),
-            "dias_31_60":       _parse_money(df.iloc[i, 5]),
-            "dias_61_90":       _parse_money(df.iloc[i, 6]),
-            "sobre_90":         _parse_money(df.iloc[i, 7]),
-            "total":            _parse_money(total),
-        })
-    total_general = sum(r["total"] for r in items)
-    return {
-        "empresa": empresa, "rfc": rfc, "fecha": fecha, "items": items,
-        "totals": {
-            "credito_anticipo": sum(r["credito_anticipo"] for r in items),
-            "por_vencer":       sum(r["por_vencer"]       for r in items),
-            "dias_1_30":        sum(r["dias_1_30"]        for r in items),
-            "dias_31_60":       sum(r["dias_31_60"]       for r in items),
-            "dias_61_90":       sum(r["dias_61_90"]       for r in items),
-            "sobre_90":         sum(r["sobre_90"]         for r in items),
-            "total":            total_general,
-        },
-    }
-
-
-@router.post("/import-aging")
-async def import_aging_xls(
-    file: UploadFile = File(...),
-    tipo: str = Query(..., description="cxc | cxp"),
-    request: Request = None,
-    current_user: Dict = Depends(get_current_user),
-):
-    """Importa XLS de aging (CxC o CxP) exportado desde Contalink."""
-    if tipo not in ("cxc", "cxp"):
-        raise HTTPException(status_code=400, detail="tipo debe ser 'cxc' o 'cxp'")
-    company_id = await get_active_company_id(request, current_user)
-    content = await file.read()
-    try:
-        parsed = _parse_cxc_xls(content) if tipo == "cxc" else _parse_cxp_xls(content)
-    except Exception as e:
-        logger.error(f"import_aging_xls parse error ({tipo}): {e}")
-        raise HTTPException(status_code=400, detail=f"Error al parsear XLS: {str(e)}")
-    doc = {
-        "company_id": company_id,
-        "tipo":        tipo,
-        "fecha":       parsed["fecha"],
-        "empresa":     parsed["empresa"],
-        "rfc":         parsed["rfc"],
-        "items":       parsed["items"],
-        "totals":      parsed["totals"],
-        "updated_at":  datetime.now(timezone.utc).isoformat(),
-    }
-    await db.contalink_aging.update_one(
-        {"company_id": company_id, "tipo": tipo},
-        {"$set": doc},
-        upsert=True,
-    )
-    return {
-        "success": True,
-        "tipo":    tipo,
-        "fecha":   parsed["fecha"],
-        "empresa": parsed["empresa"],
-        "count":   len(parsed["items"]),
-        "total":   parsed["totals"]["total"],
-        "totals":  parsed["totals"],
-    }
-
-
-@router.get("/aging-summary")
-async def get_aging_summary(
-    request: Request,
-    current_user: Dict = Depends(get_current_user),
-):
-    """Devuelve CxC + CxP aging para el Dashboard."""
-    company_id = await get_active_company_id(request, current_user)
-    cxc_doc = await db.contalink_aging.find_one({"company_id": company_id, "tipo": "cxc"}, {"_id": 0})
-    cxp_doc = await db.contalink_aging.find_one({"company_id": company_id, "tipo": "cxp"}, {"_id": 0})
-
-    def aging_bands(doc, tipo):
-        if not doc:
-            return None
-        t = doc.get("totals", {})
-        bands = [
-            {"label": "1-30",  "amount": t.get("dias_1_30",  0)},
-            {"label": "31-60", "amount": t.get("dias_31_60", 0)},
-            {"label": "61-90", "amount": t.get("dias_61_90", 0)},
-        ]
-        if tipo == "cxc":
-            bands += [
-                {"label": "91-120", "amount": t.get("dias_91_120", 0)},
-                {"label": ">120",   "amount": t.get("sobre_120",   0)},
-            ]
-        else:
-            bands += [{"label": ">90", "amount": t.get("sobre_90", 0)}]
-        return {
-            "total":      t.get("total", 0),
-            "por_vencer": t.get("por_vencer", 0),
-            "vencido":    t.get("total", 0) - t.get("por_vencer", 0) - t.get("credito_anticipo", 0),
-            "bands":      bands,
-            "fecha":      doc.get("fecha"),
-            "count":      len(doc.get("items", [])),
-            "top5":       sorted(doc.get("items", []), key=lambda x: x["total"], reverse=True)[:5],
-        }
-
-    return {
-        "cxc": aging_bands(cxc_doc, "cxc"),
-        "cxp": aging_bands(cxp_doc, "cxp"),
-        "net_position": (
-            (cxc_doc["totals"]["total"] if cxc_doc else 0)
-            - (cxp_doc["totals"]["total"] if cxp_doc else 0)
-        ),
-    }
