@@ -194,15 +194,18 @@ export default function TreasuryDecisions() {
 
       // ── Calendar ────────────────────────────────────────────────────
       const calendarWeeks = weeks.map(w => {
-        const byCategory = {};
+        const totals = {};
         w.items.forEach(p => {
           const cat = catByCode[p.category_id];
-          const key = cat?.nombre || p.category_name || 'otros';
-          if (!byCategory[key]) byCategory[key] = { total: 0, items: [] };
-          byCategory[key].total += p.monto || 0;
-          byCategory[key].items.push(p);
+          const key = cat?.subtipo || 'otros';
+          totals[key] = (totals[key] || 0) + (p.monto || 0);
         });
-        return { label: w.label, date_range: `${w.date}`, total: w.egresos, categories: byCategory };
+        return {
+          label: w.label,
+          date_range: w.date,
+          total: w.egresos,
+          totals,           // ← field name JSX expects
+        };
       });
 
       const calendar = {
@@ -242,12 +245,12 @@ export default function TreasuryDecisions() {
           amounts: sortedVendors.slice(0,5).map(([,v])=>v),
           detail:  `Top 5 proveedores concentran el ${top5pct}% del gasto`,
         },
-        top_5_customers: {
+        top_3_clients: {
           percentage: top5custPct,
           risk_level: top5custPct > 70 ? 'high' : top5custPct > 50 ? 'medium' : 'low',
-          names:   sortedCustomers.slice(0,5).map(([n])=>n),
-          amounts: sortedCustomers.slice(0,5).map(([,v])=>v),
-          detail:  `Top 5 clientes concentran el ${top5custPct}% de los cobros`,
+          names:   sortedCustomers.slice(0,3).map(([n])=>n),
+          amounts: sortedCustomers.slice(0,3).map(([,v])=>v),
+          detail:  `Top 3 clientes concentran el ${top5custPct}% de los cobros`,
         },
       };
 
@@ -265,10 +268,31 @@ export default function TreasuryDecisions() {
         }, 0) / pagos.length
       ) : 0;
 
+      const cccDays = dso - dpo;
       const working_capital = {
-        dso: { days: dso, trend: 'stable', value: 0, health: dso < 30 ? 'excellent' : dso < 60 ? 'good' : 'fair' },
-        dpo: { days: dpo, trend: 'stable', value: 0, health: dpo < 45 ? 'fair' : 'good' },
-        ccc: { days: dso - dpo, health: (dso - dpo) < 0 ? 'excellent' : 'good' },
+        dso: {
+          value: dso,
+          trend: 'stable', trend_value: 0, trend_description: `Estable (0.0 días)`,
+          health: dso < 30 ? 'excellent' : dso < 60 ? 'good' : 'fair',
+          description: `En promedio, cobras en ${dso} días`,
+        },
+        dpo: {
+          value: dpo,
+          trend: 'stable',
+          health: dpo < 45 ? 'fair' : 'good',
+          description: `En promedio, pagas en ${dpo} días`,
+        },
+        ccc: {
+          value: cccDays,
+          is_positive: cccDays <= 0,
+          health: cccDays <= 0 ? 'excellent' : 'good',
+          description: `Pagas ${Math.abs(cccDays)} días ${cccDays <= 0 ? 'antes de cobrar' : 'después de cobrar'}`,
+          interpretation: cccDays <= 0 ? 'Excelente: tu flujo es positivo' : 'Oportunidad de mejora',
+        },
+        summary: {
+          message: `Tu ciclo de efectivo es de ${cccDays} días`,
+          recommendation: cccDays <= 0 ? 'Mantén la estrategia actual' : 'Acelera cobranza o negocia más plazo con proveedores',
+        },
       };
 
       setData({ cash_position, alerts, recommendations, calendar, concentration_kpis, working_capital });
