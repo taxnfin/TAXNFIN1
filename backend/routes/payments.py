@@ -891,9 +891,7 @@ async def sync_payments_from_contalink(
                     skipped += 1
                     continue
                 try:
-                    fecha_str = (inv.get("fecha_expedicion") or inv.get("fecha") or
-                                 inv.get("date") or inv.get("fecha_emision") or end)
-                    fecha = datetime.strptime(str(fecha_str)[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                    fecha = datetime.strptime(str(inv.get("date", end))[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
                 except:
                     fecha = datetime.now(timezone.utc)
                 uuid_val = (inv.get("uuid") or inv.get("UUID") or inv.get("folio_fiscal") or "")
@@ -908,7 +906,7 @@ async def sync_payments_from_contalink(
                     "fecha":                fecha.isoformat(),
                     "concepto":             f"Cobranza {inv.get('folio','')} - {receptor}".strip(" -"),
                     "beneficiario":         receptor,
-                    "estatus":              "completado",
+                    "status":               "pendiente",
                     "source":               "contalink",
                     "es_real":              True,
                     "referencia_contalink": ref,
@@ -948,9 +946,7 @@ async def sync_payments_from_contalink(
                     skipped += 1
                     continue
                 try:
-                    fecha_str = (inv.get("fecha_expedicion") or inv.get("fecha") or
-                                 inv.get("date") or inv.get("fecha_emision") or end)
-                    fecha = datetime.strptime(str(fecha_str)[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                    fecha = datetime.strptime(str(inv.get("date", end))[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
                 except:
                     fecha = datetime.now(timezone.utc)
                 uuid_val = (inv.get("uuid") or inv.get("UUID") or inv.get("folio_fiscal") or "")
@@ -965,7 +961,7 @@ async def sync_payments_from_contalink(
                     "fecha":                fecha.isoformat(),
                     "concepto":             f"Pago {inv.get('folio','')} - {emisor}".strip(" -"),
                     "beneficiario":         emisor,
-                    "estatus":              "completado",
+                    "status":               "pendiente",
                     "source":               "contalink",
                     "es_real":              True,
                     "referencia_contalink": ref,
@@ -989,67 +985,12 @@ async def sync_payments_from_contalink(
 @router.post("/fix-contalink-status")
 async def fix_contalink_status(request: Request, current_user: Dict = Depends(get_current_user)):
     """Actualiza pagos importados de Contalink de pendiente a completado"""
-    company_id = await get_active_company_id(request, current_user)
+    company_id = current_user["company_id"]
     result = await db.payments.update_many(
         {"company_id": company_id, "source": "contalink"},
-        {"$set": {"estatus": "completado", "es_real": True}}
+        {"$set": {"status": "completado", "es_real": True}}
     )
     return {"success": True, "updated": result.modified_count, "message": f"{result.modified_count} pagos actualizados a completado"}
-
-
-@router.post("/fix-contalink-dates")
-async def fix_contalink_dates(request: Request, current_user: Dict = Depends(get_current_user)):
-    """
-    Migración puntual: corrige la fecha de los payments de Contalink que quedaron
-    con la fecha de import (hoy) en lugar de la fecha del CFDI.
-    Usa cfdi_uuid para buscar la fecha real en la colección de CFDIs.
-    Ejecutar UNA VEZ después de sincronizar.
-    """
-    company_id = await get_active_company_id(request, current_user)
-
-    # Traer payments de Contalink con cfdi_uuid
-    payments = await db.payments.find(
-        {"company_id": company_id, "source": "contalink", "cfdi_uuid": {"$exists": True, "$ne": ""}},
-        {"_id": 0, "id": 1, "cfdi_uuid": 1, "fecha": 1}
-    ).to_list(5000)
-
-    updated = 0
-    not_found = 0
-    for p in payments:
-        cfdi_uuid = p.get("cfdi_uuid")
-        if not cfdi_uuid:
-            continue
-        # Buscar el CFDI correspondiente
-        cfdi = await db.cfdis.find_one(
-            {"company_id": company_id, "$or": [
-                {"uuid": cfdi_uuid}, {"folio_fiscal": cfdi_uuid}
-            ]},
-            {"_id": 0, "fecha_expedicion": 1, "fecha": 1}
-        )
-        if not cfdi:
-            not_found += 1
-            continue
-        fecha_real = cfdi.get("fecha_expedicion") or cfdi.get("fecha")
-        if not fecha_real:
-            not_found += 1
-            continue
-        # Normalizar a string ISO
-        if not isinstance(fecha_real, str):
-            fecha_real = fecha_real.isoformat()
-        await db.payments.update_one(
-            {"id": p["id"], "company_id": company_id},
-            {"$set": {"fecha": fecha_real, "fecha_pago": fecha_real}}
-        )
-        updated += 1
-
-    return {
-        "success": True,
-        "updated": updated,
-        "not_found": not_found,
-        "message": f"{updated} pagos con fecha corregida desde CFDI. {not_found} sin CFDI encontrado."
-    }
-
-
 
 
 @router.post("/fix-company-id")
