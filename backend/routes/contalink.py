@@ -29,7 +29,7 @@ class ContalinkClient:
         self.api_key = api_key
         self.base_url = CONTALINK_BASE_URL
         self.headers = {
-            'Authorization': api_key,
+            'Authorization': f'Token {api_key}',
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         }
@@ -628,7 +628,7 @@ async def check_invoice_status(
     async with httpx.AsyncClient(timeout=15) as http_client:
         res = await http_client.get(
             f"{CONTALINK_BASE_URL}/invoices/check-status/{cfdi_uuid}/",
-            headers={"Authorization": creds["api_key"], "Content-Type": "application/json"}
+            headers={"Authorization": f"Token {creds['api_key']}", "Content-Type": "application/json"}
         )
         result = res.json() if res.status_code == 200 else {"status": 0, "message": res.text}
 
@@ -645,7 +645,7 @@ async def probe_contalink_endpoints(
     creds = await get_contalink_credentials(company_id)
     api_key = creds["api_key"]
     rfc = creds["rfc"]
-    headers = {"Authorization": api_key, "Content-Type": "application/json", "Accept": "application/json"}
+    headers = {"Authorization": f"Token {api_key}", "Content-Type": "application/json", "Accept": "application/json"}
 
     endpoints = [
         f"/accounting/accounts-receivable/",
