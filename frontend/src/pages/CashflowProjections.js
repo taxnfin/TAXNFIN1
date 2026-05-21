@@ -338,12 +338,12 @@ const CashflowProjections = () => {
       }
     });
     
-    const fourWeeksAgo = addWeeks(currentWeekStart, -4);
+    const fourWeeksAgo = addWeeks(currentWeekStart, -17);
     
     // Priority order for window start:
     // 1. Explicit user override (customStart) — lets the user choose any week (e.g., Jan 2026)
-    // 2. Earliest payment date (clamped to >= 4 weeks ago, to avoid too-far-back default)
-    // 3. Default: 4 weeks before today
+    // 2. Earliest payment date (clamped to >= 17 weeks ago, to show full quarter of history)
+    // 3. Default: 17 weeks before today
     let startWeek;
     if (customStart) {
       const parsed = new Date(customStart);
@@ -357,10 +357,9 @@ const CashflowProjections = () => {
         : fourWeeksAgo;
     }
     
-    // Generate 18 weeks: 4 historical (S1-S4) + 1 current (S5) + 13 projected (S6-S18)
-    // Rolling model: as weeks pass, historical weeks become fixed "Real" data
+    // Generate 30 weeks: up to 17 historical (Real) + 1 current (Actual) + 12 projected
     const weeks = [];
-    for (let i = 0; i < 18; i++) {
+    for (let i = 0; i < 30; i++) {
       const weekStart = addWeeks(startWeek, i);
       const weekEnd = addWeeks(weekStart, 1);
       const isPast = weekEnd <= today;
