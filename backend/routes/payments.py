@@ -991,6 +991,33 @@ async def sync_payments_from_contalink(
                     "created_by":           current_user["id"],
                 })
                 created += 1
+
+                # También guardar en cfdis para proyecciones futuras
+                if uuid_val and not await db.cfdis.find_one({"company_id": company_id, "uuid": uuid_val}):
+                    # Calcular fecha de vencimiento (30 días después de expedición)
+                    fecha_venc = fecha + timedelta(days=30)
+                    await db.cfdis.insert_one({
+                        "id":                  str(uuid.uuid4()),
+                        "company_id":          company_id,
+                        "uuid":                uuid_val,
+                        "tipo_cfdi":           "ingreso",
+                        "fecha_emision":       fecha.isoformat(),
+                        "fecha_expedicion":    fecha.isoformat(),
+                        "fecha_vencimiento":   fecha_venc.isoformat(),
+                        "total":               monto,
+                        "moneda":              inv.get("moneda", "MXN"),
+                        "tipo_cambio":         float(inv.get("tipo_cambio", 1) or 1),
+                        "monto_cobrado":       monto,  # ya cobrado = no proyectar
+                        "monto_pagado":        0,
+                        "nombre_receptor":     receptor,
+                        "nombre_emisor":       inv.get("nombre_emisor") or inv.get("emisor_nombre", ""),
+                        "rfc_receptor":        inv.get("rfc_receptor", ""),
+                        "rfc_emisor":          inv.get("rfc_emisor", rfc),
+                        "folio":               str(inv.get("folio", "")),
+                        "estado_cancelacion":  "vigente",
+                        "source":              "contalink",
+                        "created_at":          datetime.now(timezone.utc).isoformat(),
+                    })
         except Exception as e:
             errors.append(f"Emitidas {start}: {str(e)}")
             logger.error(f"sync-contalink issued error: {e}")
@@ -1050,6 +1077,32 @@ async def sync_payments_from_contalink(
                     "created_by":           current_user["id"],
                 })
                 created += 1
+
+                # También guardar en cfdis para proyecciones futuras
+                if uuid_val and not await db.cfdis.find_one({"company_id": company_id, "uuid": uuid_val}):
+                    fecha_venc = fecha + timedelta(days=30)
+                    await db.cfdis.insert_one({
+                        "id":                  str(uuid.uuid4()),
+                        "company_id":          company_id,
+                        "uuid":                uuid_val,
+                        "tipo_cfdi":           "egreso",
+                        "fecha_emision":       fecha.isoformat(),
+                        "fecha_expedicion":    fecha.isoformat(),
+                        "fecha_vencimiento":   fecha_venc.isoformat(),
+                        "total":               monto,
+                        "moneda":              inv.get("moneda", "MXN"),
+                        "tipo_cambio":         float(inv.get("tipo_cambio", 1) or 1),
+                        "monto_cobrado":       0,
+                        "monto_pagado":        monto,  # ya pagado = no proyectar
+                        "nombre_emisor":       emisor,
+                        "nombre_receptor":     inv.get("nombre_receptor") or inv.get("receptor_nombre", ""),
+                        "rfc_emisor":          inv.get("rfc_emisor", ""),
+                        "rfc_receptor":        inv.get("rfc_receptor", rfc),
+                        "folio":               str(inv.get("folio", "")),
+                        "estado_cancelacion":  "vigente",
+                        "source":              "contalink",
+                        "created_at":          datetime.now(timezone.utc).isoformat(),
+                    })
         except Exception as e:
             errors.append(f"Recibidas {start}: {str(e)}")
             logger.error(f"sync-contalink received error: {e}")
