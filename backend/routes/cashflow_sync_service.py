@@ -597,14 +597,14 @@ class CategorizationOverride(BaseModel):
 async def auto_categorize_payments(
     request: Request,
     current_user: Dict = Depends(get_current_user),
-    limit: int = 25,
+    limit: int = 15,
     solo_sin_categoria: bool = True,
 ):
     """
     Toma los pagos sin categoría y usa Claude API para asignarles
     la categoría más apropiada del catálogo.
 
-    - limit: máximo de pagos a procesar por llamada (default 25)
+    - limit: máximo de pagos a procesar por llamada (default 15)
     - solo_sin_categoria: si False, re-categoriza todos los pagos
     """
     import httpx, os, json
@@ -686,7 +686,7 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
                 },
                 json={
                     "model": "claude-sonnet-4-5",
-                    "max_tokens": 4096,
+                    "max_tokens": 8192,
                     "messages": [{"role": "user", "content": prompt}],
                 },
             )
