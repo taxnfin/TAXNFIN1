@@ -664,19 +664,48 @@ const CashflowProjections = () => {
   };
 
   const processMonthlyData = (cfdisData, categoriesData, customMonthlyStart = '') => {
-    // Generate 6 months. If user picked a custom start date for the cashflow,
-    // anchor the monthly view to the same month (e.g., enero 2026).
-    const months = [];
+    // Generate months covering history + future.
+    // Window: from the earliest CFDI (or custom start) up to 6 months ahead.
     const today = new Date();
-    let startDate = startOfMonth(today);
+    
+    // Find earliest CFDI date to anchor the historical window
+    let earliestCfdiDate = null;
+    cfdisData.forEach(cfdi => {
+      const d = new Date(cfdi.fecha_emision);
+      if (!isNaN(d.getTime()) && (!earliestCfdiDate || d < earliestCfdiDate)) {
+        earliestCfdiDate = d;
+      }
+    });
+    
+    let startDate;
     if (customMonthlyStart) {
       const parsed = new Date(customMonthlyStart);
       if (!isNaN(parsed.getTime())) {
         startDate = startOfMonth(parsed);
       }
     }
+    if (!startDate) {
+      // Use earliest CFDI date clamped to at most 12 months ago
+      const twelveMonthsAgo = startOfMonth(addMonths(today, -12));
+      startDate = earliestCfdiDate
+        ? startOfMonth(earliestCfdiDate < twelveMonthsAgo ? twelveMonthsAgo : earliestCfdiDate)
+        : startOfMonth(today);
+    }
     
-    for (let i = 0; i < 6; i++) {
+    // Calculate how many months from startDate to 5 months after today
+    const endDate = startOfMonth(addMonths(today, 5));
+    let numMonths = 0;
+    {
+      const tmp = new Date(startDate);
+      while (tmp <= endDate) {
+        numMonths++;
+        tmp.setMonth(tmp.getMonth() + 1);
+      }
+    }
+    numMonths = Math.max(numMonths, 6); // at least 6 months
+    
+    const months = [];
+    for (let i = 0; i < numMonths; i++) {
       const monthStart = addMonths(startDate, i);
       const monthEnd = addMonths(monthStart, 1);
       
@@ -685,10 +714,19 @@ const CashflowProjections = () => {
         monthStart,
         monthEnd,
         label: format(monthStart, 'MMM yyyy', { locale: es }),
+        isPast: monthEnd <= today,
+        isCurrent: monthStart <= today && today < monthEnd,
         ingresos: { total: 0, byCategory: {}, byParty: {} },
         egresos: { total: 0, byCategory: {}, byParty: {} }
       });
     }
+    
+    // Build category lookup by both id AND code (default categories only have code)
+    const catLookup = {};
+    categoriesData.forEach(cat => {
+      if (cat.id)   catLookup[cat.id]   = cat;
+      if (cat.code) catLookup[cat.code] = cat;
+    });
     
     // Classify CFDIs by month
     cfdisData.forEach(cfdi => {
@@ -700,26 +738,29 @@ const CashflowProjections = () => {
         const isIngreso = cfdi.tipo_cfdi === 'ingreso';
         const section = isIngreso ? month.ingresos : month.egresos;
         
-        // Get category name
-        const category = categoriesData.find(c => c.id === cfdi.category_id);
+        // Get category name — look up by code first (AI-categorized payments use code as id)
+        const category = catLookup[cfdi.category_id];
         const categoryName = category?.nombre || 'Sin categoría';
         
         // Get party name
-        const partyName = isIngreso ? cfdi.receptor_nombre : cfdi.emisor_nombre;
+        const partyName = isIngreso
+          ? (cfdi.receptor_nombre || cfdi.receptor_rfc || 'Sin asignar')
+          : (cfdi.emisor_nombre  || cfdi.emisor_rfc  || 'Sin asignar');
         
-        section.total += cfdi.total;
+        const amount = cfdi.total || 0;
+        section.total += amount;
         
         // By category
         if (!section.byCategory[categoryName]) {
           section.byCategory[categoryName] = 0;
         }
-        section.byCategory[categoryName] += cfdi.total;
+        section.byCategory[categoryName] += amount;
         
         // By party
         if (!section.byParty[partyName]) {
           section.byParty[partyName] = { total: 0, cfdis: [] };
         }
-        section.byParty[partyName].total += cfdi.total;
+        section.byParty[partyName].total += amount;
         section.byParty[partyName].cfdis.push(cfdi);
       }
     });
@@ -812,10 +853,18 @@ const CashflowProjections = () => {
     return cfdis.filter(cfdi => {
       if (selectedPartyType === 'customer') {
         const customer = customers.find(c => c.id === selectedParty);
-        return customer && (cfdi.customer_id === selectedParty || cfdi.receptor_rfc === customer.rfc);
+        if (customer) {
+          return cfdi.customer_id === selectedParty || cfdi.receptor_rfc === customer.rfc;
+        }
+        // Fallback: selectedParty might be a nombre or RFC directly (Contalink)
+        return cfdi.receptor_rfc === selectedParty || cfdi.receptor_nombre === selectedParty;
       } else if (selectedPartyType === 'vendor') {
         const vendor = vendors.find(v => v.id === selectedParty);
-        return vendor && (cfdi.vendor_id === selectedParty || cfdi.emisor_rfc === vendor.rfc);
+        if (vendor) {
+          return cfdi.vendor_id === selectedParty || cfdi.emisor_rfc === vendor.rfc;
+        }
+        // Fallback: selectedParty might be a nombre or RFC directly (Contalink)
+        return cfdi.emisor_rfc === selectedParty || cfdi.emisor_nombre === selectedParty;
       }
       return false;
     });
@@ -1291,8 +1340,9 @@ const CashflowProjections = () => {
               terceroNombre = customer.nombre;
               terceroTipo = 'cliente';
             }
-          } else {
-            // Try to find customer by RFC from CFDI
+          }
+          // Try to find customer by RFC from CFDI
+          if (terceroId === 'sin-asignar') {
             const cfdi = cfdis.find(c => c.uuid === item.uuid);
             if (cfdi?.receptor_rfc) {
               const customer = customers.find(c => c.rfc === cfdi.receptor_rfc);
@@ -1300,8 +1350,23 @@ const CashflowProjections = () => {
                 terceroId = customer.id;
                 terceroNombre = customer.nombre;
                 terceroTipo = 'cliente';
+              } else if (cfdi?.receptor_nombre) {
+                // Use CFDI receptor name directly (Contalink sync data)
+                terceroId = cfdi.receptor_rfc;
+                terceroNombre = cfdi.receptor_nombre;
+                terceroTipo = 'cliente';
               }
+            } else if (cfdi?.receptor_nombre) {
+              terceroId = cfdi.receptor_nombre;
+              terceroNombre = cfdi.receptor_nombre;
+              terceroTipo = 'cliente';
             }
+          }
+          // Last fallback: use payment beneficiario (set by Contalink sync)
+          if (terceroId === 'sin-asignar' && payment?.beneficiario) {
+            terceroId = payment.beneficiario;
+            terceroNombre = payment.beneficiario;
+            terceroTipo = 'cliente';
           }
           
           if (!partyMap[terceroId]) {
@@ -1337,8 +1402,9 @@ const CashflowProjections = () => {
               terceroNombre = vendor.nombre;
               terceroTipo = 'proveedor';
             }
-          } else {
-            // Try to find vendor by RFC from CFDI
+          }
+          // Try to find vendor by RFC from CFDI
+          if (terceroId === 'sin-asignar') {
             const cfdi = cfdis.find(c => c.uuid === item.uuid);
             if (cfdi?.emisor_rfc) {
               const vendor = vendors.find(v => v.rfc === cfdi.emisor_rfc);
@@ -1346,8 +1412,23 @@ const CashflowProjections = () => {
                 terceroId = vendor.id;
                 terceroNombre = vendor.nombre;
                 terceroTipo = 'proveedor';
+              } else if (cfdi?.emisor_nombre) {
+                // Use CFDI emisor name directly (Contalink sync data)
+                terceroId = cfdi.emisor_rfc;
+                terceroNombre = cfdi.emisor_nombre;
+                terceroTipo = 'proveedor';
               }
+            } else if (cfdi?.emisor_nombre) {
+              terceroId = cfdi.emisor_nombre;
+              terceroNombre = cfdi.emisor_nombre;
+              terceroTipo = 'proveedor';
             }
+          }
+          // Last fallback: use payment beneficiario (set by Contalink sync)
+          if (terceroId === 'sin-asignar' && payment?.beneficiario) {
+            terceroId = payment.beneficiario;
+            terceroNombre = payment.beneficiario;
+            terceroTipo = 'proveedor';
           }
           
           if (!partyMap[terceroId]) {
@@ -2963,8 +3044,13 @@ const CashflowProjections = () => {
                     <TableRow className="bg-gray-100">
                       <TableHead className="sticky left-0 bg-gray-100 min-w-[250px] font-bold">CONCEPTO</TableHead>
                       {monthlyData.map((month, idx) => (
-                        <TableHead key={idx} className="text-center min-w-[130px] capitalize">
+                        <TableHead key={idx} className={`text-center min-w-[130px] capitalize ${
+                          month.isCurrent ? 'bg-yellow-50 text-yellow-800' :
+                          month.isPast ? 'text-gray-700' : 'text-blue-700'
+                        }`}>
                           {month.label}
+                          {month.isCurrent && <span className="block text-xs font-normal text-yellow-600">Actual</span>}
+                          {month.isPast && <span className="block text-xs font-normal text-gray-400">Real</span>}
                         </TableHead>
                       ))}
                       <TableHead className="text-center min-w-[130px] bg-blue-50 font-bold">TOTAL</TableHead>
