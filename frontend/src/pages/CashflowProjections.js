@@ -141,7 +141,7 @@ const CashflowProjections = () => {
         api.get('/bank-accounts/summary'),
         api.get('/manual-projections'),
         api.get('/fx-rates/latest'),
-        api.get('/payments'),
+        api.get('/payments?limit=1000'),
         api.get('/bank-transactions?limit=500'),
         api.get('/reconciliations'),
         api.get('/bank-accounts')
