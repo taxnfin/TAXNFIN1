@@ -89,8 +89,189 @@ export default function TreasuryDecisions() {
 
   const loadData = useCallback(async () => {
     try {
-      const response = await api.get('/treasury/dashboard?weeks_ahead=8');
-      setData(response.data);
+      // Build treasury dashboard from existing endpoints
+      // /treasury/dashboard does not exist — compute everything client-side
+      const [paymentsRes, bankSummaryRes, categoriesRes] = await Promise.all([
+        api.get('/payments?limit=1000'),
+        api.get('/bank-accounts/summary'),
+        api.get('/cashflow-sync/categories'),
+      ]);
+
+      const payments   = paymentsRes.data   || [];
+      const bankSummary = bankSummaryRes.data || {};
+      const categories  = categoriesRes.data  || [];
+
+      const catByCode = {};
+      categories.forEach(c => { if (c.code) catByCode[c.code] = c; if (c.id) catByCode[c.id] = c; });
+
+      const completados = payments.filter(p => p.estatus === 'completado');
+      const cobros  = completados.filter(p => p.tipo === 'cobro');
+      const pagos   = completados.filter(p => p.tipo === 'pago');
+
+      const totalCobrado = cobros.reduce((s, p) => s + (p.monto || 0), 0);
+      const totalPagado  = pagos.reduce((s, p) => s + (p.monto || 0), 0);
+      const saldoBancos  = bankSummary.total_mxn || 0;
+      const flujoNeto    = totalCobrado - totalPagado;
+
+      // ── Cash position ───────────────────────────────────────────────
+      const cash_position = {
+        saldo_actual:          saldoBancos,
+        cuentas_por_cobrar:    totalCobrado,
+        cuentas_por_pagar:     totalPagado,
+        flujo_neto_esperado:   flujoNeto,
+        posicion_proyectada:   saldoBancos + flujoNeto,
+      };
+
+      // ── Weeks helper ────────────────────────────────────────────────
+      const getWeekStart = (date) => {
+        const d = new Date(date); d.setHours(0,0,0,0);
+        const day = d.getDay(); const diff = day === 0 ? -6 : 1 - day;
+        d.setDate(d.getDate() + diff); return d;
+      };
+      const today = new Date();
+      const weeks = Array.from({ length: 8 }, (_, i) => {
+        const ws = new Date(getWeekStart(today)); ws.setDate(ws.getDate() + i * 7);
+        const we = new Date(ws); we.setDate(we.getDate() + 7);
+        return { weekStart: ws, weekEnd: we,
+          label: `S${i + 1}`, date: ws.toLocaleDateString('es-MX', { day:'2-digit', month:'2-digit' }),
+          ingresos: 0, egresos: 0, items: [] };
+      });
+
+      completados.forEach(p => {
+        const d = new Date(p.fecha_pago);
+        const wIdx = weeks.findIndex(w => d >= w.weekStart && d < w.weekEnd);
+        if (wIdx === -1) return;
+        if (p.tipo === 'cobro') weeks[wIdx].ingresos += p.monto || 0;
+        else                   weeks[wIdx].egresos  += p.monto || 0;
+        weeks[wIdx].items.push(p);
+      });
+
+      // ── Alerts ──────────────────────────────────────────────────────
+      const UMBRAL = 100000;
+      let saldoAcum = saldoBancos;
+      const alerts = [];
+      weeks.forEach(w => {
+        saldoAcum += w.ingresos - w.egresos;
+        if (saldoAcum < UMBRAL) {
+          alerts.push({
+            week: w.label, week_date: w.date,
+            type: 'balance_critical', severity: saldoAcum < 0 ? 'high' : 'medium',
+            message: `Saldo cae por debajo del umbral en ${w.label}`,
+            detail: `Saldo proyectado: ${new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:0}).format(saldoAcum)} MXN (déficit: ${new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:0}).format(UMBRAL - saldoAcum)})`,
+            action: 'Acelerar cobranza o diferir pagos',
+            impact: saldoAcum - UMBRAL,
+          });
+        }
+      });
+
+      // ── Recommendations ─────────────────────────────────────────────
+      const recommendations = [];
+      const topPagos = [...pagos].sort((a,b) => (b.monto||0) - (a.monto||0)).slice(0, 3);
+      if (topPagos.length > 0) {
+        recommendations.push({
+          icon: '💰', priority: 'medium',
+          title: 'Optimizar pagos a proveedores',
+          message: `Los 3 mayores pagos suman ${new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:0}).format(topPagos.reduce((s,p)=>s+(p.monto||0),0))} MXN. Considera negociar plazos.`,
+          impact: 'Mejora de liquidez',
+        });
+      }
+      if (totalCobrado > 0 && totalPagado > totalCobrado) {
+        recommendations.push({
+          icon: '⚡', priority: 'high',
+          title: 'Egresos superan ingresos',
+          message: `Los pagos (${new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:0}).format(totalPagado)}) superan los cobros. Revisa el plan de cobranza.`,
+          impact: 'Crítico para liquidez',
+        });
+      }
+      if (saldoBancos > 0 && totalPagado === 0) {
+        recommendations.push({
+          icon: '📊', priority: 'info',
+          title: 'Sin egresos registrados',
+          message: 'No hay pagos completados. Sincroniza Contalink para ver el flujo real.',
+          impact: 'Visibilidad del flujo',
+        });
+      }
+
+      // ── Calendar ────────────────────────────────────────────────────
+      const calendarWeeks = weeks.map(w => {
+        const byCategory = {};
+        w.items.forEach(p => {
+          const cat = catByCode[p.category_id];
+          const key = cat?.nombre || p.category_name || 'otros';
+          if (!byCategory[key]) byCategory[key] = { total: 0, items: [] };
+          byCategory[key].total += p.monto || 0;
+          byCategory[key].items.push(p);
+        });
+        return { label: w.label, date_range: `${w.date}`, total: w.egresos, categories: byCategory };
+      });
+
+      const calendar = {
+        weeks: calendarWeeks,
+        categories: {
+          nomina: { name: 'Nómina' }, impuestos: { name: 'Impuestos' },
+          creditos: { name: 'Créditos' }, rentas: { name: 'Rentas' },
+          servicios: { name: 'Servicios Fijos' }, otros: { name: 'Otros Pagos' },
+        },
+        totals_by_category: {},
+      };
+
+      // ── Concentration ───────────────────────────────────────────────
+      const vendorTotals = {};
+      pagos.forEach(p => {
+        const n = p.beneficiario || 'Sin asignar';
+        vendorTotals[n] = (vendorTotals[n] || 0) + (p.monto || 0);
+      });
+      const sortedVendors = Object.entries(vendorTotals).sort((a,b)=>b[1]-a[1]);
+      const top5amount = sortedVendors.slice(0,5).reduce((s,[,v])=>s+v,0);
+      const top5pct = totalPagado > 0 ? Math.round(top5amount / totalPagado * 100) : 0;
+
+      const customerTotals = {};
+      cobros.forEach(p => {
+        const n = p.beneficiario || 'Sin asignar';
+        customerTotals[n] = (customerTotals[n] || 0) + (p.monto || 0);
+      });
+      const sortedCustomers = Object.entries(customerTotals).sort((a,b)=>b[1]-a[1]);
+      const top5custAmount = sortedCustomers.slice(0,5).reduce((s,[,v])=>s+v,0);
+      const top5custPct = totalCobrado > 0 ? Math.round(top5custAmount / totalCobrado * 100) : 0;
+
+      const concentration_kpis = {
+        top_5_vendors: {
+          percentage: top5pct,
+          risk_level: top5pct > 70 ? 'high' : top5pct > 50 ? 'medium' : 'low',
+          names:   sortedVendors.slice(0,5).map(([n])=>n),
+          amounts: sortedVendors.slice(0,5).map(([,v])=>v),
+          detail:  `Top 5 proveedores concentran el ${top5pct}% del gasto`,
+        },
+        top_5_customers: {
+          percentage: top5custPct,
+          risk_level: top5custPct > 70 ? 'high' : top5custPct > 50 ? 'medium' : 'low',
+          names:   sortedCustomers.slice(0,5).map(([n])=>n),
+          amounts: sortedCustomers.slice(0,5).map(([,v])=>v),
+          detail:  `Top 5 clientes concentran el ${top5custPct}% de los cobros`,
+        },
+      };
+
+      // ── Working Capital ─────────────────────────────────────────────
+      const dso = cobros.length > 0 ? Math.round(
+        cobros.reduce((s,p) => {
+          const dias = Math.abs((new Date(p.fecha_pago) - new Date(p.fecha || p.fecha_pago)) / 86400000);
+          return s + dias;
+        }, 0) / cobros.length
+      ) : 0;
+      const dpo = pagos.length > 0 ? Math.round(
+        pagos.reduce((s,p) => {
+          const dias = Math.abs((new Date(p.fecha_pago) - new Date(p.fecha || p.fecha_pago)) / 86400000);
+          return s + dias;
+        }, 0) / pagos.length
+      ) : 0;
+
+      const working_capital = {
+        dso: { days: dso, trend: 'stable', value: 0, health: dso < 30 ? 'excellent' : dso < 60 ? 'good' : 'fair' },
+        dpo: { days: dpo, trend: 'stable', value: 0, health: dpo < 45 ? 'fair' : 'good' },
+        ccc: { days: dso - dpo, health: (dso - dpo) < 0 ? 'excellent' : 'good' },
+      };
+
+      setData({ cash_position, alerts, recommendations, calendar, concentration_kpis, working_capital });
     } catch (error) {
       console.error('Error loading treasury data:', error);
       toast.error('Error cargando datos de tesorería');
