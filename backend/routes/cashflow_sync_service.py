@@ -597,14 +597,14 @@ class CategorizationOverride(BaseModel):
 async def auto_categorize_payments(
     request: Request,
     current_user: Dict = Depends(get_current_user),
-    limit: int = 100,
+    limit: int = 25,
     solo_sin_categoria: bool = True,
 ):
     """
     Toma los pagos sin categoría y usa Claude API para asignarles
     la categoría más apropiada del catálogo.
 
-    - limit: máximo de pagos a procesar por llamada (default 100)
+    - limit: máximo de pagos a procesar por llamada (default 25)
     - solo_sin_categoria: si False, re-categoriza todos los pagos
     """
     import httpx, os, json
@@ -676,7 +676,7 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY no configurada en Railway")
 
     try:
-        async with httpx.AsyncClient(timeout=60) as http:
+        async with httpx.AsyncClient(timeout=120) as http:
             res = await http.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
