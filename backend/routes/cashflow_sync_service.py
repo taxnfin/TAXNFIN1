@@ -251,7 +251,8 @@ async def sync_contalink_to_cashflow(
         end = f"{year}-{month}-{last_day:02d}"
 
         from services.contalink import ContalinkClient
-        api_key = integration.get("credentials", {}).get("api_key", "")
+        # contalink.py guarda api_key en la raíz del documento (no nested)
+        api_key = integration.get("api_key", "")
         client  = ContalinkClient(api_key)
 
         # 1. Obtener balanza del período
@@ -461,15 +462,16 @@ async def sync_erp_to_cashflow(
     company_id = current_user["company_id"]
 
     # Buscar integración activa
+    # contalink.py guarda con: type="contalink", active=True
     integration = await db.integrations.find_one({
-        "company_id":       company_id,
-        "integration_type": erp_name,
-        "is_active":        True,
+        "company_id": company_id,
+        "type":       erp_name,
+        "active":     True,
     })
     if not integration:
         raise HTTPException(
             status_code=404,
-            detail=f"No tienes {erp_name} conectado. Ve a Admin → Integraciones."
+            detail=f"No tienes {erp_name} conectado. Ve a Integraciones y guarda tu API Key."
         )
 
     # Ejecutar sync del ERP correspondiente
@@ -516,13 +518,13 @@ async def sync_all_erps(
     """Sincroniza TODOS los ERPs conectados en un solo llamado"""
     company_id = current_user["company_id"]
     integrations = await db.integrations.find(
-        {"company_id": company_id, "is_active": True},
+        {"company_id": company_id, "active": True},
         {"_id": 0}
     ).to_list(20)
 
     results = []
     for integration in integrations:
-        erp_name = integration.get("integration_type")
+        erp_name = integration.get("type")
         if erp_name not in ERP_SYNC_MAP:
             continue
         sync_fn = ERP_SYNC_MAP[erp_name]
@@ -677,7 +679,7 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
                     "content-type": "application/json",
                 },
                 json={
-                    "model": "claude-sonnet-4-5-20251001",
+                    "model": "claude-sonnet-4-20250514",
                     "max_tokens": 4096,
                     "messages": [{"role": "user", "content": prompt}],
                 },
