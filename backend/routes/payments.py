@@ -469,6 +469,56 @@ async def delete_all_payments(request: Request, current_user: Dict = Depends(get
     }
 
 
+@router.post("/reset-empresa")
+async def reset_empresa(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Reset COMPLETO de la empresa activa:
+    - Borra todos los payments
+    - Borra todos los CFDIs
+    - Borra categorías custom (conserva defaults del sistema)
+    - Borra estados financieros
+    - Borra movimientos de cashflow sync
+    SOLO afecta a la empresa activa (X-Company-ID header).
+    """
+    company_id = await get_active_company_id(request, current_user)
+
+    # 1. Payments
+    r_payments = await db.payments.delete_many({"company_id": company_id})
+
+    # 2. CFDIs
+    r_cfdis = await db.cfdis.delete_many({"company_id": company_id})
+
+    # 3. Categorías custom (no las del sistema/defaults)
+    r_cats = await db.cashflow_categories.delete_many({"company_id": company_id})
+
+    # 4. Estados financieros
+    r_fin = await db.financial_statements.delete_many({"company_id": company_id})
+
+    # 5. Movimientos de cashflow sync
+    r_cf = await db.cashflow_movements.delete_many({"company_id": company_id})
+
+    await audit_log(company_id, 'Company', 'RESET_EMPRESA', 'DELETE', current_user['id'], {
+        'payments': r_payments.deleted_count,
+        'cfdis': r_cfdis.deleted_count,
+        'categorias': r_cats.deleted_count,
+        'financial_statements': r_fin.deleted_count,
+        'cashflow_movements': r_cf.deleted_count,
+    })
+
+    return {
+        "success": True,
+        "company_id": company_id,
+        "eliminados": {
+            "payments": r_payments.deleted_count,
+            "cfdis": r_cfdis.deleted_count,
+            "categorias_custom": r_cats.deleted_count,
+            "estados_financieros": r_fin.deleted_count,
+            "cashflow_movements": r_cf.deleted_count,
+        },
+        "message": "Reset completo. Ya puedes re-sincronizar desde Contalink."
+    }
+
+
 @router.post("/backfill-categories")
 async def backfill_payment_categories(request: Request, current_user: Dict = Depends(get_current_user)):
     """
