@@ -230,7 +230,8 @@ const CashflowProjections = () => {
         setWeeklyData(weeks);
       }
       
-      processMonthlyData(cfdiRes.data, catRes.data, customStartDate);
+      // Monthly view reads from payments (cfdis collection is empty — data lives in payments)
+      processMonthlyData(allPayments, catRes.data, customStartDate);
     } catch (error) {
       toast.error(t?.errorLoadingData || 'Error loading data');
     } finally {
@@ -663,108 +664,93 @@ const CashflowProjections = () => {
     return weeks;
   };
 
-  const processMonthlyData = (cfdisData, categoriesData, customMonthlyStart = '') => {
-    // Generate months covering history + future.
-    // Window: from the earliest CFDI (or custom start) up to 6 months ahead.
+  const processMonthlyData = (paymentsData, categoriesData, customMonthlyStart = '') => {
+    // SOURCE OF TRUTH: payments collection (cfdis collection is empty —
+    // Contalink sync stores everything in payments).
+    // payments fields used:
+    //   fecha_pago  → date bucket
+    //   tipo        → "cobro" = ingreso | "pago" = egreso
+    //   estatus     → only "completado"
+    //   monto       → amount
+    //   category_id → matches category code e.g. "EGR-099"
+    //   beneficiario → party name
     const today = new Date();
-    
-    // Find earliest CFDI date to anchor the historical window
-    let earliestCfdiDate = null;
-    cfdisData.forEach(cfdi => {
-      const d = new Date(cfdi.fecha_emision);
-      if (!isNaN(d.getTime()) && (!earliestCfdiDate || d < earliestCfdiDate)) {
-        earliestCfdiDate = d;
-      }
+
+    // Find earliest payment date to anchor the historical window
+    let earliestDate = null;
+    paymentsData.forEach(p => {
+      if (p.estatus !== 'completado') return;
+      const d = new Date(p.fecha_pago);
+      if (!isNaN(d.getTime()) && (!earliestDate || d < earliestDate)) earliestDate = d;
     });
-    
+
     let startDate;
     if (customMonthlyStart) {
       const parsed = new Date(customMonthlyStart);
-      if (!isNaN(parsed.getTime())) {
-        startDate = startOfMonth(parsed);
-      }
+      if (!isNaN(parsed.getTime())) startDate = startOfMonth(parsed);
     }
     if (!startDate) {
-      // Use earliest CFDI date clamped to at most 12 months ago
       const twelveMonthsAgo = startOfMonth(addMonths(today, -12));
-      startDate = earliestCfdiDate
-        ? startOfMonth(earliestCfdiDate < twelveMonthsAgo ? twelveMonthsAgo : earliestCfdiDate)
+      startDate = earliestDate
+        ? startOfMonth(earliestDate < twelveMonthsAgo ? twelveMonthsAgo : earliestDate)
         : startOfMonth(today);
     }
-    
-    // Calculate how many months from startDate to 5 months after today
+
+    // Months from startDate to 5 months ahead, minimum 6
     const endDate = startOfMonth(addMonths(today, 5));
     let numMonths = 0;
-    {
-      const tmp = new Date(startDate);
-      while (tmp <= endDate) {
-        numMonths++;
-        tmp.setMonth(tmp.getMonth() + 1);
-      }
-    }
-    numMonths = Math.max(numMonths, 6); // at least 6 months
-    
+    { const tmp = new Date(startDate); while (tmp <= endDate) { numMonths++; tmp.setMonth(tmp.getMonth() + 1); } }
+    numMonths = Math.max(numMonths, 6);
+
     const months = [];
     for (let i = 0; i < numMonths; i++) {
       const monthStart = addMonths(startDate, i);
-      const monthEnd = addMonths(monthStart, 1);
-      
+      const monthEnd   = addMonths(monthStart, 1);
       months.push({
-        monthNum: i + 1,
-        monthStart,
-        monthEnd,
-        label: format(monthStart, 'MMM yyyy', { locale: es }),
-        isPast: monthEnd <= today,
+        monthNum: i + 1, monthStart, monthEnd,
+        label:     format(monthStart, 'MMM yyyy', { locale: es }),
+        isPast:    monthEnd <= today,
         isCurrent: monthStart <= today && today < monthEnd,
-        ingresos: { total: 0, byCategory: {}, byParty: {} },
-        egresos: { total: 0, byCategory: {}, byParty: {} }
+        ingresos:  { total: 0, byCategory: {}, byParty: {} },
+        egresos:   { total: 0, byCategory: {}, byParty: {} },
       });
     }
-    
-    // Build category lookup by both id AND code (default categories only have code)
+
+    // Category lookup by code (AI assigns category_id = code like "EGR-099")
     const catLookup = {};
     categoriesData.forEach(cat => {
       if (cat.id)   catLookup[cat.id]   = cat;
       if (cat.code) catLookup[cat.code] = cat;
     });
-    
-    // Classify CFDIs by month
-    cfdisData.forEach(cfdi => {
-      const cfdiDate = new Date(cfdi.fecha_emision);
-      const monthIdx = months.findIndex(m => cfdiDate >= m.monthStart && cfdiDate < m.monthEnd);
-      
-      if (monthIdx !== -1) {
-        const month = months[monthIdx];
-        const isIngreso = cfdi.tipo_cfdi === 'ingreso';
-        const section = isIngreso ? month.ingresos : month.egresos;
-        
-        // Get category name — look up by code first (AI-categorized payments use code as id)
-        const category = catLookup[cfdi.category_id];
-        const categoryName = category?.nombre || 'Sin categoría';
-        
-        // Get party name
-        const partyName = isIngreso
-          ? (cfdi.receptor_nombre || cfdi.receptor_rfc || 'Sin asignar')
-          : (cfdi.emisor_nombre  || cfdi.emisor_rfc  || 'Sin asignar');
-        
-        const amount = cfdi.total || 0;
-        section.total += amount;
-        
-        // By category
-        if (!section.byCategory[categoryName]) {
-          section.byCategory[categoryName] = 0;
-        }
-        section.byCategory[categoryName] += amount;
-        
-        // By party
-        if (!section.byParty[partyName]) {
-          section.byParty[partyName] = { total: 0, cfdis: [] };
-        }
-        section.byParty[partyName].total += amount;
-        section.byParty[partyName].cfdis.push(cfdi);
-      }
+
+    // Classify payments by month
+    paymentsData.forEach(p => {
+      if (p.estatus !== 'completado') return;
+      const d = new Date(p.fecha_pago);
+      if (isNaN(d.getTime())) return;
+
+      const monthIdx = months.findIndex(m => d >= m.monthStart && d < m.monthEnd);
+      if (monthIdx === -1) return;
+
+      const month     = months[monthIdx];
+      const isIngreso = p.tipo === 'cobro';
+      const section   = isIngreso ? month.ingresos : month.egresos;
+
+      const cat          = catLookup[p.category_id];
+      const categoryName = cat?.nombre || p.category_name || 'Sin categoría';
+      const partyName    = p.beneficiario || 'Sin asignar';
+      const amount       = p.monto || 0;
+
+      section.total += amount;
+
+      if (!section.byCategory[categoryName]) section.byCategory[categoryName] = 0;
+      section.byCategory[categoryName] += amount;
+
+      if (!section.byParty[partyName]) section.byParty[partyName] = { total: 0, cfdis: [] };
+      section.byParty[partyName].total += amount;
+      section.byParty[partyName].cfdis.push(p);
     });
-    
+
     setMonthlyData(months);
   };
 
@@ -846,25 +832,23 @@ const CashflowProjections = () => {
     return amountMXN / rate; // Divide to convert FROM MXN TO target currency
   };
 
-  // Get CFDIs for selected party
+  // Get payments for selected party (cfdis collection is empty; data lives in allPayments)
   const getPartyCfdis = () => {
     if (!selectedParty) return [];
-    
-    return cfdis.filter(cfdi => {
+    return allPayments.filter(p => {
+      if (p.estatus !== 'completado') return false;
       if (selectedPartyType === 'customer') {
+        if (p.tipo !== 'cobro') return false;
+        if (p.customer_id === selectedParty) return true;
         const customer = customers.find(c => c.id === selectedParty);
-        if (customer) {
-          return cfdi.customer_id === selectedParty || cfdi.receptor_rfc === customer.rfc;
-        }
-        // Fallback: selectedParty might be a nombre or RFC directly (Contalink)
-        return cfdi.receptor_rfc === selectedParty || cfdi.receptor_nombre === selectedParty;
+        if (customer) return p.beneficiario === customer.nombre || p.beneficiario === customer.rfc;
+        return p.beneficiario === selectedParty;
       } else if (selectedPartyType === 'vendor') {
+        if (p.tipo !== 'pago') return false;
+        if (p.vendor_id === selectedParty) return true;
         const vendor = vendors.find(v => v.id === selectedParty);
-        if (vendor) {
-          return cfdi.vendor_id === selectedParty || cfdi.emisor_rfc === vendor.rfc;
-        }
-        // Fallback: selectedParty might be a nombre or RFC directly (Contalink)
-        return cfdi.emisor_rfc === selectedParty || cfdi.emisor_nombre === selectedParty;
+        if (vendor) return p.beneficiario === vendor.nombre || p.beneficiario === vendor.rfc;
+        return p.beneficiario === selectedParty;
       }
       return false;
     });
@@ -3282,32 +3266,31 @@ const CashflowProjections = () => {
                       {getPartyCfdis().length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={10} className="text-center py-8 text-gray-500">
-                            No hay facturas para este {selectedPartyType === 'customer' ? 'cliente' : 'proveedor'}
+                            No hay movimientos para este {selectedPartyType === 'customer' ? 'cliente' : 'proveedor'}
                           </TableCell>
                         </TableRow>
                       ) : (
-                        getPartyCfdis().map(cfdi => {
-                          const category = categories.find(c => c.id === cfdi.category_id);
-                          const pagado = cfdi.tipo_cfdi === 'ingreso' ? (cfdi.monto_cobrado || 0) : (cfdi.monto_pagado || 0);
-                          const pendiente = cfdi.total - pagado;
+                        getPartyCfdis().map(pago => {
+                          const category = categories.find(c => c.code === pago.category_id || c.id === pago.category_id);
+                          const isIngreso = pago.tipo === 'cobro';
                           
                           return (
-                            <TableRow key={cfdi.id} className="hover:bg-gray-50">
-                              <TableCell className="font-mono text-xs">{cfdi.uuid?.substring(0, 8)}...</TableCell>
-                              <TableCell>{format(new Date(cfdi.fecha_emision), 'dd/MM/yy')}</TableCell>
+                            <TableRow key={pago.id} className="hover:bg-gray-50">
+                              <TableCell className="font-mono text-xs">{pago.cfdi_uuid?.substring(0, 8) || pago.id?.substring(0, 8)}...</TableCell>
+                              <TableCell>{pago.fecha_pago ? format(new Date(pago.fecha_pago), 'dd/MM/yy') : '-'}</TableCell>
                               <TableCell>
-                                <span className={`text-xs px-2 py-1 rounded ${cfdi.tipo_cfdi === 'ingreso' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                  {cfdi.tipo_cfdi === 'ingreso' ? '↑ Ingreso' : '↓ Egreso'}
+                                <span className={`text-xs px-2 py-1 rounded ${isIngreso ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                  {isIngreso ? '↑ Cobro' : '↓ Pago'}
                                 </span>
                               </TableCell>
-                              <TableCell>{category?.nombre || 'Sin categoría'}</TableCell>
-                              <TableCell className="text-xs">{cfdi.metodo_pago || 'PUE'}</TableCell>
-                              <TableCell className="text-right font-mono">{formatCurrency(cfdi.subtotal)}</TableCell>
-                              <TableCell className="text-right font-mono text-gray-500">{formatCurrency(cfdi.impuestos)}</TableCell>
-                              <TableCell className="text-right font-mono font-bold">{formatCurrency(cfdi.total)}</TableCell>
-                              <TableCell className="text-right font-mono text-green-600">{formatCurrency(pagado)}</TableCell>
-                              <TableCell className={`text-right font-mono font-bold ${pendiente > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                                {formatCurrency(pendiente)}
+                              <TableCell>{category?.nombre || pago.category_name || 'Sin categoría'}</TableCell>
+                              <TableCell className="text-xs">{pago.moneda || 'MXN'}</TableCell>
+                              <TableCell className="text-right font-mono">{formatCurrency(pago.monto)}</TableCell>
+                              <TableCell className="text-right font-mono text-gray-500">-</TableCell>
+                              <TableCell className="text-right font-mono font-bold">{formatCurrency(pago.monto)}</TableCell>
+                              <TableCell className="text-right font-mono text-green-600">{formatCurrency(pago.monto)}</TableCell>
+                              <TableCell className="text-right font-mono font-bold text-green-600">
+                                {formatCurrency(0)}
                               </TableCell>
                             </TableRow>
                           );
@@ -3322,26 +3305,23 @@ const CashflowProjections = () => {
                       <div className="flex justify-between items-center">
                         <div className="text-sm text-gray-600">
                           <FileText className="inline mr-2" size={14} />
-                          {getPartyCfdis().length} factura(s)
+                          {getPartyCfdis().length} movimiento(s)
                         </div>
                         <div className="flex gap-8">
                           <div className="text-right">
-                            <div className="text-xs text-gray-500">Total Facturado</div>
-                            <div className="font-bold">{formatCurrency(getPartyCfdis().reduce((s, c) => s + c.total, 0))}</div>
+                            <div className="text-xs text-gray-500">Total Cobrado/Pagado</div>
+                            <div className="font-bold">{formatCurrency(getPartyCfdis().reduce((s, p) => s + (p.monto || 0), 0))}</div>
                           </div>
                           <div className="text-right">
-                            <div className="text-xs text-gray-500">Total Pagado</div>
+                            <div className="text-xs text-gray-500">Ingresos</div>
                             <div className="font-bold text-green-600">
-                              {formatCurrency(getPartyCfdis().reduce((s, c) => s + (c.tipo_cfdi === 'ingreso' ? (c.monto_cobrado || 0) : (c.monto_pagado || 0)), 0))}
+                              {formatCurrency(getPartyCfdis().filter(p => p.tipo === 'cobro').reduce((s, p) => s + (p.monto || 0), 0))}
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-xs text-gray-500">Saldo Pendiente</div>
-                            <div className="font-bold text-orange-600">
-                              {formatCurrency(getPartyCfdis().reduce((s, c) => {
-                                const pagado = c.tipo_cfdi === 'ingreso' ? (c.monto_cobrado || 0) : (c.monto_pagado || 0);
-                                return s + (c.total - pagado);
-                              }, 0))}
+                            <div className="text-xs text-gray-500">Egresos</div>
+                            <div className="font-bold text-red-600">
+                              {formatCurrency(getPartyCfdis().filter(p => p.tipo === 'pago').reduce((s, p) => s + (p.monto || 0), 0))}
                             </div>
                           </div>
                         </div>
