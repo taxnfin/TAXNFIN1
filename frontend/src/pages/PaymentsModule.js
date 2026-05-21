@@ -652,7 +652,8 @@ const PaymentsModule = () => {
       const { updated, processed, errors } = res.data;
       if (updated > 0) {
         toast.success(`✅ ${updated} de ${processed} pagos categorizados con IA`);
-        loadData();
+        setPayments([]); // Forzar re-render limpio
+        await loadData();
       } else {
         toast.info('No hay pagos sin categoría o ya están todos categorizados');
       }
