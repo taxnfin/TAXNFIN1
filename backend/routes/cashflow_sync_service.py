@@ -693,9 +693,12 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
             res.raise_for_status()
             data = res.json()
             raw_text = data["content"][0]["text"].strip()
+    except httpx.HTTPStatusError as e:
+        logger.error(f"auto_categorize Claude API HTTP error: {e.response.status_code} - {e.response.text}")
+        raise HTTPException(status_code=500, detail=f"Error Claude API {e.response.status_code}: {e.response.text[:200]}")
     except Exception as e:
         logger.error(f"auto_categorize Claude API error: {e}")
-        raise HTTPException(status_code=500, detail=f"Error llamando a Claude API: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error llamando a Claude API: {str(e) or type(e).__name__}")
 
     # 5. Parsear respuesta
     try:
