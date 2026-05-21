@@ -832,6 +832,32 @@ const CashflowProjections = () => {
     return amountMXN / rate; // Divide to convert FROM MXN TO target currency
   };
 
+  // Derive unique clientes and proveedores from allPayments
+  // (customers/vendors collections are empty — Contalink stores names in payments.beneficiario)
+  const paymentClientes = React.useMemo(() => {
+    const map = {};
+    allPayments.forEach(p => {
+      if (p.estatus !== 'completado' || p.tipo !== 'cobro') return;
+      const nombre = p.beneficiario || 'Sin asignar';
+      if (!map[nombre]) map[nombre] = { id: nombre, nombre, rfc: '', total: 0, count: 0 };
+      map[nombre].total += p.monto || 0;
+      map[nombre].count += 1;
+    });
+    return Object.values(map).sort((a, b) => b.total - a.total);
+  }, [allPayments]);
+
+  const paymentProveedores = React.useMemo(() => {
+    const map = {};
+    allPayments.forEach(p => {
+      if (p.estatus !== 'completado' || p.tipo !== 'pago') return;
+      const nombre = p.beneficiario || 'Sin asignar';
+      if (!map[nombre]) map[nombre] = { id: nombre, nombre, rfc: '', total: 0, count: 0 };
+      map[nombre].total += p.monto || 0;
+      map[nombre].count += 1;
+    });
+    return Object.values(map).sort((a, b) => b.total - a.total);
+  }, [allPayments]);
+
   // Get payments for selected party (cfdis collection is empty; data lives in allPayments)
   const getPartyCfdis = () => {
     if (!selectedParty) return [];
@@ -839,16 +865,10 @@ const CashflowProjections = () => {
       if (p.estatus !== 'completado') return false;
       if (selectedPartyType === 'customer') {
         if (p.tipo !== 'cobro') return false;
-        if (p.customer_id === selectedParty) return true;
-        const customer = customers.find(c => c.id === selectedParty);
-        if (customer) return p.beneficiario === customer.nombre || p.beneficiario === customer.rfc;
-        return p.beneficiario === selectedParty;
+        return p.beneficiario === selectedParty || p.customer_id === selectedParty;
       } else if (selectedPartyType === 'vendor') {
         if (p.tipo !== 'pago') return false;
-        if (p.vendor_id === selectedParty) return true;
-        const vendor = vendors.find(v => v.id === selectedParty);
-        if (vendor) return p.beneficiario === vendor.nombre || p.beneficiario === vendor.rfc;
-        return p.beneficiario === selectedParty;
+        return p.beneficiario === selectedParty || p.vendor_id === selectedParty;
       }
       return false;
     });
@@ -3230,11 +3250,11 @@ const CashflowProjections = () => {
                         <SelectValue placeholder={selectedPartyType === 'customer' ? 'Seleccionar cliente...' : 'Seleccionar proveedor...'} />
                       </SelectTrigger>
                       <SelectContent>
-                        {(selectedPartyType === 'customer' ? customers : vendors).map(party => (
+                        {(selectedPartyType === 'customer' ? paymentClientes : paymentProveedores).map(party => (
                           <SelectItem key={party.id} value={party.id}>
                             <div className="flex flex-col">
                               <span className="font-medium">{party.nombre}</span>
-                              <span className="text-xs text-gray-500">{party.rfc}</span>
+                              <span className="text-xs text-gray-500">{party.count} mov · {formatCurrency(party.total)}</span>
                             </div>
                           </SelectItem>
                         ))}
