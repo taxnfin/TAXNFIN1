@@ -1220,6 +1220,12 @@ const PaymentsModule = () => {
             <CardTitle className="text-sm font-medium text-[#DC2626] flex items-center gap-2">
               <TrendingDown size={16} />
               Por Pagar
+              {agingSummary?.cxp && (
+                <span className="ml-auto flex items-center gap-1 text-[10px] font-normal bg-red-100 text-red-600 border border-red-300 rounded-full px-2 py-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block"></span>
+                  Live Contalink
+                </span>
+              )}
             </CardTitle>
             <CardDescription className="text-xs">
               {agingSummary?.cxp ? 'Contalink · Aging CxP' : 'Facturas CFDI pendientes'}
@@ -1243,6 +1249,12 @@ const PaymentsModule = () => {
             <CardTitle className="text-sm font-medium text-[#059669] flex items-center gap-2">
               <TrendingUp size={16} />
               Por Cobrar
+              {agingSummary?.cxc && (
+                <span className="ml-auto flex items-center gap-1 text-[10px] font-normal bg-green-100 text-green-700 border border-green-300 rounded-full px-2 py-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block"></span>
+                  Live Contalink
+                </span>
+              )}
             </CardTitle>
             <CardDescription className="text-xs">
               {agingSummary?.cxc ? 'Contalink · Aging CxC' : 'Facturas CFDI pendientes'}
