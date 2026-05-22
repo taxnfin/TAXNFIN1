@@ -663,7 +663,9 @@ async def get_payments_with_reconciliation_status(
     request: Request,
     current_user: Dict = Depends(get_current_user),
     tipo: Optional[str] = Query(None),
-    limit: int = Query(100, le=1000)
+    limit: int = Query(1000, le=10000),
+    fecha_desde: Optional[str] = Query(None),
+    fecha_hasta: Optional[str] = Query(None),
 ):
     """
     Get payments with their TRUE reconciliation status from bank transactions.
@@ -680,8 +682,15 @@ async def get_payments_with_reconciliation_status(
     query = {'company_id': company_id}
     if tipo:
         query['tipo'] = tipo
+    if fecha_desde:
+        query['fecha_pago'] = {'$gte': fecha_desde}
+    if fecha_hasta:
+        if 'fecha_pago' in query:
+            query['fecha_pago']['$lte'] = fecha_hasta
+        else:
+            query['fecha_pago'] = {'$lte': fecha_hasta}
     
-    payments = await db.payments.find(query, {'_id': 0}).sort('fecha_vencimiento', -1).limit(limit).to_list(limit)
+    payments = await db.payments.find(query, {'_id': 0}).sort('fecha_pago', -1).limit(limit).to_list(limit)
     
     # Add computed 'estado_real' based on bank transaction status
     for p in payments:
