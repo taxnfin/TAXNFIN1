@@ -19,8 +19,6 @@ const AgingModule = () => {
   const [vendors, setVendors] = useState([]);
   const [fxRates, setFxRates] = useState({ USD: 17.5, EUR: 19.0 });
   const [syncingRates, setSyncingRates] = useState(false);
-  const [uploadingCxC, setUploadingCxC] = useState(false);
-  const [uploadingCxP, setUploadingCxP] = useState(false);
   const [displayCurrency, setDisplayCurrency] = useState('MXN');
   const [activeTab, setActiveTab] = useState('cxc'); // cxc = Cuentas por Cobrar, cxp = Cuentas por Pagar
 
@@ -42,6 +40,9 @@ const AgingModule = () => {
     fechaHasta: ''
   });
 
+  const [uploadingCxC, setUploadingCxC] = useState(false);
+  const [uploadingCxP, setUploadingCxP] = useState(false);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -49,17 +50,40 @@ const AgingModule = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cfdiRes, custRes, vendRes, fxRes] = await Promise.all([
-        api.get('/cfdi?limit=500'),
-        api.get('/customers'),
-        api.get('/vendors'),
-        api.get('/fx-rates/latest')
+      const [cxcRes, cxpRes, fxRes] = await Promise.all([
+        api.get('/contalink/cxc'),
+        api.get('/contalink/cxp'),
+        api.get('/fx-rates/latest'),
       ]);
-      setCfdis(cfdiRes.data);
-      setCustomers(custRes.data);
-      setVendors(vendRes.data);
-      // Extract rates object from response
-      // Normalizar rates — puede venir como array [{moneda, tasa_mxn}] o como objeto {USD: 17.5}
+
+      const toLocal = (facturas, tipo) => (facturas || []).map(f => {
+        const diasVenc = f.dias_vencido || 0;
+        const fechaVencCalc = new Date();
+        fechaVencCalc.setDate(fechaVencCalc.getDate() - diasVenc);
+        return {
+          id:               f.uuid || f.cuenta || f.nombre || Math.random().toString(36),
+          uuid:             f.uuid || '',
+          fecha_emision:    f.fecha_emision || '',
+          fecha_vencimiento: f.fecha_vencimiento || fechaVencCalc.toISOString().split('T')[0],
+          total:            f.total || f.saldo_pendiente || 0,
+          monto_cobrado:    0,
+          monto_pagado:     0,
+          moneda:           f.moneda || 'MXN',
+          tipo_cfdi:        tipo === 'cxc' ? 'ingreso' : 'egreso',
+          receptor_nombre:  f.cliente_nombre  || f.nombre || '',
+          receptor_rfc:     f.cliente_rfc     || '',
+          emisor_nombre:    f.proveedor_nombre || f.nombre || '',
+          emisor_rfc:       f.proveedor_rfc    || '',
+          plazo:            0,
+          pendiente:        f.saldo_pendiente || f.total || 0,
+          pendienteMXN:     f.saldo_pendiente || f.total || 0,
+        };
+      });
+
+      const cxcFacturas = toLocal(cxcRes.data?.facturas, 'cxc');
+      const cxpFacturas = toLocal(cxpRes.data?.facturas, 'cxp');
+      setCfdis([...cxcFacturas, ...cxpFacturas]);
+
       const rawRates = fxRes.data?.rates;
       let ratesObj = {};
       if (Array.isArray(rawRates)) {
@@ -74,9 +98,33 @@ const AgingModule = () => {
       if (!ratesObj.EUR) ratesObj.EUR = 19.0;
       setFxRates(ratesObj);
     } catch (error) {
+      console.error('Error cargando CxC/CxP:', error);
       toast.error('Error cargando datos');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUploadExcel = async (e, tipo) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const setter = tipo === 'cxc' ? setUploadingCxC : setUploadingCxP;
+    setter(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await api.post(`/contalink/upload-${tipo}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      const label = tipo === 'cxc' ? 'CxC' : 'CxP';
+      const count = res.data?.num_facturas || res.data?.num_clientes || res.data?.num_proveedores || 0;
+      toast.success(`✅ Excel ${label}: ${count} registros · $${(res.data?.total_pendiente || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}`);
+      await loadData(); // Recargar desde caché actualizado
+    } catch (err) {
+      toast.error(err.response?.data?.detail || `Error importando Excel ${tipo.toUpperCase()}`);
+    } finally {
+      setter(false);
+      e.target.value = '';
     }
   };
 
@@ -99,66 +147,6 @@ const AgingModule = () => {
       toast.error('Error sincronizando tipos de cambio');
     } finally {
       setSyncingRates(false);
-    }
-  };
-
-  const handleUploadExcel = async (e, tipo) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const setter = tipo === 'cxc' ? setUploadingCxC : setUploadingCxP;
-    setter(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await api.post(`/contalink/upload-${tipo}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      const label = tipo === 'cxc' ? 'CxC' : 'CxP';
-      const count = res.data?.num_facturas || res.data?.num_clientes || res.data?.num_proveedores || 0;
-      toast.success(`✅ Excel ${label} cargado: ${count} registros, total $${(res.data?.total_pendiente || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}`);
-
-      // Convertir facturas del Excel al formato del componente y actualizar state
-      const facturas = res.data?.facturas || [];
-      const nuevos = facturas.map(f => {
-        // Generar fecha_vencimiento sintética desde dias_vencido del Excel
-        // dias_vencido > 0 = ya venció hace N días; <= 0 = aún vigente
-        const diasVenc = f.dias_vencido || 0;
-        const fechaVencCalc = new Date();
-        fechaVencCalc.setDate(fechaVencCalc.getDate() - diasVenc);
-        const fechaVencStr = f.fecha_vencimiento || fechaVencCalc.toISOString().split('T')[0];
-        return {
-          id:               f.uuid || f.cuenta || f.nombre || Math.random().toString(36),
-          uuid:             f.uuid || '',
-          fecha_emision:    f.fecha_emision || '',
-          fecha_vencimiento: fechaVencStr,
-          total:            f.total || f.saldo_pendiente || 0,
-          monto_cobrado:    0,
-          monto_pagado:     0,
-          moneda:           f.moneda || 'MXN',
-          tipo_cfdi:        tipo === 'cxc' ? 'ingreso' : 'egreso',
-          receptor_nombre:  f.cliente_nombre  || f.nombre || '',
-          receptor_rfc:     f.cliente_rfc     || '',
-          emisor_nombre:    f.proveedor_nombre || f.nombre || '',
-          emisor_rfc:       f.proveedor_rfc    || '',
-          plazo:            0,
-          pendiente:        f.saldo_pendiente || f.total || 0,
-          pendienteMXN:     f.saldo_pendiente || f.total || 0,
-        };
-      });
-
-      // Reemplazar solo los del tipo correspondiente, conservar el otro
-      setCfdis(prev => {
-        const otroTipo = prev.filter(c =>
-          tipo === 'cxc' ? c.tipo_cfdi === 'egreso' : c.tipo_cfdi === 'ingreso'
-        );
-        return [...otroTipo, ...nuevos];
-      });
-
-    } catch (err) {
-      toast.error(err.response?.data?.detail || `Error importando Excel ${tipo.toUpperCase()}`);
-    } finally {
-      setter(false);
-      e.target.value = '';
     }
   };
 
@@ -876,23 +864,16 @@ const AgingModule = () => {
             <Download size={14} />
             Exportar Excel
           </Button>
-
-          {/* Upload CxC */}
-          <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 text-sm border rounded-md hover:bg-gray-50 border-green-300 text-green-700">
-            <input type="file" accept=".xls,.xlsx" className="hidden"
-              onChange={e => handleUploadExcel(e, 'cxc')} />
+          <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 text-sm border border-green-300 rounded-md hover:bg-green-50 text-green-700">
+            <input type="file" accept=".xls,.xlsx" className="hidden" onChange={e => handleUploadExcel(e, 'cxc')} />
             {uploadingCxC ? <RefreshCw size={14} className="animate-spin" /> : <FileText size={14} />}
             {uploadingCxC ? 'Subiendo...' : 'Excel CxC'}
           </label>
-
-          {/* Upload CxP */}
-          <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 text-sm border rounded-md hover:bg-gray-50 border-red-300 text-red-700">
-            <input type="file" accept=".xls,.xlsx" className="hidden"
-              onChange={e => handleUploadExcel(e, 'cxp')} />
+          <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 text-sm border border-red-300 rounded-md hover:bg-red-50 text-red-700">
+            <input type="file" accept=".xls,.xlsx" className="hidden" onChange={e => handleUploadExcel(e, 'cxp')} />
             {uploadingCxP ? <RefreshCw size={14} className="animate-spin" /> : <FileText size={14} />}
             {uploadingCxP ? 'Subiendo...' : 'Excel CxP'}
           </label>
-
           <Button 
             variant="outline" 
             className="gap-2" 
