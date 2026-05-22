@@ -33,8 +33,7 @@ def _dias_vencido(fecha_str) -> int:
     if not fecha_str:
         return 0
     try:
-        venc = date.fromisoformat(str(fecha_str)[:10])
-        return (date.today() - venc).days
+        return (date.today() - date.fromisoformat(str(fecha_str)[:10])).days
     except Exception:
         return 0
 
@@ -50,18 +49,17 @@ def _parse_list(raw) -> list:
     return []
 
 
-async def _fetch_all(client, rfc, transaction_type, start_date, end_date) -> list:
-    """Pagina automáticamente sobre /invoices/list/"""
+async def _fetch(client, rfc, transaction_type, document_type, start_date, end_date) -> list:
+    """Pagina sobre /invoices/list/ para una combinación de transaction_type + document_type."""
     items, page = [], 0
     while True:
         raw = await client.get_invoices(
             rfc=rfc, transaction_type=transaction_type,
-            document_type="I",   # CFDI de Ingreso
+            document_type=document_type,
             start_date=start_date, end_date=end_date, page=page,
         )
-        # status == 0 → error de Contalink
         if isinstance(raw, dict) and raw.get("status") == 0:
-            logger.warning(f"Contalink get_invoices status=0: {raw.get('message')}")
+            logger.warning(f"Contalink {transaction_type}/{document_type} status=0: {raw.get('message')}")
             break
         batch = _parse_list(raw)
         if not batch:
@@ -73,22 +71,52 @@ async def _fetch_all(client, rfc, transaction_type, start_date, end_date) -> lis
     return items
 
 
-def _map_cxc(inv: dict) -> dict:
+async def _fetch_cxc(client, rfc, start_date, end_date) -> list:
     """
-    Mapea una factura EMITIDA (issued) al formato CxC.
-    Contalink no devuelve amount_paid — usamos estatus para determinar si está vigente.
+    CxC = facturas EMITIDAS (issued) tipo I.
+    Igual que hace el sync/all exitoso: ("issued", "I")
     """
+    return await _fetch(client, rfc, "issued", "I", start_date, end_date)
+
+
+async def _fetch_cxp(client, rfc, start_date, end_date) -> list:
+    """
+    CxP = facturas RECIBIDAS (received) tipo I + tipo E.
+    Igual que hace el sync/all exitoso: ("received","I") + ("received","E")
+    """
+    import asyncio
+    r1, r2 = await asyncio.gather(
+        _fetch(client, rfc, "received", "I", start_date, end_date),
+        _fetch(client, rfc, "received", "E", start_date, end_date),
+    )
+    # Deduplicar por uuid
+    seen, result = set(), []
+    for inv in r1 + r2:
+        uid = (inv.get("uuid") or inv.get("UUID") or inv.get("folio_fiscal") or
+               str(inv.get("id", ""))).strip()
+        if uid and uid not in seen:
+            seen.add(uid)
+            result.append(inv)
+        elif not uid:
+            result.append(inv)
+    return result
+
+
+def _map_inv(inv: dict, tipo: str) -> Optional[dict]:
+    """Mapea una factura al formato CxC o CxP usando los campos reales de Contalink."""
     total = float(inv.get("total") or inv.get("monto") or 0)
-    # Si está cancelada, saldo = 0 (la excluimos)
-    cancelado = inv.get("cancelado") or inv.get("estado_cancelacion") == "cancelado"
+    if total <= 0:
+        return None
+
+    # Excluir canceladas
+    cancelado = inv.get("cancelado") or (inv.get("estado_cancelacion") == "cancelado")
     estatus   = (inv.get("estatus") or inv.get("status") or "vigente").lower()
     if cancelado or estatus in ("cancelado", "cancelada"):
         return None
 
-    # Fecha de vencimiento: Contalink no siempre la da.
-    # Para PPD usamos fecha + 30d; para PUE es contado.
-    fecha_emision = inv.get("fecha") or inv.get("fecha_emision") or ""
-    metodo_pago   = inv.get("metodo_pago", "PUE")
+    fecha_emision = (inv.get("fecha") or inv.get("fecha_emision") or
+                     inv.get("issue_date") or "")
+    metodo_pago   = inv.get("metodo_pago") or "PUE"
     fecha_venc    = inv.get("fecha_vencimiento") or inv.get("due_date") or ""
     if not fecha_venc and fecha_emision:
         dias_plazo = 30 if metodo_pago == "PPD" else 0
@@ -98,87 +126,62 @@ def _map_cxc(inv: dict) -> dict:
         except Exception:
             fecha_venc = fecha_emision
 
-    return {
-        "uuid":             (inv.get("uuid") or inv.get("UUID") or
-                             inv.get("folio_fiscal") or "").strip(),
+    uuid = (inv.get("uuid") or inv.get("UUID") or
+            inv.get("folio_fiscal") or "").strip()
+
+    base = {
+        "uuid":             uuid,
         "folio":            inv.get("folio") or "",
         "fecha_emision":    fecha_emision,
         "fecha_vencimiento": fecha_venc,
-        "cliente_rfc":      inv.get("receptor_rfc") or inv.get("rfc_receptor") or "",
-        "cliente_nombre":   inv.get("receptor_nombre") or inv.get("nombre_receptor") or "",
         "moneda":           inv.get("moneda") or "MXN",
         "metodo_pago":      metodo_pago,
         "total":            total,
-        "monto_cobrado":    0,          # Contalink no lo devuelve en el listado
-        "saldo_pendiente":  total,      # Asumimos vigente = pendiente
+        "saldo_pendiente":  total,   # Contalink no devuelve monto pagado en el listado
         "estatus":          estatus,
         "dias_vencido":     _dias_vencido(fecha_venc),
     }
 
-
-def _map_cxp(inv: dict) -> dict:
-    """Mapea una factura RECIBIDA (received) al formato CxP."""
-    total = float(inv.get("total") or inv.get("monto") or 0)
-    cancelado = inv.get("cancelado") or inv.get("estado_cancelacion") == "cancelado"
-    estatus   = (inv.get("estatus") or inv.get("status") or "vigente").lower()
-    if cancelado or estatus in ("cancelado", "cancelada"):
-        return None
-
-    fecha_emision = inv.get("fecha") or inv.get("fecha_emision") or ""
-    metodo_pago   = inv.get("metodo_pago", "PUE")
-    fecha_venc    = inv.get("fecha_vencimiento") or inv.get("due_date") or ""
-    if not fecha_venc and fecha_emision:
-        dias_plazo = 30 if metodo_pago == "PPD" else 0
-        try:
-            fecha_venc = (date.fromisoformat(fecha_emision[:10]) +
-                          timedelta(days=dias_plazo)).isoformat()
-        except Exception:
-            fecha_venc = fecha_emision
-
-    return {
-        "uuid":              (inv.get("uuid") or inv.get("UUID") or
-                              inv.get("folio_fiscal") or "").strip(),
-        "folio":             inv.get("folio") or "",
-        "fecha_emision":     fecha_emision,
-        "fecha_vencimiento": fecha_venc,
-        "proveedor_rfc":     inv.get("emisor_rfc") or inv.get("rfc_emisor") or "",
-        "proveedor_nombre":  inv.get("emisor_nombre") or inv.get("nombre_emisor") or "",
-        "moneda":            inv.get("moneda") or "MXN",
-        "metodo_pago":       metodo_pago,
-        "total":             total,
-        "monto_pagado":      0,
-        "saldo_pendiente":   total,
-        "estatus":           estatus,
-        "dias_vencido":      _dias_vencido(fecha_venc),
-    }
+    if tipo == "cxc":
+        base.update({
+            "cliente_rfc":    inv.get("receptor_rfc") or inv.get("rfc_receptor") or "",
+            "cliente_nombre": inv.get("receptor_nombre") or inv.get("nombre_receptor") or "",
+            "monto_cobrado":  0,
+        })
+    else:
+        base.update({
+            "proveedor_rfc":   inv.get("emisor_rfc") or inv.get("rfc_emisor") or "",
+            "proveedor_nombre":inv.get("emisor_nombre") or inv.get("nombre_emisor") or "",
+            "monto_pagado":    0,
+        })
+    return base
 
 
 def _aging_stats(facturas: list, tipo: str) -> dict:
     aging = {"corriente": 0, "vencido_30": 0, "vencido_60": 0,
              "vencido_90": 0, "vencido_mas90": 0}
-    total_pendiente = 0
+    total_p = 0
     terceros = set()
+    key_nombre = "cliente_nombre" if tipo == "cxc" else "proveedor_nombre"
+    key_rfc    = "cliente_rfc"    if tipo == "cxc" else "proveedor_rfc"
 
     for f in facturas:
-        saldo = f["saldo_pendiente"]
-        dias  = f["dias_vencido"]
-        total_pendiente += saldo
-        key = "cliente_rfc" if tipo == "cxc" else "proveedor_rfc"
-        terceros.add(f.get(key) or f.get(
-            "cliente_nombre" if tipo == "cxc" else "proveedor_nombre", ""))
-
-        if dias <= 0:      aging["corriente"]    += saldo
-        elif dias <= 30:   aging["vencido_30"]   += saldo
-        elif dias <= 60:   aging["vencido_60"]   += saldo
-        elif dias <= 90:   aging["vencido_90"]   += saldo
-        else:              aging["vencido_mas90"] += saldo
+        s = f["saldo_pendiente"]
+        d = f["dias_vencido"]
+        total_p += s
+        terceros.add(f.get(key_rfc) or f.get(key_nombre, ""))
+        if d <= 0:     aging["corriente"]    += s
+        elif d <= 30:  aging["vencido_30"]   += s
+        elif d <= 60:  aging["vencido_60"]   += s
+        elif d <= 90:  aging["vencido_90"]   += s
+        else:          aging["vencido_mas90"] += s
 
     return {
         "aging":           {k: round(v, 2) for k, v in aging.items()},
-        "total_pendiente": round(total_pendiente, 2),
+        "total_pendiente": round(total_p, 2),
         "num_terceros":    len(terceros),
         "pct_vencido":     round(
-            (total_pendiente - aging["corriente"]) / max(total_pendiente, 1) * 100, 1),
+            (total_p - aging["corriente"]) / max(total_p, 1) * 100, 1),
     }
 
 
@@ -199,16 +202,16 @@ async def get_cuentas_por_cobrar(
 
     if not refresh:
         cached = await db.contalink_cache.find_one({"key": cache_key})
-        if cached:
-            if (datetime.now(timezone.utc) - cached["created_at"]).total_seconds() < 14400:
-                return cached["data"]
+        if cached and (datetime.now(timezone.utc) - cached["created_at"]).total_seconds() < 14400:
+            return cached["data"]
 
     try:
         client, rfc = await _get_client_and_creds(company_id)
         end_date   = date.today().isoformat()
         start_date = (date.today() - timedelta(days=days_back)).isoformat()
-        raw = await _fetch_all(client, rfc, "issued", start_date, end_date)
-        facturas = [m for inv in raw if (m := _map_cxc(inv)) and m["total"] > 0]
+        raw      = await _fetch_cxc(client, rfc, start_date, end_date)
+        facturas = [m for inv in raw if (m := _map_inv(inv, "cxc"))]
+        logger.info(f"CxC company={company_id}: {len(raw)} raw → {len(facturas)} vigentes")
     except HTTPException:
         raise
     except Exception as e:
@@ -249,16 +252,16 @@ async def get_cuentas_por_pagar(
 
     if not refresh:
         cached = await db.contalink_cache.find_one({"key": cache_key})
-        if cached:
-            if (datetime.now(timezone.utc) - cached["created_at"]).total_seconds() < 14400:
-                return cached["data"]
+        if cached and (datetime.now(timezone.utc) - cached["created_at"]).total_seconds() < 14400:
+            return cached["data"]
 
     try:
         client, rfc = await _get_client_and_creds(company_id)
         end_date   = date.today().isoformat()
         start_date = (date.today() - timedelta(days=days_back)).isoformat()
-        raw = await _fetch_all(client, rfc, "received", start_date, end_date)
-        facturas = [m for inv in raw if (m := _map_cxp(inv)) and m["total"] > 0]
+        raw      = await _fetch_cxp(client, rfc, start_date, end_date)
+        facturas = [m for inv in raw if (m := _map_inv(inv, "cxp"))]
+        logger.info(f"CxP company={company_id}: {len(raw)} raw → {len(facturas)} vigentes")
     except HTTPException:
         raise
     except Exception as e:
@@ -299,11 +302,11 @@ async def get_cxc_cxp_summary(
         end_date   = date.today().isoformat()
         start_date = (date.today() - timedelta(days=days_back)).isoformat()
         raw_cxc, raw_cxp = await asyncio.gather(
-            _fetch_all(client, rfc, "issued",   start_date, end_date),
-            _fetch_all(client, rfc, "received", start_date, end_date),
+            _fetch_cxc(client, rfc, start_date, end_date),
+            _fetch_cxp(client, rfc, start_date, end_date),
         )
-        cxc = [m for i in raw_cxc if (m := _map_cxc(i)) and m["total"] > 0]
-        cxp = [m for i in raw_cxp if (m := _map_cxp(i)) and m["total"] > 0]
+        cxc = [m for i in raw_cxc if (m := _map_inv(i, "cxc"))]
+        cxp = [m for i in raw_cxp if (m := _map_inv(i, "cxp"))]
     except HTTPException:
         raise
     except Exception as e:
