@@ -116,6 +116,44 @@ const AgingModule = () => {
       const label = tipo === 'cxc' ? 'CxC' : 'CxP';
       const count = res.data?.num_facturas || res.data?.num_clientes || res.data?.num_proveedores || 0;
       toast.success(`✅ Excel ${label} cargado: ${count} registros, total $${(res.data?.total_pendiente || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}`);
+
+      // Convertir facturas del Excel al formato del componente y actualizar state
+      const facturas = res.data?.facturas || [];
+      const nuevos = facturas.map(f => {
+        // Generar fecha_vencimiento sintética desde dias_vencido del Excel
+        // dias_vencido > 0 = ya venció hace N días; <= 0 = aún vigente
+        const diasVenc = f.dias_vencido || 0;
+        const fechaVencCalc = new Date();
+        fechaVencCalc.setDate(fechaVencCalc.getDate() - diasVenc);
+        const fechaVencStr = f.fecha_vencimiento || fechaVencCalc.toISOString().split('T')[0];
+        return {
+          id:               f.uuid || f.cuenta || f.nombre || Math.random().toString(36),
+          uuid:             f.uuid || '',
+          fecha_emision:    f.fecha_emision || '',
+          fecha_vencimiento: fechaVencStr,
+          total:            f.total || f.saldo_pendiente || 0,
+          monto_cobrado:    0,
+          monto_pagado:     0,
+          moneda:           f.moneda || 'MXN',
+          tipo_cfdi:        tipo === 'cxc' ? 'ingreso' : 'egreso',
+          receptor_nombre:  f.cliente_nombre  || f.nombre || '',
+          receptor_rfc:     f.cliente_rfc     || '',
+          emisor_nombre:    f.proveedor_nombre || f.nombre || '',
+          emisor_rfc:       f.proveedor_rfc    || '',
+          plazo:            0,
+          pendiente:        f.saldo_pendiente || f.total || 0,
+          pendienteMXN:     f.saldo_pendiente || f.total || 0,
+        };
+      });
+
+      // Reemplazar solo los del tipo correspondiente, conservar el otro
+      setCfdis(prev => {
+        const otroTipo = prev.filter(c =>
+          tipo === 'cxc' ? c.tipo_cfdi === 'egreso' : c.tipo_cfdi === 'ingreso'
+        );
+        return [...otroTipo, ...nuevos];
+      });
+
     } catch (err) {
       toast.error(err.response?.data?.detail || `Error importando Excel ${tipo.toUpperCase()}`);
     } finally {
