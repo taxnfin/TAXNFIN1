@@ -133,38 +133,7 @@ const AgingModule = () => {
     }
   };
 
-  const loadData_UNUSED = async () => {
-    // kept for reference — original used /cfdi?limit=500
-    const [cfdiRes, custRes, vendRes, fxRes] = await Promise.all([
-      api.get('/cfdi?limit=500'),
-      api.get('/customers'),
-      api.get('/vendors'),
-      api.get('/fx-rates/latest')
-    ]);
-    setCfdis(cfdiRes.data);
-    setCustomers(custRes.data);
-    setVendors(vendRes.data);
-      // Extract rates object from response
-      // Normalizar rates — puede venir como array [{moneda, tasa_mxn}] o como objeto {USD: 17.5}
-      const rawRates = fxRes.data?.rates;
-      let ratesObj = {};
-      if (Array.isArray(rawRates)) {
-        rawRates.forEach(r => {
-          if (r.moneda && r.tasa_mxn) ratesObj[r.moneda] = r.tasa_mxn;
-          else if (r.moneda_origen && r.tasa) ratesObj[r.moneda_origen] = r.tasa;
-        });
-      } else if (rawRates && typeof rawRates === 'object') {
-        ratesObj = { ...rawRates };
-      }
-      if (!ratesObj.USD) ratesObj.USD = 17.5;
-      if (!ratesObj.EUR) ratesObj.EUR = 19.0;
-      setFxRates(ratesObj);
-    } catch (error) {
-      toast.error('Error cargando datos');
-    } finally {
-      setLoading(false);
-    }
-  };
+
 
   const syncFxRates = async () => {
     setSyncingRates(true);
