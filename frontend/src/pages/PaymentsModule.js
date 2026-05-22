@@ -151,7 +151,7 @@ const PaymentsModule = () => {
   const loadData = async () => {
     try {
       // Use the new endpoint that includes real reconciliation status
-      let url = '/payments/with-reconciliation-status?limit=5000';
+      let url = '/payments/with-reconciliation-status?limit=1000';
       if (filterTipo !== 'all') url += `&tipo=${filterTipo}`;
       
       const [paymentsRes, summaryRes, breakdownRes, bankTxnsRes, agingRes] = await Promise.all([
