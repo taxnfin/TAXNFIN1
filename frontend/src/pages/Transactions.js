@@ -47,12 +47,13 @@ const AgingModule = () => {
     loadData();
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (forceRefresh = false) => {
     setLoading(true);
+    const refreshParam = forceRefresh ? '?refresh=true' : '';
     try {
       const [cxcRes, cxpRes, fxRes] = await Promise.all([
-        api.get('/contalink/cxc'),
-        api.get('/contalink/cxp'),
+        api.get(`/contalink/cxc${refreshParam}`),
+        api.get(`/contalink/cxp${refreshParam}`),
         api.get('/fx-rates/latest'),
       ]);
 
@@ -119,7 +120,7 @@ const AgingModule = () => {
       const label = tipo === 'cxc' ? 'CxC' : 'CxP';
       const count = res.data?.num_facturas || res.data?.num_clientes || res.data?.num_proveedores || 0;
       toast.success(`✅ Excel ${label}: ${count} registros · $${(res.data?.total_pendiente || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}`);
-      await loadData(); // Recargar desde caché actualizado
+      await loadData(true); // Forzar refresh del caché después del upload
     } catch (err) {
       toast.error(err.response?.data?.detail || `Error importando Excel ${tipo.toUpperCase()}`);
     } finally {
@@ -148,6 +149,20 @@ const AgingModule = () => {
     } finally {
       setSyncingRates(false);
     }
+  };
+
+  // Calcula la semana del modelo de proyecciones (S1, S2...) para una fecha de vencimiento
+  const getProyeccionSemana = (fechaVenc) => {
+    if (!fechaVenc) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const fv = new Date(fechaVenc);
+    fv.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((fv - today) / 86400000);
+    if (diffDays < 0) return null; // Ya vencida — no proyectar
+    const semana = Math.floor(diffDays / 7) + 1;
+    if (semana > 18) return null; // Fuera del horizonte de 18 semanas
+    return `S${semana}`;
   };
 
   const formatCurrency = (amount, moneda = 'MXN') => {
@@ -693,6 +708,7 @@ const AgingModule = () => {
                   <TableHead>Plazo</TableHead>
                   <TableHead>Vencimiento</TableHead>
                   <TableHead>Días Venc.</TableHead>
+                  <TableHead className="bg-blue-50">Proyección</TableHead>
                   <TableHead>Moneda</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Pagado</TableHead>
@@ -704,7 +720,7 @@ const AgingModule = () => {
               <TableBody>
                 {filteredCfdis.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={13} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={14} className="text-center py-8 text-gray-500">
                       {isFiltered 
                         ? 'No hay facturas que coincidan con los filtros seleccionados'
                         : `No hay facturas pendientes de ${tipo === 'cxc' ? 'cobro' : 'pago'}`
@@ -747,6 +763,18 @@ const AgingModule = () => {
                           }`}>
                             {cfdi.diasVencido <= 0 ? `${Math.abs(cfdi.diasVencido)}d` : `+${cfdi.diasVencido}d`}
                           </span>
+                        </TableCell>
+                        <TableCell className="text-center bg-blue-50">
+                          {(() => {
+                            const semana = getProyeccionSemana(cfdi.fechaVencimiento);
+                            return semana ? (
+                              <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800 font-semibold">
+                                {semana}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell>
                           <span className={`text-xs px-2 py-1 rounded ${cfdi.moneda === 'USD' ? 'bg-green-100 text-green-800' : cfdi.moneda === 'EUR' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
