@@ -79,6 +79,9 @@ def _parse_cxp_excel(content: bytes) -> dict:
 
         if total == 0:
             continue
+        # Excluir notas de crédito y anticipos (total negativo)
+        if total < 0:
+            continue
 
         # Calcular días vencido aproximado (peor bucket)
         if mas90 > 0:      dias_vencido = 91
@@ -167,6 +170,9 @@ def _parse_cxc_excel(content: bytes) -> dict:
         total      = _parse_currency(ws.cell_value(r, 12))
 
         if total == 0:
+            continue
+        # Excluir notas de crédito y anticipos (total negativo)
+        if total < 0:
             continue
 
         if mas120 > 0:     dias_vencido = 121
