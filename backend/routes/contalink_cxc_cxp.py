@@ -76,7 +76,7 @@ async def _fetch_cxc(client, rfc, start_date, end_date) -> list:
     CxC = facturas EMITIDAS (issued) tipo I.
     Igual que hace el sync/all exitoso: ("issued", "I")
     """
-    return await _fetch(client, rfc, "issued", "I", start_date, end_date)
+    return await _fetch(client, rfc, "E", "I", start_date, end_date)
 
 
 async def _fetch_cxp(client, rfc, start_date, end_date) -> list:
@@ -86,8 +86,8 @@ async def _fetch_cxp(client, rfc, start_date, end_date) -> list:
     """
     import asyncio
     r1, r2 = await asyncio.gather(
-        _fetch(client, rfc, "received", "I", start_date, end_date),
-        _fetch(client, rfc, "received", "E", start_date, end_date),
+        _fetch(client, rfc, "R", "I", start_date, end_date),
+        _fetch(client, rfc, "R", "E", start_date, end_date),
     )
     # Deduplicar por uuid
     seen, result = set(), []
