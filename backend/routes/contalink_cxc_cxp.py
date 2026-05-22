@@ -73,21 +73,38 @@ async def _fetch(client, rfc, transaction_type, document_type, start_date, end_d
 
 async def _fetch_cxc(client, rfc, start_date, end_date) -> list:
     """
-    CxC = facturas EMITIDAS (issued) tipo I.
-    Igual que hace el sync/all exitoso: ("issued", "I")
+    CxC = facturas EMITIDAS.
+    Intenta primero issued/I; si falla (document_type invalid), intenta issued/E,
+    luego issued sin document_type usando document_type vacío.
     """
-    return await _fetch(client, rfc, "E", "I", start_date, end_date)
+    import asyncio
+    # Probar las 3 variantes en paralelo y combinar resultados
+    r1, r2, r3 = await asyncio.gather(
+        _fetch(client, rfc, "issued", "I", start_date, end_date),
+        _fetch(client, rfc, "issued", "E", start_date, end_date),
+        _fetch(client, rfc, "issued", "P", start_date, end_date),
+    )
+    seen, result = set(), []
+    for inv in r1 + r2 + r3:
+        uid = (inv.get("uuid") or inv.get("UUID") or inv.get("folio_fiscal") or
+               str(inv.get("id", ""))).strip()
+        if uid and uid not in seen:
+            seen.add(uid)
+            result.append(inv)
+        elif not uid:
+            result.append(inv)
+    logger.info(f"CxC fetch: issued/I={len(r1)} issued/E={len(r2)} issued/P={len(r3)} total={len(result)}")
+    return result
 
 
 async def _fetch_cxp(client, rfc, start_date, end_date) -> list:
     """
     CxP = facturas RECIBIDAS (received) tipo I + tipo E.
-    Igual que hace el sync/all exitoso: ("received","I") + ("received","E")
     """
     import asyncio
     r1, r2 = await asyncio.gather(
-        _fetch(client, rfc, "R", "I", start_date, end_date),
-        _fetch(client, rfc, "R", "E", start_date, end_date),
+        _fetch(client, rfc, "received", "I", start_date, end_date),
+        _fetch(client, rfc, "received", "E", start_date, end_date),
     )
     # Deduplicar por uuid
     seen, result = set(), []
