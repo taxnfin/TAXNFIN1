@@ -253,7 +253,7 @@ async def upload_cxp_excel(
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     })
 
-    cache_key = f"cxp_{company_id}_{date.today().isoformat()}"
+    cache_key = f"cxp_{company_id}_latest"
     await db.contalink_cache.update_one(
         {"key": cache_key},
         {"$set": {"key": cache_key, "data": result,
@@ -293,7 +293,7 @@ async def upload_cxc_excel(
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     })
 
-    cache_key = f"cxc_{company_id}_{date.today().isoformat()}"
+    cache_key = f"cxc_{company_id}_latest"
     await db.contalink_cache.update_one(
         {"key": cache_key},
         {"$set": {"key": cache_key, "data": result,
@@ -316,11 +316,11 @@ async def get_cuentas_por_cobrar(
 ):
     company_id = await get_active_company_id(request, current_user)
     today = date.today()
-    cache_key = f"cxc_{company_id}_{today.isoformat()}"
+    cache_key = f"cxc_{company_id}_latest"
 
     if not refresh:
         cached = await db.contalink_cache.find_one({"key": cache_key})
-        if cached and (datetime.now(timezone.utc) - cached["created_at"]).total_seconds() < 14400:
+        if cached:
             return cached["data"]
 
     # Intentar desde balanza
@@ -352,17 +352,24 @@ async def get_cuentas_por_cobrar(
                     "cliente_rfc":"","saldo_pendiente":round(saldo,2),"moneda":"MXN",
                     "dias_vencido":0,"total":round(saldo,2),"uuid":""})
 
-            result = {
-                "cut_date":today.isoformat(),"num_facturas":len(facturas),
-                "num_clientes":len(terceros),"total_pendiente":round(total_p,2),
-                "aging":{k:round(v,2) for k,v in aging.items()},"pct_vencido":0.0,
-                "facturas":facturas,"source":"contalink_balanza",
-                "fetched_at":datetime.now(timezone.utc).isoformat(),
-            }
-            await db.contalink_cache.update_one({"key":cache_key},
-                {"$set":{"key":cache_key,"data":result,"created_at":datetime.now(timezone.utc)}},upsert=True)
-            logger.info(f"CxC balanza: {len(facturas)} cuentas, total={round(total_p,2)}")
-            return result
+            # Solo sobreescribir caché si la balanza tiene datos reales
+            if total_p > 0:
+                result = {
+                    "cut_date":today.isoformat(),"num_facturas":len(facturas),
+                    "num_clientes":len(terceros),"total_pendiente":round(total_p,2),
+                    "aging":{k:round(v,2) for k,v in aging.items()},"pct_vencido":0.0,
+                    "facturas":facturas,"source":"contalink_balanza",
+                    "fetched_at":datetime.now(timezone.utc).isoformat(),
+                }
+                await db.contalink_cache.update_one({"key":cache_key},
+                    {"$set":{"key":cache_key,"data":result,"created_at":datetime.now(timezone.utc)}},upsert=True)
+                logger.info(f"CxC balanza: {len(facturas)} cuentas, total={round(total_p,2)}")
+                return result
+            else:
+                logger.info("CxC balanza vacía — preservando caché de Excel")
+                cached_excel = await db.contalink_cache.find_one({"key": cache_key})
+                if cached_excel:
+                    return cached_excel["data"]
     except HTTPException:
         raise
     except Exception as e:
@@ -391,11 +398,11 @@ async def get_cuentas_por_pagar(
 ):
     company_id = await get_active_company_id(request, current_user)
     today = date.today()
-    cache_key = f"cxp_{company_id}_{today.isoformat()}"
+    cache_key = f"cxp_{company_id}_latest"
 
     if not refresh:
         cached = await db.contalink_cache.find_one({"key": cache_key})
-        if cached and (datetime.now(timezone.utc) - cached["created_at"]).total_seconds() < 14400:
+        if cached:
             return cached["data"]
 
     try:
@@ -426,17 +433,24 @@ async def get_cuentas_por_pagar(
                     "proveedor_rfc":"","saldo_pendiente":round(saldo,2),"moneda":"MXN",
                     "dias_vencido":0,"total":round(saldo,2),"uuid":""})
 
-            result = {
-                "cut_date":today.isoformat(),"num_facturas":len(facturas),
-                "num_proveedores":len(terceros),"total_pendiente":round(total_p,2),
-                "aging":{k:round(v,2) for k,v in aging.items()},"pct_vencido":0.0,
-                "facturas":facturas,"source":"contalink_balanza",
-                "fetched_at":datetime.now(timezone.utc).isoformat(),
-            }
-            await db.contalink_cache.update_one({"key":cache_key},
-                {"$set":{"key":cache_key,"data":result,"created_at":datetime.now(timezone.utc)}},upsert=True)
-            logger.info(f"CxP balanza: {len(facturas)} cuentas, total={round(total_p,2)}")
-            return result
+            # Solo sobreescribir caché si la balanza tiene datos reales
+            if total_p > 0:
+                result = {
+                    "cut_date":today.isoformat(),"num_facturas":len(facturas),
+                    "num_proveedores":len(terceros),"total_pendiente":round(total_p,2),
+                    "aging":{k:round(v,2) for k,v in aging.items()},"pct_vencido":0.0,
+                    "facturas":facturas,"source":"contalink_balanza",
+                    "fetched_at":datetime.now(timezone.utc).isoformat(),
+                }
+                await db.contalink_cache.update_one({"key":cache_key},
+                    {"$set":{"key":cache_key,"data":result,"created_at":datetime.now(timezone.utc)}},upsert=True)
+                logger.info(f"CxP balanza: {len(facturas)} cuentas, total={round(total_p,2)}")
+                return result
+            else:
+                logger.info("CxP balanza vacía — preservando caché de Excel")
+                cached_excel = await db.contalink_cache.find_one({"key": cache_key})
+                if cached_excel:
+                    return cached_excel["data"]
     except HTTPException:
         raise
     except Exception as e:
@@ -463,8 +477,8 @@ async def get_cxc_cxp_summary(
 ):
     company_id = await get_active_company_id(request, current_user)
     today = date.today()
-    cxc_key = f"cxc_{company_id}_{today.isoformat()}"
-    cxp_key = f"cxp_{company_id}_{today.isoformat()}"
+    cxc_key = f"cxc_{company_id}_latest"
+    cxp_key = f"cxp_{company_id}_latest"
 
     cxc_cached = await db.contalink_cache.find_one({"key": cxc_key})
     cxp_cached = await db.contalink_cache.find_one({"key": cxp_key})
