@@ -483,3 +483,16 @@ async def get_cxc_cxp_summary(
         "flujo_neto_esperado": round(cxc_total - cxp_total, 2),
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# ══════════════════════════════════════════════════════════════════════
+# ALIAS: /contalink/aging-summary  (usado por PaymentsModule)
+# ══════════════════════════════════════════════════════════════════════
+
+@router.get("/aging-summary")
+async def get_aging_summary_alias(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Alias de /cxc-cxp-summary para compatibilidad con PaymentsModule."""
+    return await get_cxc_cxp_summary(request, current_user)
