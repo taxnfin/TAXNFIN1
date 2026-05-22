@@ -153,6 +153,8 @@ const PaymentsModule = () => {
       // Use the new endpoint that includes real reconciliation status
       let url = '/payments/with-reconciliation-status?limit=1000';
       if (filterTipo !== 'all') url += `&tipo=${filterTipo}`;
+      if (filterFechaDesde) url += `&fecha_desde=${filterFechaDesde}`;
+      if (filterFechaHasta) url += `&fecha_hasta=${filterFechaHasta}`;
       
       const [paymentsRes, summaryRes, breakdownRes, bankTxnsRes, agingRes] = await Promise.all([
         api.get(url),
