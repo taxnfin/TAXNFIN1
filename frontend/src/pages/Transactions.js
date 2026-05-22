@@ -42,6 +42,8 @@ const AgingModule = () => {
 
   const [uploadingCxC, setUploadingCxC] = useState(false);
   const [uploadingCxP, setUploadingCxP] = useState(false);
+  const [oficialTotalCxC, setOficialTotalCxC] = useState(null);
+  const [oficialTotalCxP, setOficialTotalCxP] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -84,6 +86,9 @@ const AgingModule = () => {
       const cxcFacturas = toLocal(cxcRes.data?.facturas, 'cxc');
       const cxpFacturas = toLocal(cxpRes.data?.facturas, 'cxp');
       setCfdis([...cxcFacturas, ...cxpFacturas]);
+      // Guardar totales oficiales del backend (incluyen resta de NC)
+      if (cxcRes.data?.total_pendiente != null) setOficialTotalCxC(cxcRes.data.total_pendiente);
+      if (cxpRes.data?.total_pendiente != null) setOficialTotalCxP(cxpRes.data.total_pendiente);
 
       const rawRates = fxRes.data?.rates;
       let ratesObj = {};
@@ -435,8 +440,8 @@ const AgingModule = () => {
 
   const totalCxC = Object.values(cxcBuckets).reduce((s, b) => s + b.total, 0);
   const totalCxP = Object.values(cxpBuckets).reduce((s, b) => s + b.total, 0);
-  const totalCxCMXN = Object.values(cxcBuckets).reduce((s, b) => s + b.totalMXN, 0);
-  const totalCxPMXN = Object.values(cxpBuckets).reduce((s, b) => s + b.totalMXN, 0);
+  const totalCxCMXN = oficialTotalCxC != null ? oficialTotalCxC : Object.values(cxcBuckets).reduce((s, b) => s + b.totalMXN, 0);
+  const totalCxPMXN = oficialTotalCxP != null ? oficialTotalCxP : Object.values(cxpBuckets).reduce((s, b) => s + b.totalMXN, 0);
   const totalCxCDisplay = fromMXN(totalCxCMXN, displayCurrency);
   const totalCxPDisplay = fromMXN(totalCxPMXN, displayCurrency);
 
