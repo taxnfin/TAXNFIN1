@@ -117,3 +117,52 @@ async def get_proyecciones_por_semana(
         result[semana][tipo] = round(result[semana][tipo] + monto, 2)
 
     return result
+
+
+# ── GET /cxc-proyecciones/semanas-modelo ────────────────────────────
+@router.get("/semanas-modelo")
+async def get_semanas_modelo(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """
+    Devuelve las semanas proyectadas del modelo rolling actual.
+    Calcula desde la semana actual hasta 18 semanas adelante.
+    Formato: [{ label: "S14", dateLabel: "25 may", weekStart: "2026-05-25", weekEnd: "2026-06-01" }]
+    """
+    from datetime import date, timedelta
+    import math
+
+    company_id = await get_active_company_id(request, current_user)
+
+    # Leer inicio_semana de la empresa (0=Dom, 1=Lun default)
+    company = await db.companies.find_one({"id": company_id}, {"_id": 0})
+    week_start_day = int(company.get("inicio_semana", 1)) if company else 1
+
+    today = date.today()
+
+    # Calcular inicio de la semana actual
+    days_since_start = (today.weekday() - (week_start_day - 1)) % 7
+    current_week_start = today - timedelta(days=days_since_start)
+
+    # Calcular desde cuándo empieza el modelo (17 semanas atrás para modelo de 30 semanas)
+    model_start = current_week_start - timedelta(weeks=17)
+
+    semanas = []
+    for i in range(30):
+        ws = model_start + timedelta(weeks=i)
+        we = ws + timedelta(weeks=1)
+        is_past    = we.isoformat() <= today.isoformat()
+        is_current = ws <= today < we
+        data_type  = 'real' if is_past else ('actual' if is_current else 'proyectado')
+
+        if data_type == 'proyectado':
+            semanas.append({
+                "label":      f"S{i + 1}",
+                "dateLabel":  ws.strftime("%d %b").lstrip("0"),
+                "weekStart":  ws.isoformat(),
+                "weekEnd":    we.isoformat(),
+                "dataType":   data_type,
+            })
+
+    return semanas
