@@ -619,7 +619,11 @@ const CashflowProjections = () => {
     
     // =====================================================================
     // PASO 2: Procesar CFDIs (PROYECCIONES para semanas futuras)
+    // Si hay datos de CxC/CxP del Aging (porSemana), estos son la fuente
+    // de verdad para proyecciones — no proyectar CFDIs para evitar duplicación.
     // =====================================================================
+    const usarCxCComoProyeccion = porSemana && Object.keys(porSemana).length > 0;
+
     cfdisData.forEach(cfdi => {
       // For projections, use fecha_vencimiento or estimated date
       let projectedDate;
@@ -639,6 +643,10 @@ const CashflowProjections = () => {
       // Only add CFDIs to FUTURE weeks (projections)
       // For past weeks, we already have real payment data
       if (week.isPast || week.isCurrent) return;
+
+      // Si hay CxC/CxP del Aging, esa es la fuente de verdad para proyecciones.
+      // No proyectar CFDIs para evitar duplicación con el Aging.
+      if (usarCxCComoProyeccion) return;
       
       // Check if USD operation - SKIP projecting currency operations
       // Currency operations (buy/sell USD) are spot transactions that settle immediately
