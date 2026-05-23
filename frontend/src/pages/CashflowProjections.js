@@ -131,49 +131,21 @@ const CashflowProjections = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customStartDate]);
 
-  // Inyectar CxC/CxP en semanas futuras del modelo cuando cambian
+  // Inyectar proyecciones manuales CxC/CxP en semanas futuras del modelo
   useEffect(() => {
     if (!weeklyData.length) return;
-    if (!cxcCxpData.cxc.length && !cxcCxpData.cxp.length) return;
-
-    const today = new Date(); today.setHours(0,0,0,0);
+    const porSemana = cxcCxpData?.porSemana;
+    if (!porSemana || !Object.keys(porSemana).length) return;
 
     setWeeklyData(prev => prev.map(week => {
-      if (week.dataType !== 'proyectado') return week; // Solo semanas futuras
+      if (week.dataType !== 'proyectado') return week;
+      const data = porSemana[week.label]; // e.g. porSemana["S3"]
+      if (!data) return week;
 
-      let cxcTotal = 0;
-      let cxpTotal = 0;
-
-      // Sumar CxC vigentes que vencen en esta semana
-      cxcCxpData.cxc.forEach(f => {
-        if (!f.fecha_vencimiento && f.dias_vencido <= 0) {
-          // Sin fecha — distribuir en S1
-          if (week.weekNum === 1) cxcTotal += f.saldo_pendiente || f.total || 0;
-          return;
-        }
-        if (f.dias_vencido > 0) return; // Ya vencida, no proyectar
-        const fv = new Date(f.fecha_vencimiento);
-        if (fv >= week.weekStart && fv < week.weekEnd) {
-          cxcTotal += f.saldo_pendiente || f.total || 0;
-        }
-      });
-
-      // Sumar CxP vigentes que vencen en esta semana
-      cxcCxpData.cxp.forEach(f => {
-        if (!f.fecha_vencimiento && f.dias_vencido <= 0) {
-          if (week.weekNum === 1) cxpTotal += f.saldo_pendiente || f.total || 0;
-          return;
-        }
-        if (f.dias_vencido > 0) return;
-        const fv = new Date(f.fecha_vencimiento);
-        if (fv >= week.weekStart && fv < week.weekEnd) {
-          cxpTotal += f.saldo_pendiente || f.total || 0;
-        }
-      });
-
+      const cxcTotal = data.cxc || 0;
+      const cxpTotal = data.cxp || 0;
       if (!cxcTotal && !cxpTotal) return week;
 
-      // Clonar la semana e inyectar CxC como ingreso y CxP como egreso
       const newWeek = { ...week };
       if (cxcTotal > 0) {
         newWeek.ingresos = { ...week.ingresos, total: week.ingresos.total + cxcTotal };
@@ -303,21 +275,15 @@ const CashflowProjections = () => {
       // Monthly view reads from payments (cfdis collection is empty — data lives in payments)
       processMonthlyData(allPayments, catRes.data, customStartDate);
 
-      // ── Inyectar CxC y CxP como proyecciones futuras ──────────────────
-      // Leer del caché de Contalink (llenado por Excel upload o balanza)
+      // ── Inyectar proyecciones manuales CxC/CxP ───────────────────────
       try {
-        const [cxcRes, cxpRes] = await Promise.all([
-          api.get('/contalink/cxc'),
-          api.get('/contalink/cxp'),
-        ]);
-        if (cxcRes.data?.facturas?.length || cxpRes.data?.facturas?.length) {
-          setCxcCxpData({
-            cxc: cxcRes.data?.facturas || [],
-            cxp: cxpRes.data?.facturas || [],
-          });
+        const proyRes = await api.get('/cxc-proyecciones/por-semana');
+        const porSemana = proyRes.data || {};
+        if (Object.keys(porSemana).length > 0) {
+          setCxcCxpData({ porSemana });
         }
       } catch (e) {
-        console.log('CxC/CxP no disponibles para proyecciones:', e.message);
+        console.log('CxC/CxP proyecciones no disponibles:', e.message);
       }
     } catch (error) {
       toast.error(t?.errorLoadingData || 'Error loading data');
