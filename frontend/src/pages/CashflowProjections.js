@@ -256,40 +256,36 @@ const CashflowProjections = () => {
       };
       
       const companyId = getActiveCompanyId();
+      // ── Cargar proyecciones CxC/CxP ANTES de procesar semanas ────────
+      let porSemana = {};
+      try {
+        const proyRes = await api.get('/cxc-proyecciones/por-semana');
+        porSemana = proyRes.data || {};
+        if (Object.keys(porSemana).length > 0) {
+          setCxcCxpData({ porSemana });
+        }
+      } catch (e) {
+        console.log('CxC/CxP proyecciones no disponibles:', e.message);
+      }
+
       if (companyId) {
         try {
           const compRes = await api.get(`/companies/${companyId}`);
           const weekStart = compRes.data?.inicio_semana ?? 1;
           setCompanyConfig({ ...compRes.data, inicio_semana: weekStart });
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, validPayments, customStartDate);
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, validPayments, customStartDate, porSemana);
           setWeeklyData(weeks);
         } catch {
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate);
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate, porSemana);
           setWeeklyData(weeks);
         }
       } else {
-        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate);
+        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate, porSemana);
         setWeeklyData(weeks);
       }
-      
-      // Monthly view reads from payments (cfdis collection is empty — data lives in payments)
-      processMonthlyData(allPayments, catRes.data, customStartDate);
 
-      // ── Inyectar proyecciones manuales CxC/CxP ───────────────────────
-      try {
-        const proyRes = await api.get('/cxc-proyecciones/por-semana');
-        const porSemana = proyRes.data || {};
-        if (Object.keys(porSemana).length > 0) {
-          setCxcCxpData({ porSemana });
-          // Re-procesar semanas con proyecciones CxC/CxP inyectadas en las categorías correctas
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate, porSemana);
-          setWeeklyData(weeks);
-          // También inyectar en vista mensual
-          processMonthlyData(allPayments, catRes.data, customStartDate, porSemana);
-        }
-      } catch (e) {
-        console.log('CxC/CxP proyecciones no disponibles:', e.message);
-      }
+      // Monthly view
+      processMonthlyData(allPayments, catRes.data, customStartDate, porSemana);
     } catch (error) {
       toast.error(t?.errorLoadingData || 'Error loading data');
     } finally {
