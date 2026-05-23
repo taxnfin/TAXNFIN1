@@ -45,6 +45,7 @@ const AgingModule = () => {
   const [oficialTotalCxC, setOficialTotalCxC] = useState(null);
   const [oficialTotalCxP, setOficialTotalCxP] = useState(null);
   const [proyecciones, setProyecciones] = useState({}); // { "CLIENTE X_cxc": "S3", ... }
+  const [semanasModelo, setSemanasModelo] = useState([]); // semanas proyectadas del modelo
 
   useEffect(() => {
     loadData();
@@ -54,11 +55,12 @@ const AgingModule = () => {
     setLoading(true);
     const refreshParam = forceRefresh ? '?refresh=true' : '';
     try {
-      const [cxcRes, cxpRes, fxRes, proyRes] = await Promise.all([
+      const [cxcRes, cxpRes, fxRes, proyRes, semanasRes] = await Promise.all([
         api.get(`/contalink/cxc${refreshParam}`),
         api.get(`/contalink/cxp${refreshParam}`),
         api.get('/fx-rates/latest'),
         api.get('/cxc-proyecciones').catch(() => ({ data: [] })),
+        api.get('/cxc-proyecciones/semanas-modelo').catch(() => ({ data: [] })),
       ]);
 
       const toLocal = (facturas, tipo) => (facturas || []).map(f => {
@@ -98,6 +100,7 @@ const AgingModule = () => {
         proyMap[`${p.nombre}_${p.tipo}`] = p.semana;
       });
       setProyecciones(proyMap);
+      setSemanasModelo(semanasRes.data || []);
 
       const rawRates = fxRes.data?.rates;
       let ratesObj = {};
@@ -792,7 +795,6 @@ const AgingModule = () => {
                           {(() => {
                             const key = `${getPartyName(cfdi, tipo)}_${tipo}`;
                             const semanaActual = proyecciones[key] || '';
-                            const semanas = ['', 'S1','S2','S3','S4','S5','S6','S7','S8','S9','S10','S11','S12','S13','S14','S15','S16','S17','S18'];
                             return (
                               <select
                                 value={semanaActual}
@@ -807,8 +809,11 @@ const AgingModule = () => {
                                     : 'bg-gray-50 text-gray-400 border-gray-200'
                                 }`}
                               >
-                                {semanas.map(s => (
-                                  <option key={s} value={s}>{s || '—'}</option>
+                                <option value="">— Sin asignar</option>
+                                {semanasModelo.map(s => (
+                                  <option key={s.label} value={s.label}>
+                                    {s.label} · {s.dateLabel}
+                                  </option>
                                 ))}
                               </select>
                             );
