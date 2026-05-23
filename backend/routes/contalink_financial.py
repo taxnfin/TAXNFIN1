@@ -292,14 +292,15 @@ def parse_estado_resultados(ws, is_xls=False) -> dict:
 
     # ── Detalle (fila 5 en adelante) ─────────────────────────────────────────
     for row in rows[4:]:
-        # Pad row to at least 8 columns
-        row = (row + [None] * 8)[:8]
-        col_a, _, _, col_d, _, col_f, _, col_h = row
+        # Pad row to at least 9 columns
+        row = (row + [None] * 9)[:9]
+        col_a, _, _, col_d, _, col_f, col_g, col_h, _ = row
 
         label    = clean_label(str(col_a)) if col_a else ''
         detalle  = clean_value(col_d)
-        subtotal = _parse_subtotal_str(col_f)
-        total    = _parse_subtotal_str(col_h)
+        # col_g (índice 6) es el valor del PERIODO en el ER de Contalink
+        subtotal = _parse_subtotal_str(col_g) or _parse_subtotal_str(col_f)
+        total    = _parse_subtotal_str(col_h) or subtotal
 
         if not label and subtotal == 0 and total == 0:
             continue
@@ -322,21 +323,37 @@ def parse_estado_resultados(ws, is_xls=False) -> dict:
             if all(k.upper() in l for k in keywords):
                 v = item['subtotal'] or item['total'] or item['detalle']
                 if v:
-                    return v
+                    return abs(v)
         return 0.0
 
-    ventas_brutas   = find_subtotal('VENTAS', 'GRAVAM') or find_subtotal('INGRESO')
+    def find_total_seccion(seccion_label):
+        """Busca el total de una sección buscando fila 'Total' después de la sección."""
+        in_seccion = False
+        for item in items:
+            l = item['label'].upper()
+            if seccion_label.upper() in l:
+                in_seccion = True
+            if in_seccion and l == 'TOTAL':
+                v = item['subtotal'] or item['total']
+                if v: return abs(v)
+        return 0.0
+
+    ventas_brutas   = find_subtotal('VENTAS', 'GRAVAM') or find_subtotal('INGRESO') or find_total_seccion('INGRESOS')
     devoluciones    = find_subtotal('DEVOLUCION') or find_subtotal('DESCUENTO')
     ventas_netas    = find_subtotal('VENTAS NETAS') or find_subtotal('NETAS')
-    costo_ventas    = find_subtotal('COSTO')
+    costo_ventas    = find_subtotal('COSTO') or find_total_seccion('COSTOS')
     utilidad_bruta  = find_subtotal('UTILIDAD BRUTA') or find_subtotal('BRUTA')
     gastos_admin    = find_subtotal('ADMINISTR')
-    gastos_venta    = find_subtotal('VENTA') if 'GASTO' in str(find_subtotal('VENTA')) else 0.0
+    gastos_venta    = find_subtotal('GASTO DE VENTA') or find_subtotal('GASTOS DE VENTA')
     ebitda          = find_subtotal('EBITDA')
     depreciacion    = find_subtotal('DEPRECIAC')
-    gastos_fin      = find_subtotal('FINANCIERO') or find_subtotal('INTERES')
+    gastos_fin      = find_subtotal('FINANCIERO') or find_subtotal('INTERES') or find_total_seccion('RESULTADO INTEGRAL')
     ebita           = find_subtotal('EBITA') or find_subtotal('EBIT')
-    utilidad_neta   = find_subtotal('UTILIDAD NETA') or find_subtotal('NETA')
+    utilidad_neta   = find_subtotal('UTILIDAD TOTAL') or find_subtotal('UTILIDAD NETA') or find_subtotal('NETA')
+    # Si no hay gastos separados, usar el total de la sección gastos
+    if not gastos_admin and not gastos_venta:
+        gastos_total = find_total_seccion('GASTOS')
+        gastos_admin = gastos_total
 
     # Si no hay ventas_netas calcularlo
     if ventas_netas == 0 and ventas_brutas:
