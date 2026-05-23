@@ -324,11 +324,11 @@ const AgingModule = () => {
       if (cfdi.tipo_cfdi !== (isIngreso ? 'ingreso' : 'egreso')) return false;
       if (cfdi.estado_cancelacion === 'cancelado') return false;
       
-      // Check pending balance
+      // Check pending balance — incluir NC (pendiente negativo) para mostrar en Aging
       const amountField = isIngreso ? 'monto_cobrado' : 'monto_pagado';
       const retenciones = isIngreso ? 0 : ((cfdi.isr_retenido || 0) + (cfdi.iva_retenido || 0));
       const pendiente = (cfdi.total - retenciones) - (cfdi[amountField] || 0);
-      return pendiente > 0.01;
+      return pendiente > 0.01 || pendiente < -0.01; // incluir NC (negativos)
     });
 
     // Group by aging bucket
