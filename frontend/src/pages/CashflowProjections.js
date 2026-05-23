@@ -281,6 +281,9 @@ const CashflowProjections = () => {
         const porSemana = proyRes.data || {};
         if (Object.keys(porSemana).length > 0) {
           setCxcCxpData({ porSemana });
+          // Re-procesar semanas con proyecciones CxC/CxP inyectadas en las categorías correctas
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate, porSemana);
+          setWeeklyData(weeks);
         }
       } catch (e) {
         console.log('CxC/CxP proyecciones no disponibles:', e.message);
@@ -357,7 +360,7 @@ const CashflowProjections = () => {
     return amount * rate;
   };
 
-  const processWeeklyData = (cfdisData, categoriesData, weekStartDay = 1, rates = {}, payments = [], customStart = '') => {
+  const processWeeklyData = (cfdisData, categoriesData, weekStartDay = 1, rates = {}, payments = [], customStart = '', porSemana = {}) => {
     // =====================================================================
     // NUEVA LÓGICA: ÚNICA FUENTE DE VERDAD
     // - Semanas pasadas/actuales: SOLO datos de Cobranza y Pagos
@@ -707,6 +710,47 @@ const CashflowProjections = () => {
       section.total += montoMXN;
     });
     
+    // ── PASO 3: Inyectar proyecciones CxC/CxP por semana y categoría ──
+    // porSemana formato: { "S14": { cxc: 100, cxp: 200, byCategory: { "Ventas": { cxc: 100, cxp: 0 } } } }
+    if (porSemana && Object.keys(porSemana).length > 0) {
+      weeks.forEach(week => {
+        const semanaData = porSemana[week.label];
+        if (!semanaData) return;
+        // Solo inyectar en semanas futuras (proyectadas)
+        if (week.isPast || week.isCurrent) return;
+
+        const byCat = semanaData.byCategory || {};
+        Object.entries(byCat).forEach(([catName, montos]) => {
+          // CxC → ingresos
+          if ((montos.cxc || 0) > 0) {
+            const monto = montos.cxc;
+            week.ingresos.total += monto;
+            if (!week.ingresos.byCategory[catName]) {
+              week.ingresos.byCategory[catName] = { total: 0, bySubcategory: {}, items: [] };
+            }
+            week.ingresos.byCategory[catName].total += monto;
+            if (!week.ingresos.byCategory[catName].bySubcategory['CxC']) {
+              week.ingresos.byCategory[catName].bySubcategory['CxC'] = { total: 0, items: [] };
+            }
+            week.ingresos.byCategory[catName].bySubcategory['CxC'].total += monto;
+          }
+          // CxP → egresos
+          if ((montos.cxp || 0) > 0) {
+            const monto = montos.cxp;
+            week.egresos.total += monto;
+            if (!week.egresos.byCategory[catName]) {
+              week.egresos.byCategory[catName] = { total: 0, bySubcategory: {}, items: [] };
+            }
+            week.egresos.byCategory[catName].total += monto;
+            if (!week.egresos.byCategory[catName].bySubcategory['CxP']) {
+              week.egresos.byCategory[catName].bySubcategory['CxP'] = { total: 0, items: [] };
+            }
+            week.egresos.byCategory[catName].bySubcategory['CxP'].total += monto;
+          }
+        });
+      });
+    }
+
     // Log for debugging
     console.log('=== DATOS POR SEMANA (Única Fuente de Verdad) ===');
     weeks.forEach(w => {
