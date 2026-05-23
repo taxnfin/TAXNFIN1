@@ -8,7 +8,7 @@ Registrar en server.py:
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import Dict, Optional, List
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from pydantic import BaseModel
 import logging
 
@@ -20,9 +20,9 @@ router = APIRouter(prefix="/cxc-proyecciones", tags=["CxC/CxP Proyecciones"])
 
 
 class ProyeccionItem(BaseModel):
-    nombre:   str           # Nombre del cliente o proveedor
+    nombre:   str
     tipo:     str           # "cxc" | "cxp"
-    semana:   Optional[str] # "S1".."S18" | None = sin asignar
+    semana:   Optional[str] # "S1".."S52" | None = sin asignar
     monto:    float
     moneda:   str = "MXN"
 
@@ -73,7 +73,7 @@ async def save_proyeccion(
     return {"ok": True, "semana": item.semana, "nombre": item.nombre}
 
 
-# ── DELETE /cxc-proyecciones/{nombre} ───────────────────────────────
+# ── DELETE /cxc-proyecciones/{tipo}/{nombre} ─────────────────────────
 @router.delete("/{tipo}/{nombre}")
 async def delete_proyeccion(
     tipo: str,
@@ -97,7 +97,7 @@ async def get_proyecciones_por_semana(
 ):
     """
     Devuelve ingresos y egresos proyectados agrupados por semana Y categoría.
-    Usado por CashflowProjections para inyectar en el modelo con categoría real.
+    Incluye NC (montos negativos) correctamente por cliente.
 
     Formato:
     {
@@ -105,26 +105,23 @@ async def get_proyecciones_por_semana(
         "cxc": 1234.56,
         "cxp": 789.00,
         "byCategory": {
-          "Ventas de productos": { "cxc": 1000.0, "cxp": 0 },
-          "Proveedores materia prima": { "cxc": 0, "cxp": 500.0 }
+          "Ventas de productos": { "cxc": 1000.0, "cxp": 0 }
         }
       }
     }
     """
     company_id = await get_active_company_id(request, current_user)
 
-    # Cargar proyecciones (semanas asignadas)
     docs = await db.cxc_proyecciones.find(
         {"company_id": company_id, "semana": {"$ne": None}}, {"_id": 0}
     ).to_list(1000)
 
-    # Cargar categorías guardadas para enriquecer
     cat_docs = await db.cxc_categorias.find(
         {"company_id": company_id}, {"_id": 0}
     ).to_list(1000)
-    # Mapa: (nombre, tipo) → category_name
     cat_map = {(c["nombre"], c["tipo"]): c.get("category_name", "") for c in cat_docs}
 
+    # Cada cliente tiene su monto exacto (incluyendo NC negativa por cliente)
     result = {}
     for doc in docs:
         semana = doc.get("semana")
@@ -134,7 +131,6 @@ async def get_proyecciones_por_semana(
         if not semana:
             continue
 
-        # Categoría real o fallback
         cat_name = cat_map.get((nombre, tipo), "")
         if not cat_name:
             cat_name = "CxC Contalink" if tipo == "cxc" else "CxP Contalink"
@@ -160,43 +156,54 @@ async def get_semanas_modelo(
     current_user: Dict = Depends(get_current_user),
 ):
     """
-    Devuelve las semanas proyectadas del modelo rolling actual.
-    Calcula desde la semana actual hasta 18 semanas adelante.
-    Formato: [{ label: "S14", dateLabel: "25 may", weekStart: "2026-05-25", weekEnd: "2026-06-01" }]
+    Devuelve TODAS las semanas del año desde S1 (enero) hasta 18 semanas futuras.
+    Incluye semanas pasadas para asignar cobros/pagos históricos.
     """
-    from datetime import date, timedelta
-    import math
-
     company_id = await get_active_company_id(request, current_user)
 
-    # Leer inicio_semana de la empresa (0=Dom, 1=Lun default)
     company = await db.companies.find_one({"id": company_id}, {"_id": 0})
     week_start_day = int(company.get("inicio_semana", 1)) if company else 1
 
     today = date.today()
 
-    # Calcular inicio de la semana actual
-    days_since_start = (today.weekday() - (week_start_day - 1)) % 7
-    current_week_start = today - timedelta(days=days_since_start)
+    year_start = date(today.year, 1, 1)
+    if week_start_day == 0:  # Domingo
+        days_offset = (year_start.weekday() + 1) % 7
+    else:  # Lunes (default)
+        days_offset = year_start.weekday()
 
-    # Calcular desde cuándo empieza el modelo (17 semanas atrás para modelo de 30 semanas)
-    model_start = current_week_start - timedelta(weeks=17)
+    model_start = year_start - timedelta(days=days_offset)
+
+    if week_start_day == 0:
+        curr_offset = (today.weekday() + 1) % 7
+    else:
+        curr_offset = today.weekday()
+    current_week_start = today - timedelta(days=curr_offset)
+    future_limit = current_week_start + timedelta(weeks=18)
 
     semanas = []
-    for i in range(30):
-        ws = model_start + timedelta(weeks=i)
+    i = 0
+    ws = model_start
+    while ws <= future_limit:
         we = ws + timedelta(weeks=1)
-        is_past    = we.isoformat() <= today.isoformat()
         is_current = ws <= today < we
-        data_type  = 'real' if is_past else ('actual' if is_current else 'proyectado')
+        is_past    = we <= today and not is_current
 
-        if data_type == 'proyectado':
-            semanas.append({
-                "label":      f"S{i + 1}",
-                "dateLabel":  ws.strftime("%d %b").lstrip("0"),
-                "weekStart":  ws.isoformat(),
-                "weekEnd":    we.isoformat(),
-                "dataType":   data_type,
-            })
+        if is_past:
+            data_type = "real"
+        elif is_current:
+            data_type = "actual"
+        else:
+            data_type = "proyectado"
+
+        semanas.append({
+            "label":      f"S{i + 1}",
+            "dateLabel":  ws.strftime("%-d %b"),
+            "weekStart":  ws.isoformat(),
+            "weekEnd":    we.isoformat(),
+            "dataType":   data_type,
+        })
+        ws = we
+        i += 1
 
     return semanas
