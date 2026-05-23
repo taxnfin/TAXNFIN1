@@ -106,9 +106,8 @@ def _parse_cxc_excel(content: bytes) -> dict:
         mas120     = _parse_currency(ws.cell_value(r, 11))
         total      = _parse_currency(ws.cell_value(r, 12))
         if total == 0: continue
-        if total < 0:
-            total_general += total
-            continue
+        # NC (total negativo): incluir como fila real para que aparezca en Aging
+        # y el usuario pueda asignarle semana al cliente específico
         if mas120 > 0:    dias_vencido = 121
         elif d91_120 > 0: dias_vencido = 91
         elif d61_90 > 0:  dias_vencido = 61
