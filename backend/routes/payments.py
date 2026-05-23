@@ -861,7 +861,7 @@ async def get_payments_breakdown(request: Request, current_user: Dict = Depends(
                 if pagado > 0.01:
                     total_pagado_mxn += pagado * mxn_factor
 
-    # Projected payments
+    # Projected payments (payments manuales con es_real=False)
     proj_payments = await db.payments.find(
         {'company_id': company_id, 'es_real': False},
         {'_id': 0, 'tipo': 1, 'monto': 1, 'moneda': 1}
@@ -869,6 +869,16 @@ async def get_payments_breakdown(request: Request, current_user: Dict = Depends(
 
     proy_pagos_mxn = sum(to_mxn(p.get('monto', 0) or 0, p.get('moneda', 'MXN')) for p in proj_payments if p.get('tipo') == 'pago')
     proy_cobros_mxn = sum(to_mxn(p.get('monto', 0) or 0, p.get('moneda', 'MXN')) for p in proj_payments if p.get('tipo') == 'cobro')
+
+    # ── Sumar CxC/CxP de Contalink como proyecciones futuras ──────────
+    # Las CxC son cobros pendientes (proyeccion_cobros)
+    # Las CxP son pagos pendientes (proyeccion_pagos)
+    cxc_cached = await db.contalink_cache.find_one({"key": f"cxc_{company_id}_latest"})
+    cxp_cached = await db.contalink_cache.find_one({"key": f"cxp_{company_id}_latest"})
+    cxc_total = cxc_cached["data"].get("total_pendiente", 0) if cxc_cached else 0
+    cxp_total = cxp_cached["data"].get("total_pendiente", 0) if cxp_cached else 0
+    proy_cobros_mxn += cxc_total   # CxC = dinero que nos van a pagar
+    proy_pagos_mxn  += cxp_total   # CxP = dinero que tenemos que pagar
 
     return {
         'cfdi_por_cobrar': {
@@ -890,6 +900,15 @@ async def get_payments_breakdown(request: Request, current_user: Dict = Depends(
         },
         'proy_cobros': {
             'total_equiv_mxn': round(proy_cobros_mxn, 2),
+        },
+        # Aliases para compatibilidad con PaymentsModule frontend
+        'proyeccion_pagos': {
+            'total_equiv_mxn': round(proy_pagos_mxn, 2),
+            'total_count': len([p for p in proj_payments if p.get('tipo') == 'pago']),
+        },
+        'proyeccion_cobros': {
+            'total_equiv_mxn': round(proy_cobros_mxn, 2),
+            'total_count': len([p for p in proj_payments if p.get('tipo') == 'cobro']),
         },
     }
 
