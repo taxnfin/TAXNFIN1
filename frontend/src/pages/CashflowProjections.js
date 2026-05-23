@@ -2338,19 +2338,19 @@ const CashflowProjections = () => {
               <CardContent className="py-2">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">Ingresos Reales (S1-S5)</div>
+                    <div className="text-xs text-gray-500 mb-1">Ingresos Reales (S1-S{cfoKPIs.semanasRealesCount})</div>
                     <div className="text-xl font-bold text-green-600">{formatCurrency(cfoKPIs.totalIngresosReales)}</div>
                   </div>
                   <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">Egresos Reales (S1-S5)</div>
+                    <div className="text-xs text-gray-500 mb-1">Egresos Reales (S1-S{cfoKPIs.semanasRealesCount})</div>
                     <div className="text-xl font-bold text-red-600">{formatCurrency(cfoKPIs.totalEgresosReales)}</div>
                   </div>
                   <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">Ingresos Proyectados (S6-S18)</div>
+                    <div className="text-xs text-gray-500 mb-1">Ingresos Proyectados (S{cfoKPIs.semanasRealesCount + 1}-S{cfoKPIs.semanasRealesCount + cfoKPIs.semanasProyectadasCount})</div>
                     <div className="text-xl font-bold text-green-500">{formatCurrency(cfoKPIs.totalIngresosProyectados)}</div>
                   </div>
                   <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">Egresos Proyectados (S6-S18)</div>
+                    <div className="text-xs text-gray-500 mb-1">Egresos Proyectados (S{cfoKPIs.semanasRealesCount + 1}-S{cfoKPIs.semanasRealesCount + cfoKPIs.semanasProyectadasCount})</div>
                     <div className="text-xl font-bold text-red-500">{formatCurrency(cfoKPIs.totalEgresosProyectados)}</div>
                   </div>
                 </div>
