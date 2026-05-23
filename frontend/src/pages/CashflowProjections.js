@@ -284,6 +284,8 @@ const CashflowProjections = () => {
           // Re-procesar semanas con proyecciones CxC/CxP inyectadas en las categorías correctas
           const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate, porSemana);
           setWeeklyData(weeks);
+          // También inyectar en vista mensual
+          processMonthlyData(allPayments, catRes.data, customStartDate, porSemana);
         }
       } catch (e) {
         console.log('CxC/CxP proyecciones no disponibles:', e.message);
@@ -761,7 +763,7 @@ const CashflowProjections = () => {
     return weeks;
   };
 
-  const processMonthlyData = (paymentsData, categoriesData, customMonthlyStart = '') => {
+  const processMonthlyData = (paymentsData, categoriesData, customMonthlyStart = '', porSemana = {}) => {
     // SOURCE OF TRUTH: payments collection (cfdis collection is empty —
     // Contalink sync stores everything in payments).
     // payments fields used:
@@ -847,6 +849,49 @@ const CashflowProjections = () => {
       section.byParty[partyName].total += amount;
       section.byParty[partyName].cfdis.push(p);
     });
+
+    // ── Inyectar proyecciones CxC/CxP en meses futuros ───────────────
+    // porSemana: { "S14": { byCategory: { "Ventas": { cxc: X, cxp: Y } } } }
+    // Necesitamos mapear semana → mes usando weekStart del modelo semanal
+    if (porSemana && Object.keys(porSemana).length > 0) {
+      // Usamos weeklyData para saber la fecha de cada semana
+      // Si no está disponible, calculamos desde hoy
+      const today2 = new Date();
+      Object.entries(porSemana).forEach(([semanaLabel, semanaData]) => {
+        const byCat = semanaData.byCategory || {};
+        // Buscar el mes correspondiente en weeklyData si está disponible
+        // Como no tenemos acceso a weeklyData aquí, lo recalculamos
+        // Buscamos el monthStart que contiene esta semana
+        // Para simplificar: la inyección la hacemos usando weeklyData state
+        // En su lugar, recalculamos la fecha de la semana desde el label
+        const weekNum = parseInt(semanaLabel.replace('S', '')) - 1;
+        // Calcular fecha: modelo empieza ~17 semanas atrás desde inicio del año
+        const yearStart = new Date(today2.getFullYear(), 0, 5); // 5 enero aprox
+        const weekDate = new Date(yearStart.getTime() + weekNum * 7 * 24 * 60 * 60 * 1000);
+
+        const monthIdx = months.findIndex(m => weekDate >= m.monthStart && weekDate < m.monthEnd);
+        if (monthIdx === -1) return;
+
+        const month = months[monthIdx];
+        // Solo meses futuros
+        if (month.isPast || month.isCurrent) return;
+
+        Object.entries(byCat).forEach(([catName, montos]) => {
+          if ((montos.cxc || 0) > 0) {
+            const monto = montos.cxc;
+            month.ingresos.total += monto;
+            if (!month.ingresos.byCategory[catName]) month.ingresos.byCategory[catName] = 0;
+            month.ingresos.byCategory[catName] += monto;
+          }
+          if ((montos.cxp || 0) > 0) {
+            const monto = montos.cxp;
+            month.egresos.total += monto;
+            if (!month.egresos.byCategory[catName]) month.egresos.byCategory[catName] = 0;
+            month.egresos.byCategory[catName] += monto;
+          }
+        });
+      });
+    }
 
     setMonthlyData(months);
   };
