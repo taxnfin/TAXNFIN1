@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { TrendingUp, TrendingDown, Clock, AlertTriangle, Calendar, Download, FileText, Building2, User, RefreshCw, Filter, X, Search } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, AlertTriangle, Calendar, Download, FileText, Building2, User, RefreshCw, Filter, X, Search, Tag } from 'lucide-react';
 import { format, differenceInDays, parseISO, isAfter, isBefore, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { exportAging, exportToExcel } from '@/utils/excelExport';
@@ -46,6 +46,8 @@ const AgingModule = () => {
   const [oficialTotalCxP, setOficialTotalCxP] = useState(null);
   const [proyecciones, setProyecciones] = useState({}); // { "CLIENTE X_cxc": "S3", ... }
   const [semanasModelo, setSemanasModelo] = useState([]); // semanas proyectadas del modelo
+  const [categorias, setCategorias] = useState({});       // { "NOMBRE_tipo": { code, name } }
+  const [autoCategorizing, setAutoCategorizing] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -55,12 +57,13 @@ const AgingModule = () => {
     setLoading(true);
     const refreshParam = forceRefresh ? '?refresh=true' : '';
     try {
-      const [cxcRes, cxpRes, fxRes, proyRes, semanasRes] = await Promise.all([
+      const [cxcRes, cxpRes, fxRes, proyRes, semanasRes, catRes] = await Promise.all([
         api.get(`/contalink/cxc${refreshParam}`),
         api.get(`/contalink/cxp${refreshParam}`),
         api.get('/fx-rates/latest'),
         api.get('/cxc-proyecciones').catch(() => ({ data: [] })),
         api.get('/cxc-proyecciones/semanas-modelo').catch(() => ({ data: [] })),
+        api.get('/contalink/categorias-cxc').catch(() => ({ data: { categorias_guardadas: [] } })),
       ]);
 
       const toLocal = (facturas, tipo) => (facturas || []).map(f => {
@@ -102,6 +105,14 @@ const AgingModule = () => {
       setProyecciones(proyMap);
       setSemanasModelo(semanasRes.data || []);
 
+      // Construir mapa de categorías: { "NOMBRE_tipo": { code, name } }
+      const catMap = {};
+      const catData = catRes.data?.categorias_guardadas || [];
+      catData.forEach(c => {
+        catMap[`${c.nombre}_${c.tipo}`] = { code: c.category_code, name: c.category_name };
+      });
+      setCategorias(catMap);
+
       const rawRates = fxRes.data?.rates;
       let ratesObj = {};
       if (Array.isArray(rawRates)) {
@@ -130,6 +141,34 @@ const AgingModule = () => {
       toast.success(`${nombre} asignado a ${semana || 'sin semana'}`);
     } catch (err) {
       toast.error('Error guardando proyección');
+    }
+  };
+
+  const handleAutoCategorize = async () => {
+    setAutoCategorizing(true);
+    try {
+      const res = await api.post('/contalink/auto-categorize-cxc?solo_sin_categoria=true');
+      const { updated, processed } = res.data;
+      if (updated > 0) {
+        toast.success(`✅ ${updated} de ${processed} clientes/proveedores categorizados con IA`);
+        await loadData();
+      } else {
+        toast.info('Todos ya tienen categoría asignada');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error en categorización IA');
+    } finally {
+      setAutoCategorizing(false);
+    }
+  };
+
+  const handleCategoriaManual = async (nombre, tipo, category_code, category_name) => {
+    try {
+      await api.post('/contalink/categoria-cxc', { nombre, tipo, category_code, category_name });
+      setCategorias(prev => ({ ...prev, [`${nombre}_${tipo}`]: { code: category_code, name: category_name } }));
+      toast.success(`Categoría actualizada: ${category_name}`);
+    } catch (err) {
+      toast.error('Error guardando categoría');
     }
   };
 
@@ -722,6 +761,16 @@ const AgingModule = () => {
                 <Download size={14} />
                 {isFiltered ? 'Exportar Filtrado' : 'Exportar'}
               </Button>
+              <Button
+                variant="outline"
+                className="gap-2 border-purple-300 text-purple-700 hover:bg-purple-50"
+                onClick={handleAutoCategorize}
+                disabled={autoCategorizing}
+                data-testid={`categorize-${tipo}-btn`}
+              >
+                <Tag size={14} />
+                {autoCategorizing ? 'Categorizando...' : 'Categorizar con IA'}
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -730,6 +779,7 @@ const AgingModule = () => {
                 <TableRow className="bg-gray-50">
                   <TableHead>Antigüedad</TableHead>
                   <TableHead>{tipo === 'cxc' ? 'Cliente' : 'Proveedor'}</TableHead>
+                  <TableHead className="bg-purple-50">Categoría</TableHead>
                   <TableHead>UUID</TableHead>
                   <TableHead>Fecha Emisión</TableHead>
                   <TableHead>Plazo</TableHead>
@@ -772,6 +822,36 @@ const AgingModule = () => {
                             {tipo === 'cxc' ? <User size={14} className="text-blue-500" /> : <Building2 size={14} className="text-orange-500" />}
                             <span className="truncate">{getPartyName(cfdi, tipo)}</span>
                           </div>
+                        </TableCell>
+                        <TableCell className="bg-purple-50 min-w-[160px]">
+                          {(() => {
+                            const key = `${getPartyName(cfdi, tipo)}_${tipo}`;
+                            const catActual = categorias[key];
+                            const catalogo = tipo === 'cxc'
+                              ? ['ING-001:Ventas de productos','ING-002:Prestación de servicios','ING-003:Honorarios profesionales','ING-004:Arrendamiento cobrado','ING-005:Cobro de anticipos','ING-007:Intereses cobrados','ING-099:Otros ingresos']
+                              : ['EGR-001:Nómina y salarios','EGR-002:IMSS / INFONAVIT','EGR-003:ISR','EGR-004:IVA','EGR-005:Renta','EGR-006:Proveedores materia prima','EGR-007:Servicios','EGR-008:Telefonía e internet','EGR-009:Publicidad','EGR-010:Honorarios externos','EGR-011:Viáticos','EGR-012:Seguros','EGR-013:Mantenimiento','EGR-015:Software','EGR-016:Crédito bancario','EGR-017:Intereses pagados','EGR-018:Comisiones bancarias','EGR-020:Activo fijo','EGR-099:Otros egresos'];
+                            return (
+                              <select
+                                value={catActual?.code || ''}
+                                onChange={e => {
+                                  const entry = catalogo.find(c => c.startsWith(e.target.value + ':'));
+                                  const name = entry ? entry.split(':')[1] : '';
+                                  handleCategoriaManual(getPartyName(cfdi, tipo), tipo, e.target.value, name);
+                                }}
+                                className={`text-xs px-2 py-1 rounded border cursor-pointer w-full ${
+                                  catActual
+                                    ? 'bg-purple-100 text-purple-800 border-purple-300 font-semibold'
+                                    : 'bg-gray-50 text-gray-400 border-gray-200'
+                                }`}
+                              >
+                                <option value="">— Sin categoría</option>
+                                {catalogo.map(c => {
+                                  const [code, name] = c.split(':');
+                                  return <option key={code} value={code}>{name}</option>;
+                                })}
+                              </select>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell className="font-mono text-xs">{cfdi.uuid?.substring(0, 8)}...</TableCell>
                         <TableCell className="text-xs">{(cfdi.fecha_emision ? format(new Date(cfdi.fecha_emision), 'dd/MM/yy') : 'N/A')}</TableCell>
