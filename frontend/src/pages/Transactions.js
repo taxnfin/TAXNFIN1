@@ -44,6 +44,7 @@ const AgingModule = () => {
   const [uploadingCxP, setUploadingCxP] = useState(false);
   const [oficialTotalCxC, setOficialTotalCxC] = useState(null);
   const [oficialTotalCxP, setOficialTotalCxP] = useState(null);
+  const [proyecciones, setProyecciones] = useState({}); // { "CLIENTE X_cxc": "S3", ... }
 
   useEffect(() => {
     loadData();
@@ -53,10 +54,11 @@ const AgingModule = () => {
     setLoading(true);
     const refreshParam = forceRefresh ? '?refresh=true' : '';
     try {
-      const [cxcRes, cxpRes, fxRes] = await Promise.all([
+      const [cxcRes, cxpRes, fxRes, proyRes] = await Promise.all([
         api.get(`/contalink/cxc${refreshParam}`),
         api.get(`/contalink/cxp${refreshParam}`),
         api.get('/fx-rates/latest'),
+        api.get('/cxc-proyecciones').catch(() => ({ data: [] })),
       ]);
 
       const toLocal = (facturas, tipo) => (facturas || []).map(f => {
@@ -90,6 +92,13 @@ const AgingModule = () => {
       if (cxcRes.data?.total_pendiente != null) setOficialTotalCxC(cxcRes.data.total_pendiente);
       if (cxpRes.data?.total_pendiente != null) setOficialTotalCxP(cxpRes.data.total_pendiente);
 
+      // Construir mapa de proyecciones: { "NOMBRE_tipo": "S3" }
+      const proyMap = {};
+      (proyRes.data || []).forEach(p => {
+        proyMap[`${p.nombre}_${p.tipo}`] = p.semana;
+      });
+      setProyecciones(proyMap);
+
       const rawRates = fxRes.data?.rates;
       let ratesObj = {};
       if (Array.isArray(rawRates)) {
@@ -108,6 +117,16 @@ const AgingModule = () => {
       toast.error('Error cargando datos');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAsignarSemana = async (nombre, tipo, semana, monto) => {
+    try {
+      await api.post('/cxc-proyecciones', { nombre, tipo, semana, monto, moneda: 'MXN' });
+      setProyecciones(prev => ({ ...prev, [`${nombre}_${tipo}`]: semana }));
+      toast.success(`${nombre} asignado a ${semana || 'sin semana'}`);
+    } catch (err) {
+      toast.error('Error guardando proyección');
     }
   };
 
@@ -771,13 +790,27 @@ const AgingModule = () => {
                         </TableCell>
                         <TableCell className="text-center bg-blue-50">
                           {(() => {
-                            const semana = getProyeccionSemana(cfdi.fechaVencimiento);
-                            return semana ? (
-                              <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800 font-semibold">
-                                {semana}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-gray-400">—</span>
+                            const key = `${getPartyName(cfdi, tipo)}_${tipo}`;
+                            const semanaActual = proyecciones[key] || '';
+                            const semanas = ['', 'S1','S2','S3','S4','S5','S6','S7','S8','S9','S10','S11','S12','S13','S14','S15','S16','S17','S18'];
+                            return (
+                              <select
+                                value={semanaActual}
+                                onChange={e => handleAsignarSemana(
+                                  getPartyName(cfdi, tipo), tipo,
+                                  e.target.value || null,
+                                  cfdi.pendiente || cfdi.total || 0
+                                )}
+                                className={`text-xs px-2 py-1 rounded border cursor-pointer ${
+                                  semanaActual
+                                    ? 'bg-blue-100 text-blue-800 border-blue-300 font-semibold'
+                                    : 'bg-gray-50 text-gray-400 border-gray-200'
+                                }`}
+                              >
+                                {semanas.map(s => (
+                                  <option key={s} value={s}>{s || '—'}</option>
+                                ))}
+                              </select>
                             );
                           })()}
                         </TableCell>
