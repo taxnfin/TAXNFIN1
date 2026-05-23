@@ -8,7 +8,7 @@ Registrar en server.py:
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import Dict, Optional, List
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from pydantic import BaseModel
 import logging
 
@@ -20,9 +20,9 @@ router = APIRouter(prefix="/cxc-proyecciones", tags=["CxC/CxP Proyecciones"])
 
 
 class ProyeccionItem(BaseModel):
-    nombre:   str           # Nombre del cliente o proveedor
+    nombre:   str
     tipo:     str           # "cxc" | "cxp"
-    semana:   Optional[str] # "S1".."S18" | None = sin asignar
+    semana:   Optional[str] # "S1".."S52" | None = sin asignar
     monto:    float
     moneda:   str = "MXN"
 
@@ -73,7 +73,7 @@ async def save_proyeccion(
     return {"ok": True, "semana": item.semana, "nombre": item.nombre}
 
 
-# ── DELETE /cxc-proyecciones/{nombre} ───────────────────────────────
+# ── DELETE /cxc-proyecciones/{tipo}/{nombre} ─────────────────────────
 @router.delete("/{tipo}/{nombre}")
 async def delete_proyeccion(
     tipo: str,
@@ -97,7 +97,6 @@ async def get_proyecciones_por_semana(
 ):
     """
     Devuelve ingresos y egresos proyectados agrupados por semana.
-    Usado por CashflowProjections para inyectar en el modelo.
     Formato: { "S1": { "cxc": 1234.56, "cxp": 789.00 }, ... }
     """
     company_id = await get_active_company_id(request, current_user)
@@ -126,43 +125,68 @@ async def get_semanas_modelo(
     current_user: Dict = Depends(get_current_user),
 ):
     """
-    Devuelve las semanas proyectadas del modelo rolling actual.
-    Calcula desde la semana actual hasta 18 semanas adelante.
-    Formato: [{ label: "S14", dateLabel: "25 may", weekStart: "2026-05-25", weekEnd: "2026-06-01" }]
-    """
-    from datetime import date, timedelta
-    import math
+    Devuelve TODAS las semanas del año en curso (desde la primera semana
+    del año hasta 18 semanas hacia el futuro), para el dropdown del usuario.
 
+    Cada semana se etiqueta: S1 = primera semana del año, S2 = segunda, etc.
+    Incluye semanas pasadas (para asignar cobros/pagos históricos) y futuras.
+
+    Formato: [{ label, dateLabel, weekStart, weekEnd, dataType }]
+    dataType: "real" | "actual" | "proyectado"
+    """
     company_id = await get_active_company_id(request, current_user)
 
-    # Leer inicio_semana de la empresa (0=Dom, 1=Lun default)
+    # Leer inicio_semana de la empresa (1=Lun default, 0=Dom)
     company = await db.companies.find_one({"id": company_id}, {"_id": 0})
-    week_start_day = int(company.get("inicio_semana", 1)) if company else 1
+    week_start_day = int(company.get("inicio_semana", 1)) if company else 1  # 1=Lunes
 
     today = date.today()
 
-    # Calcular inicio de la semana actual
-    days_since_start = (today.weekday() - (week_start_day - 1)) % 7
-    current_week_start = today - timedelta(days=days_since_start)
+    # ── Calcular primer día del año fiscal (semana que contiene el 1 de enero)
+    # Ajustar al inicio de la semana según configuración
+    year_start = date(today.year, 1, 1)
+    # weekday(): 0=Lun, 6=Dom
+    # Para inicio en Lunes (week_start_day=1):  offset = year_start.weekday()
+    # Para inicio en Domingo (week_start_day=0): offset = (year_start.weekday() + 1) % 7
+    if week_start_day == 0:  # Domingo
+        days_offset = (year_start.weekday() + 1) % 7
+    else:  # Lunes (default)
+        days_offset = year_start.weekday()
 
-    # Calcular desde cuándo empieza el modelo (17 semanas atrás para modelo de 30 semanas)
-    model_start = current_week_start - timedelta(weeks=17)
+    model_start = year_start - timedelta(days=days_offset)
+
+    # Generar semanas: desde inicio del año hasta 18 semanas en el futuro
+    # Calcular semana actual primero
+    if week_start_day == 0:
+        curr_offset = (today.weekday() + 1) % 7
+    else:
+        curr_offset = today.weekday()
+    current_week_start = today - timedelta(days=curr_offset)
+    future_limit = current_week_start + timedelta(weeks=18)
 
     semanas = []
-    for i in range(30):
-        ws = model_start + timedelta(weeks=i)
+    i = 0
+    ws = model_start
+    while ws <= future_limit:
         we = ws + timedelta(weeks=1)
-        is_past    = we.isoformat() <= today.isoformat()
         is_current = ws <= today < we
-        data_type  = 'real' if is_past else ('actual' if is_current else 'proyectado')
+        is_past    = we <= today and not is_current
 
-        if data_type == 'proyectado':
-            semanas.append({
-                "label":      f"S{i + 1}",
-                "dateLabel":  ws.strftime("%d %b").lstrip("0"),
-                "weekStart":  ws.isoformat(),
-                "weekEnd":    we.isoformat(),
-                "dataType":   data_type,
-            })
+        if is_past:
+            data_type = "real"
+        elif is_current:
+            data_type = "actual"
+        else:
+            data_type = "proyectado"
+
+        semanas.append({
+            "label":      f"S{i + 1}",
+            "dateLabel":  ws.strftime("%-d %b"),   # %-d = sin cero inicial (Linux/Railway)
+            "weekStart":  ws.isoformat(),
+            "weekEnd":    we.isoformat(),
+            "dataType":   data_type,
+        })
+        ws = we
+        i += 1
 
     return semanas
