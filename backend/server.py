@@ -1,4 +1,3 @@
-"""TaxnFin Cashflow API - Main Application Entry Point"""
 from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -54,6 +53,7 @@ from routes.account_mappings import router as account_mappings_router
 from routes.cxc_proyecciones import router as cxc_proyecciones_router
 from routes.contalink_cxc_cxp import router as contalink_cxc_cxp_router
 from routes.cashflow_sync_service import router as cashflow_sync_router
+from routes.contalink_financial import router as contalink_financial_router
 
 # ===== REGISTER ROUTERS =====
 api_router.include_router(auth_router)
@@ -90,6 +90,7 @@ api_router.include_router(account_mappings_router)
 api_router.include_router(cxc_proyecciones_router)
 api_router.include_router(contalink_cxc_cxp_router)
 api_router.include_router(cashflow_sync_router)
+api_router.include_router(contalink_financial_router)
 
 # ===== MIDDLEWARE =====
 app.add_middleware(
@@ -121,7 +122,6 @@ async def global_exception_handler(request, exc):
 # ===== LIFECYCLE EVENTS =====
 @app.on_event("startup")
 async def startup_event():
-    """Initialize services on startup"""
     try:
         from fx_scheduler import start_scheduler
         start_scheduler(db)
