@@ -745,22 +745,36 @@ async def upload_contalink_to_metrics(
             parsed = parse_er_centro_costo(ws if is_xls else ws_obj, is_xls=is_xls)
             res = parsed.get('resumen', {})
 
-        ingresos = res.get('ventas_netas', 0) or res.get('ingresos', 0)
-        ebitda   = res.get('ebitda', 0)
+        ingresos     = res.get('ventas_netas', 0) or res.get('ventas_brutas', 0) or res.get('ingresos', 0)
+        costo_ventas = res.get('costo_ventas', 0)
         gastos_admin = res.get('gastos_admin', 0)
         gastos_venta = res.get('gastos_venta', 0)
         gastos_fin   = res.get('gastos_fin', 0)
         depreciacion = res.get('depreciacion', 0)
-        util_op = round(ebitda - depreciacion, 2) if ebitda else 0
-        util_neta = res.get('utilidad_neta', 0) or res.get('ebita', 0) or res.get('ebitda', 0)
+        util_neta    = res.get('utilidad_neta', 0) or res.get('ebita', 0)
+
+        # Calcular derivados si no vienen explícitos
+        util_bruta = res.get('utilidad_bruta', 0)
+        if not util_bruta and ingresos and costo_ventas:
+            util_bruta = round(ingresos - costo_ventas, 2)
+
+        gastos_op = round((gastos_admin or 0) + (gastos_venta or 0), 2)
+
+        util_op = res.get('utilidad_operativa', 0)
+        if not util_op and util_bruta:
+            util_op = round(util_bruta - gastos_op, 2)
+
+        ebitda = res.get('ebitda', 0)
+        if not ebitda and util_op:
+            ebitda = round(util_op + (depreciacion or 0), 2)
 
         income_doc = {
             'ingresos':                 ingresos,
-            'costo_ventas':             res.get('costo_ventas', 0),
-            'utilidad_bruta':           res.get('utilidad_bruta', 0),
+            'costo_ventas':             costo_ventas,
+            'utilidad_bruta':           util_bruta,
             'gastos_venta':             gastos_venta,
             'gastos_administracion':    gastos_admin,
-            'gastos_generales':         round((gastos_admin or 0) + (gastos_venta or 0), 2),
+            'gastos_generales':         gastos_op,
             'utilidad_operativa':       util_op,
             'otros_ingresos':           0,
             'gastos_financieros':       gastos_fin,
