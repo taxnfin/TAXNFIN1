@@ -14,7 +14,7 @@ import {
   BarChart3, PieChart, DollarSign, Building2, Target, Activity, Scale,
   Wallet, RefreshCw, Globe, ArrowUpRight, ArrowDownRight, CheckCircle,
   AlertTriangle, XCircle, Percent, Calculator, Calendar, Clock, Brain,
-  Sparkles, Lightbulb, Settings
+  Sparkles, Lightbulb, Settings, ChevronDown
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, 
