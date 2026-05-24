@@ -93,6 +93,7 @@ const BoardReport = () => {
   const [resumenModalOpen, setResumenModalOpen] = useState(false);
   const [generatingMejorado, setGeneratingMejorado] = useState(false);
   const [generatingKPIs, setGeneratingKPIs] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [pdfConfig, setPdfConfig] = useState({
     fontFamily: 'helvetica',
     titleSize: 28,
@@ -703,6 +704,170 @@ const BoardReport = () => {
     } catch (error) {
       console.error('Error exporting Excel:', error);
       toast.error('Error exporting Excel');
+    }
+  };
+
+  // Board Pack — PDF ejecutivo de 1 página para consejo
+  const downloadBoardPack = async () => {
+    try {
+      const company = JSON.parse(localStorage.getItem('selectedCompany') || '{}');
+      const fmt = (n) => {
+        if (!n && n !== 0) return '$0';
+        const abs = Math.abs(n);
+        const sign = n < 0 ? '-' : '';
+        if (abs >= 1000000) return `${sign}$${(abs/1000000).toFixed(2)}M`;
+        if (abs >= 1000) return `${sign}$${Math.round(abs/1000)}K`;
+        return `${sign}$${Math.round(abs).toLocaleString('es-MX')}`;
+      };
+      const pct = (n) => n ? `${n.toFixed(1)}%` : '0.0%';
+      const inc = currentMetrics?.income_statement || {};
+      const bal = currentMetrics?.balance_sheet || {};
+      const met = currentMetrics?.metrics || {};
+      const ingresos = inc.ingresos || 0;
+      const utilBruta = inc.utilidad_bruta || 0;
+      const ebitda = inc.ebitda || 0;
+      const utilNeta = inc.utilidad_neta || 0;
+      const costoVentas = inc.costo_ventas || 0;
+      const gastosOp = inc.gastos_generales || 0;
+      const utilOp = inc.utilidad_operativa || 0;
+      const activoTotal = bal.activo_total || 0;
+      const pasivoTotal = bal.pasivo_total || 0;
+      const capital = bal.capital_contable || 0;
+      const mBruto = ingresos ? (utilBruta/ingresos*100) : 0;
+      const mEbitda = ingresos ? (ebitda/ingresos*100) : 0;
+      const mOp = ingresos ? (utilOp/ingresos*100) : 0;
+      const mNeto = ingresos ? (utilNeta/ingresos*100) : 0;
+      const razonCirc = met.current_ratio?.value || 0;
+      const cce = met.cash_conversion_cycle?.value || 0;
+      const dso = met.dso?.value || 0;
+      const dio = met.dio?.value || 0;
+      const runway = met.cash_runway?.value || 0;
+
+      const pill = (val, meta, inv=false) => {
+        const ok = inv ? val <= meta : val >= meta;
+        const color = ok ? '#0F6E56' : (Math.abs(val-meta)/Math.abs(meta||1) > 0.5 ? '#A32D2D' : '#854F0B');
+        const bg = ok ? '#E1F5EE' : (Math.abs(val-meta)/Math.abs(meta||1) > 0.5 ? '#FCEBEB' : '#FAEEDA');
+        const label = ok ? 'Bueno' : (Math.abs(val-meta)/Math.abs(meta||1) > 0.5 ? 'Crítico' : 'Atención');
+        return `<span style="display:inline-block;font-size:10px;font-weight:500;padding:2px 7px;border-radius:4px;background:${bg};color:${color}">${label}</span>`;
+      };
+
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;background:#fff;padding:20px}
+.header{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:10px;border-bottom:2.5px solid #1D9E75;margin-bottom:14px}
+.h1{font-size:18px;font-weight:700}.h2{font-size:11px;color:#666;margin-top:2px}
+.badge{background:#1D9E75;color:#fff;font-size:10px;font-weight:600;padding:3px 9px;border-radius:4px}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.kpi{background:#f5f5f5;border-radius:7px;padding:10px 12px;border-bottom:3px solid #ccc}
+.kpi-label{font-size:9px;color:#666;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+.kpi-val{font-size:20px;font-weight:700}.kpi-sub{font-size:10px;color:#666;margin-top:2px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.card{background:#fff;border:0.5px solid #e0e0e0;border-radius:8px;padding:12px 14px}
+.sec{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#666;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{font-size:9px;color:#666;text-align:left;padding:4px 0;border-bottom:0.5px solid #e0e0e0;font-weight:600}
+td{padding:5px 0;border-bottom:0.5px solid #f0f0f0;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+.insight{display:flex;gap:6px;align-items:flex-start;font-size:11px;margin-bottom:6px;line-height:1.4}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:3px}
+.recom{margin-bottom:6px;display:flex;gap:8px;align-items:flex-start;padding:7px 9px;border-radius:5px;font-size:11px;line-height:1.4}
+.footer{border-top:0.5px solid #e0e0e0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#888;margin-top:12px}
+</style></head><body>
+<div class="header">
+  <div>
+    <div class="h1">${company.nombre || 'Empresa'}</div>
+    <div class="h2">RFC: ${company.rfc || '—'} &nbsp;·&nbsp; Reporte ejecutivo mensual &nbsp;·&nbsp; Análisis: TaxnFin · Claude Sonnet</div>
+  </div>
+  <div style="text-align:right">
+    <div class="badge">${selectedPeriod}</div>
+    <div class="h2" style="margin-top:4px">${new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'})}</div>
+  </div>
+</div>
+
+<div style="font-size:9px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Indicadores clave del período</div>
+<div class="kpi-grid">
+  <div class="kpi" style="border-color:#378ADD"><div class="kpi-label">Ingresos</div><div class="kpi-val" style="color:#185FA5">${fmt(ingresos)}</div><div class="kpi-sub">100% base</div></div>
+  <div class="kpi" style="border-color:#1D9E75"><div class="kpi-label">Utilidad bruta</div><div class="kpi-val" style="color:#0F6E56">${fmt(utilBruta)}</div><div class="kpi-sub">Margen ${pct(mBruto)}</div></div>
+  <div class="kpi" style="border-color:${ebitda>=0?'#1D9E75':'#D85A30'}"><div class="kpi-label">EBITDA</div><div class="kpi-val" style="color:${ebitda>=0?'#0F6E56':'#993C1D'}">${fmt(ebitda)}</div><div class="kpi-sub">Margen ${pct(mEbitda)}</div></div>
+  <div class="kpi" style="border-color:${utilNeta>=0?'#1D9E75':'#D85A30'}"><div class="kpi-label">Utilidad neta</div><div class="kpi-val" style="color:${utilNeta>=0?'#0F6E56':'#993C1D'}">${fmt(utilNeta)}</div><div class="kpi-sub">Margen ${pct(mNeto)}</div></div>
+</div>
+
+<div class="two">
+  <div class="card">
+    <div class="sec">Diagnóstico rápido</div>
+    <div class="insight"><div class="dot" style="background:${mBruto>=30?'#1D9E75':'#BA7517'}"></div><div>Margen bruto <strong>${pct(mBruto)}</strong> — ${mBruto>=30?'saludable, el negocio genera valor bruto suficiente':'por debajo del benchmark 30-40%'}.</div></div>
+    <div class="insight"><div class="dot" style="background:${ebitda>=0?'#1D9E75':'#D85A30'}"></div><div>${ebitda>=0?`EBITDA positivo ${fmt(ebitda)} — operación genera caja.`:`Gastos operativos ${fmt(gastosOp)} superan la utilidad bruta en ${fmt(Math.abs(utilBruta-gastosOp))}.`}</div></div>
+    <div class="insight"><div class="dot" style="background:${capital>=0?'#1D9E75':'#D85A30'}"></div><div>Capital contable <strong>${fmt(capital)}</strong> — ${capital>=0?'posición patrimonial positiva':'patrimonio negativo, revisar estructura'}.</div></div>
+    <div class="insight"><div class="dot" style="background:#378ADD"></div><div>Activo total <strong>${fmt(activoTotal)}</strong> · Pasivo total <strong>${fmt(pasivoTotal)}</strong>.</div></div>
+  </div>
+  <div class="card">
+    <div class="sec">Márgenes y retornos</div>
+    <table>
+      <thead><tr><th>Indicador</th><th>Valor</th><th>Meta</th><th>Estado</th></tr></thead>
+      <tbody>
+        <tr><td>Margen bruto</td><td><strong>${pct(mBruto)}</strong></td><td>≥30%</td><td>${pill(mBruto,30)}</td></tr>
+        <tr><td>Margen EBITDA</td><td><strong>${pct(mEbitda)}</strong></td><td>≥10%</td><td>${pill(mEbitda,10)}</td></tr>
+        <tr><td>Margen operativo</td><td><strong>${pct(mOp)}</strong></td><td>≥5%</td><td>${pill(mOp,5)}</td></tr>
+        <tr><td>Margen neto</td><td><strong>${pct(mNeto)}</strong></td><td>≥3%</td><td>${pill(mNeto,3)}</td></tr>
+        <tr><td>Razón circulante</td><td><strong>${razonCirc.toFixed(2)}x</strong></td><td>≥1.5x</td><td>${pill(razonCirc,1.5)}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="two">
+  <div class="card">
+    <div class="sec">Liquidez y ciclo operativo</div>
+    <table>
+      <thead><tr><th>Indicador</th><th>Actual</th><th>Meta</th><th>Estado</th></tr></thead>
+      <tbody>
+        <tr><td>Cash runway</td><td><strong>${runway.toFixed(1)}m</strong></td><td>≥3m</td><td>${pill(runway,3)}</td></tr>
+        <tr><td>DSO cobro</td><td><strong>${Math.round(dso)}d</strong></td><td>≤60d</td><td>${pill(dso,60,true)}</td></tr>
+        <tr><td>DIO inventario</td><td><strong>${Math.round(dio)}d</strong></td><td>≤90d</td><td>${pill(dio,90,true)}</td></tr>
+        <tr><td>CCE</td><td><strong>${Math.round(cce)}d</strong></td><td>≤90d</td><td>${pill(cce,90,true)}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <div class="sec">Balance resumido</div>
+    <table>
+      <thead><tr><th>Concepto</th><th style="text-align:right">Monto</th></tr></thead>
+      <tbody>
+        <tr><td>Activo total</td><td style="text-align:right"><strong>${fmt(activoTotal)}</strong></td></tr>
+        <tr><td>Pasivo total</td><td style="text-align:right"><strong>${fmt(pasivoTotal)}</strong></td></tr>
+        <tr><td>Capital contable</td><td style="text-align:right;color:${capital>=0?'#0F6E56':'#993C1D'}"><strong>${fmt(capital)}</strong></td></tr>
+        <tr><td>Activo circulante</td><td style="text-align:right">${fmt(bal.activo_circulante||0)}</td></tr>
+        <tr><td>Pasivo circulante</td><td style="text-align:right">${fmt(bal.pasivo_circulante||0)}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:0">
+  <div class="sec">Recomendaciones estratégicas</div>
+  ${ebitda < 0 ? `<div class="recom" style="background:#FCEBEB;border-left:3px solid #D85A30"><span style="font-weight:600;min-width:65px;font-size:10px;color:#A32D2D;text-transform:uppercase">Urgente</span><span>Reducir gastos operativos. Los ${fmt(gastosOp)} actuales superan la utilidad bruta — cualquier reducción impacta directamente el EBITDA.</span></div>` : ''}
+  ${dso > 60 ? `<div class="recom" style="background:#FCEBEB;border-left:3px solid #D85A30"><span style="font-weight:600;min-width:65px;font-size:10px;color:#A32D2D;text-transform:uppercase">Urgente</span><span>Acelerar cobranza: DSO de ${Math.round(dso)} días es crítico. Reducir a ≤60 días liberaría capital de trabajo significativo.</span></div>` : ''}
+  ${dio > 90 ? `<div class="recom" style="background:#FAEEDA;border-left:3px solid #BA7517"><span style="font-weight:600;min-width:65px;font-size:10px;color:#854F0B;text-transform:uppercase">Importante</span><span>Rotar inventario: DIO de ${Math.round(dio)} días está 2x sobre el benchmark. Meta ≤90 días para liberar caja.</span></div>` : ''}
+  <div class="recom" style="background:#E1F5EE;border-left:3px solid #1D9E75"><span style="font-weight:600;min-width:65px;font-size:10px;color:#0F6E56;text-transform:uppercase">Estratégico</span><span>Activo total ${fmt(activoTotal)} con razón circulante ${razonCirc.toFixed(2)}x — base patrimonial ${razonCirc>=1.5?'sólida para apalancar si mejora la operación':'requiere refuerzo de liquidez'}.</span></div>
+</div>
+
+<div class="footer">
+  <span>${company.nombre || 'Empresa'} &nbsp;·&nbsp; RFC: ${company.rfc || '—'} &nbsp;·&nbsp; ${selectedPeriod}</span>
+  <span>Análisis: TaxnFin · Claude Sonnet &nbsp;·&nbsp; ${new Date().toLocaleDateString('es-MX')}</span>
+</div>
+</body></html>`;
+
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, '_blank');
+      if (win) {
+        win.onload = () => { win.print(); };
+      }
+      toast.success('Board Pack listo — usa Ctrl+P para guardar como PDF');
+    } catch(e) {
+      console.error('Error Board Pack:', e);
+      toast.error('Error generando Board Pack');
     }
   };
 
@@ -1856,37 +2021,120 @@ const BoardReport = () => {
                 </SelectContent>
               </Select>
               
-              {/* Export Buttons */}
-              <Button variant="outline" onClick={exportToExcel} className="bg-white/10 border-white/20 text-white hover:bg-white/20" data-testid="export-excel-btn">
-                <FileSpreadsheet className="w-4 h-4 mr-2" />
-                Excel
-              </Button>
-              <Button 
-                variant="outline" 
-                onClick={() => setPdfConfigOpen(true)} 
-                className="bg-white/10 border-white/20 text-white hover:bg-white/20" 
-                data-testid="pdf-config-btn"
-              >
-                <Settings className="w-4 h-4" />
-              </Button>
-              <Button
-                onClick={downloadPDFMejorado}
-                disabled={generatingMejorado}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                data-testid="export-pdf-mejorado-btn"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                {generatingMejorado ? 'Generando...' : 'Resumen Ejecutivo'}
-              </Button>
-              <Button
-                onClick={downloadKPIsPDF}
-                disabled={generatingKPIs}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                data-testid="kpis-btn"
-              >
-                <Sparkles className="w-4 h-4 mr-2" />
-                {generatingKPIs ? 'Generando...' : 'KPIs'}
-              </Button>
+              {/* Export Dropdown unificado */}
+              <div style={{position:'relative'}} className="export-dropdown-wrapper">
+                <Button
+                  onClick={() => setExportMenuOpen(v => !v)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2"
+                  data-testid="export-dropdown-btn"
+                  disabled={generatingMejorado || generatingKPIs}
+                >
+                  <Download className="w-4 h-4" />
+                  {(generatingMejorado || generatingKPIs) ? 'Generando...' : 'Descargar'}
+                  <ChevronDown className="w-3 h-3 ml-1" />
+                </Button>
+                {exportMenuOpen && (
+                  <div
+                    style={{
+                      position:'absolute', right:0, top:'calc(100% + 6px)',
+                      background:'var(--color-background-primary)',
+                      border:'0.5px solid var(--color-border-tertiary)',
+                      borderRadius:'10px', boxShadow:'0 4px 16px rgba(0,0,0,0.12)',
+                      minWidth:'220px', zIndex:9999, overflow:'hidden'
+                    }}
+                    onMouseLeave={() => setExportMenuOpen(false)}
+                  >
+                    <div style={{padding:'6px'}}>
+                      <button
+                        onClick={() => { setExportMenuOpen(false); downloadPDFMejorado(); }}
+                        style={{
+                          width:'100%', textAlign:'left', padding:'10px 12px',
+                          borderRadius:'6px', border:'none', background:'transparent',
+                          cursor:'pointer', display:'flex', alignItems:'center', gap:'10px',
+                          fontSize:'13px', color:'var(--color-text-primary)'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background='var(--color-background-secondary)'}
+                        onMouseLeave={e => e.currentTarget.style.background='transparent'}
+                      >
+                        <span style={{fontSize:'18px'}}>📋</span>
+                        <div>
+                          <div style={{fontWeight:'500'}}>Reporte Ejecutivo</div>
+                          <div style={{fontSize:'11px', color:'var(--color-text-secondary)'}}>Análisis completo con IA · 5 páginas</div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => { setExportMenuOpen(false); downloadKPIsPDF(); }}
+                        style={{
+                          width:'100%', textAlign:'left', padding:'10px 12px',
+                          borderRadius:'6px', border:'none', background:'transparent',
+                          cursor:'pointer', display:'flex', alignItems:'center', gap:'10px',
+                          fontSize:'13px', color:'var(--color-text-primary)'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background='var(--color-background-secondary)'}
+                        onMouseLeave={e => e.currentTarget.style.background='transparent'}
+                      >
+                        <span style={{fontSize:'18px'}}>📊</span>
+                        <div>
+                          <div style={{fontWeight:'500'}}>Dashboard KPIs</div>
+                          <div style={{fontSize:'11px', color:'var(--color-text-secondary)'}}>Vista compacta de indicadores · 1 página</div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => { setExportMenuOpen(false); downloadBoardPack(); }}
+                        style={{
+                          width:'100%', textAlign:'left', padding:'10px 12px',
+                          borderRadius:'6px', border:'none', background:'transparent',
+                          cursor:'pointer', display:'flex', alignItems:'center', gap:'10px',
+                          fontSize:'13px', color:'var(--color-text-primary)'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background='var(--color-background-secondary)'}
+                        onMouseLeave={e => e.currentTarget.style.background='transparent'}
+                      >
+                        <span style={{fontSize:'18px'}}>🗂️</span>
+                        <div>
+                          <div style={{fontWeight:'500'}}>Board Pack</div>
+                          <div style={{fontSize:'11px', color:'var(--color-text-secondary)'}}>Resumen ejecutivo para consejo · 1 página</div>
+                        </div>
+                      </button>
+                      <div style={{height:'0.5px', background:'var(--color-border-tertiary)', margin:'4px 6px'}}></div>
+                      <button
+                        onClick={() => { setExportMenuOpen(false); exportToExcel(); }}
+                        style={{
+                          width:'100%', textAlign:'left', padding:'10px 12px',
+                          borderRadius:'6px', border:'none', background:'transparent',
+                          cursor:'pointer', display:'flex', alignItems:'center', gap:'10px',
+                          fontSize:'13px', color:'var(--color-text-primary)'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background='var(--color-background-secondary)'}
+                        onMouseLeave={e => e.currentTarget.style.background='transparent'}
+                      >
+                        <span style={{fontSize:'18px'}}>📑</span>
+                        <div>
+                          <div style={{fontWeight:'500'}}>Excel</div>
+                          <div style={{fontSize:'11px', color:'var(--color-text-secondary)'}}>Datos completos en hoja de cálculo</div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => { setExportMenuOpen(false); setPdfConfigOpen(true); }}
+                        style={{
+                          width:'100%', textAlign:'left', padding:'10px 12px',
+                          borderRadius:'6px', border:'none', background:'transparent',
+                          cursor:'pointer', display:'flex', alignItems:'center', gap:'10px',
+                          fontSize:'13px', color:'var(--color-text-primary)'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background='var(--color-background-secondary)'}
+                        onMouseLeave={e => e.currentTarget.style.background='transparent'}
+                      >
+                        <span style={{fontSize:'18px'}}>⚙️</span>
+                        <div>
+                          <div style={{fontWeight:'500'}}>Configurar PDF</div>
+                          <div style={{fontSize:'11px', color:'var(--color-text-secondary)'}}>Fuente, tamaño y secciones</div>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
