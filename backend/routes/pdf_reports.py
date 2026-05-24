@@ -94,3 +94,26 @@ async def generate_pdf_kpis(
     except Exception as e:
         logger.error(f"Error generando Dashboard KPIs: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error generando KPIs PDF: {str(e)}")
+
+
+@router.post("/reports/excel-corporativo")
+async def generate_excel_corporativo(
+    request: Request,
+    data: dict,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Excel corporativo con formato azul — 4 hojas"""
+    try:
+        from services.excel_report_generator import build_excel_report
+        buffer = build_excel_report(data)
+        empresa = data.get('empresa', 'Empresa').replace(' ', '_').replace('/', '-')
+        periodo = data.get('periodo', '')
+        filename = f"Reporte_Ejecutivo_{empresa}_{periodo}.xlsx"
+        return StreamingResponse(
+            buffer,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        logger.error(f"Error generando Excel corporativo: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error generando Excel: {str(e)}")
