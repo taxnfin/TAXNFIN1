@@ -568,7 +568,38 @@ const BoardReport = () => {
   };
 
   // Export to Excel - Complete with all metrics and AI analysis
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
+    try {
+      toast.info('Generando Excel corporativo...');
+      const company = JSON.parse(localStorage.getItem('selectedCompany') || '{}');
+      const inc = currentMetrics?.income_statement || {};
+      const bal = currentMetrics?.balance_sheet || {};
+      const payload = {
+        empresa: company?.nombre || 'Empresa',
+        rfc: company?.rfc || '',
+        periodo: selectedPeriod,
+        income_statement: inc,
+        balance_sheet: bal,
+        metrics: currentMetrics?.metrics || {},
+        ai_analysis: aiAnalysis || {},
+        trends: trendsData || [],
+      };
+      const response = await api.post('/reports/excel-corporativo', payload, { responseType: 'blob' });
+      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Reporte_Ejecutivo_${company?.nombre || 'Empresa'}_${selectedPeriod}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('Excel corporativo descargado');
+      return; // salir antes del código XLSX viejo
+    } catch (excelError) {
+      console.error('Error Excel corporativo, fallback a XLSX:', excelError);
+      toast.error('Error generando Excel');
+      return;
+    }
+    // FALLBACK (no se ejecuta normalmente)
     try {
       const wb = XLSX.utils.book_new();
       
@@ -701,8 +732,8 @@ const BoardReport = () => {
       const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
       saveAs(new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fileName);
       toast.success(language === 'es' ? 'Excel exportado exitosamente' : language === 'pt' ? 'Excel exportado com sucesso' : 'Excel exported successfully');
-    } catch (error) {
-      console.error('Error exporting Excel:', error);
+    } catch (fallbackError) {
+      console.error('Error exporting Excel fallback:', fallbackError);
       toast.error('Error exporting Excel');
     }
   };
@@ -2045,93 +2076,53 @@ tr:last-child td{border-bottom:none}
                     }}
                     onMouseLeave={() => setExportMenuOpen(false)}
                   >
-                    <div style={{padding:'6px'}}>
-                      <button
-                        onClick={() => { setExportMenuOpen(false); downloadPDFMejorado(); }}
-                        style={{
-                          width:'100%', textAlign:'left', padding:'10px 12px',
-                          borderRadius:'6px', border:'none', background:'transparent',
-                          cursor:'pointer', display:'flex', alignItems:'center', gap:'10px',
-                          fontSize:'13px', color:'var(--color-text-primary)'
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.background='var(--color-background-secondary)'}
-                        onMouseLeave={e => e.currentTarget.style.background='transparent'}
-                      >
-                        <span style={{fontSize:'18px'}}>📋</span>
-                        <div>
-                          <div style={{fontWeight:'500'}}>Reporte Ejecutivo</div>
-                          <div style={{fontSize:'11px', color:'var(--color-text-secondary)'}}>Análisis completo con IA · 5 páginas</div>
+                    <div style={{padding:'8px'}}>
+                      {[
+                        { icon:'📋', label:'Reporte Ejecutivo', sub:'Análisis completo con IA · 5 páginas', action: () => { setExportMenuOpen(false); downloadPDFMejorado(); } },
+                        { icon:'📊', label:'Dashboard KPIs',    sub:'Vista compacta de indicadores · 1 página', action: () => { setExportMenuOpen(false); downloadKPIsPDF(); } },
+                        { icon:'🗂️', label:'Board Pack',        sub:'Resumen ejecutivo para consejo · 1 página', action: () => { setExportMenuOpen(false); downloadBoardPack(); } },
+                      ].map((item, idx) => (
+                        <div
+                          key={idx}
+                          onClick={item.action}
+                          style={{
+                            display:'flex', alignItems:'center', gap:'12px',
+                            padding:'10px 12px', borderRadius:'8px', cursor:'pointer',
+                            marginBottom:'2px'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background='#F1F5F9'}
+                          onMouseLeave={e => e.currentTarget.style.background='transparent'}
+                        >
+                          <span style={{fontSize:'20px', flexShrink:0}}>{item.icon}</span>
+                          <div>
+                            <div style={{fontSize:'13px', fontWeight:'600', color:'#1E293B'}}>{item.label}</div>
+                            <div style={{fontSize:'11px', color:'#64748B', marginTop:'1px'}}>{item.sub}</div>
+                          </div>
                         </div>
-                      </button>
-                      <button
-                        onClick={() => { setExportMenuOpen(false); downloadKPIsPDF(); }}
-                        style={{
-                          width:'100%', textAlign:'left', padding:'10px 12px',
-                          borderRadius:'6px', border:'none', background:'transparent',
-                          cursor:'pointer', display:'flex', alignItems:'center', gap:'10px',
-                          fontSize:'13px', color:'var(--color-text-primary)'
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.background='var(--color-background-secondary)'}
-                        onMouseLeave={e => e.currentTarget.style.background='transparent'}
-                      >
-                        <span style={{fontSize:'18px'}}>📊</span>
-                        <div>
-                          <div style={{fontWeight:'500'}}>Dashboard KPIs</div>
-                          <div style={{fontSize:'11px', color:'var(--color-text-secondary)'}}>Vista compacta de indicadores · 1 página</div>
+                      ))}
+                      <div style={{height:'1px', background:'#E2E8F0', margin:'6px 4px'}}></div>
+                      {[
+                        { icon:'📑', label:'Excel', sub:'Datos completos en hoja de cálculo', action: () => { setExportMenuOpen(false); exportToExcel(); } },
+                        { icon:'⚙️', label:'Configurar PDF', sub:'Fuente, tamaño y secciones', action: () => { setExportMenuOpen(false); setPdfConfigOpen(true); } },
+                      ].map((item, idx) => (
+                        <div
+                          key={idx}
+                          onClick={item.action}
+                          style={{
+                            display:'flex', alignItems:'center', gap:'12px',
+                            padding:'10px 12px', borderRadius:'8px', cursor:'pointer',
+                            marginBottom:'2px'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background='#F1F5F9'}
+                          onMouseLeave={e => e.currentTarget.style.background='transparent'}
+                        >
+                          <span style={{fontSize:'20px', flexShrink:0}}>{item.icon}</span>
+                          <div>
+                            <div style={{fontSize:'13px', fontWeight:'600', color:'#1E293B'}}>{item.label}</div>
+                            <div style={{fontSize:'11px', color:'#64748B', marginTop:'1px'}}>{item.sub}</div>
+                          </div>
                         </div>
-                      </button>
-                      <button
-                        onClick={() => { setExportMenuOpen(false); downloadBoardPack(); }}
-                        style={{
-                          width:'100%', textAlign:'left', padding:'10px 12px',
-                          borderRadius:'6px', border:'none', background:'transparent',
-                          cursor:'pointer', display:'flex', alignItems:'center', gap:'10px',
-                          fontSize:'13px', color:'var(--color-text-primary)'
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.background='var(--color-background-secondary)'}
-                        onMouseLeave={e => e.currentTarget.style.background='transparent'}
-                      >
-                        <span style={{fontSize:'18px'}}>🗂️</span>
-                        <div>
-                          <div style={{fontWeight:'500'}}>Board Pack</div>
-                          <div style={{fontSize:'11px', color:'var(--color-text-secondary)'}}>Resumen ejecutivo para consejo · 1 página</div>
-                        </div>
-                      </button>
-                      <div style={{height:'0.5px', background:'var(--color-border-tertiary)', margin:'4px 6px'}}></div>
-                      <button
-                        onClick={() => { setExportMenuOpen(false); exportToExcel(); }}
-                        style={{
-                          width:'100%', textAlign:'left', padding:'10px 12px',
-                          borderRadius:'6px', border:'none', background:'transparent',
-                          cursor:'pointer', display:'flex', alignItems:'center', gap:'10px',
-                          fontSize:'13px', color:'var(--color-text-primary)'
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.background='var(--color-background-secondary)'}
-                        onMouseLeave={e => e.currentTarget.style.background='transparent'}
-                      >
-                        <span style={{fontSize:'18px'}}>📑</span>
-                        <div>
-                          <div style={{fontWeight:'500'}}>Excel</div>
-                          <div style={{fontSize:'11px', color:'var(--color-text-secondary)'}}>Datos completos en hoja de cálculo</div>
-                        </div>
-                      </button>
-                      <button
-                        onClick={() => { setExportMenuOpen(false); setPdfConfigOpen(true); }}
-                        style={{
-                          width:'100%', textAlign:'left', padding:'10px 12px',
-                          borderRadius:'6px', border:'none', background:'transparent',
-                          cursor:'pointer', display:'flex', alignItems:'center', gap:'10px',
-                          fontSize:'13px', color:'var(--color-text-primary)'
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.background='var(--color-background-secondary)'}
-                        onMouseLeave={e => e.currentTarget.style.background='transparent'}
-                      >
-                        <span style={{fontSize:'18px'}}>⚙️</span>
-                        <div>
-                          <div style={{fontWeight:'500'}}>Configurar PDF</div>
-                          <div style={{fontSize:'11px', color:'var(--color-text-secondary)'}}>Fuente, tamaño y secciones</div>
-                        </div>
-                      </button>
+                      ))}
                     </div>
                   </div>
                 )}
