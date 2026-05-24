@@ -865,19 +865,33 @@ async def get_financial_metrics(
     """Get calculated financial metrics for a specific period"""
     company_id = await get_active_company_id(request, current_user)
     
-    # Get income statement for period
+    # Get income statement for period - preferir Contalink sobre Alegra si ambos existen
     income_stmt = await db.financial_statements.find_one({
         'company_id': company_id,
         'tipo': 'estado_resultados',
-        'periodo': periodo
+        'periodo': periodo,
+        'fuente': 'contalink'
     }, {'_id': 0})
+    if not income_stmt:
+        income_stmt = await db.financial_statements.find_one({
+            'company_id': company_id,
+            'tipo': 'estado_resultados',
+            'periodo': periodo
+        }, {'_id': 0})
     
-    # Get balance sheet for period
+    # Get balance sheet for period - preferir Contalink sobre Alegra si ambos existen
     balance_sheet = await db.financial_statements.find_one({
         'company_id': company_id,
         'tipo': 'balance_general',
-        'periodo': periodo
+        'periodo': periodo,
+        'fuente': 'contalink'
     }, {'_id': 0})
+    if not balance_sheet:
+        balance_sheet = await db.financial_statements.find_one({
+            'company_id': company_id,
+            'tipo': 'balance_general',
+            'periodo': periodo
+        }, {'_id': 0})
     
     if not income_stmt and not balance_sheet:
         raise HTTPException(status_code=404, detail=f"No hay estados financieros para {periodo}")
