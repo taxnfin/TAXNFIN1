@@ -2037,10 +2037,11 @@ tr:last-child td{border-bottom:none}
                   <div
                     style={{
                       position:'absolute', right:0, top:'calc(100% + 6px)',
-                      background:'var(--color-background-primary)',
-                      border:'0.5px solid var(--color-border-tertiary)',
-                      borderRadius:'10px', boxShadow:'0 4px 16px rgba(0,0,0,0.12)',
-                      minWidth:'220px', zIndex:9999, overflow:'hidden'
+                      background:'#ffffff',
+                      border:'1px solid #e2e8f0',
+                      borderRadius:'10px', 
+                      boxShadow:'0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.12)',
+                      minWidth:'240px', zIndex:99999, overflow:'hidden'
                     }}
                     onMouseLeave={() => setExportMenuOpen(false)}
                   >
