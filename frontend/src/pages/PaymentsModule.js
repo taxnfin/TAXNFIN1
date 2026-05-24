@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Plus, Check, CreditCard, TrendingUp, TrendingDown, CheckCircle2, FileText, User, Building2, AlertCircle, Trash2, AlertTriangle, Eye, EyeOff, Download, Edit, Link2, RefreshCw, Upload } from 'lucide-react';
+import { Plus, Check, CreditCard, TrendingUp, TrendingDown, CheckCircle2, FileText, User, Building2, AlertCircle, Trash2, AlertTriangle, Eye, EyeOff, Download, Edit, Link2, RefreshCw, Upload, ChevronDown} from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -54,7 +54,10 @@ const PaymentsModule = () => {
   const [customTc, setCustomTc] = useState(''); // Custom exchange rate for current transaction
   const [useCustomTc, setUseCustomTc] = useState(false);
   const [activeTab, setActiveTab] = useState('real');
-  const [syncingContalink, setSyncingContalink] = useState(false); // 'real', 'proyeccion', 'breakdown'
+  const [syncingContalink, setSyncingContalink] = useState(false);
+  const [importMenuOpen, setImportMenuOpen] = useState(false);
+  const [masMenuOpen, setMasMenuOpen] = useState(false);
+  const [uploadingHistorico, setUploadingHistorico] = useState(false); // 'real', 'proyeccion', 'breakdown'
   const [autoCategorizing, setAutoCategorizing] = useState(false);
   
   // Import from bank movements dialog
@@ -754,61 +757,140 @@ const PaymentsModule = () => {
           <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{fontFamily: 'Manrope'}}>Cobranza y Pagos</h1>
           <p className="text-[#64748B]">Gestión de cobros y pagos (reales y proyectados)</p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            className="gap-2 text-green-600 border-green-300 hover:bg-green-50"
-            onClick={handleSyncContalink}
-            disabled={syncingContalink}
-            data-testid="sync-contalink-btn"
-          >
-            {syncingContalink ? '⟳ Sincronizando...' : '⬇ Sync Contalink'}
-          </Button>
-          <Button
-            variant="outline"
-            className="gap-2 text-purple-600 border-purple-300 hover:bg-purple-50"
-            onClick={handleAutoCategorize}
-            disabled={autoCategorizing}
-            data-testid="auto-categorize-btn"
-          >
-            {autoCategorizing ? '⟳ Categorizando...' : '🤖 Auto-categorizar'}
-          </Button>
-          <Button 
-            variant="outline" 
-            className="gap-2 text-red-600 border-red-300 hover:bg-red-50"
-            onClick={handleDeleteAllPayments}
-            data-testid="delete-all-payments-btn"
-          >
-            <Trash2 size={16} />
-            Borrar Todo
-          </Button>
-          <Button 
-            variant="outline" 
-            className="gap-2 text-blue-600 border-blue-300 hover:bg-blue-50"
-            onClick={() => setImportBankDialogOpen(true)}
-            data-testid="import-bank-btn"
-          >
-            <Link2 size={16} />
-            Desde Banco
-          </Button>
-          <Button 
-            variant="outline" 
-            className="gap-2"
-            onClick={handleAutoMatch}
-            data-testid="auto-match-btn"
-          >
-            <CheckCircle2 size={16} />
-            Auto-Conciliar
-          </Button>
-          <Button 
-            variant="outline" 
-            className="gap-2"
-            onClick={handleExportPayments}
-            data-testid="export-payments-btn"
-          >
-            <Download size={16} />
-            Exportar Excel
-          </Button>
+        <div className="flex gap-2 items-center">
+
+          {/* ── DROPDOWN: IMPORTAR ── */}
+          <div style={{position:'relative'}}>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => { setImportMenuOpen(v => !v); setMasMenuOpen(false); }}
+            >
+              <Upload size={16} />
+              Importar
+              <ChevronDown size={14} />
+            </Button>
+            {importMenuOpen && (
+              <div
+                onMouseLeave={() => setImportMenuOpen(false)}
+                style={{
+                  position:'absolute', right:0, top:'calc(100% + 6px)',
+                  background:'#ffffff', border:'1px solid #e2e8f0',
+                  borderRadius:'10px', boxShadow:'0 8px 32px rgba(0,0,0,0.14)',
+                  minWidth:'250px', zIndex:9999, padding:'6px'
+                }}
+              >
+                {[
+                  { icon:'⬇', label:'Sync ERP (Contalink/Alegra)', sub:'Trae datos del período actual', action: () => { setImportMenuOpen(false); handleSyncContalink(); }, loading: syncingContalink },
+                  { icon:'📂', label:'Histórico Contalink', sub:'Sube Excel INGR-EGRE de meses anteriores', action: () => { setImportMenuOpen(false); document.getElementById('upload-historico-input').click(); } },
+                  { icon:'🏦', label:'Desde Banco', sub:'Importa estado de cuenta bancario', action: () => { setImportMenuOpen(false); setImportBankDialogOpen(true); } },
+                  { icon:'📄', label:'Importar PDF', sub:'Facturas o comprobantes en PDF', action: () => { setImportMenuOpen(false); setPdfUploaderOpen(true); } },
+                ].map((item, idx) => (
+                  <div
+                    key={idx}
+                    onClick={item.loading ? undefined : item.action}
+                    style={{
+                      display:'flex', alignItems:'center', gap:'12px',
+                      padding:'9px 12px', borderRadius:'7px', cursor: item.loading ? 'default' : 'pointer',
+                      opacity: item.loading ? 0.6 : 1, marginBottom:'2px'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background='#F1F5F9'}
+                    onMouseLeave={e => e.currentTarget.style.background='transparent'}
+                  >
+                    <span style={{fontSize:'18px', flexShrink:0}}>{item.icon}</span>
+                    <div>
+                      <div style={{fontSize:'13px', fontWeight:'600', color:'#1E293B'}}>
+                        {item.loading ? '⟳ Sincronizando...' : item.label}
+                      </div>
+                      <div style={{fontSize:'11px', color:'#64748B', marginTop:'1px'}}>{item.sub}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Input oculto para subir histórico */}
+            <input
+              id="upload-historico-input"
+              type="file"
+              accept=".xls,.xlsx"
+              style={{display:'none'}}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setUploadingHistorico(true);
+                try {
+                  const formData = new FormData();
+                  formData.append('file', file);
+                  const res = await api.post('/contalink-payments/upload-historico', formData, {
+                    headers: {'Content-Type': 'multipart/form-data'}
+                  });
+                  const d = res.data;
+                  toast.success(`✅ ${d.insertados} movimientos importados${d.duplicados > 0 ? ` (${d.duplicados} duplicados omitidos)` : ''}`);
+                  loadPayments();
+                } catch(err) {
+                  toast.error('Error importando histórico: ' + (err.response?.data?.detail || err.message));
+                } finally {
+                  setUploadingHistorico(false);
+                  e.target.value = '';
+                }
+              }}
+            />
+          </div>
+
+          {/* ── DROPDOWN: MÁS ACCIONES ── */}
+          <div style={{position:'relative'}}>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => { setMasMenuOpen(v => !v); setImportMenuOpen(false); }}
+            >
+              Más
+              <ChevronDown size={14} />
+            </Button>
+            {masMenuOpen && (
+              <div
+                onMouseLeave={() => setMasMenuOpen(false)}
+                style={{
+                  position:'absolute', right:0, top:'calc(100% + 6px)',
+                  background:'#ffffff', border:'1px solid #e2e8f0',
+                  borderRadius:'10px', boxShadow:'0 8px 32px rgba(0,0,0,0.14)',
+                  minWidth:'220px', zIndex:9999, padding:'6px'
+                }}
+              >
+                {[
+                  { icon:'🤖', label:'Auto-categorizar', sub:'Categoriza con IA', action: () => { setMasMenuOpen(false); handleAutoCategorize(); }, loading: autoCategorizing },
+                  { icon:'✅', label:'Auto-Conciliar', sub:'Concilia automáticamente', action: () => { setMasMenuOpen(false); handleAutoMatch(); } },
+                  { icon:'📊', label:'Exportar Excel', sub:'Descarga todos los movimientos', action: () => { setMasMenuOpen(false); handleExportPayments(); } },
+                  null, // separador
+                  { icon:'🗑️', label:'Borrar Todo', sub:'Elimina todos los registros', action: () => { setMasMenuOpen(false); handleDeleteAllPayments(); }, danger: true },
+                ].map((item, idx) => item === null ? (
+                  <div key={idx} style={{height:'1px', background:'#E2E8F0', margin:'4px 6px'}} />
+                ) : (
+                  <div
+                    key={idx}
+                    onClick={item.loading ? undefined : item.action}
+                    style={{
+                      display:'flex', alignItems:'center', gap:'12px',
+                      padding:'9px 12px', borderRadius:'7px', cursor: item.loading ? 'default' : 'pointer',
+                      opacity: item.loading ? 0.6 : 1, marginBottom:'2px'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background= item.danger ? '#FEF2F2' : '#F1F5F9'}
+                    onMouseLeave={e => e.currentTarget.style.background='transparent'}
+                  >
+                    <span style={{fontSize:'18px', flexShrink:0}}>{item.icon}</span>
+                    <div>
+                      <div style={{fontSize:'13px', fontWeight:'600', color: item.danger ? '#DC2626' : '#1E293B'}}>
+                        {item.loading ? '⟳ Procesando...' : item.label}
+                      </div>
+                      <div style={{fontSize:'11px', color:'#64748B', marginTop:'1px'}}>{item.sub}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── NUEVO PAGO/COBRO ── */}
           <Dialog open={dialogOpen} onOpenChange={(open) => {
             setDialogOpen(open);
             if (!open) resetForm();
@@ -819,17 +901,6 @@ const PaymentsModule = () => {
               Nuevo Pago/Cobro
             </Button>
           </DialogTrigger>
-          
-          {/* Button to import from PDF */}
-          <Button 
-            variant="outline" 
-            className="gap-2 border-purple-300 text-purple-700 hover:bg-purple-50"
-            onClick={() => setPdfUploaderOpen(true)}
-            data-testid="import-pdf-btn"
-          >
-            <Upload size={16} />
-            Importar PDF
-          </Button>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Registrar Pago/Cobro</DialogTitle>
