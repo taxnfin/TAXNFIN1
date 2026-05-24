@@ -6,6 +6,8 @@ Detecta el tipo automáticamente por el nombre de la hoja.
 """
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query, Request
+import logging
+logger = logging.getLogger(__name__)
 from fastapi.responses import JSONResponse
 import openpyxl
 import io
@@ -648,7 +650,7 @@ async def upload_contalink_to_metrics(
     contents = await file.read()
     is_xls   = fname.endswith('.xls')
     company_id = await get_active_company_id(request, current_user)
-    logger.info(f"[upload-to-metrics] company_id={company_id} periodo={periodo} file={fname}")
+    import sys; print(f"[upload-to-metrics] company_id={company_id} periodo={periodo} file={fname}", flush=True, file=sys.stderr)
 
     try:
         if is_xls:
