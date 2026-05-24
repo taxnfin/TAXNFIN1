@@ -388,6 +388,7 @@ def parse_estado_resultados(ws, is_xls=False) -> dict:
             'ebitda':          ebitda,
             'depreciacion':    depreciacion,
             'gastos_fin':      gastos_fin,
+            'gastos_total':    find_total_seccion('GASTOS'),  # total sección gastos Contalink
             'ebita':           ebita,
             'utilidad_neta':   utilidad_neta,
             # Márgenes sobre ventas netas
@@ -765,14 +766,17 @@ async def upload_contalink_to_metrics(
         if not util_bruta and ingresos and costo_ventas:
             util_bruta = round(ingresos - costo_ventas, 2)
 
-        gastos_op = round((gastos_admin or 0) + (gastos_venta or 0), 2)
+        # IMPORTANTE: usar total de sección gastos, no solo admin+venta
+        # ventas_netas viene del total de ingresos menos devoluciones
+        # gastos_op = TOTAL de la sección Gastos del ER (incluye todos los conceptos)
+        gastos_op_total = res.get('gastos_total', 0)  # total sección gastos
+        if not gastos_op_total:
+            gastos_op_total = round((gastos_admin or 0) + (gastos_venta or 0), 2)
 
-        util_op = res.get('utilidad_operativa', 0)
-        if not util_op and util_bruta:
-            util_op = round(util_bruta - gastos_op, 2)
+        util_op = round(util_bruta - gastos_op_total, 2) if util_bruta else 0
 
         ebitda = res.get('ebitda', 0)
-        if not ebitda and util_op:
+        if not ebitda:
             ebitda = round(util_op + (depreciacion or 0), 2)
 
         income_doc = {
@@ -781,7 +785,7 @@ async def upload_contalink_to_metrics(
             'utilidad_bruta':           util_bruta,
             'gastos_venta':             gastos_venta,
             'gastos_administracion':    gastos_admin,
-            'gastos_generales':         gastos_op,
+            'gastos_generales':         gastos_op_total,
             'utilidad_operativa':       util_op,
             'otros_ingresos':           0,
             'gastos_financieros':       gastos_fin,
