@@ -16,16 +16,16 @@ from reportlab.pdfgen import canvas
 from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame
 
 # ── Paleta ──────────────────────────────────────────────────────────────────
-NAVY   = colors.HexColor('#1C2B3A')
-TEAL   = colors.HexColor('#2A8A9A')
-TEAL2  = colors.HexColor('#3AAABF')
-GOLD   = colors.HexColor('#B8995A')
-RED    = colors.HexColor('#C0392B')
-AMBER  = colors.HexColor('#E67E22')
-GREEN  = colors.HexColor('#27AE60')
-LGRAY  = colors.HexColor('#F5F6F7')
-MGRAY  = colors.HexColor('#B0BAC6')
-DGRAY  = colors.HexColor('#4A5568')
+NAVY   = colors.HexColor('#0D2B5E')   # Azul corporativo profundo
+TEAL   = colors.HexColor('#1A56A8')   # Azul corporativo medio
+TEAL2  = colors.HexColor('#3B82F6')   # Azul corporativo claro
+GOLD   = colors.HexColor('#64748B')   # Slate gris (antes dorado)
+RED    = colors.HexColor('#DC2626')   # Rojo crítico
+AMBER  = colors.HexColor('#D97706')   # Ámbar atención
+GREEN  = colors.HexColor('#059669')   # Verde éxito
+LGRAY  = colors.HexColor('#F0F4F8')   # Gris muy claro
+MGRAY  = colors.HexColor('#CBD5E1')   # Gris medio
+DGRAY  = colors.HexColor('#334155')   # Gris oscuro slate
 WHITE  = colors.white
 
 W, H = A4
@@ -91,7 +91,7 @@ def chart_waterfall():
     values = [2_329_327, -1_765_993, 563_334, -759_924, -196_590]
     running = [0, 2_329_327, 2_329_327, 563_334, 563_334]
     bar_vals = [2_329_327, 1_765_993, 563_334, 759_924, 196_590]
-    bar_colors = ['#1A7A8A', '#C0392B', '#22A8BE', '#E67E22', '#C0392B']
+    bar_colors = ['#1A56A8', '#C0392B', '#3B82F6', '#E67E22', '#C0392B']
 
     for i, (bot, val, col) in enumerate(zip(running, bar_vals, bar_colors)):
         if i in [0, 2]:
@@ -109,14 +109,14 @@ def chart_waterfall():
                 fontsize=7.5, color='white', fontweight='bold', zorder=5)
 
     ax.set_xticks(range(len(labels)))
-    ax.set_xticklabels(labels, fontsize=8, color='#4A5568')
+    ax.set_xticklabels(labels, fontsize=8, color='#334155')
     ax.yaxis.set_visible(False)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
-    ax.spines['bottom'].set_color('#B0BAC6')
+    ax.spines['bottom'].set_color('#CBD5E1')
     ax.tick_params(bottom=False)
-    ax.set_title('Cascada Estado de Resultados', fontsize=9, color='#0D1B2A',
+    ax.set_title('Cascada Estado de Resultados', fontsize=9, color='#0D2B5E',
                  fontweight='bold', pad=8, loc='left')
     plt.tight_layout(pad=0.5)
     return fig_to_img(fig)
@@ -129,26 +129,26 @@ def chart_margenes():
 
     labels = ['Bruto', 'EBITDA', 'Operativo', 'Neto']
     vals   = [24.2, -7.2, -8.4, -5.0]
-    cols   = ['#1A7A8A' if v > 0 else '#C0392B' for v in vals]
+    cols   = ['#1A56A8' if v > 0 else '#C0392B' for v in vals]
 
     bars = ax.barh(labels, vals, color=cols, height=0.5, zorder=3)
-    ax.axvline(0, color='#B0BAC6', linewidth=1, zorder=2)
+    ax.axvline(0, color='#CBD5E1', linewidth=1, zorder=2)
 
     for bar, v in zip(bars, vals):
         xpos = v + 0.5 if v >= 0 else v - 0.5
         ha = 'left' if v >= 0 else 'right'
         ax.text(xpos, bar.get_y() + bar.get_height()/2, f'{v:+.1f}%',
-                va='center', ha=ha, fontsize=8.5, color='#0D1B2A', fontweight='bold')
+                va='center', ha=ha, fontsize=8.5, color='#0D2B5E', fontweight='bold')
 
     ax.set_xlim(-15, 35)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
-    ax.spines['bottom'].set_color('#B0BAC6')
+    ax.spines['bottom'].set_color('#CBD5E1')
     ax.tick_params(left=False, bottom=False)
     ax.xaxis.set_visible(False)
-    ax.yaxis.set_tick_params(labelsize=8.5, labelcolor='#4A5568')
-    ax.set_title('Márgenes de Rentabilidad', fontsize=9, color='#0D1B2A',
+    ax.yaxis.set_tick_params(labelsize=8.5, labelcolor='#334155')
+    ax.set_title('Márgenes de Rentabilidad', fontsize=9, color='#0D2B5E',
                  fontweight='bold', pad=8, loc='left')
     plt.tight_layout(pad=0.5)
     return fig_to_img(fig)
@@ -161,20 +161,20 @@ def chart_estructura():
 
     sizes  = [25_246_100, 3_000_000, 9_500_000, 3_000_000, 16_637_979]
     labels = ['Activo\nCirc.', 'Activo\nFijo', 'Pasivo\nCirc.', 'Pasivo\nLP', 'Capital']
-    cols   = ['#1A7A8A', '#22A8BE', '#C0392B', '#E67E22', '#C8A84B']
+    cols   = ['#1A56A8', '#3B82F6', '#C0392B', '#E67E22', '#64748B']
     pcts   = [s/sum(sizes)*100 for s in sizes]
 
     wedges, _ = ax.pie(sizes, colors=cols, startangle=90,
                        wedgeprops=dict(width=0.55, edgecolor='white', linewidth=1.5))
 
     ax.text(0, 0, f"$28.8M\nActivos", ha='center', va='center',
-            fontsize=8, color='#0D1B2A', fontweight='bold', linespacing=1.4)
+            fontsize=8, color='#0D2B5E', fontweight='bold', linespacing=1.4)
 
     legend_patches = [mpatches.Patch(color=c, label=f"{l.replace(chr(10),' ')} {p:.0f}%")
                       for c, l, p in zip(cols, labels, pcts)]
     ax.legend(handles=legend_patches, loc='lower center', bbox_to_anchor=(0.5, -0.22),
-              ncol=2, fontsize=6.5, frameon=False, labelcolor='#4A5568')
-    ax.set_title('Estructura de Capital', fontsize=9, color='#0D1B2A',
+              ncol=2, fontsize=6.5, frameon=False, labelcolor='#334155')
+    ax.set_title('Estructura de Capital', fontsize=9, color='#0D2B5E',
                  fontweight='bold', pad=6, loc='left')
     plt.tight_layout(pad=0.3)
     return fig_to_img(fig)
@@ -188,26 +188,26 @@ def chart_liquidez():
     indicadores = ['Razón\nCirculante', 'Prueba\nÁcida', 'Razón\nEfectivo']
     valores     = [2.66, 1.41, 0.03]
     benchmarks  = [1.5, 1.0, 0.2]
-    cols        = ['#1A7A8A', '#1A7A8A', '#C0392B']
+    cols        = ['#1A56A8', '#1A56A8', '#C0392B']
 
     x = range(len(indicadores))
     bars = ax.bar(x, valores, color=cols, width=0.4, zorder=3, edgecolor='white')
-    ax.scatter(x, benchmarks, color='#C8A84B', s=60, zorder=5, marker='D', label='Benchmark')
+    ax.scatter(x, benchmarks, color='#64748B', s=60, zorder=5, marker='D', label='Benchmark')
 
     for bar, v in zip(bars, valores):
         ax.text(bar.get_x() + bar.get_width()/2, v + 0.03, f'{v:.2f}x',
-                ha='center', fontsize=8, color='#0D1B2A', fontweight='bold')
+                ha='center', fontsize=8, color='#0D2B5E', fontweight='bold')
 
     ax.set_xticks(list(x))
-    ax.set_xticklabels(indicadores, fontsize=7.5, color='#4A5568')
+    ax.set_xticklabels(indicadores, fontsize=7.5, color='#334155')
     ax.yaxis.set_visible(False)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
-    ax.spines['bottom'].set_color('#B0BAC6')
+    ax.spines['bottom'].set_color('#CBD5E1')
     ax.tick_params(bottom=False)
-    ax.legend(fontsize=7, frameon=False, labelcolor='#4A5568')
-    ax.set_title('Análisis de Liquidez vs Benchmark', fontsize=9, color='#0D1B2A',
+    ax.legend(fontsize=7, frameon=False, labelcolor='#334155')
+    ax.set_title('Análisis de Liquidez vs Benchmark', fontsize=9, color='#0D2B5E',
                  fontweight='bold', pad=8, loc='left')
     plt.tight_layout(pad=0.5)
     return fig_to_img(fig)
@@ -219,18 +219,18 @@ def chart_cce():
     ax.set_facecolor('none')
 
     # Timeline bar
-    ax.barh(0, 201, left=0,    color='#1A7A8A',  height=0.35, label=f'DIO: 201 días')
-    ax.barh(0, 137, left=201,  color='#22A8BE',  height=0.35, label=f'DSO: 137 días')
-    ax.barh(0, -95, left=0,    color='#C8A84B',  height=0.35, label=f'DPO: 95 días (resta)')
+    ax.barh(0, 201, left=0,    color='#1A56A8',  height=0.35, label=f'DIO: 201 días')
+    ax.barh(0, 137, left=201,  color='#3B82F6',  height=0.35, label=f'DSO: 137 días')
+    ax.barh(0, -95, left=0,    color='#64748B',  height=0.35, label=f'DPO: 95 días (resta)')
 
     ax.text(100,  0.25, 'DIO\n201d', ha='center', va='bottom', fontsize=7.5,
             color='white', fontweight='bold')
     ax.text(269,  0.25, 'DSO\n137d', ha='center', va='bottom', fontsize=7.5,
             color='white', fontweight='bold')
     ax.text(-47,  0.25, 'DPO\n95d',  ha='center', va='bottom', fontsize=7.5,
-            color='#C8A84B', fontweight='bold')
+            color='#64748B', fontweight='bold')
 
-    ax.axvline(0,   color='#B0BAC6', linewidth=1)
+    ax.axvline(0,   color='#CBD5E1', linewidth=1)
     ax.axvline(244, color='#C0392B', linewidth=1.5, linestyle='--')
     ax.text(244, -0.3, 'CCE: 244 días', ha='center', fontsize=8,
             color='#C0392B', fontweight='bold')
@@ -238,8 +238,8 @@ def chart_cce():
     ax.set_xlim(-120, 380)
     ax.set_ylim(-0.6, 0.8)
     ax.axis('off')
-    ax.legend(loc='upper right', fontsize=7, frameon=False, labelcolor='#4A5568')
-    ax.set_title('Ciclo de Conversión de Efectivo (CCE)', fontsize=9, color='#0D1B2A',
+    ax.legend(loc='upper right', fontsize=7, frameon=False, labelcolor='#334155')
+    ax.set_title('Ciclo de Conversión de Efectivo (CCE)', fontsize=9, color='#0D2B5E',
                  fontweight='bold', pad=8, loc='left')
     plt.tight_layout(pad=0.5)
     return fig_to_img(fig)
@@ -345,7 +345,7 @@ def build_pdf(output_path):
         canvas_obj.setFillColor(TEAL)
         canvas_obj.rect(0, H*0.55, W, H*0.45, fill=1, stroke=0)
         # Acento dorado
-        canvas_obj.setFillColor(GOLD)
+        canvas_obj.setFillColor(TEAL2)
         canvas_obj.rect(0, H*0.55 - 4, W, 4, fill=1, stroke=0)
         # Diagonal decorativa
         canvas_obj.setFillColor(colors.HexColor('#253545'))
@@ -366,7 +366,7 @@ def build_pdf(output_path):
 
         # Periodo
         canvas_obj.setFont('Helvetica-Bold', 36)
-        canvas_obj.setFillColor(colors.HexColor('#B8995A'))
+        canvas_obj.setFillColor(colors.HexColor('#64748B'))
         canvas_obj.drawString(15*mm, H*0.58, 'Enero 2026')
 
         # KPIs portada
@@ -420,7 +420,7 @@ def build_pdf(output_path):
         canvas_obj.setFillColor(colors.HexColor('#8EC8D4'))
         canvas_obj.drawString(32*mm, H-8*mm, '· Reporte Ejecutivo Mensual')
         canvas_obj.setFont('Helvetica', 8)
-        canvas_obj.setFillColor(GOLD)
+        canvas_obj.setFillColor(TEAL2)
         canvas_obj.drawRightString(W-18*mm, H-8*mm, f"{DATA['periodo']}")
 
         # Footer
@@ -546,7 +546,7 @@ def build_pdf(output_path):
 
     def semaforo(status):
         c_map = {'Crítico': ('#C0392B','⬤ Crítico'), 'Atención': ('#E67E22','⬤ Atención'), 'Bueno': ('#27AE60','⬤ Bueno')}
-        col, label = c_map.get(status, ('#B0BAC6','—'))
+        col, label = c_map.get(status, ('#CBD5E1','—'))
         return Paragraph(f'<font color="{col}"><b>{label}</b></font>',
                          ParagraphStyle('s', fontName='Helvetica', fontSize=7.5, leading=10, alignment=TA_CENTER))
 
