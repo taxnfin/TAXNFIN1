@@ -647,7 +647,7 @@ async def upload_contalink_to_metrics(
 
     contents = await file.read()
     is_xls   = fname.endswith('.xls')
-    company_id = str(request.headers.get('X-Company-ID') or request.headers.get('x-company-id') or current_user.get('company_id', ''))
+    company_id = await get_active_company_id(request, current_user)
 
     try:
         if is_xls:
@@ -825,7 +825,7 @@ async def debug_financial_statement(
     current_user: dict = Depends(get_current_user),
 ):
     """Debug endpoint to see what was saved in financial_statements collection."""
-    company_id = str(request.headers.get('X-Company-ID') or request.headers.get('x-company-id') or current_user.get('company_id', ''))
+    company_id = await get_active_company_id(request, current_user)
     
     docs = await db.financial_statements.find(
         {'company_id': company_id, 'periodo': periodo},
