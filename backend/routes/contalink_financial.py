@@ -727,7 +727,7 @@ async def upload_contalink_to_metrics(
         }
 
         await db.financial_statements.delete_many({
-            'company_id': company_id, 'tipo': 'balance_general', 'periodo': periodo
+            'company_id': company_id, 'tipo': 'balance_general', 'periodo': periodo, 'fuente': 'contalink'
         })
         await db.financial_statements.insert_one(doc)
 
@@ -807,7 +807,7 @@ async def upload_contalink_to_metrics(
         }
 
         await db.financial_statements.delete_many({
-            'company_id': company_id, 'tipo': 'estado_resultados', 'periodo': periodo
+            'company_id': company_id, 'tipo': 'estado_resultados', 'periodo': periodo, 'fuente': 'contalink'
         })
         await db.financial_statements.insert_one(doc)
 
