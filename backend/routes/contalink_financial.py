@@ -294,9 +294,10 @@ def parse_estado_resultados(ws, is_xls=False) -> dict:
     for row in rows[4:]:
         # Pad row to at least 9 columns
         row = (row + [None] * 9)[:9]
-        col_a, _, _, col_d, _, col_f, col_g, col_h, _ = row
+        col_a, col_b, _, col_d, _, col_f, col_g, col_h, _ = row
 
-        label    = clean_label(str(col_a)) if col_a else ''
+        # Contalink usa col_a para secciones, col_b para subcuentas (ej: Depreciación contable)
+        label    = clean_label(str(col_a)) if col_a else clean_label(str(col_b)) if col_b else ''
         detalle  = clean_value(col_d)
         # col_g (índice 6) es el valor del PERIODO en el ER de Contalink
         subtotal = _parse_subtotal_str(col_g) or _parse_subtotal_str(col_f)
