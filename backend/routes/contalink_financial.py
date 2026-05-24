@@ -296,8 +296,9 @@ def parse_estado_resultados(ws, is_xls=False) -> dict:
         row = (row + [None] * 9)[:9]
         col_a, col_b, _, col_d, _, col_f, col_g, col_h, _ = row
 
-        # Contalink usa col_a para secciones, col_b para subcuentas (ej: Depreciación contable)
-        label    = clean_label(str(col_a)) if col_a else clean_label(str(col_b)) if col_b else ''
+        # col_a = sección principal, col_b = subcuenta
+        label    = clean_label(str(col_a)) if col_a else ''
+        label_b  = clean_label(str(col_b)) if col_b else ''  # subcuenta (ej: Depreciación contable)
         detalle  = clean_value(col_d)
         # col_g (índice 6) es el valor del PERIODO en el ER de Contalink
         subtotal = _parse_subtotal_str(col_g) or _parse_subtotal_str(col_f)
@@ -310,6 +311,7 @@ def parse_estado_resultados(ws, is_xls=False) -> dict:
 
         items.append({
             'label':    label,
+            'label_b':  label_b,  # subcuenta para buscar depreciación etc.
             'detalle':  detalle,
             'subtotal': subtotal,
             'total':    total,
@@ -318,10 +320,11 @@ def parse_estado_resultados(ws, is_xls=False) -> dict:
 
     # ── Extraer KPIs clave por label ─────────────────────────────────────────
     def find_subtotal(*keywords):
-        """Busca subtotal en la fila que contenga todos los keywords."""
+        """Busca subtotal en la fila que contenga todos los keywords (busca en label y label_b)."""
         for item in items:
-            l = item['label'].upper()
-            if all(k.upper() in l for k in keywords):
+            l  = item['label'].upper()
+            lb = item.get('label_b', '').upper()
+            if all(k.upper() in l for k in keywords) or all(k.upper() in lb for k in keywords):
                 v = item['subtotal'] or item['total'] or item['detalle']
                 if v:
                     return abs(v)
