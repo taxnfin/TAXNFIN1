@@ -385,7 +385,7 @@ const CashflowProjections = () => {
     
     // Find earliest payment date for starting point
     let earliestDate = null;
-    payments.filter(p => p.estatus === 'completado' || p.estatus === 'pagado' || p.es_real === true).forEach(p => {
+    payments.filter(p => p.estatus === 'completado' || p.estatus === 'pagado' || p.status === 'pagado' || p.es_real === true).forEach(p => {
       const fecha = p.fecha_pago;
       if (fecha) {
         const d = new Date(fecha);
@@ -475,7 +475,7 @@ const CashflowProjections = () => {
     const weekCurrencyOps = {}; // { weekIdx: { ventaMXN: 0, compraUSD: 0 } }
     
     payments.forEach(payment => {
-      if (payment.estatus !== 'completado') return;
+      if (payment.estatus !== 'completado' && payment.status !== 'pagado') return;
       if (!payment.fecha_pago) return;
       
       const paymentDate = new Date(payment.fecha_pago);
@@ -517,7 +517,7 @@ const CashflowProjections = () => {
     // PASO 1: Procesar Cobranza y Pagos (DATOS REALES para semanas pasadas)
     // =====================================================================
     payments.forEach(payment => {
-      if (payment.estatus !== 'completado') return;
+      if (payment.estatus !== 'completado' && payment.status !== 'pagado') return;
       if (!payment.fecha_pago) return;
       
       // Deduplicate by bank_transaction_id
@@ -782,7 +782,7 @@ const CashflowProjections = () => {
     // Find earliest payment date to anchor the historical window
     let earliestDate = null;
     paymentsData.forEach(p => {
-      if (p.estatus !== 'completado') return;
+      if (p.estatus !== 'completado' && p.status !== 'pagado') return;
       const d = new Date(p.fecha_pago);
       if (!isNaN(d.getTime()) && (!earliestDate || d < earliestDate)) earliestDate = d;
     });
@@ -828,7 +828,7 @@ const CashflowProjections = () => {
 
     // Classify payments by month
     paymentsData.forEach(p => {
-      if (p.estatus !== 'completado') return;
+      if (p.estatus !== 'completado' && p.status !== 'pagado') return;
       const d = new Date(p.fecha_pago);
       if (isNaN(d.getTime())) return;
 
@@ -983,7 +983,7 @@ const CashflowProjections = () => {
   const paymentClientes = React.useMemo(() => {
     const map = {};
     allPayments.forEach(p => {
-      if (p.estatus !== 'completado' || p.tipo !== 'cobro') return;
+      if ((p.estatus !== 'completado' && p.status !== 'pagado') || p.tipo !== 'cobro') return;
       const nombre = p.beneficiario || 'Sin asignar';
       if (!map[nombre]) map[nombre] = { id: nombre, nombre, rfc: '', total: 0, count: 0 };
       map[nombre].total += p.monto || 0;
@@ -995,7 +995,7 @@ const CashflowProjections = () => {
   const paymentProveedores = React.useMemo(() => {
     const map = {};
     allPayments.forEach(p => {
-      if (p.estatus !== 'completado' || p.tipo !== 'pago') return;
+      if ((p.estatus !== 'completado' && p.status !== 'pagado') || p.tipo !== 'pago') return;
       const nombre = p.beneficiario || 'Sin asignar';
       if (!map[nombre]) map[nombre] = { id: nombre, nombre, rfc: '', total: 0, count: 0 };
       map[nombre].total += p.monto || 0;
@@ -1008,7 +1008,7 @@ const CashflowProjections = () => {
   const getPartyCfdis = () => {
     if (!selectedParty) return [];
     return allPayments.filter(p => {
-      if (p.estatus !== 'completado') return false;
+      if (p.estatus !== 'completado' && p.status !== 'pagado') return false;
       if (selectedPartyType === 'customer') {
         if (p.tipo !== 'cobro') return false;
         return p.beneficiario === selectedParty || p.customer_id === selectedParty;
