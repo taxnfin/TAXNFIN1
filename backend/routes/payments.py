@@ -962,9 +962,7 @@ async def sync_payments_from_contalink(
         # Facturas emitidas (cobranza CxC)
         try:
             issued = await client.get_invoices(
-                rfc=rfc,
-                transaction_type="E",       # E=Emitidas
-                document_type="Ingreso",    # Contalink usa nombre completo
+                transaction_type="E",
                 start_date=start,
                 end_date=end,
             )
@@ -1053,9 +1051,7 @@ async def sync_payments_from_contalink(
         # Facturas recibidas (pagos CxP)
         try:
             received = await client.get_invoices(
-                rfc=rfc,
-                transaction_type="R",       # R=Recibidas
-                document_type="Ingreso",
+                transaction_type="R",
                 start_date=start,
                 end_date=end,
             )
