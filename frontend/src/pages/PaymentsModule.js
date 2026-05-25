@@ -1669,7 +1669,12 @@ const PaymentsModule = () => {
                           onChange={async (e) => {
                             const [catId, subcatId] = e.target.value.split('|');
                             try {
-                              await api.put(`/payments/${payment.id}/categorize?category_id=${catId}${subcatId ? `&subcategory_id=${subcatId}` : ''}`);
+                              // Usar _id de MongoDB como identificador universal (funciona para Contalink, Alegra y manuales)
+                              const paymentId = payment._id || payment.id || payment.contalink_id;
+                              await api.post(`/cashflow-sync/recategorize`, {
+                                payment_id: paymentId,
+                                category_id: catId,
+                              });
                               toast.success('Categoría actualizada');
                               loadData();
                             } catch (error) {
