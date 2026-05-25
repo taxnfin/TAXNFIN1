@@ -826,7 +826,7 @@ const PaymentsModule = () => {
                   });
                   const d = res.data;
                   toast.success(`✅ ${d.insertados} movimientos importados${d.duplicados > 0 ? ` (${d.duplicados} duplicados omitidos)` : ''}`);
-                  loadPayments();
+                  loadData();
                 } catch(err) {
                   toast.error('Error importando histórico: ' + (err.response?.data?.detail || err.message));
                 } finally {
