@@ -51,6 +51,7 @@ from routes.notifications import router as notifications_router
 from routes.integrations import router as integrations_router
 from routes.account_mappings import router as account_mappings_router
 from routes.cxc_proyecciones import router as cxc_proyecciones_router
+from routes.contalink import router as contalink_router
 from routes.contalink_cxc_cxp import router as contalink_cxc_cxp_router
 from routes.cashflow_sync_service import router as cashflow_sync_router
 from routes.contalink_financial import router as contalink_financial_router
@@ -89,6 +90,7 @@ api_router.include_router(notifications_router)
 api_router.include_router(integrations_router)
 api_router.include_router(account_mappings_router)
 api_router.include_router(cxc_proyecciones_router)
+api_router.include_router(contalink_router)
 api_router.include_router(contalink_cxc_cxp_router)
 api_router.include_router(cashflow_sync_router)
 api_router.include_router(contalink_financial_router)
