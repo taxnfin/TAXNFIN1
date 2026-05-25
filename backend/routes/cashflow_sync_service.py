@@ -641,7 +641,7 @@ async def auto_categorize_payments(
 
     # 3. Construir prompt para Claude
     payments_text = "\n".join(
-        f'[{i}] id="{p["id"]}" | tipo={p.get("tipo","?")} | '
+        f'[{i}] id="{p.get("id", p.get("contalink_id", str(i)))}" | tipo={p.get("tipo","?")} | '
         f'concepto="{p.get("concepto","")}" | '
         f'beneficiario="{p.get("beneficiario","")}" | '
         f'monto={p.get("monto",0)} {p.get("moneda","MXN")}'
