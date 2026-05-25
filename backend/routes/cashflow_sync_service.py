@@ -794,11 +794,28 @@ async def recategorize_payment(
     if not cat_doc:
         raise HTTPException(status_code=404, detail=f"Categoría '{data.category_id}' no encontrada")
 
+    # Buscar por _id (MongoDB ObjectId), id, o contalink_id — universal
+    from bson import ObjectId
+    payment_doc = None
+    # Try _id first (ObjectId string)
+    try:
+        payment_doc = await db.payments.find_one({"_id": ObjectId(data.payment_id), "company_id": company_id})
+    except Exception:
+        pass
+    # Fallback: buscar por id o contalink_id
+    if not payment_doc:
+        payment_doc = await db.payments.find_one({
+            "$or": [{"id": data.payment_id}, {"contalink_id": data.payment_id}],
+            "company_id": company_id
+        })
+    if not payment_doc:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+
     result = await db.payments.update_one(
-        {"id": data.payment_id, "company_id": company_id},
+        {"_id": payment_doc["_id"]},
         {"$set": {
-            "category_id":   data.category_id,
-            "category_name": cat_doc["nombre"],
+            "category_id":    data.category_id,
+            "category_name":  cat_doc["nombre"],
             "categorized_by": "manual",
             "categorized_at": datetime.now(timezone.utc).isoformat(),
         }}
