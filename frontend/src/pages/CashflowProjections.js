@@ -385,7 +385,7 @@ const CashflowProjections = () => {
     
     // Find earliest payment date for starting point
     let earliestDate = null;
-    payments.filter(p => p.estatus === 'completado').forEach(p => {
+    payments.filter(p => p.estatus === 'completado' || p.estatus === 'pagado' || p.es_real === true).forEach(p => {
       const fecha = p.fecha_pago;
       if (fecha) {
         const d = new Date(fecha);
@@ -408,7 +408,7 @@ const CashflowProjections = () => {
     }
     if (!startWeek) {
       startWeek = earliestDate
-        ? getWeekStart(earliestDate < fourWeeksAgo ? fourWeeksAgo : earliestDate, weekStartDay)
+        ? getWeekStart(earliestDate, weekStartDay)
         : fourWeeksAgo;
     }
     
