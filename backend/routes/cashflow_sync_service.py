@@ -641,7 +641,7 @@ async def auto_categorize_payments(
 
     # 3. Construir prompt para Claude
     payments_text = "\n".join(
-        f'[{i}] id="{p.get("id", p.get("contalink_id", str(i)))}" | tipo={p.get("tipo","?")} | '
+        f'[{i}] id="{p.get("id") or p.get("contalink_id") or str(i)}" | tipo={p.get("tipo","?")} | '
         f'concepto="{p.get("concepto","")}" | '
         f'beneficiario="{p.get("beneficiario","")}" | '
         f'monto={p.get("monto",0)} {p.get("moneda","MXN")}'
@@ -731,7 +731,7 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
 
         try:
             await db.payments.update_one(
-                {"id": payment_id, "company_id": company_id},
+                {"$or": [{"id": payment_id}, {"contalink_id": payment_id}], "company_id": company_id},
                 {"$set": {
                     "category_id":   category_code,
                     "category_name": cat_doc["nombre"],
