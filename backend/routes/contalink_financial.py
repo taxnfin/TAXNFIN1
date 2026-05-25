@@ -344,6 +344,17 @@ def parse_estado_resultados(ws, is_xls=False) -> dict:
                 if v: return abs(v)
         return 0.0
 
+    def find_subtotal_signed(*keywords):
+        """Igual que find_subtotal pero CONSERVA el signo — para utilidad/pérdida."""
+        for item in items:
+            l  = item['label'].upper()
+            lb = item.get('label_b', '').upper()
+            if all(k.upper() in l for k in keywords) or all(k.upper() in lb for k in keywords):
+                v = item['subtotal'] or item['total'] or item['detalle']
+                if v is not None and abs(v) >= 0.01:
+                    return round(v, 2)
+        return 0.0
+
     ventas_brutas   = find_subtotal('VENTAS', 'GRAVAM') or find_subtotal('INGRESO') or find_total_seccion('INGRESOS')
     devoluciones    = find_subtotal('DEVOLUCION') or find_subtotal('DESCUENTO')
     ventas_netas    = find_subtotal('VENTAS NETAS') or find_subtotal('NETAS')
@@ -355,7 +366,7 @@ def parse_estado_resultados(ws, is_xls=False) -> dict:
     depreciacion    = find_subtotal('DEPRECIAC')
     gastos_fin      = find_subtotal('FINANCIERO') or find_subtotal('INTERES') or find_total_seccion('RESULTADO INTEGRAL')
     ebita           = find_subtotal('EBITA') or find_subtotal('EBIT')
-    utilidad_neta   = find_subtotal('UTILIDAD TOTAL') or find_subtotal('UTILIDAD NETA') or find_subtotal('NETA')
+    utilidad_neta   = find_subtotal_signed('UTILIDAD TOTAL') or find_subtotal_signed('UTILIDAD NETA') or find_subtotal_signed('NETA')
     # Si no hay gastos separados, usar el total de la sección gastos
     if not gastos_admin and not gastos_venta:
         gastos_total = find_total_seccion('GASTOS')
