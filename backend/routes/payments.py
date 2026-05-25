@@ -937,7 +937,7 @@ async def sync_payments_from_contalink(
     if not rfc or rfc == "PENDIENTE":
         raise HTTPException(status_code=400, detail="RFC no configurado. Ve a Integraciones → Contalink y guarda el RFC.")
 
-    from services.contalink import ContalinkClient
+    from routes.contalink import ContalinkClient
     import calendar as cal
 
     client = ContalinkClient(api_key)
