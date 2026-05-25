@@ -634,16 +634,20 @@ async def auto_categorize_payments(
             {"category_id": {"$exists": False}},
         ]
 
-    payments_raw = await db.payments.find(query, {"_id": 0}).limit(limit).to_list(limit)
+    payments_raw = await db.payments.find(query).limit(limit).to_list(limit)
 
     if not payments_raw:
         return {"success": True, "message": "No hay pagos para categorizar", "updated": 0}
 
+    # Usar str(_id) como identificador universal — funciona para Contalink, Alegra y Excel
+    for p in payments_raw:
+        p["_id_str"] = str(p["_id"])
+
     # 3. Construir prompt para Claude
     payments_text = "\n".join(
-        f'[{i}] id="{p.get("id") or p.get("contalink_id") or str(i)}" | tipo={p.get("tipo","?")} | '
-        f'concepto="{p.get("concepto","")}" | '
-        f'beneficiario="{p.get("beneficiario","")}" | '
+        f'[{i}] id="{p["_id_str"]}" | tipo={p.get("tipo","?")} | '
+        f'concepto="{p.get("concepto", p.get("descripcion", ""))}" | '
+        f'beneficiario="{p.get("beneficiario", p.get("referencia", ""))}" | '
         f'monto={p.get("monto",0)} {p.get("moneda","MXN")}'
         for i, p in enumerate(payments_raw)
     )
@@ -712,13 +716,17 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
     # 6. Construir mapa code → category doc
     cat_by_code = {c["code"]: c for c in all_categories}
 
-    # 7. Actualizar payments en MongoDB
+    # 7. Construir mapa _id_str → ObjectId para update exacto
+    from bson import ObjectId
+    id_map = {str(p["_id"]): p["_id"] for p in payments_raw}
+
+    # 8. Actualizar payments en MongoDB
     updated = 0
     errors = []
     results = []
 
     for assignment in assignments:
-        payment_id   = assignment.get("id")
+        payment_id    = assignment.get("id")
         category_code = assignment.get("category_code")
 
         if not payment_id or not category_code:
@@ -729,9 +737,14 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
             errors.append(f"Código desconocido: {category_code} para payment {payment_id}")
             continue
 
+        object_id = id_map.get(payment_id)
+        if not object_id:
+            errors.append(f"Payment no encontrado en mapa: {payment_id}")
+            continue
+
         try:
             await db.payments.update_one(
-                {"$or": [{"id": payment_id}, {"contalink_id": payment_id}], "company_id": company_id},
+                {"_id": object_id},
                 {"$set": {
                     "category_id":   category_code,
                     "category_name": cat_doc["nombre"],
