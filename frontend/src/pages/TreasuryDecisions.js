@@ -104,13 +104,15 @@ export default function TreasuryDecisions() {
       const catByCode = {};
       categories.forEach(c => { if (c.code) catByCode[c.code] = c; if (c.id) catByCode[c.id] = c; });
 
-      const completados = payments.filter(p => p.estatus === 'completado');
+      const completados = payments.filter(p => p.estatus === 'completado' || p.status === 'pagado');
       const cobros  = completados.filter(p => p.tipo === 'cobro');
       const pagos   = completados.filter(p => p.tipo === 'pago');
 
+      // Saldo actual: usar saldo bancario si existe, sino usar flujo neto acumulado de pagos reales
+      const saldoBancosRaw = bankSummary.total_mxn || 0;
       const totalCobrado = cobros.reduce((s, p) => s + (p.monto || 0), 0);
       const totalPagado  = pagos.reduce((s, p) => s + (p.monto || 0), 0);
-      const saldoBancos  = bankSummary.total_mxn || 0;
+      const saldoBancos = saldoBancosRaw > 0 ? saldoBancosRaw : (totalCobrado - totalPagado);
       const flujoNeto    = totalCobrado - totalPagado;
 
       // ── Cash position ───────────────────────────────────────────────
