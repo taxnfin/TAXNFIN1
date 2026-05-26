@@ -131,16 +131,21 @@ export default function TreasuryDecisions() {
         d.setDate(d.getDate() + diff); return d;
       };
       const today = new Date();
+      // Mostrar 4 semanas pasadas + semana actual + 3 semanas futuras = 8 semanas
       const weeks = Array.from({ length: 8 }, (_, i) => {
-        const ws = new Date(getWeekStart(today)); ws.setDate(ws.getDate() + i * 7);
+        const offset = i - 4; // -4 a +3
+        const ws = new Date(getWeekStart(today)); ws.setDate(ws.getDate() + offset * 7);
         const we = new Date(ws); we.setDate(we.getDate() + 7);
-        return { weekStart: ws, weekEnd: we,
+        const isPast = we <= today;
+        const isCurrent = ws <= today && we > today;
+        return { weekStart: ws, weekEnd: we, isPast, isCurrent,
           label: `S${i + 1}`, date: ws.toLocaleDateString('es-MX', { day:'2-digit', month:'2-digit' }),
           ingresos: 0, egresos: 0, items: [] };
       });
 
+      // Poblar semanas con pagos reales (pasados) y proyecciones (futuros)
       completados.forEach(p => {
-        const d = new Date(p.fecha_pago);
+        const d = new Date(p.fecha_pago || p.fecha);
         const wIdx = weeks.findIndex(w => d >= w.weekStart && d < w.weekEnd);
         if (wIdx === -1) return;
         if (p.tipo === 'cobro') weeks[wIdx].ingresos += p.monto || 0;
@@ -150,11 +155,14 @@ export default function TreasuryDecisions() {
 
       // ── Alerts ──────────────────────────────────────────────────────
       const UMBRAL = 100000;
-      let saldoAcum = saldoBancos;
+      // Recalcular saldo inicial restando las semanas pasadas que ya están incluidas
+      const saldoInicial = saldoBancos;
+      let saldoAcum = saldoInicial;
       const alerts = [];
       weeks.forEach(w => {
         saldoAcum += w.ingresos - w.egresos;
-        if (saldoAcum < UMBRAL) {
+        // Solo alertar en semanas futuras o actuales (no en históricas)
+        if (!w.isPast && saldoAcum < UMBRAL) {
           alerts.push({
             week: w.label, week_date: w.date,
             type: 'balance_critical', severity: saldoAcum < 0 ? 'high' : 'medium',
