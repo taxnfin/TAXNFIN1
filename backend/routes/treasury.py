@@ -510,14 +510,14 @@ async def calculate_concentration_kpis(company_id: str) -> dict:
     
     return {
         "top_3_clients": {
-            "names": [c['_id'][:25] if c['_id'] else 'N/A' for c in top3_clients],
+            "names": [(c['_id'] or '')[:25] or 'N/A' for c in top3_clients],
             "amounts": [c['total'] for c in top3_clients],
             "percentage": round(top3_clients_pct, 1),
             "risk_level": get_risk_level(top3_clients_pct, (50, 70)),
             "detail": f"Top 3 clientes representan {top3_clients_pct:.1f}% de ingresos"
         },
         "top_5_vendors": {
-            "names": [v['_id'][:25] if v['_id'] else 'N/A' for v in top5_vendors],
+            "names": [(v['_id'] or '')[:25] or 'N/A' for v in top5_vendors],
             "amounts": [v['total'] for v in top5_vendors],
             "percentage": round(top5_vendors_pct, 1),
             "risk_level": get_risk_level(top5_vendors_pct, (60, 80)),
