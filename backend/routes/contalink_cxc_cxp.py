@@ -222,9 +222,8 @@ async def get_cuentas_por_cobrar(request: Request,
             else:
                 cached_excel = await db.contalink_cache.find_one({"key": cache_key})
                 if cached_excel: return cached_excel["data"]
-    except HTTPException: raise
     except Exception as e:
-        logger.warning(f"CxC balanza falló: {e}")
+        logger.warning(f"CxC balanza falló (sin Contalink o error): {e}")
     cached = await db.contalink_cache.find_one({"key": cache_key})
     if cached: return cached["data"]
     return {"cut_date":today.isoformat(),"num_facturas":0,"num_clientes":0,"total_pendiente":0,
@@ -280,9 +279,8 @@ async def get_cuentas_por_pagar(request: Request,
             else:
                 cached_excel = await db.contalink_cache.find_one({"key": cache_key})
                 if cached_excel: return cached_excel["data"]
-    except HTTPException: raise
     except Exception as e:
-        logger.warning(f"CxP balanza falló: {e}")
+        logger.warning(f"CxP balanza falló (sin Contalink o error): {e}")
     cached = await db.contalink_cache.find_one({"key": cache_key})
     if cached: return cached["data"]
     return {"cut_date":today.isoformat(),"num_facturas":0,"num_proveedores":0,"total_pendiente":0,
