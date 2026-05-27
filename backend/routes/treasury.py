@@ -63,7 +63,7 @@ async def get_treasury_dashboard(
     company_id = await get_active_company_id(request, current_user)
     
     # Get company settings for thresholds
-    company = await db.companies.find_one({'id': company_id}, {'_id': 0})
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0}) or {}
     min_balance_threshold = company.get('min_balance_threshold', 100000)
     
     # Calculate all metrics
@@ -524,7 +524,7 @@ async def calculate_concentration_kpis(company_id: str) -> dict:
             "detail": f"Top 5 proveedores representan {top5_vendors_pct:.1f}% de egresos"
         },
         "single_client_dependency": {
-            "client_name": collections_by_client[0]['_id'][:30] if collections_by_client else 'N/A',
+            "client_name": (collections_by_client[0]['_id'] or '')[:30] or 'N/A' if collections_by_client else 'N/A',
             "pending_amount": collections_by_client[0]['pending'] if collections_by_client else 0,
             "percentage_of_pending": round(top_client_pct_pending, 1) if collections_by_client else 0,
             "weeks_dependent": round(weeks_dependent, 1),
