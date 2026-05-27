@@ -118,20 +118,16 @@ async def get_current_cash_position(company_id: str) -> dict:
     cxc = pending_collections[0]['total'] if pending_collections else 0
     cxp = pending_payments[0]['total'] if pending_payments else 0
 
-    # Fallback: si no hay pagos pendientes, usar CxC/CxP de Contalink (facturas reales)
+    # Fallback: usar cache de Contalink CxC/CxP cuando no hay pagos pendientes
     if cxc == 0:
-        contalink_cxc = await db.contalink_cxc.aggregate([
-            {'$match': {'company_id': company_id, 'saldo_pendiente': {'$gt': 0}}},
-            {'$group': {'_id': None, 'total': {'$sum': '$saldo_pendiente'}}}
-        ]).to_list(1)
-        cxc = contalink_cxc[0]['total'] if contalink_cxc else 0
+        cxc_cache = await db.contalink_cache.find_one({"key": f"cxc_{company_id}_latest"})
+        if cxc_cache and cxc_cache.get("data"):
+            cxc = cxc_cache["data"].get("total_pendiente", 0) if isinstance(cxc_cache["data"], dict) else 0
 
     if cxp == 0:
-        contalink_cxp = await db.contalink_cxp.aggregate([
-            {'$match': {'company_id': company_id, 'saldo_pendiente': {'$gt': 0}}},
-            {'$group': {'_id': None, 'total': {'$sum': '$saldo_pendiente'}}}
-        ]).to_list(1)
-        cxp = contalink_cxp[0]['total'] if contalink_cxp else 0
+        cxp_cache = await db.contalink_cache.find_one({"key": f"cxp_{company_id}_latest"})
+        if cxp_cache and cxp_cache.get("data"):
+            cxp = cxp_cache["data"].get("total_pendiente", 0) if isinstance(cxp_cache["data"], dict) else 0
     
     return {
         "saldo_actual": total_mxn,
@@ -158,31 +154,34 @@ async def calculate_alerts(company_id: str, threshold: float, weeks_ahead: int) 
         {'_id': 0}
     ).to_list(5000)
 
-    # Fallback: si no hay pagos pendientes, usar CxC/CxP de Contalink con fecha_vencimiento
+    # Fallback: usar cache de Contalink CxC/CxP para proyecciones semanales
     if not pending_collections:
-        contalink_cxc = await db.contalink_cxc.find(
-            {'company_id': company_id, 'saldo_pendiente': {'$gt': 0}},
-            {'_id': 0}
-        ).to_list(5000)
-        # Normalizar campos para que sean compatibles con la lógica de alertas
-        for doc in contalink_cxc:
-            doc['tipo'] = 'cobro'
-            doc['monto'] = doc.get('saldo_pendiente', 0)
-            if not doc.get('fecha_vencimiento') and doc.get('fecha_vence'):
-                doc['fecha_vencimiento'] = doc['fecha_vence']
-        pending_collections = contalink_cxc
+        cxc_cache = await db.contalink_cache.find_one({"key": f"cxc_{company_id}_latest"})
+        if cxc_cache and cxc_cache.get("data"):
+            facturas = cxc_cache["data"] if isinstance(cxc_cache["data"], list) else []
+            pending_collections = [
+                {
+                    'tipo': 'cobro',
+                    'monto': f.get('saldo_pendiente', f.get('total', 0)),
+                    'fecha_vencimiento': f.get('fecha_vence') or f.get('fecha_vencimiento') or f.get('fecha'),
+                    'beneficiario': f.get('cliente') or f.get('razon_social', ''),
+                }
+                for f in facturas if f.get('saldo_pendiente', f.get('total', 0)) > 0
+            ]
 
     if not pending_payments:
-        contalink_cxp = await db.contalink_cxp.find(
-            {'company_id': company_id, 'saldo_pendiente': {'$gt': 0}},
-            {'_id': 0}
-        ).to_list(5000)
-        for doc in contalink_cxp:
-            doc['tipo'] = 'pago'
-            doc['monto'] = doc.get('saldo_pendiente', 0)
-            if not doc.get('fecha_vencimiento') and doc.get('fecha_vence'):
-                doc['fecha_vencimiento'] = doc['fecha_vence']
-        pending_payments = contalink_cxp
+        cxp_cache = await db.contalink_cache.find_one({"key": f"cxp_{company_id}_latest"})
+        if cxp_cache and cxp_cache.get("data"):
+            facturas = cxp_cache["data"] if isinstance(cxp_cache["data"], list) else []
+            pending_payments = [
+                {
+                    'tipo': 'pago',
+                    'monto': f.get('saldo_pendiente', f.get('total', 0)),
+                    'fecha_vencimiento': f.get('fecha_vence') or f.get('fecha_vencimiento') or f.get('fecha'),
+                    'beneficiario': f.get('proveedor') or f.get('razon_social', ''),
+                }
+                for f in facturas if f.get('saldo_pendiente', f.get('total', 0)) > 0
+            ]
     
     # Get current balance
     cash_position = await get_current_cash_position(company_id)
