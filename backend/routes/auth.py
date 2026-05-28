@@ -1,7 +1,14 @@
 """Authentication routes"""
 from fastapi import APIRouter, Depends, HTTPException, Query, Form
-from typing import Dict
-from datetime import datetime, timezone
+from pydantic import BaseModel, EmailStr
+from typing import Dict, Optional
+from datetime import datetime, timezone, timedelta
+import secrets
+import os
+import logging
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 from core.database import db
 from core.auth import (
@@ -10,6 +17,75 @@ from core.auth import (
 from models.auth import User, UserCreate, UserLogin, TokenResponse
 
 router = APIRouter(prefix="/auth")
+logger = logging.getLogger(__name__)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+async def _send_reset_email(email: str, reset_link: str, token: str) -> None:
+    """Send reset email via SMTP. Logs the link to console if SMTP not configured."""
+    smtp_host = os.environ.get('SMTP_HOST', '')
+    smtp_user = os.environ.get('SMTP_USER', '')
+
+    if not smtp_host or not smtp_user:
+        logger.warning(
+            "\n" + "=" * 60 + "\n"
+            "DEV MODE — Password Reset Link for %s:\n%s\n"
+            "Token: %s\n" + "=" * 60,
+            email, reset_link, token
+        )
+        return
+
+    smtp_port = int(os.environ.get('SMTP_PORT', '587'))
+    smtp_password = os.environ.get('SMTP_PASSWORD', '')
+    smtp_from = os.environ.get('SMTP_FROM', smtp_user)
+
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = 'Restablece tu contraseña — TaxnFin Cashflow'
+    msg['From'] = smtp_from
+    msg['To'] = email
+
+    text_body = (
+        f"Recibimos una solicitud para restablecer tu contraseña.\n\n"
+        f"Haz clic en el siguiente enlace (válido por 1 hora):\n{reset_link}\n\n"
+        f"Si no solicitaste esto, ignora este mensaje."
+    )
+    html_body = f"""
+    <html><body style="font-family:sans-serif;color:#0F172A;max-width:480px;margin:auto">
+      <h2>Restablece tu contraseña</h2>
+      <p>Recibimos una solicitud para restablecer la contraseña de tu cuenta TaxnFin.</p>
+      <p style="margin:24px 0">
+        <a href="{reset_link}"
+           style="background:#0F172A;color:white;padding:12px 28px;text-decoration:none;
+                  border-radius:6px;display:inline-block;font-weight:600">
+          Restablecer contraseña
+        </a>
+      </p>
+      <p style="color:#64748B;font-size:13px">
+        Este enlace expira en <strong>1 hora</strong>.<br>
+        Si no solicitaste esto, puedes ignorar este mensaje.
+      </p>
+    </body></html>
+    """
+    msg.attach(MIMEText(text_body, 'plain'))
+    msg.attach(MIMEText(html_body, 'html'))
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.sendmail(smtp_from, email, msg.as_string())
+        logger.info("Reset email sent to %s", email)
+    except Exception as exc:
+        logger.error("Failed to send reset email to %s: %s", email, exc)
+        raise
 
 
 @router.post("/register", response_model=User)
@@ -106,6 +182,67 @@ async def get_me(current_user: Dict = Depends(get_current_user)):
     if isinstance(current_user.get('created_at'), str):
         current_user['created_at'] = datetime.fromisoformat(current_user['created_at'])
     return User(**current_user)
+
+
+@router.post("/forgot-password")
+async def forgot_password(payload: ForgotPasswordRequest):
+    """Generate a password-reset token and email the link.
+
+    Always returns a generic success message to avoid user enumeration.
+    """
+    frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    reset_link = f"{frontend_url}/reset-password?token={token}"
+
+    user = await db.users.find_one({'email': payload.email}, {'_id': 0, 'id': 1})
+    if user:
+        await db.password_resets.insert_one({
+            'token': token,
+            'user_id': user['id'],
+            'email': payload.email,
+            'expires_at': expires_at.isoformat(),
+            'used': False,
+            'created_at': datetime.now(timezone.utc).isoformat(),
+        })
+        try:
+            await _send_reset_email(payload.email, reset_link, token)
+        except Exception:
+            # Email failure is non-fatal; link already logged by _send_reset_email
+            pass
+
+    return {"message": "Si el email existe, recibirás instrucciones para restablecer tu contraseña."}
+
+
+@router.post("/reset-password")
+async def reset_password(payload: ResetPasswordRequest):
+    """Consume a reset token and update the user's password."""
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
+
+    record = await db.password_resets.find_one(
+        {'token': payload.token, 'used': False}, {'_id': 0}
+    )
+    if not record:
+        raise HTTPException(status_code=400, detail="Token inválido o ya utilizado")
+
+    expires_at = datetime.fromisoformat(record['expires_at'])
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > expires_at:
+        raise HTTPException(status_code=400, detail="El token ha expirado. Solicita uno nuevo.")
+
+    new_hash = hash_password(payload.new_password)
+    await db.users.update_one(
+        {'id': record['user_id']},
+        {'$set': {'password_hash': new_hash}}
+    )
+    await db.password_resets.update_one(
+        {'token': payload.token},
+        {'$set': {'used': True, 'used_at': datetime.now(timezone.utc).isoformat()}}
+    )
+
+    return {"message": "Contraseña actualizada correctamente. Ya puedes iniciar sesión."}
 
 
 @router.get("/auth0/config")

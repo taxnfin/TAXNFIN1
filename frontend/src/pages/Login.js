@@ -2,20 +2,20 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { LogIn, Building2 } from 'lucide-react';
+import { LogIn, Building2, ArrowLeft, Mail } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 const Login = ({ onLogin }) => {
   const [loginData, setLoginData] = useState({ email: '', password: '' });
-  const [registerData, setRegisterData] = useState({ 
-    email: '', 
-    password: '', 
+  const [registerData, setRegisterData] = useState({
+    email: '',
+    password: '',
     nombre: '',
     company_name: '',
     company_rfc: ''
@@ -23,6 +23,12 @@ const Login = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [auth0Loading, setAuth0Loading] = useState(false);
   const [auth0Config, setAuth0Config] = useState(null);
+
+  // Forgot-password state
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
 
   useEffect(() => {
     loadAuth0Config();
@@ -71,6 +77,19 @@ const Login = ({ onLogin }) => {
       toast.error(error.response?.data?.detail || 'Error al iniciar sesión');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setForgotLoading(true);
+    try {
+      await axios.post(`${API}/auth/forgot-password`, { email: forgotEmail });
+      setForgotSent(true);
+    } catch (error) {
+      toast.error('Error al enviar instrucciones. Intenta de nuevo.');
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -135,40 +154,113 @@ const Login = ({ onLogin }) => {
             </TabsList>
             
             <TabsContent value="login">
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="login-email">Email</Label>
-                  <Input
-                    id="login-email"
-                    data-testid="login-email-input"
-                    type="email"
-                    placeholder="tu@email.com"
-                    value={loginData.email}
-                    onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
-                    required
-                  />
+              {!forgotMode ? (
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="login-email">Email</Label>
+                    <Input
+                      id="login-email"
+                      data-testid="login-email-input"
+                      type="email"
+                      placeholder="tu@email.com"
+                      value={loginData.email}
+                      onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="login-password">Contraseña</Label>
+                    <Input
+                      id="login-password"
+                      data-testid="login-password-input"
+                      type="password"
+                      value={loginData.password}
+                      onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    data-testid="login-submit-button"
+                    className="w-full bg-[#0F172A] hover:bg-[#1E293B] gap-2"
+                    disabled={loading}
+                  >
+                    <LogIn size={16} />
+                    {loading ? 'Iniciando...' : 'Iniciar Sesión'}
+                  </Button>
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      data-testid="forgot-password-link"
+                      onClick={() => { setForgotMode(true); setForgotSent(false); setForgotEmail(''); }}
+                      className="text-sm text-slate-500 hover:text-[#0F172A] underline underline-offset-2 transition-colors"
+                    >
+                      ¿Olvidaste tu contraseña?
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="space-y-4" data-testid="forgot-password-panel">
+                  {!forgotSent ? (
+                    <form onSubmit={handleForgotPassword} className="space-y-4">
+                      <div className="space-y-1">
+                        <p className="text-sm text-slate-600">
+                          Ingresa tu email y te enviaremos instrucciones para restablecer tu contraseña.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="forgot-email">Email</Label>
+                        <Input
+                          id="forgot-email"
+                          data-testid="forgot-email-input"
+                          type="email"
+                          placeholder="tu@email.com"
+                          value={forgotEmail}
+                          onChange={(e) => setForgotEmail(e.target.value)}
+                          required
+                          autoFocus
+                        />
+                      </div>
+                      <Button
+                        type="submit"
+                        data-testid="forgot-submit-button"
+                        className="w-full bg-[#0F172A] hover:bg-[#1E293B] gap-2"
+                        disabled={forgotLoading}
+                      >
+                        <Mail size={16} />
+                        {forgotLoading ? 'Enviando...' : 'Enviar instrucciones'}
+                      </Button>
+                      <div className="text-center">
+                        <button
+                          type="button"
+                          onClick={() => setForgotMode(false)}
+                          className="text-sm text-slate-500 hover:text-[#0F172A] flex items-center gap-1 mx-auto transition-colors"
+                        >
+                          <ArrowLeft size={14} /> Volver al inicio de sesión
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="space-y-4 py-2" data-testid="forgot-sent-message">
+                      <div className="rounded-md bg-emerald-50 border border-emerald-200 p-4 text-center">
+                        <p className="text-sm font-medium text-emerald-800">
+                          Si el email existe en nuestro sistema, recibirás las instrucciones en breve.
+                        </p>
+                        <p className="text-xs text-emerald-600 mt-1">Revisa también tu carpeta de spam.</p>
+                      </div>
+                      <div className="text-center">
+                        <button
+                          type="button"
+                          onClick={() => { setForgotMode(false); setForgotSent(false); }}
+                          className="text-sm text-slate-500 hover:text-[#0F172A] flex items-center gap-1 mx-auto transition-colors"
+                        >
+                          <ArrowLeft size={14} /> Volver al inicio de sesión
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="login-password">Contraseña</Label>
-                  <Input
-                    id="login-password"
-                    data-testid="login-password-input"
-                    type="password"
-                    value={loginData.password}
-                    onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
-                    required
-                  />
-                </div>
-                <Button 
-                  type="submit" 
-                  data-testid="login-submit-button"
-                  className="w-full bg-[#0F172A] hover:bg-[#1E293B] gap-2" 
-                  disabled={loading}
-                >
-                  <LogIn size={16} />
-                  {loading ? 'Iniciando...' : 'Iniciar Sesión'}
-                </Button>
-              </form>
+              )}
             </TabsContent>
             
             <TabsContent value="register">
