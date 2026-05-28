@@ -859,119 +859,129 @@ async def sync_alegra_payments(
     date_to: str = Query(None, description="Date to (YYYY-MM-DD)")
 ):
     """
-    Sync payment receipts from Alegra
-    These are actual payments received or made
+    Sync payments from Alegra using GET /payments endpoint.
+    Each record has type ('in'=cobro, 'out'=pago), amount, date, bankAccount, client.
     """
     company_id = await get_active_company_id(request, current_user)
     company = await db.companies.find_one({'id': company_id}, {'_id': 0})
-    
+
     if not company.get('alegra_connected'):
         raise HTTPException(status_code=400, detail="Alegra no está conectado")
-    
+
     email = company.get('alegra_email')
     token = company.get('alegra_token')
-    
-    # Fetch payments from Alegra (bank-accounts endpoint)
-    # Alegra uses /bank-accounts for payment movements
+
+    # Paginate through GET /payments
     all_payments = []
-    
-    try:
-        # Get bank accounts first
-        bank_accounts = await alegra_request("GET", "bank-accounts", email, token)
+    start = 0
+    limit = 200
 
-        if not bank_accounts or not isinstance(bank_accounts, list):
-            logger.warning("Alegra bank-accounts returned empty or None — skipping payment sync")
-            bank_accounts = []
+    while True:
+        params = {
+            "start":  start,
+            "limit":  limit,
+            "order":  "date",
+            "fields": "id,date,amount,type,status,bankAccount,client,observations,anotation,categories",
+        }
+        if date_from:
+            params["date-start"] = date_from
+        if date_to:
+            params["date-end"] = date_to
 
-        # For each bank account, get movements
-        for account in bank_accounts:
-            account_id = account.get('id')
-            start = 0
-            limit = 100
-            
-            while True:
-                params = {"start": start, "limit": limit}
-                try:
-                    # Get movements for this account
-                    movements = await alegra_request("GET", f"bank-accounts/{account_id}/bank-movements", email, token, params=params)
-                    
-                    if not movements or len(movements) == 0:
-                        break
-                    
-                    for mov in movements:
-                        mov['bank_account_name'] = account.get('name', '')
-                        mov['bank_account_id'] = account_id
-                    
-                    all_payments.extend(movements)
-                    
-                    if len(movements) < limit:
-                        break
-                    
-                    start += limit
-                except:
-                    break
-    except Exception as e:
-        logger.error(f"Error fetching payments: {str(e)}")
-    
-    # Process bank movements
+        batch = await alegra_request("GET", "payments", email, token, params=params)
+        if not batch or not isinstance(batch, list):
+            break
+
+        all_payments.extend(batch)
+
+        if len(batch) < limit:
+            break
+        start += limit
+
+    logger.info(f"Alegra /payments fetched {len(all_payments)} records for company {company_id}")
+
     created = 0
     updated = 0
-    errors = 0
-    
+    skipped = 0
+    errors  = 0
+
     for payment in all_payments:
         try:
-            alegra_id = str(payment.get('id'))
-            
-            # Determine type based on amount sign or type
-            amount = float(payment.get('amount', 0) or 0)
-            tipo = 'cobro' if amount > 0 else 'pago'
-            
+            alegra_id  = str(payment.get('id'))
+            pago_type  = (payment.get('type') or '').lower()
+            pago_status = (payment.get('status') or '').lower()
+
+            # Excluir pagos anulados
+            if pago_status == 'void':
+                skipped += 1
+                continue
+
+            # Mapear type: "in" → cobro, "out" → pago
+            tipo = 'cobro' if pago_type == 'in' else 'pago'
+
+            amount   = float(payment.get('amount', 0) or 0)
             fecha_mov = payment.get('date') or datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
+            # Concepto: nombre del cliente o primera categoría
+            client_obj = payment.get('client') or {}
+            client_name = (client_obj.get('name') or '') if isinstance(client_obj, dict) else ''
+            categories  = payment.get('categories') or []
+            cat_name    = (categories[0].get('name', '') if categories and isinstance(categories[0], dict) else '')
+            concepto    = (client_name or cat_name or
+                           payment.get('observations') or payment.get('anotation') or
+                           f"Pago Alegra {alegra_id}")
+
+            # Cuenta bancaria
+            bank_obj  = payment.get('bankAccount') or {}
+            bank_name = (bank_obj.get('name') or '') if isinstance(bank_obj, dict) else ''
+
             payment_doc = {
-                'alegra_id': alegra_id,
-                'alegra_type': 'bank_movement',
-                'company_id': company_id,
-                'tipo': tipo,
-                'concepto': payment.get('description', '') or payment.get('observations', '') or f"Movimiento bancario {alegra_id}",
-                'monto': abs(amount),
-                'moneda': 'MXN',
-                'metodo_pago': 'transferencia',
-                'fecha_vencimiento': fecha_mov,
-                'fecha_pago': fecha_mov,
-                'estatus': 'completado',
-                'referencia': payment.get('reference', ''),
-                'beneficiario': payment.get('contact', {}).get('name', '') if isinstance(payment.get('contact'), dict) else '',
-                'es_real': True,
-                'source': 'alegra',
-                'alegra_bank_account': payment.get('bank_account_name'),
-                'updated_at': datetime.now(timezone.utc).isoformat()
+                'alegra_id':          alegra_id,
+                'alegra_type':        'payment',
+                'company_id':         company_id,
+                'tipo':               tipo,
+                'concepto':           concepto,
+                'monto':              abs(amount),
+                'moneda':             'MXN',
+                'metodo_pago':        'transferencia',
+                'fecha_vencimiento':  fecha_mov,
+                'fecha_pago':         fecha_mov,
+                'estatus':            'completado',
+                'referencia':         str(alegra_id),
+                'beneficiario':       client_name,
+                'es_real':            True,
+                'source':             'alegra',
+                'alegra_bank_account': bank_name,
+                'updated_at':         datetime.now(timezone.utc).isoformat(),
             }
-            
-            # Check if exists
-            existing = await db.payments.find_one({'company_id': company_id, 'alegra_id': alegra_id, 'alegra_type': 'bank_movement'})
+
+            existing = await db.payments.find_one(
+                {'company_id': company_id, 'alegra_id': alegra_id, 'alegra_type': 'payment'},
+                {'_id': 1}
+            )
             if existing:
                 await db.payments.update_one({'_id': existing['_id']}, {'$set': payment_doc})
                 updated += 1
             else:
-                payment_doc['id'] = str(uuid.uuid4())
+                payment_doc['id']         = str(uuid.uuid4())
                 payment_doc['created_at'] = datetime.now(timezone.utc).isoformat()
                 await db.payments.insert_one(payment_doc)
                 created += 1
-                
+
         except Exception as e:
-            logger.error(f"Error syncing payment {payment.get('id')}: {str(e)}")
+            logger.error(f"Error syncing Alegra payment {payment.get('id')}: {e}")
             errors += 1
-    
+
     return {
         "success": True,
-        "message": f"Movimientos bancarios sincronizados desde Alegra",
+        "message": f"Pagos sincronizados desde Alegra (/payments)",
         "stats": {
-            "total": len(all_payments),
+            "total":   len(all_payments),
             "created": created,
             "updated": updated,
-            "errors": errors
-        }
+            "skipped": skipped,
+            "errors":  errors,
+        },
     }
 
 
