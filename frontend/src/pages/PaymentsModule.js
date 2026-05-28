@@ -636,15 +636,50 @@ const PaymentsModule = () => {
     }
   };
 
-  // Delete all payments
+  // Sync all connected ERPs (Contalink + Alegra) to db.payments
   const handleSyncContalink = async () => {
     setSyncingContalink(true);
+    const results = [];
+    let anySuccess = false;
+
     try {
-      const res = await api.post('/payments/sync-contalink');
-      toast.success(res.data.message);
-      loadData();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error sincronizando Contalink');
+      // --- Contalink ---
+      try {
+        const res = await api.post('/payments/sync-contalink');
+        results.push(`Contalink: ${res.data.message || 'sincronizado'}`);
+        anySuccess = true;
+      } catch (err) {
+        const detail = err.response?.data?.detail || '';
+        // 400 = not configured → skip silently; anything else → report
+        if (err.response?.status !== 400) {
+          results.push(`Contalink: ${detail || 'Error'}`);
+        }
+      }
+
+      // --- Alegra ---
+      try {
+        const statusRes = await api.get('/alegra/status');
+        if (statusRes.data?.connected) {
+          const res = await api.post('/alegra/sync/payments');
+          const stats = res.data?.stats || {};
+          results.push(`Alegra: ${stats.created || 0} nuevos, ${stats.updated || 0} actualizados`);
+          anySuccess = true;
+        }
+      } catch (err) {
+        const detail = err.response?.data?.detail || '';
+        if (detail && !detail.toLowerCase().includes('no está conectado')) {
+          results.push(`Alegra: ${detail}`);
+        }
+      }
+
+      if (anySuccess) {
+        toast.success(`Sync completado — ${results.join(' · ')}`);
+        loadData();
+      } else if (results.length > 0) {
+        toast.error(results.join(' · '));
+      } else {
+        toast.warning('No hay ERPs configurados. Ve a Integraciones para conectar Contalink o Alegra.');
+      }
     } finally {
       setSyncingContalink(false);
     }
