@@ -325,6 +325,16 @@ async def sync_alegra_to_cashflow(
 
         email     = integration.get("credentials", {}).get("email", "")
         api_token = integration.get("credentials", {}).get("api_token", "")
+        # Alegra saves credentials in db.companies (alegra_email / alegra_token),
+        # not in db.integrations.credentials — fall back to that location.
+        if not email or not api_token:
+            company_doc = await db.companies.find_one(
+                {"id": company_id},
+                {"_id": 0, "alegra_email": 1, "alegra_token": 1}
+            )
+            if company_doc:
+                email     = company_doc.get("alegra_email", "")
+                api_token = company_doc.get("alegra_token", "")
         if not email or not api_token:
             result.errors.append("Credenciales de Alegra incompletas")
             return result
