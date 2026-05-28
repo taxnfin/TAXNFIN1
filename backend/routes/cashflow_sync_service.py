@@ -625,15 +625,17 @@ async def auto_categorize_payments(
     solo_sin_categoria: bool = True,
 ):
     """
-    Toma los pagos sin categoría y usa Claude API para asignarles
-    la categoría más apropiada del catálogo.
+    Categoriza con IA los documentos sin categoría de tres colecciones:
+    db.payments, db.cfdis y db.cashflow_movements.
 
-    - limit: máximo de pagos a procesar por llamada (default 15)
-    - solo_sin_categoria: si False, re-categoriza todos los pagos
+    - limit: máximo de documentos por colección (default 100)
+    - solo_sin_categoria: si False, re-categoriza todos
     """
     import httpx, os, json
+    from bson import ObjectId
 
     company_id = await get_active_company_id(request, current_user)
+
     # 1. Cargar categorías disponibles
     custom_cats = await db.cashflow_categories.find(
         {"company_id": company_id, "activa": True}, {"_id": 0}
@@ -649,31 +651,85 @@ async def auto_categorize_payments(
         f'- id="{cat["code"]}" | nombre="{cat["nombre"]}" | tipo={cat["tipo"]}'
         for cat in all_categories
     )
+    cat_by_code = {c["code"]: c for c in all_categories}
 
-    # 2. Cargar payments a categorizar
-    query: dict = {"company_id": company_id}
+    # 2. Cargar documentos sin categoría de las tres colecciones
+    no_cat_filter = [{"category_id": None}, {"category_id": {"$exists": False}}]
+
+    pay_q: dict = {"company_id": company_id}
     if solo_sin_categoria:
-        query["$or"] = [
-            {"category_id": None},
-            {"category_id": {"$exists": False}},
-        ]
+        pay_q["$or"] = no_cat_filter
+    payments_raw = await db.payments.find(pay_q).limit(limit).to_list(limit)
 
-    payments_raw = await db.payments.find(query).limit(limit).to_list(limit)
+    cfdi_q: dict = {"company_id": company_id}
+    if solo_sin_categoria:
+        cfdi_q["$or"] = no_cat_filter
+    cfdis_raw = await db.cfdis.find(cfdi_q).limit(limit).to_list(limit)
 
-    if not payments_raw:
-        return {"success": True, "message": "No hay pagos para categorizar", "updated": 0}
+    mov_q: dict = {"company_id": company_id}
+    if solo_sin_categoria:
+        mov_q["$or"] = no_cat_filter
+    movements_raw = await db.cashflow_movements.find(mov_q).limit(limit).to_list(limit)
 
-    # Usar str(_id) como identificador universal — funciona para Contalink, Alegra y Excel
+    # 3. Construir lista unificada con etiqueta de colección origen
+    all_items = []
+
     for p in payments_raw:
-        p["_id_str"] = str(p["_id"])
+        all_items.append({
+            "_oid":  p["_id"],
+            "_oid_str": str(p["_id"]),
+            "_col":  "payments",
+            "tipo":  p.get("tipo", "pago"),
+            "concepto":    p.get("concepto") or p.get("descripcion") or "",
+            "beneficiario": p.get("beneficiario") or p.get("referencia") or "",
+            "monto": p.get("monto", 0),
+            "moneda": p.get("moneda", "MXN"),
+        })
 
-    # 3. Construir prompt para Claude
-    payments_text = "\n".join(
-        f'[{i}] id="{p["_id_str"]}" | tipo={p.get("tipo","?")} | '
-        f'concepto="{p.get("concepto", p.get("descripcion", ""))}" | '
-        f'beneficiario="{p.get("beneficiario", p.get("referencia", ""))}" | '
-        f'monto={p.get("monto",0)} {p.get("moneda","MXN")}'
-        for i, p in enumerate(payments_raw)
+    for c in cfdis_raw:
+        tipo = "cobro" if c.get("tipo_cfdi") == "ingreso" else "pago"
+        all_items.append({
+            "_oid":  c["_id"],
+            "_oid_str": str(c["_id"]),
+            "_col":  "cfdis",
+            "tipo":  tipo,
+            "concepto":    f"{c.get('emisor_nombre', '')} → {c.get('receptor_nombre', '')}",
+            "beneficiario": c.get("emisor_nombre") or c.get("receptor_nombre") or "",
+            "monto": c.get("total", 0),
+            "moneda": c.get("moneda", "MXN"),
+        })
+
+    for m in movements_raw:
+        cat_code = m.get("categoria_code", "")
+        tipo = "cobro" if cat_code.startswith("ING") else "pago"
+        all_items.append({
+            "_oid":  m["_id"],
+            "_oid_str": str(m["_id"]),
+            "_col":  "cashflow_movements",
+            "tipo":  tipo,
+            "concepto":    m.get("descripcion") or "",
+            "beneficiario": m.get("referencia") or "",
+            "monto": m.get("monto", 0),
+            "moneda": "MXN",
+        })
+
+    if not all_items:
+        return {"success": True, "message": "No hay documentos para categorizar", "updated": 0}
+
+    # Map oid_str → item for routing writes back to the right collection
+    item_map = {it["_oid_str"]: it for it in all_items}
+    col_map  = {
+        "payments":           db.payments,
+        "cfdis":              db.cfdis,
+        "cashflow_movements": db.cashflow_movements,
+    }
+
+    # 4. Construir prompt para Claude
+    items_text = "\n".join(
+        f'[{i}] id="{it["_oid_str"]}" | col={it["_col"]} | tipo={it["tipo"]} | '
+        f'concepto="{it["concepto"]}" | beneficiario="{it["beneficiario"]}" | '
+        f'monto={it["monto"]} {it["moneda"]}'
+        for i, it in enumerate(all_items)
     )
 
     prompt = f"""Eres un experto en contabilidad y finanzas mexicanas.
@@ -683,7 +739,7 @@ CATEGORÍAS DISPONIBLES:
 {cat_list_text}
 
 MOVIMIENTOS A CATEGORIZAR:
-{payments_text}
+{items_text}
 
 INSTRUCCIONES:
 - Para cada movimiento, elige la categoría más apropiada de la lista.
@@ -695,10 +751,10 @@ INSTRUCCIONES:
 - Si no puedes determinar → ING-099 para ingresos, EGR-099 para egresos.
 
 Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
-[{{"id": "payment_id", "category_code": "ING-001"}}, ...]
+[{{"id": "object_id_string", "category_code": "ING-001"}}, ...]
 """
 
-    # 4. Llamar a Claude API
+    # 5. Llamar a Claude API
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY no configurada en Railway")
@@ -719,8 +775,7 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
                 },
             )
             res.raise_for_status()
-            data = res.json()
-            raw_text = data["content"][0]["text"].strip()
+            raw_text = res.json()["content"][0]["text"].strip()
     except httpx.HTTPStatusError as e:
         logger.error(f"auto_categorize Claude API HTTP error: {e.response.status_code} - {e.response.text}")
         raise HTTPException(status_code=500, detail=f"Error Claude API {e.response.status_code}: {e.response.text[:200]}")
@@ -728,68 +783,74 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
         logger.error(f"auto_categorize Claude API error: {e}")
         raise HTTPException(status_code=500, detail=f"Error llamando a Claude API: {str(e) or type(e).__name__}")
 
-    # 5. Parsear respuesta
+    # 6. Parsear respuesta
     try:
-        # Limpiar posibles backticks
         clean = raw_text.replace("```json", "").replace("```", "").strip()
         assignments = json.loads(clean)
     except Exception as e:
         logger.error(f"auto_categorize JSON parse error: {e} — raw: {raw_text[:500]}")
         raise HTTPException(status_code=500, detail=f"Error parseando respuesta de IA: {str(e)}")
 
-    # 6. Construir mapa code → category doc
-    cat_by_code = {c["code"]: c for c in all_categories}
-
-    # 7. Construir mapa _id_str → ObjectId para update exacto
-    from bson import ObjectId
-    id_map = {str(p["_id"]): p["_id"] for p in payments_raw}
-
-    # 8. Actualizar payments en MongoDB
+    # 7. Escribir resultados en la colección correcta de cada item
     updated = 0
-    errors = []
+    errors  = []
     results = []
 
     for assignment in assignments:
-        payment_id    = assignment.get("id")
+        oid_str       = assignment.get("id")
         category_code = assignment.get("category_code")
 
-        if not payment_id or not category_code:
+        if not oid_str or not category_code:
             continue
 
         cat_doc = cat_by_code.get(category_code)
         if not cat_doc:
-            errors.append(f"Código desconocido: {category_code} para payment {payment_id}")
+            errors.append(f"Código desconocido: {category_code}")
             continue
 
-        object_id = id_map.get(payment_id)
-        if not object_id:
-            errors.append(f"Payment no encontrado en mapa: {payment_id}")
+        item = item_map.get(oid_str)
+        if not item:
+            errors.append(f"Item no encontrado: {oid_str}")
+            continue
+
+        coll = col_map.get(item["_col"])
+        if not coll:
             continue
 
         try:
-            await db.payments.update_one(
-                {"_id": object_id, "company_id": company_id},
+            await coll.update_one(
+                {"_id": item["_oid"], "company_id": company_id},
                 {"$set": {
-                    "category_id":   category_code,
-                    "category_name": cat_doc["nombre"],
+                    "category_id":    category_code,
+                    "category_name":  cat_doc["nombre"],
                     "categorized_by": "ai",
                     "categorized_at": datetime.now(timezone.utc).isoformat(),
                 }}
             )
             updated += 1
             results.append({
-                "payment_id":   payment_id,
+                "id":            oid_str,
+                "collection":    item["_col"],
                 "category_code": category_code,
                 "category_name": cat_doc["nombre"],
             })
         except Exception as e:
-            errors.append(f"Error actualizando {payment_id}: {str(e)}")
+            errors.append(f"Error actualizando {oid_str}: {str(e)}")
 
-    logger.info(f"auto_categorize: company={company_id} processed={len(payments_raw)} updated={updated} errors={len(errors)}")
+    logger.info(
+        f"auto_categorize: company={company_id} "
+        f"payments={len(payments_raw)} cfdis={len(cfdis_raw)} "
+        f"movements={len(movements_raw)} updated={updated} errors={len(errors)}"
+    )
 
     return {
         "success":   True,
-        "processed": len(payments_raw),
+        "processed": len(all_items),
+        "by_collection": {
+            "payments":           len(payments_raw),
+            "cfdis":              len(cfdis_raw),
+            "cashflow_movements": len(movements_raw),
+        },
         "updated":   updated,
         "errors":    errors,
         "results":   results,
