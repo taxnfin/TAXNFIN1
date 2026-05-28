@@ -926,6 +926,8 @@ async def sync_alegra_payments(
             amount = float(payment.get('amount', 0) or 0)
             tipo = 'cobro' if amount > 0 else 'pago'
             
+            fecha_mov = payment.get('date') or datetime.now(timezone.utc).strftime('%Y-%m-%d')
+
             payment_doc = {
                 'alegra_id': alegra_id,
                 'alegra_type': 'bank_movement',
@@ -935,8 +937,8 @@ async def sync_alegra_payments(
                 'monto': abs(amount),
                 'moneda': 'MXN',
                 'metodo_pago': 'transferencia',
-                'fecha_vencimiento': payment.get('date', ''),
-                'fecha_pago': payment.get('date', ''),
+                'fecha_vencimiento': fecha_mov,
+                'fecha_pago': fecha_mov,
                 'estatus': 'completado',
                 'referencia': payment.get('reference', ''),
                 'beneficiario': payment.get('contact', {}).get('name', '') if isinstance(payment.get('contact'), dict) else '',
