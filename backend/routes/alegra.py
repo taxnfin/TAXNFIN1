@@ -874,7 +874,7 @@ async def sync_alegra_payments(
     # Paginate through GET /payments
     all_payments = []
     start = 0
-    limit = 200
+    limit = 30  # Alegra API max page size
 
     while True:
         params = {
