@@ -927,7 +927,7 @@ async def sync_payments_from_contalink(
         {"_id": 0}
     )
     if not creds_doc:
-        raise HTTPException(status_code=404, detail="No tienes Contalink conectado. Ve a Integraciones y guarda tu API Key.")
+        raise HTTPException(status_code=400, detail="No tienes Contalink conectado. Ve a Integraciones y guarda tu API Key.")
 
     api_key = creds_doc.get("api_key", "")
     rfc = creds_doc.get("rfc", "")
