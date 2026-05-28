@@ -24,17 +24,21 @@ from models.cfdi import CFDI
 router = APIRouter()
 
 @router.get("/cashflow/weeks", response_model=List[CashFlowWeek])
-async def get_cashflow_weeks(request: Request, current_user: Dict = Depends(get_current_user)):
+async def get_cashflow_weeks(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    num_weeks: int = Query(13, ge=1, le=52, description="Número de semanas a mostrar (13-52)"),
+):
     company_id = await get_active_company_id(request, current_user)
-    weeks = await db.cashflow_weeks.find({'company_id': company_id}, {'_id': 0}).sort('fecha_inicio', 1).to_list(13)
-    
+    weeks = await db.cashflow_weeks.find({'company_id': company_id}, {'_id': 0}).sort('fecha_inicio', 1).to_list(num_weeks)
+
     # If no weeks exist, generate them dynamically
     if not weeks:
         today = datetime.now(timezone.utc)
         start_of_current_week = today - timedelta(days=today.weekday())
-        
+
         weeks = []
-        for i in range(13):
+        for i in range(num_weeks):
             week_start = start_of_current_week + timedelta(weeks=i)
             week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
             weeks.append({
@@ -91,8 +95,8 @@ async def get_cashflow_weeks(request: Request, current_user: Dict = Depends(get_
         
         saldo_inicial_total += saldo * tasa
     
-    # Get CFDIs for calculating real inflows/outflows per week
-    cfdis = await db.cfdis.find({'company_id': company_id}, {'_id': 0}).to_list(1000)
+    # Get CFDIs for calculating real inflows/outflows per week (5000 covers a full year)
+    cfdis = await db.cfdis.find({'company_id': company_id}, {'_id': 0}).to_list(5000)
     
     # Track running balance
     running_balance = saldo_inicial_total
@@ -1137,5 +1141,121 @@ async def delete_manual_projection(concept_id: str, request: Request, current_us
 # - POST /payments/from-bank-with-cfdi-match
 # - GET /payments/summary (uses CFDI-based logic)
 # - GET /payments/breakdown
+
+
+# ══════════════════════════════════════════════════════════════════════
+# T2 — VISTA TRIMESTRAL Q1-Q4
+# ══════════════════════════════════════════════════════════════════════
+
+@router.get("/cashflow/quarterly")
+async def get_cashflow_quarterly(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    year: int = Query(None, description="Año (default: año actual)"),
+):
+    """
+    Retorna ingresos, egresos y saldo acumulado por trimestre (Q1-Q4).
+    Usa los mismos CFDIs que el flujo semanal; no requiere datos adicionales.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    target_year = year or datetime.now(timezone.utc).year
+
+    # Rango del año completo
+    year_start = datetime(target_year, 1, 1, tzinfo=timezone.utc)
+    year_end   = datetime(target_year, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+
+    # Saldo inicial: suma de cuentas bancarias
+    bank_accounts = await db.bank_accounts.find(
+        {'company_id': company_id, 'activo': True}, {'_id': 0}
+    ).to_list(100)
+
+    fx_docs = await db.fx_rates.find(
+        {'company_id': company_id}, {'_id': 0, 'moneda_cotizada': 1, 'tipo_cambio': 1}
+    ).sort('fecha_vigencia', -1).to_list(50)
+    fx_map: dict = {'MXN': 1.0}
+    for fx in fx_docs:
+        code = fx.get('moneda_cotizada')
+        if code and code not in fx_map:
+            fx_map[code] = float(fx.get('tipo_cambio', 1) or 1)
+    if 'USD' not in fx_map: fx_map['USD'] = 17.50
+    if 'EUR' not in fx_map: fx_map['EUR'] = 19.00
+
+    saldo_inicial_total = sum(
+        float(acc.get('saldo_inicial', 0) or 0) * fx_map.get(acc.get('moneda', 'MXN'), 1.0)
+        for acc in bank_accounts
+    )
+
+    # CFDIs del año
+    cfdis = await db.cfdis.find({
+        'company_id': company_id,
+        'fecha_emision': {
+            '$gte': year_start.strftime('%Y-%m-%d'),
+            '$lte': year_end.strftime('%Y-%m-%d'),
+        }
+    }, {'_id': 0, 'tipo_cfdi': 1, 'total': 1, 'fecha_emision': 1}).to_list(10000)
+
+    # Definición de trimestres
+    quarters = [
+        {'quarter': 'Q1', 'label': 'Ene-Mar', 'months': {1, 2, 3},       'start': f'{target_year}-01-01', 'end': f'{target_year}-03-31'},
+        {'quarter': 'Q2', 'label': 'Abr-Jun', 'months': {4, 5, 6},       'start': f'{target_year}-04-01', 'end': f'{target_year}-06-30'},
+        {'quarter': 'Q3', 'label': 'Jul-Sep', 'months': {7, 8, 9},       'start': f'{target_year}-07-01', 'end': f'{target_year}-09-30'},
+        {'quarter': 'Q4', 'label': 'Oct-Dic', 'months': {10, 11, 12},    'start': f'{target_year}-10-01', 'end': f'{target_year}-12-31'},
+    ]
+
+    running_saldo = saldo_inicial_total
+    result_quarters = []
+
+    for q in quarters:
+        ingresos = 0.0
+        egresos  = 0.0
+
+        for cfdi in cfdis:
+            fecha_str = str(cfdi.get('fecha_emision', ''))[:10]
+            if not fecha_str or fecha_str < q['start'] or fecha_str > q['end']:
+                continue
+            try:
+                mes = int(fecha_str[5:7])
+            except Exception:
+                continue
+            if mes not in q['months']:
+                continue
+
+            total = float(cfdi.get('total', 0) or 0)
+            if cfdi.get('tipo_cfdi') == 'ingreso':
+                ingresos += total
+            else:
+                egresos += total
+
+        flujo_neto  = ingresos - egresos
+        saldo_inicio = running_saldo
+        saldo_fin    = running_saldo + flujo_neto
+        running_saldo = saldo_fin
+
+        result_quarters.append({
+            'quarter':     q['quarter'],
+            'label':       q['label'],
+            'start':       q['start'],
+            'end':         q['end'],
+            'ingresos':    round(ingresos, 2),
+            'egresos':     round(egresos, 2),
+            'flujo_neto':  round(flujo_neto, 2),
+            'saldo_inicio': round(saldo_inicio, 2),
+            'saldo_fin':   round(saldo_fin, 2),
+            'margen_pct':  round(flujo_neto / max(ingresos, 1) * 100, 1) if ingresos > 0 else 0,
+        })
+
+    total_ingresos = sum(q['ingresos'] for q in result_quarters)
+    total_egresos  = sum(q['egresos']  for q in result_quarters)
+
+    return {
+        'year':           target_year,
+        'saldo_inicial':  round(saldo_inicial_total, 2),
+        'saldo_final':    round(running_saldo, 2),
+        'total_ingresos': round(total_ingresos, 2),
+        'total_egresos':  round(total_egresos, 2),
+        'flujo_neto_anual': round(total_ingresos - total_egresos, 2),
+        'quarters':       result_quarters,
+        'generated_at':   datetime.now(timezone.utc).isoformat(),
+    }
 
 

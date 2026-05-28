@@ -63,8 +63,15 @@ class FIELManager:
                         break
             
             self.serial_number = format(cert.serial_number, 'X')
-            self.not_before = cert.not_valid_before_utc
-            self.not_after = cert.not_valid_after_utc
+            # not_valid_before_utc / not_valid_after_utc require cryptography >= 42.
+            # Fall back to the older attribute name for compatibility.
+            try:
+                self.not_before = cert.not_valid_before_utc
+                self.not_after  = cert.not_valid_after_utc
+            except AttributeError:
+                import pytz
+                self.not_before = cert.not_valid_before.replace(tzinfo=pytz.utc)
+                self.not_after  = cert.not_valid_after.replace(tzinfo=pytz.utc)
             
             logger.info(f"Certificate loaded: RFC={self.rfc}, Serial={self.serial_number[:16]}...")
             

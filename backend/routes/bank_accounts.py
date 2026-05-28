@@ -65,7 +65,7 @@ async def delete_bank_account(account_id: str, request: Request, current_user: D
         raise HTTPException(status_code=404, detail="Cuenta bancaria no encontrada")
     
     await db.bank_accounts.update_one(
-        {'id': account_id},
+        {'id': account_id, 'company_id': company_id},
         {'$set': {'activo': False}}
     )
     await audit_log(company_id, 'BankAccount', account_id, 'DELETE', current_user['id'])

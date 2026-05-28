@@ -93,16 +93,23 @@ async def get_current_cash_position(company_id: str) -> dict:
         {'_id': 0}
     ).to_list(100)
     
+    # Cargar tipos de cambio reales de la BD
+    fx_docs = await db.fx_rates.find(
+        {'company_id': company_id},
+        {'_id': 0, 'moneda_cotizada': 1, 'tipo_cambio': 1}
+    ).sort('fecha_vigencia', -1).to_list(50)
+    fx_map: dict = {'MXN': 1.0}
+    for fx in fx_docs:
+        code = fx.get('moneda_cotizada')
+        if code and code not in fx_map:
+            fx_map[code] = float(fx.get('tipo_cambio', 1) or 1)
+
     total_mxn = 0
     for acc in accounts:
         balance = acc.get('saldo_actual') or acc.get('saldo') or acc.get('saldo_inicial') or acc.get('balance', 0) or 0
         currency = acc.get('moneda', 'MXN')
-        if currency == 'MXN':
-            total_mxn += balance
-        elif currency == 'USD':
-            total_mxn += balance * 17.5  # Approximate
-        elif currency == 'EUR':
-            total_mxn += balance * 19.0
+        rate = fx_map.get(currency, 1.0)
+        total_mxn += balance * rate
     
     # Get pending collections and payments — from payments collection
     pending_collections = await db.payments.aggregate([
@@ -551,35 +558,37 @@ async def calculate_working_capital_intelligence(company_id: str) -> dict:
     ).to_list(10000)
     
     # Calculate DSO (Days Sales Outstanding)
-    # Average time it takes to collect payment
+    # DSO = días entre fecha de emisión (vencimiento) y fecha de cobro real
     collection_days = []
     for c in all_collections:
-        if c.get('fecha_pago') and c.get('created_at'):
+        if c.get('fecha_pago') and c.get('fecha_vencimiento'):
             try:
-                created = safe_parse_date(c['created_at'])
+                due = safe_parse_date(c['fecha_vencimiento'])
                 paid = safe_parse_date(c['fecha_pago'])
-                days = (paid - created).days
-                if 0 <= days <= 365:  # Reasonable range
-                    collection_days.append(days)
+                if due and paid:
+                    days = (paid - due).days
+                    if -30 <= days <= 365:  # Negativo = cobró antes del vencimiento
+                        collection_days.append(days)
             except:
                 pass
-    
+
     dso = sum(collection_days) / len(collection_days) if collection_days else 0
-    
+
     # Calculate DPO (Days Payable Outstanding)
-    # Average time it takes to pay suppliers
+    # DPO = días entre fecha de vencimiento del proveedor y fecha de pago real
     payment_days = []
     for p in all_payments:
-        if p.get('fecha_pago') and p.get('created_at'):
+        if p.get('fecha_pago') and p.get('fecha_vencimiento'):
             try:
-                created = safe_parse_date(p['created_at'])
+                due = safe_parse_date(p['fecha_vencimiento'])
                 paid = safe_parse_date(p['fecha_pago'])
-                days = (paid - created).days
-                if 0 <= days <= 365:
-                    payment_days.append(days)
+                if due and paid:
+                    days = (paid - due).days
+                    if -30 <= days <= 365:
+                        payment_days.append(days)
             except:
                 pass
-    
+
     dpo = sum(payment_days) / len(payment_days) if payment_days else 0
     
     # Cash Conversion Cycle = DSO - DPO (simplified, without inventory)
@@ -595,33 +604,35 @@ async def calculate_working_capital_intelligence(company_id: str) -> dict:
     older_collections = [c for c in all_collections 
                         if c.get('created_at') and sixty_days_ago.isoformat()[:10] <= c['created_at'][:10] < thirty_days_ago.isoformat()[:10]]
     
-    # Calculate recent DSO
+    # Calculate recent DSO trend
     recent_dso_days = []
     for c in recent_collections:
-        if c.get('fecha_pago') and c.get('created_at'):
+        if c.get('fecha_pago') and c.get('fecha_vencimiento'):
             try:
-                created = safe_parse_date(c['created_at'])
+                due = safe_parse_date(c['fecha_vencimiento'])
                 paid = safe_parse_date(c['fecha_pago'])
-                days = (paid - created).days
-                if 0 <= days <= 365:
-                    recent_dso_days.append(days)
+                if due and paid:
+                    days = (paid - due).days
+                    if -30 <= days <= 365:
+                        recent_dso_days.append(days)
             except:
                 pass
-    
+
     recent_dso = sum(recent_dso_days) / len(recent_dso_days) if recent_dso_days else dso
-    
+
     older_dso_days = []
     for c in older_collections:
-        if c.get('fecha_pago') and c.get('created_at'):
+        if c.get('fecha_pago') and c.get('fecha_vencimiento'):
             try:
-                created = safe_parse_date(c['created_at'])
+                due = safe_parse_date(c['fecha_vencimiento'])
                 paid = safe_parse_date(c['fecha_pago'])
-                days = (paid - created).days
-                if 0 <= days <= 365:
-                    older_dso_days.append(days)
+                if due and paid:
+                    days = (paid - due).days
+                    if -30 <= days <= 365:
+                        older_dso_days.append(days)
             except:
                 pass
-    
+
     older_dso = sum(older_dso_days) / len(older_dso_days) if older_dso_days else dso
     
     dso_trend = "improving" if recent_dso < older_dso else ("worsening" if recent_dso > older_dso else "stable")

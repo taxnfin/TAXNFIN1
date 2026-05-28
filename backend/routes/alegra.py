@@ -7,7 +7,7 @@ import os
 import base64
 import uuid
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from typing import Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Depends, Request, Query
 from pydantic import BaseModel
@@ -878,7 +878,11 @@ async def sync_alegra_payments(
     try:
         # Get bank accounts first
         bank_accounts = await alegra_request("GET", "bank-accounts", email, token)
-        
+
+        if not bank_accounts or not isinstance(bank_accounts, list):
+            logger.warning("Alegra bank-accounts returned empty or None — skipping payment sync")
+            bank_accounts = []
+
         # For each bank account, get movements
         for account in bank_accounts:
             account_id = account.get('id')
@@ -992,20 +996,26 @@ async def sync_all_alegra_data(
     try:
         invoices_result = await sync_alegra_invoices(request, current_user, "all", date_from, date_to)
         results['invoices'] = invoices_result.get('stats', {})
+    except HTTPException as e:
+        results['invoices'] = {'error': e.detail}
     except Exception as e:
         results['invoices'] = {'error': str(e)}
-    
+
     # Sync bills (CxP) with date filters
     try:
         bills_result = await sync_alegra_bills(request, current_user, "all", date_from, date_to)
         results['bills'] = bills_result.get('stats', {})
+    except HTTPException as e:
+        results['bills'] = {'error': e.detail}
     except Exception as e:
         results['bills'] = {'error': str(e)}
-    
+
     # Sync bank movements with date filters
     try:
         payments_result = await sync_alegra_payments(request, current_user, date_from, date_to)
         results['payments'] = payments_result.get('stats', {})
+    except HTTPException as e:
+        results['payments'] = {'error': e.detail}
     except Exception as e:
         results['payments'] = {'error': str(e)}
     
@@ -1252,3 +1262,736 @@ async def fix_alegra_mxn_totals(
         'message': (f"Se corregirían {fixed} CFDIs" if dry_run
                     else f"Se corrigieron {fixed} CFDIs (de {examined} examinados)")
     }
+
+
+# ══════════════════════════════════════════════════════════════════════
+# T1-A — CxC y CxP CON AGING (calculado desde CFDIs sincronizados)
+# ══════════════════════════════════════════════════════════════════════
+
+def _build_aging_bucket(dias_vencido: int) -> str:
+    if dias_vencido <= 0:   return 'corriente'
+    if dias_vencido <= 30:  return 'vencido_30'
+    if dias_vencido <= 60:  return 'vencido_60'
+    if dias_vencido <= 90:  return 'vencido_90'
+    return 'vencido_mas90'
+
+
+@router.get("/cxc")
+async def get_alegra_cxc(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """CxC de Alegra con aging calculado desde CFDIs sincronizados (no requiere llamada extra a la API)."""
+    company_id = await get_active_company_id(request, current_user)
+    today = date.today()
+
+    invoices = await db.cfdis.find({
+        'company_id':         company_id,
+        'source':             'alegra',
+        'tipo_cfdi':          'ingreso',
+        'estatus':            {'$ne': 'cancelado'},
+        'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
+    }, {'_id': 0}).to_list(5000)
+
+    facturas = []
+    aging = {'corriente': 0.0, 'vencido_30': 0.0, 'vencido_60': 0.0, 'vencido_90': 0.0, 'vencido_mas90': 0.0}
+    total_pendiente = 0.0
+
+    for inv in invoices:
+        total_inv = float(inv.get('total', 0) or 0)
+        cobrado   = float(inv.get('monto_cobrado', 0) or 0)
+        saldo     = round(total_inv - cobrado, 2)
+        if saldo < 0.01:
+            continue
+
+        fecha_venc_raw = inv.get('fecha_vencimiento') or inv.get('fecha_emision', '')
+        dias_vencido = 0
+        if fecha_venc_raw:
+            try:
+                dias_vencido = (today - date.fromisoformat(str(fecha_venc_raw)[:10])).days
+            except Exception:
+                pass
+
+        bucket = _build_aging_bucket(dias_vencido)
+        aging[bucket] += saldo
+        total_pendiente += saldo
+
+        facturas.append({
+            'uuid':                inv.get('uuid', ''),
+            'alegra_id':           inv.get('alegra_id', ''),
+            'cliente_nombre':      inv.get('receptor_nombre', ''),
+            'cliente_rfc':         inv.get('receptor_rfc', ''),
+            'fecha_emision':       str(inv.get('fecha_emision', ''))[:10],
+            'fecha_vencimiento':   str(fecha_venc_raw)[:10] if fecha_venc_raw else '',
+            'saldo_pendiente':     saldo,
+            'total':               total_inv,
+            'monto_cobrado':       cobrado,
+            'moneda':              inv.get('moneda', 'MXN'),
+            'tipo_cambio':         float(inv.get('tipo_cambio', 1) or 1),
+            'dias_vencido':        dias_vencido,
+            'estado_conciliacion': inv.get('estado_conciliacion', 'pendiente'),
+            'referencia':          inv.get('referencia', ''),
+        })
+
+    facturas.sort(key=lambda x: x['dias_vencido'], reverse=True)
+    vencido_total = sum(aging[k] for k in ['vencido_30', 'vencido_60', 'vencido_90', 'vencido_mas90'])
+
+    return {
+        'cut_date':       today.isoformat(),
+        'num_facturas':   len(facturas),
+        'num_clientes':   len({f['cliente_nombre'] for f in facturas}),
+        'total_pendiente': round(total_pendiente, 2),
+        'aging':          {k: round(v, 2) for k, v in aging.items()},
+        'pct_vencido':    round(vencido_total / max(total_pendiente, 1) * 100, 1),
+        'facturas':       facturas,
+        'source':         'alegra_sync',
+        'fetched_at':     datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/cxp")
+async def get_alegra_cxp(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """CxP de Alegra con aging calculado desde CFDIs sincronizados."""
+    company_id = await get_active_company_id(request, current_user)
+    today = date.today()
+
+    bills = await db.cfdis.find({
+        'company_id':         company_id,
+        'source':             'alegra',
+        'tipo_cfdi':          'egreso',
+        'estatus':            {'$ne': 'cancelado'},
+        'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
+    }, {'_id': 0}).to_list(5000)
+
+    facturas = []
+    aging = {'corriente': 0.0, 'vencido_30': 0.0, 'vencido_60': 0.0, 'vencido_90': 0.0, 'vencido_mas90': 0.0}
+    total_pendiente = 0.0
+
+    for bill in bills:
+        total_bill = float(bill.get('total', 0) or 0)
+        pagado     = float(bill.get('monto_pagado', 0) or 0)
+        saldo      = round(total_bill - pagado, 2)
+        if saldo < 0.01:
+            continue
+
+        fecha_venc_raw = bill.get('fecha_vencimiento') or bill.get('fecha_emision', '')
+        dias_vencido = 0
+        if fecha_venc_raw:
+            try:
+                dias_vencido = (today - date.fromisoformat(str(fecha_venc_raw)[:10])).days
+            except Exception:
+                pass
+
+        bucket = _build_aging_bucket(dias_vencido)
+        aging[bucket] += saldo
+        total_pendiente += saldo
+
+        facturas.append({
+            'uuid':                bill.get('uuid', ''),
+            'alegra_id':           bill.get('alegra_id', ''),
+            'proveedor_nombre':    bill.get('emisor_nombre', ''),
+            'proveedor_rfc':       bill.get('emisor_rfc', ''),
+            'fecha_emision':       str(bill.get('fecha_emision', ''))[:10],
+            'fecha_vencimiento':   str(fecha_venc_raw)[:10] if fecha_venc_raw else '',
+            'saldo_pendiente':     saldo,
+            'total':               total_bill,
+            'monto_pagado':        pagado,
+            'moneda':              bill.get('moneda', 'MXN'),
+            'tipo_cambio':         float(bill.get('tipo_cambio', 1) or 1),
+            'dias_vencido':        dias_vencido,
+            'estado_conciliacion': bill.get('estado_conciliacion', 'pendiente'),
+            'referencia':          bill.get('referencia', ''),
+        })
+
+    facturas.sort(key=lambda x: x['dias_vencido'], reverse=True)
+    vencido_total = sum(aging[k] for k in ['vencido_30', 'vencido_60', 'vencido_90', 'vencido_mas90'])
+
+    return {
+        'cut_date':        today.isoformat(),
+        'num_facturas':    len(facturas),
+        'num_proveedores': len({f['proveedor_nombre'] for f in facturas}),
+        'total_pendiente': round(total_pendiente, 2),
+        'aging':           {k: round(v, 2) for k, v in aging.items()},
+        'pct_vencido':     round(vencido_total / max(total_pendiente, 1) * 100, 1),
+        'facturas':        facturas,
+        'source':          'alegra_sync',
+        'fetched_at':      datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/cxc-cxp-summary")
+async def get_alegra_cxc_cxp_summary(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Resumen CxC + CxP de Alegra para dashboards y Tesorería."""
+    cxc = await get_alegra_cxc(request, current_user)
+    cxp = await get_alegra_cxp(request, current_user)
+    return {
+        'cut_date': date.today().isoformat(),
+        'cxc': {
+            'total':      cxc['total_pendiente'],
+            'vencido':    sum(cxc['aging'][k] for k in ['vencido_30', 'vencido_60', 'vencido_90', 'vencido_mas90']),
+            'corriente':  cxc['aging']['corriente'],
+            'count':      cxc['num_clientes'],
+            'pct_vencido': cxc['pct_vencido'],
+        },
+        'cxp': {
+            'total':      cxp['total_pendiente'],
+            'vencido':    sum(cxp['aging'][k] for k in ['vencido_30', 'vencido_60', 'vencido_90', 'vencido_mas90']),
+            'corriente':  cxp['aging']['corriente'],
+            'count':      cxp['num_proveedores'],
+            'pct_vencido': cxp['pct_vencido'],
+        },
+        'flujo_neto_esperado': round(cxc['total_pendiente'] - cxp['total_pendiente'], 2),
+        'fetched_at': datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════
+# T1-B — ESTADOS FINANCIEROS (expone alegra_financials.py)
+# ══════════════════════════════════════════════════════════════════════
+
+@router.post("/generate-financials")
+async def generate_alegra_financials(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    periodo: str = Query(..., description="Período YYYY-MM, ej: 2026-01"),
+):
+    """
+    Genera Estado de Resultados + Balance General desde los CFDIs de Alegra
+    y los persiste en financial_statements para que Board Report los lea.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    from services.alegra_financials import generate_alegra_financial_statements
+    result = await generate_alegra_financial_statements(db, company_id, periodo)
+    if result.get('status') == 'success':
+        await db.companies.update_one(
+            {'id': company_id},
+            {'$set': {'alegra_last_financial_sync': datetime.now(timezone.utc).isoformat()}}
+        )
+    return result
+
+
+@router.get("/financial-statements/{periodo}")
+async def get_alegra_financial_statements(
+    periodo: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Retorna los estados financieros de Alegra guardados para un período."""
+    company_id = await get_active_company_id(request, current_user)
+    docs = await db.financial_statements.find(
+        {'company_id': company_id, 'periodo': periodo, 'source': 'alegra'},
+        {'_id': 0}
+    ).to_list(10)
+    return {'success': True, 'periodo': periodo, 'count': len(docs), 'statements': docs}
+
+
+# ══════════════════════════════════════════════════════════════════════
+# T1-C — AUTO-CATEGORIZACIÓN CxC/CxP PARA ALEGRA
+# ══════════════════════════════════════════════════════════════════════
+
+_ALEGRA_CXC_CATEGORIES = [
+    {"code": "ING-001", "nombre": "Ventas de productos"},
+    {"code": "ING-002", "nombre": "Prestación de servicios"},
+    {"code": "ING-003", "nombre": "Honorarios profesionales"},
+    {"code": "ING-004", "nombre": "Arrendamiento cobrado"},
+    {"code": "ING-005", "nombre": "Cobro de anticipos"},
+    {"code": "ING-007", "nombre": "Intereses cobrados"},
+    {"code": "ING-099", "nombre": "Otros ingresos por cobrar"},
+]
+_ALEGRA_CXP_CATEGORIES = [
+    {"code": "EGR-001", "nombre": "Nómina y salarios"},
+    {"code": "EGR-002", "nombre": "IMSS / INFONAVIT"},
+    {"code": "EGR-003", "nombre": "ISR (pago provisional)"},
+    {"code": "EGR-004", "nombre": "IVA (pago mensual)"},
+    {"code": "EGR-005", "nombre": "Renta / arrendamiento"},
+    {"code": "EGR-006", "nombre": "Proveedores de materia prima"},
+    {"code": "EGR-007", "nombre": "Servicios (luz, agua, gas)"},
+    {"code": "EGR-008", "nombre": "Telefonía e internet"},
+    {"code": "EGR-009", "nombre": "Publicidad y marketing"},
+    {"code": "EGR-010", "nombre": "Honorarios externos"},
+    {"code": "EGR-015", "nombre": "Software y suscripciones"},
+    {"code": "EGR-016", "nombre": "Pago de crédito bancario"},
+    {"code": "EGR-017", "nombre": "Intereses pagados"},
+    {"code": "EGR-018", "nombre": "Comisiones bancarias"},
+    {"code": "EGR-099", "nombre": "Otros egresos por pagar"},
+]
+
+
+@router.post("/auto-categorize-cxc")
+async def auto_categorize_alegra_cxc(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    solo_sin_categoria: bool = Query(True),
+):
+    """Auto-categoriza clientes (CxC) y proveedores (CxP) de Alegra usando Claude IA."""
+    import json as _json
+    company_id = await get_active_company_id(request, current_user)
+
+    cxc_docs = await db.cfdis.find({
+        'company_id': company_id, 'source': 'alegra', 'tipo_cfdi': 'ingreso',
+        'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
+    }, {'_id': 0, 'receptor_nombre': 1, 'total': 1}).to_list(5000)
+
+    cxp_docs = await db.cfdis.find({
+        'company_id': company_id, 'source': 'alegra', 'tipo_cfdi': 'egreso',
+        'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
+    }, {'_id': 0, 'emisor_nombre': 1, 'total': 1}).to_list(5000)
+
+    if not cxc_docs and not cxp_docs:
+        return {'success': True, 'message': 'No hay datos de Alegra para categorizar', 'updated': 0}
+
+    if solo_sin_categoria:
+        ya = await db.cxc_categorias.find(
+            {'company_id': company_id}, {'nombre': 1, 'tipo': 1, '_id': 0}
+        ).to_list(1000)
+        ya_set = {(d['nombre'], d['tipo']) for d in ya}
+        cxc_docs = [f for f in cxc_docs if (f.get('receptor_nombre', ''), 'cxc') not in ya_set]
+        cxp_docs = [f for f in cxp_docs if (f.get('emisor_nombre', ''), 'cxp') not in ya_set]
+
+    items, seen = [], set()
+    for f in cxc_docs:
+        n = (f.get('receptor_nombre') or '').strip()
+        if n and n not in seen:
+            seen.add(n)
+            items.append({'nombre': n, 'tipo': 'cxc', 'monto': float(f.get('total', 0))})
+    for f in cxp_docs:
+        n = (f.get('emisor_nombre') or '').strip()
+        if n and n not in seen:
+            seen.add(n)
+            items.append({'nombre': n, 'tipo': 'cxp', 'monto': float(f.get('total', 0))})
+
+    if not items:
+        return {'success': True, 'message': 'Todos ya tienen categoría asignada', 'updated': 0}
+
+    cat_cxc_txt = '\n'.join(f'  code="{c["code"]}" | nombre="{c["nombre"]}"' for c in _ALEGRA_CXC_CATEGORIES)
+    cat_cxp_txt = '\n'.join(f'  code="{c["code"]}" | nombre="{c["nombre"]}"' for c in _ALEGRA_CXP_CATEGORIES)
+    items_txt   = '\n'.join(f'[{i}] nombre="{it["nombre"]}" | tipo={it["tipo"]} | monto={it["monto"]:.2f}' for i, it in enumerate(items))
+
+    prompt = f"""Eres experto en contabilidad mexicana. Categoriza CxC y CxP de Alegra.
+
+CATEGORÍAS CxC:
+{cat_cxc_txt}
+
+CATEGORÍAS CxP:
+{cat_cxp_txt}
+
+ELEMENTOS:
+{items_txt}
+
+REGLAS: tipo "cxc"→ING-xxx, tipo "cxp"→EGR-xxx.
+Infiere por nombre: TELMEX/TELCEL→EGR-008, IMSS→EGR-002, SAT/HACIENDA→EGR-003.
+Sin pista→ING-099 para cxc, EGR-099 para cxp.
+
+Responde SOLO JSON array sin texto:
+[{{"nombre":"X","tipo":"cxc","category_code":"ING-001"}}]"""
+
+    import os as _os
+    api_key = _os.environ.get('ANTHROPIC_API_KEY', '')
+    if not api_key:
+        raise HTTPException(status_code=500, detail='ANTHROPIC_API_KEY no configurada')
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as http:
+            res = await http.post(
+                'https://api.anthropic.com/v1/messages',
+                headers={'x-api-key': api_key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'},
+                json={'model': 'claude-sonnet-4-6', 'max_tokens': 4096,
+                      'messages': [{'role': 'user', 'content': prompt}]},
+            )
+            res.raise_for_status()
+            raw_text = res.json()['content'][0]['text'].strip()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=500, detail=f'Error Claude API {e.response.status_code}: {e.response.text[:200]}')
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'Error Claude API: {str(e)}')
+
+    try:
+        assignments = _json.loads(raw_text.replace('```json', '').replace('```', '').strip())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'Error parseando respuesta IA: {str(e)}')
+
+    all_cats = {c['code']: c for c in _ALEGRA_CXC_CATEGORIES + _ALEGRA_CXP_CATEGORIES}
+    updated, errors = 0, []
+
+    for a in assignments:
+        nombre = (a.get('nombre') or '').strip()
+        tipo   = a.get('tipo', 'cxc')
+        code   = a.get('category_code', '')
+        if not nombre or not code:
+            continue
+        cat = all_cats.get(code)
+        if not cat:
+            errors.append(f'Código desconocido: {code}')
+            continue
+        try:
+            await db.cxc_categorias.update_one(
+                {'company_id': company_id, 'nombre': nombre, 'tipo': tipo},
+                {'$set': {
+                    'company_id':    company_id,
+                    'nombre':        nombre,
+                    'tipo':          tipo,
+                    'category_code': code,
+                    'category_name': cat['nombre'],
+                    'categorized_by': 'ai',
+                    'source':        'alegra',
+                    'updated_at':    datetime.now(timezone.utc),
+                }},
+                upsert=True
+            )
+            updated += 1
+        except Exception as e:
+            errors.append(f'Error {nombre}: {str(e)}')
+
+    return {
+        'success':   True,
+        'processed': len(items),
+        'updated':   updated,
+        'errors':    errors,
+        'message':   f'{updated} de {len(items)} clientes/proveedores categorizados con IA',
+    }
+
+
+@router.get("/categorias-cxc")
+async def get_alegra_categorias_cxc(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Lista categorías guardadas para CxC/CxP de Alegra."""
+    company_id = await get_active_company_id(request, current_user)
+    docs = await db.cxc_categorias.find(
+        {'company_id': company_id, 'source': 'alegra'}, {'_id': 0}
+    ).to_list(1000)
+    return {'categorias_guardadas': docs, 'catalogo_cxc': _ALEGRA_CXC_CATEGORIES, 'catalogo_cxp': _ALEGRA_CXP_CATEGORIES}
+
+
+# ══════════════════════════════════════════════════════════════════════
+# CONCILIACIÓN BANCARIA CON IA
+# ══════════════════════════════════════════════════════════════════════
+
+@router.post("/reconciliation/analyze")
+async def analyze_alegra_bank_reconciliation(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    date_from: str = Query(None, description="Fecha desde YYYY-MM-DD"),
+    date_to:   str = Query(None, description="Fecha hasta YYYY-MM-DD"),
+    confidence_threshold: float = Query(0.65, ge=0.0, le=1.0, description="Umbral mínimo de confianza"),
+):
+    """
+    Cruza movimientos bancarios de Alegra contra CFDIs sincronizados.
+    Retorna matches con % de confianza para que el usuario apruebe o rechace.
+    """
+    company_id = await get_active_company_id(request, current_user)
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0})
+    if not company.get('alegra_connected'):
+        raise HTTPException(status_code=400, detail='Alegra no está conectado')
+
+    email = company.get('alegra_email')
+    token = company.get('alegra_token')
+
+    # 1. Obtener cuentas bancarias de Alegra
+    bank_accounts = await alegra_request('GET', 'bank-accounts', email, token)
+    if not bank_accounts or not isinstance(bank_accounts, list):
+        raise HTTPException(status_code=400, detail='No se pudieron obtener cuentas bancarias de Alegra')
+
+    # 2. Obtener movimientos de cada cuenta
+    all_movements = []
+    for account in bank_accounts:
+        account_id = account.get('id')
+        params: dict = {'start': 0, 'limit': 200}
+        if date_from: params['date_start'] = date_from
+        if date_to:   params['date_end']   = date_to
+        try:
+            movements = await alegra_request(
+                'GET', f'bank-accounts/{account_id}/bank-movements', email, token, params=params
+            )
+            if movements and isinstance(movements, list):
+                for mov in movements:
+                    mov['_account_name'] = account.get('name', '')
+                    mov['_account_id']   = str(account_id)
+                all_movements.extend(movements)
+        except Exception as exc:
+            logger.warning(f'Error obteniendo movimientos de cuenta {account_id}: {exc}')
+
+    if not all_movements:
+        return {'success': True, 'message': 'Sin movimientos bancarios en el período', 'matches': [], 'total_movements': 0}
+
+    # 3. CFDIs pendientes de Alegra como candidatos a conciliar
+    cfdi_query: dict = {
+        'company_id':         company_id,
+        'source':             'alegra',
+        'estado_conciliacion': {'$in': ['pendiente', 'parcial']},
+        'estatus':            {'$ne': 'cancelado'},
+    }
+    if date_from:
+        cfdi_query['fecha_emision'] = {'$gte': date_from}
+    cfdis_pendientes = await db.cfdis.find(cfdi_query, {'_id': 0}).to_list(5000)
+
+    # 4. Algoritmo de matching multi-criterio
+    matches: list = []
+    unmatched: list = []
+
+    for mov in all_movements:
+        mov_raw_amount = float(mov.get('amount', 0) or 0)
+        mov_amount = abs(mov_raw_amount)
+        if mov_amount < 0.01:
+            continue
+
+        mov_date = str(mov.get('date', ''))[:10]
+        mov_desc = (mov.get('description') or mov.get('observations') or '').lower()
+        mov_tipo = 'ingreso' if mov_raw_amount > 0 else 'egreso'
+
+        # Filtrar por fecha si se especificó
+        if date_from and mov_date and mov_date < date_from:
+            continue
+        if date_to and mov_date and mov_date > date_to:
+            continue
+
+        best_cfdi  = None
+        best_score = 0.0
+        best_reasons: list = []
+
+        for cfdi in cfdis_pendientes:
+            if cfdi.get('tipo_cfdi') != mov_tipo:
+                continue
+
+            cfdi_total  = float(cfdi.get('total', 0) or 0)
+            cfdi_cobrado = float(cfdi.get('monto_cobrado', 0) or 0)
+            cfdi_pagado  = float(cfdi.get('monto_pagado', 0) or 0)
+            saldo_pendiente = cfdi_total - (cfdi_cobrado if mov_tipo == 'ingreso' else cfdi_pagado)
+            if saldo_pendiente < 0.01:
+                continue
+
+            score   = 0.0
+            reasons: list = []
+
+            # Criterio A: monto (peso 50%)
+            if abs(mov_amount - cfdi_total) < 0.02:
+                score += 0.50; reasons.append('monto_exacto')
+            elif abs(mov_amount - saldo_pendiente) < 0.02:
+                score += 0.42; reasons.append('monto_saldo_exacto')
+            elif cfdi_total > 0 and abs(mov_amount - cfdi_total) / cfdi_total < 0.02:
+                score += 0.30; reasons.append('monto_aproximado_2pct')
+
+            # Criterio B: fecha (peso 25%)
+            cfdi_fecha = str(cfdi.get('fecha_vencimiento') or cfdi.get('fecha_emision', ''))[:10]
+            if cfdi_fecha and mov_date:
+                try:
+                    dias = abs((date.fromisoformat(mov_date) - date.fromisoformat(cfdi_fecha)).days)
+                    if dias <= 3:
+                        score += 0.25; reasons.append(f'fecha_±{dias}d')
+                    elif dias <= 15:
+                        score += 0.15; reasons.append(f'fecha_±{dias}d')
+                    elif dias <= 45:
+                        score += 0.05; reasons.append(f'fecha_±{dias}d')
+                except Exception:
+                    pass
+
+            # Criterio C: nombre en descripción (peso 25%)
+            nombres = [
+                (cfdi.get('receptor_nombre') or '').lower(),
+                (cfdi.get('emisor_nombre') or '').lower(),
+            ]
+            for nombre in nombres:
+                if nombre and len(nombre) >= 4 and nombre[:6] in mov_desc:
+                    score += 0.25; reasons.append('nombre_en_descripcion'); break
+
+            ref = (cfdi.get('referencia') or '').lower()
+            if ref and len(ref) >= 3 and ref in mov_desc:
+                score += 0.10; reasons.append('referencia_encontrada')
+
+            score = min(round(score, 3), 1.0)
+            if score > best_score:
+                best_score   = score
+                best_cfdi    = cfdi
+                best_reasons = reasons
+
+        if best_cfdi and best_score >= confidence_threshold:
+            cfdi_total_m = float(best_cfdi.get('total', 0) or 0)
+            cobrado_m    = float(best_cfdi.get('monto_cobrado', 0) or 0)
+            pagado_m     = float(best_cfdi.get('monto_pagado', 0) or 0)
+            saldo_m = cfdi_total_m - (cobrado_m if mov_tipo == 'ingreso' else pagado_m)
+
+            match_doc = {
+                'match_id':   str(uuid.uuid4()),
+                'company_id': company_id,
+                'movement': {
+                    'alegra_id':      str(mov.get('id', '')),
+                    'date':           mov_date,
+                    'amount':         mov_amount,
+                    'type':           mov_tipo,
+                    'description':    mov.get('description') or mov.get('observations', ''),
+                    'bank_account':   mov.get('_account_name', ''),
+                    'bank_account_id': mov.get('_account_id', ''),
+                },
+                'cfdi': {
+                    'id':             best_cfdi.get('id', ''),
+                    'uuid':           best_cfdi.get('uuid', ''),
+                    'tipo_cfdi':      best_cfdi.get('tipo_cfdi', ''),
+                    'receptor_nombre': best_cfdi.get('receptor_nombre', ''),
+                    'emisor_nombre':  best_cfdi.get('emisor_nombre', ''),
+                    'total':          cfdi_total_m,
+                    'saldo_pendiente': round(saldo_m, 2),
+                    'fecha_emision':  str(best_cfdi.get('fecha_emision', ''))[:10],
+                    'fecha_vencimiento': str(best_cfdi.get('fecha_vencimiento', ''))[:10],
+                    'referencia':     best_cfdi.get('referencia', ''),
+                },
+                'confidence':     best_score,
+                'confidence_pct': round(best_score * 100, 1),
+                'reasons':        best_reasons,
+                'status':         'pending_approval',
+                'created_at':     datetime.now(timezone.utc).isoformat(),
+            }
+            await db.alegra_reconciliation_matches.update_one(
+                {'company_id': company_id, 'movement.alegra_id': match_doc['movement']['alegra_id']},
+                {'$set': match_doc},
+                upsert=True
+            )
+            matches.append(match_doc)
+        else:
+            unmatched.append({
+                'alegra_id':  str(mov.get('id', '')),
+                'date':       mov_date,
+                'amount':     mov_amount,
+                'type':       mov_tipo,
+                'description': mov.get('description') or '',
+                'best_score': best_score,
+            })
+
+    matches.sort(key=lambda x: x['confidence'], reverse=True)
+
+    return {
+        'success':            True,
+        'total_movements':    len(all_movements),
+        'matches_found':      len(matches),
+        'unmatched':          len(unmatched),
+        'confidence_threshold': confidence_threshold,
+        'matches':            matches,
+        'unmatched_movements': unmatched[:30],
+        'message':            f'{len(matches)} movimientos cruzados con CFDIs (confianza ≥ {confidence_threshold*100:.0f}%)',
+    }
+
+
+@router.get("/reconciliation/pending")
+async def get_pending_reconciliation_matches(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Lista matches de conciliación pendientes de aprobación."""
+    company_id = await get_active_company_id(request, current_user)
+    matches = await db.alegra_reconciliation_matches.find(
+        {'company_id': company_id, 'status': 'pending_approval'},
+        {'_id': 0}
+    ).sort('confidence', -1).to_list(200)
+    return {'success': True, 'count': len(matches), 'matches': matches}
+
+
+@router.post("/reconciliation/approve/{match_id}")
+async def approve_alegra_reconciliation(
+    match_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    monto_aplicar: Optional[float] = Query(None, description="Monto a aplicar (default: monto del movimiento)"),
+):
+    """Aprueba un match y actualiza el CFDI + crea registro de pago."""
+    company_id = await get_active_company_id(request, current_user)
+
+    match = await db.alegra_reconciliation_matches.find_one(
+        {'match_id': match_id, 'company_id': company_id}, {'_id': 0}
+    )
+    if not match:
+        raise HTTPException(status_code=404, detail='Match no encontrado')
+    if match.get('status') == 'approved':
+        raise HTTPException(status_code=400, detail='Este match ya fue aprobado')
+
+    cfdi_id    = match['cfdi']['id']
+    mov_amount = monto_aplicar or match['movement']['amount']
+    tipo_cfdi  = match['cfdi']['tipo_cfdi']
+
+    cfdi = await db.cfdis.find_one({'id': cfdi_id, 'company_id': company_id}, {'_id': 0})
+    if not cfdi:
+        raise HTTPException(status_code=404, detail='CFDI no encontrado')
+
+    cfdi_total = float(cfdi.get('total', 0) or 0)
+    now_iso    = datetime.now(timezone.utc).isoformat()
+
+    if tipo_cfdi == 'ingreso':
+        ya          = float(cfdi.get('monto_cobrado', 0) or 0)
+        nuevo       = round(min(ya + mov_amount, cfdi_total), 2)
+        nuevo_estado = 'conciliado' if nuevo >= cfdi_total - 0.01 else 'parcial'
+        await db.cfdis.update_one(
+            {'id': cfdi_id, 'company_id': company_id},
+            {'$set': {'monto_cobrado': nuevo, 'estado_conciliacion': nuevo_estado, 'updated_at': now_iso}}
+        )
+    else:
+        ya          = float(cfdi.get('monto_pagado', 0) or 0)
+        nuevo       = round(min(ya + mov_amount, cfdi_total), 2)
+        nuevo_estado = 'conciliado' if nuevo >= cfdi_total - 0.01 else 'parcial'
+        await db.cfdis.update_one(
+            {'id': cfdi_id, 'company_id': company_id},
+            {'$set': {'monto_pagado': nuevo, 'estado_conciliacion': nuevo_estado, 'updated_at': now_iso}}
+        )
+
+    await db.alegra_reconciliation_matches.update_one(
+        {'match_id': match_id},
+        {'$set': {'status': 'approved', 'approved_by': current_user['id'],
+                  'approved_at': now_iso, 'monto_aplicado': round(mov_amount, 2)}}
+    )
+
+    beneficiario = match['cfdi']['receptor_nombre'] or match['cfdi']['emisor_nombre']
+    await db.payments.insert_one({
+        'id':                  str(uuid.uuid4()),
+        'company_id':          company_id,
+        'cfdi_id':             cfdi_id,
+        'cfdi_uuid':           cfdi.get('uuid'),
+        'tipo':                'cobro' if tipo_cfdi == 'ingreso' else 'pago',
+        'concepto':            f"Conciliación Alegra — {match['movement']['description'][:80]}",
+        'monto':               round(mov_amount, 2),
+        'moneda':              'MXN',
+        'fecha_pago':          match['movement']['date'],
+        'fecha_vencimiento':   match['movement']['date'],
+        'estatus':             'completado',
+        'es_real':             True,
+        'source':              'alegra_reconciliation',
+        'alegra_movement_id':  match['movement']['alegra_id'],
+        'beneficiario':        beneficiario,
+        'created_at':          now_iso,
+    })
+
+    return {
+        'success':       True,
+        'message':       f'Conciliación aprobada. CFDI {nuevo_estado}.',
+        'cfdi_id':       cfdi_id,
+        'monto_aplicado': round(mov_amount, 2),
+        'nuevo_estado':  nuevo_estado,
+    }
+
+
+@router.post("/reconciliation/reject/{match_id}")
+async def reject_alegra_reconciliation(
+    match_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    motivo: str = Query('', description="Motivo del rechazo"),
+):
+    """Rechaza un match propuesto por la IA."""
+    company_id = await get_active_company_id(request, current_user)
+
+    match = await db.alegra_reconciliation_matches.find_one(
+        {'match_id': match_id, 'company_id': company_id}, {'_id': 0}
+    )
+    if not match:
+        raise HTTPException(status_code=404, detail='Match no encontrado')
+
+    await db.alegra_reconciliation_matches.update_one(
+        {'match_id': match_id},
+        {'$set': {'status': 'rejected', 'rejected_by': current_user['id'],
+                  'rejected_at': datetime.now(timezone.utc).isoformat(),
+                  'motivo_rechazo': motivo}}
+    )
+    return {'success': True, 'message': 'Match rechazado', 'match_id': match_id}

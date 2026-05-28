@@ -91,12 +91,12 @@ async def delete_category(category_id: str, request: Request, current_user: Dict
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
     
     await db.categories.update_one(
-        {'id': category_id},
+        {'id': category_id, 'company_id': company_id},
         {'$set': {'activo': False}}
     )
     # Also deactivate subcategories
     await db.subcategories.update_many(
-        {'category_id': category_id},
+        {'category_id': category_id, 'company_id': company_id},
         {'$set': {'activo': False}}
     )
     await audit_log(company_id, 'Category', category_id, 'DELETE', current_user['id'])
@@ -131,7 +131,7 @@ async def delete_subcategory(subcategory_id: str, request: Request, current_user
         raise HTTPException(status_code=404, detail="Subcategoría no encontrada")
     
     await db.subcategories.update_one(
-        {'id': subcategory_id},
+        {'id': subcategory_id, 'company_id': company_id},
         {'$set': {'activo': False}}
     )
     await audit_log(company_id, 'SubCategory', subcategory_id, 'DELETE', current_user['id'])

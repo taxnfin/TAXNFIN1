@@ -107,8 +107,12 @@ def parse_balance_general(ws) -> dict:
         label_der = clean_label(str(col_d)) if col_d else ''
         val_der   = clean_value(col_e)
 
-        # Detectar sección derecha
-        if label_der.upper() == 'CAPITAL':
+        # Detectar sección derecha.
+        # Contalink puede usar "CAPITAL", "CAPITAL CONTABLE", "III. CAPITAL CONTABLE", etc.
+        # Los encabezados de sección siempre tienen val_der == 0 y no son filas de Total.
+        if (label_der and val_der == 0
+                and 'CAPITAL' in label_der.upper()
+                and not label_der.strip().startswith('Total')):
             current_section_derecha = 'capital'
 
         # Procesar columna izquierda (ACTIVO)
@@ -597,24 +601,27 @@ async def import_estado_financiero(
 
 @router.post("/save")
 async def save_estado_financiero(
+    request: Request,
     payload: dict,
     current_user: dict = Depends(get_current_user),
 ):
     """
     Guarda el estado financiero parseado en MongoDB para historial.
     """
+    company_id = await get_active_company_id(request, current_user)
     collection = db['estados_financieros_contalink']
 
     doc = {
         **payload,
-        'empresa_id':   get_active_company_id(current_user),
+        'empresa_id':   company_id,
+        'company_id':   company_id,
         'usuario_id':   current_user.get('id'),
         'importado_en': datetime.utcnow().isoformat(),
     }
 
     # Evitar duplicados por tipo + fecha
     existing = await collection.find_one({
-        'empresa_id': doc['empresa_id'],
+        'empresa_id': company_id,
         'tipo':       doc.get('tipo'),
         'fecha':      doc.get('fecha'),
     })
@@ -628,11 +635,12 @@ async def save_estado_financiero(
 
 
 @router.get("/history")
-async def get_history(current_user: dict = Depends(get_current_user)):
+async def get_history(request: Request, current_user: dict = Depends(get_current_user)):
     """Retorna historial de estados financieros importados."""
+    company_id = await get_active_company_id(request, current_user)
     collection = db['estados_financieros_contalink']
     docs = await collection.find(
-        {'empresa_id': current_user.get('empresa_id')},
+        {'$or': [{'company_id': company_id}, {'empresa_id': company_id}]},
         {'_id': 0, 'tipo': 1, 'fecha': 1, 'empresa': 1, 'importado_en': 1, 'resumen': 1}
     ).sort('importado_en', -1).limit(24).to_list(24)
     return {'success': True, 'data': docs}

@@ -254,6 +254,13 @@ const BoardReport = () => {
     }
   };
 
+  // RFC limpio — devuelve vacío cuando el RFC es placeholder ("PENDIENTE", "XAXX010101000", etc.)
+  const getDisplayRfc = (rfc) => {
+    if (!rfc) return '';
+    const PLACEHOLDERS = ['PENDIENTE', 'XAXX010101000', 'N/A', 'NA', '-', '—'];
+    return PLACEHOLDERS.includes(rfc.toUpperCase().trim()) ? '' : rfc;
+  };
+
   // Convert a value originally stored in MXN to the currently-selected
   // viewCurrency using the global FX rates table.
   const convertFromMXN = (mxnValue) => {
@@ -428,7 +435,7 @@ const BoardReport = () => {
       const met = currentMetrics.metrics || {};
       const payload = {
         empresa: company?.nombre || 'Mi Empresa',
-        rfc: company?.rfc || '',
+        rfc: getDisplayRfc(company?.rfc),
         periodo: selectedPeriod,
         ingresos: inc.ingresos || 0,
         costo_ventas: inc.costo_ventas || 0,
@@ -576,7 +583,7 @@ const BoardReport = () => {
       const bal = currentMetrics?.balance_sheet || {};
       const payload = {
         empresa: company?.nombre || 'Empresa',
-        rfc: company?.rfc || '',
+        rfc: getDisplayRfc(company?.rfc),
         periodo: selectedPeriod,
         income_statement: inc,
         balance_sheet: bal,
@@ -808,7 +815,7 @@ tr:last-child td{border-bottom:none}
 <div class="header">
   <div>
     <div class="h1">${company.nombre || 'Empresa'}</div>
-    <div class="h2">RFC: ${company.rfc || '—'} &nbsp;·&nbsp; Reporte ejecutivo mensual &nbsp;·&nbsp; Análisis: TaxnFin · Claude Sonnet</div>
+    <div class="h2">${getDisplayRfc(company.rfc) ? `RFC: ${getDisplayRfc(company.rfc)} &nbsp;·&nbsp; ` : ''}Reporte ejecutivo mensual &nbsp;·&nbsp; Análisis: TaxnFin · Claude Sonnet</div>
   </div>
   <div style="text-align:right">
     <div class="badge">${selectedPeriod}</div>
@@ -884,7 +891,7 @@ tr:last-child td{border-bottom:none}
 </div>
 
 <div class="footer">
-  <span>${company.nombre || 'Empresa'} &nbsp;·&nbsp; RFC: ${company.rfc || '—'} &nbsp;·&nbsp; ${selectedPeriod}</span>
+  <span>${company.nombre || 'Empresa'}${getDisplayRfc(company.rfc) ? ` &nbsp;·&nbsp; RFC: ${getDisplayRfc(company.rfc)}` : ''} &nbsp;·&nbsp; ${selectedPeriod}</span>
   <span>Análisis: TaxnFin · Claude Sonnet &nbsp;·&nbsp; ${new Date().toLocaleDateString('es-MX')}</span>
 </div>
 </body></html>`;
@@ -1411,10 +1418,10 @@ tr:last-child td{border-bottom:none}
       pdf.text(dateText, (pageWidth - dateWidth) / 2, pageHeight - 30);
       
       // RFC at very bottom
-      if (company?.rfc) {
+      if (getDisplayRfc(company?.rfc)) {
         pdf.setFontSize(9);
         pdf.setTextColor(71, 85, 105);
-        const rfcText = `RFC: ${company.rfc}`;
+        const rfcText = `RFC: ${getDisplayRfc(company.rfc)}`;
         const rfcWidth = pdf.getTextWidth(rfcText);
         pdf.text(rfcText, (pageWidth - rfcWidth) / 2, pageHeight - 20);
       }

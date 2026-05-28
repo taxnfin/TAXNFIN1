@@ -558,6 +558,8 @@ async def get_cashflow_movements(
     periodo: Optional[str] = None,
     tipo: Optional[str] = None,
     source: Optional[str] = None,
+    fecha_from: Optional[str] = None,
+    fecha_to: Optional[str] = None,
     current_user: Dict = Depends(get_current_user)
 ):
     """Lista movimientos sincronizados del cashflow"""
@@ -566,13 +568,25 @@ async def get_cashflow_movements(
     if periodo: query["periodo"] = periodo
     if tipo:    query["tipo"]    = tipo
     if source:  query["source"]  = source
+    # Filtro por rango de fechas — permite consultar movimientos de enero y meses anteriores
+    if fecha_from or fecha_to:
+        fecha_filter: dict = {}
+        if fecha_from: fecha_filter["$gte"] = fecha_from
+        if fecha_to:   fecha_filter["$lte"] = fecha_to
+        query["fecha"] = fecha_filter
 
     movs = await db.cashflow_movements.find(
         query, {"_id": 0}
     ).sort("fecha", -1).to_list(1000)
 
-    total_ingresos = sum(m["monto"] for m in movs if m.get("tipo") == "ingreso" or m in [m2 for m2 in movs if m2.get("categoria_code", "").startswith("ING")])
-    total_egresos  = sum(m["monto"] for m in movs if m.get("categoria_code", "").startswith("EGR"))
+    total_ingresos = sum(
+        m["monto"] for m in movs
+        if m.get("categoria_code", "").startswith("ING") or m.get("tipo") == "ingreso"
+    )
+    total_egresos = sum(
+        m["monto"] for m in movs
+        if m.get("categoria_code", "").startswith("EGR") or m.get("tipo") == "egreso"
+    )
 
     return {
         "movements":      movs,
@@ -744,7 +758,7 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
 
         try:
             await db.payments.update_one(
-                {"_id": object_id},
+                {"_id": object_id, "company_id": company_id},
                 {"$set": {
                     "category_id":   category_code,
                     "category_name": cat_doc["nombre"],

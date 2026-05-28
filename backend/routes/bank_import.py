@@ -258,12 +258,19 @@ def parse_banbajio_pdf(text: str, tables: List, pdf, saldo_inicial: float = None
                 cleaned = re.sub(r'(\w)\s+(?=\w)', r'\1', desc)
                 return cleaned
         
-        # Also fix common patterns like "CO MISION" -> "COMISION"
+        # Fix space-separated words — BanBajío PDFs a veces separan letras con espacios
+        # e.g. "E N V Í O" -> "ENVÍO", "C O M I S I O N" -> "COMISION"
         common_fixes = [
+            # Patrones de palabra completa con letras separadas (más específicos primero)
+            (r'E\s*N\s*V\s*[IÍ]\s*O', 'ENVÍO'),
+            (r'D\s*E\s*P\s*[OÓ]\s*S\s*I\s*T\s*O', 'DEPOSITO'),
+            (r'C\s*O\s*M\s*I\s*S\s*I\s*[OÓ]\s*N', 'COMISION'),
+            (r'R\s*E\s*T\s*I\s*R\s*O', 'RETIRO'),
+            (r'T\s*R\s*A\s*S\s*P\s*A\s*S\s*O', 'TRASPASO'),
+            (r'P\s*A\s*G\s*O', 'PAGO'),
+            (r'T\s*R\s*A\s*N\s*S\s*F\s*E\s*R\s*E\s*N\s*C\s*I\s*A', 'TRANSFERENCIA'),
+            # Patrones simples de dos-palabras pegadas con espacio
             (r'CO\s+MISION', 'COMISION'),
-            (r'IVA\s+CO', 'IVA CO'),
-            (r'EN\s+VÍO', 'ENVÍO'),
-            (r'EN\s+VIO', 'ENVIO'),
             (r'DE\s+POSITO', 'DEPOSITO'),
             (r'PA\s+GO', 'PAGO'),
             (r'RE\s+TIRO', 'RETIRO'),
