@@ -814,7 +814,7 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
             continue
 
         coll = col_map.get(item["_col"])
-        if not coll:
+        if coll is None:
             continue
 
         try:
