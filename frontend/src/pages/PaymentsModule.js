@@ -645,31 +645,38 @@ const PaymentsModule = () => {
 
     try {
       // --- Contalink ---
+      // contalinkConfigured = true when Contalink is set up (200 success OR non-400 error).
+      // 400 means "not configured" → skip silently.
+      let contalinkConfigured = false;
       try {
         const res = await api.post('/payments/sync-contalink');
         results.push(`Contalink: ${res.data.message || 'sincronizado'}`);
         anySuccess = true;
+        contalinkConfigured = true;
       } catch (err) {
         const detail = err.response?.data?.detail || '';
-        // 400 = not configured → skip silently; anything else → report
         if (err.response?.status !== 400) {
+          // Contalink exists but sync failed — still counts as a Contalink company
           results.push(`Contalink: ${detail || 'Error'}`);
+          contalinkConfigured = true;
         }
       }
 
-      // --- Alegra ---
-      try {
-        const statusRes = await api.get('/alegra/status');
-        if (statusRes.data?.connected) {
-          const res = await api.post('/alegra/sync/payments');
-          const stats = res.data?.stats || {};
-          results.push(`Alegra: ${stats.created || 0} nuevos, ${stats.updated || 0} actualizados`);
-          anySuccess = true;
-        }
-      } catch (err) {
-        const detail = err.response?.data?.detail || '';
-        if (detail && !detail.toLowerCase().includes('no está conectado')) {
-          results.push(`Alegra: ${detail}`);
+      // --- Alegra — only for companies that do NOT use Contalink ---
+      if (!contalinkConfigured) {
+        try {
+          const statusRes = await api.get('/alegra/status');
+          if (statusRes.data?.connected) {
+            const res = await api.post('/alegra/sync/payments');
+            const stats = res.data?.stats || {};
+            results.push(`Alegra: ${stats.created || 0} nuevos, ${stats.updated || 0} actualizados`);
+            anySuccess = true;
+          }
+        } catch (err) {
+          const detail = err.response?.data?.detail || '';
+          if (detail && !detail.toLowerCase().includes('no está conectado')) {
+            results.push(`Alegra: ${detail}`);
+          }
         }
       }
 

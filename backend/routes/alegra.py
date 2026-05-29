@@ -868,6 +868,18 @@ async def sync_alegra_payments(
     if not company.get('alegra_connected'):
         raise HTTPException(status_code=400, detail="Alegra no está conectado")
 
+    # Mutual exclusion: companies with active Contalink must not sync Alegra payments
+    contalink_active = await db.integrations.find_one({
+        'company_id': company_id,
+        'type': 'contalink',
+        'active': True,
+    }, {'_id': 1})
+    if contalink_active:
+        raise HTTPException(
+            status_code=400,
+            detail="Esta empresa usa Contalink. Alegra sync no aplica."
+        )
+
     email = company.get('alegra_email')
     token = company.get('alegra_token')
 
