@@ -654,7 +654,7 @@ async def auto_categorize_payments(
     cat_by_code = {c["code"]: c for c in all_categories}
 
     # 2. Cargar documentos sin categoría de las tres colecciones
-    no_cat_filter = [{"category_id": None}, {"category_id": {"$exists": False}}]
+    no_cat_filter = [{"category_id": None}, {"category_id": {"$exists": False}}, {"category_id": ""}]
 
     pay_q: dict = {"company_id": company_id}
     if solo_sin_categoria:
@@ -928,7 +928,7 @@ async def get_categorization_status(
     total = await db.payments.count_documents({"company_id": company_id})
     sin_cat = await db.payments.count_documents({
         "company_id": company_id,
-        "$or": [{"category_id": None}, {"category_id": {"$exists": False}}]
+        "$or": [{"category_id": None}, {"category_id": {"$exists": False}}, {"category_id": ""}]
     })
     por_ia = await db.payments.count_documents({
         "company_id": company_id, "categorized_by": "ai"

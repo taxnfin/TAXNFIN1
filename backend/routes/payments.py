@@ -542,10 +542,11 @@ async def backfill_payment_categories(request: Request, current_user: Dict = Dep
     errors = []
     
     for payment in payments_to_update:
-        cfdi = await db.cfdis.find_one({'id': payment['cfdi_id']}, {'_id': 0, 'category_id': 1, 'subcategory_id': 1, 'uuid': 1, 'emisor_nombre': 1, 'receptor_nombre': 1})
+        cfdi = await db.cfdis.find_one({'id': payment['cfdi_id']}, {'_id': 0, 'category_id': 1, 'category_name': 1, 'subcategory_id': 1, 'uuid': 1, 'emisor_nombre': 1, 'receptor_nombre': 1})
         if cfdi and cfdi.get('category_id'):
             update_data = {
                 'category_id': cfdi.get('category_id'),
+                'category_name': cfdi.get('category_name'),
                 'subcategory_id': cfdi.get('subcategory_id'),
                 'cfdi_uuid': cfdi.get('uuid'),
                 'cfdi_emisor': cfdi.get('emisor_nombre'),
