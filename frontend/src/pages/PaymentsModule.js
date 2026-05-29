@@ -1608,24 +1608,25 @@ const PaymentsModule = () => {
             onClick={async () => {
               setSyncingCategories(true);
               try {
-                const res = await api.post('/payments/backfill-categories');
-                if (res.data.updated_count > 0) {
-                  toast.success(`Se actualizaron ${res.data.updated_count} pagos con categorías de CFDIs`);
+                const res = await api.post('/cashflow-sync/auto-categorize?limit=200');
+                const { updated, processed } = res.data;
+                if (updated > 0) {
+                  toast.success(`✅ ${updated} de ${processed} pagos categorizados con IA`);
                   loadData();
                 } else {
-                  toast.info('Todos los pagos ya tienen sus categorías actualizadas');
+                  toast.info('Todos los pagos ya tienen categoría asignada');
                 }
               } catch (error) {
                 console.error('Error sincronizando categorías:', error);
-                toast.error(error.response?.data?.detail || 'Error actualizando categorías');
+                toast.error(error.response?.data?.detail || 'Error categorizando pagos');
               } finally {
                 setSyncingCategories(false);
               }
             }}
-            title="Actualiza pagos existentes con la categoría/subcategoría de sus CFDIs vinculados"
+            title="Categoriza con IA los pagos sin categoría (Alegra, Contalink y todos los orígenes)"
           >
             <RefreshCw size={14} className={`mr-2 ${syncingCategories ? 'animate-spin' : ''}`} />
-            {syncingCategories ? 'Sincronizando...' : 'Sincronizar Categorías'}
+            {syncingCategories ? 'Categorizando...' : 'Sincronizar Categorías'}
           </Button>
         </CardHeader>
         <CardContent>
