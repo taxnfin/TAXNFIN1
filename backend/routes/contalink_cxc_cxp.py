@@ -459,7 +459,7 @@ Responde SOLO un JSON array sin texto ni backticks:
             res = await http.post("https://api.anthropic.com/v1/messages",
                 headers={"x-api-key": api_key, "anthropic-version": "2023-06-01",
                     "content-type": "application/json"},
-                json={"model": "claude-sonnet-4-5", "max_tokens": 4096,
+                json={"model": "claude-sonnet-4-6", "max_tokens": 4096,
                     "messages": [{"role": "user", "content": prompt}]})
             res.raise_for_status()
             raw_text = res.json()["content"][0]["text"].strip()

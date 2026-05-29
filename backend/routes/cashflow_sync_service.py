@@ -769,7 +769,7 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
                     "content-type": "application/json",
                 },
                 json={
-                    "model": "claude-sonnet-4-5",
+                    "model": "claude-sonnet-4-6",
                     "max_tokens": 8192,
                     "messages": [{"role": "user", "content": prompt}],
                 },
