@@ -59,6 +59,7 @@ const PaymentsModule = () => {
   const [masMenuOpen, setMasMenuOpen] = useState(false);
   const [uploadingHistorico, setUploadingHistorico] = useState(false); // 'real', 'proyeccion', 'breakdown'
   const [autoCategorizing, setAutoCategorizing] = useState(false);
+  const [syncingCategories, setSyncingCategories] = useState(false);
   
   // Import from bank movements dialog
   const [importBankDialogOpen, setImportBankDialogOpen] = useState(false);
@@ -1600,10 +1601,12 @@ const PaymentsModule = () => {
               ))}
             </div>
           </div>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             size="sm"
+            disabled={syncingCategories}
             onClick={async () => {
+              setSyncingCategories(true);
               try {
                 const res = await api.post('/payments/backfill-categories');
                 if (res.data.updated_count > 0) {
@@ -1613,13 +1616,16 @@ const PaymentsModule = () => {
                   toast.info('Todos los pagos ya tienen sus categorías actualizadas');
                 }
               } catch (error) {
-                toast.error('Error actualizando categorías');
+                console.error('Error sincronizando categorías:', error);
+                toast.error(error.response?.data?.detail || 'Error actualizando categorías');
+              } finally {
+                setSyncingCategories(false);
               }
             }}
             title="Actualiza pagos existentes con la categoría/subcategoría de sus CFDIs vinculados"
           >
-            <RefreshCw size={14} className="mr-2" />
-            Sincronizar Categorías
+            <RefreshCw size={14} className={`mr-2 ${syncingCategories ? 'animate-spin' : ''}`} />
+            {syncingCategories ? 'Sincronizando...' : 'Sincronizar Categorías'}
           </Button>
         </CardHeader>
         <CardContent>

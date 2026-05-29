@@ -527,13 +527,14 @@ async def backfill_payment_categories(request: Request, current_user: Dict = Dep
     """
     company_id = await get_active_company_id(request, current_user)
     
-    # Find all payments with cfdi_id but missing category
+    # Find all payments with cfdi_id but missing or empty category
     payments_to_update = await db.payments.find({
         'company_id': company_id,
         'cfdi_id': {'$ne': None, '$exists': True},
         '$or': [
             {'category_id': None},
-            {'category_id': {'$exists': False}}
+            {'category_id': {'$exists': False}},
+            {'category_id': ''},
         ]
     }, {'_id': 0, 'id': 1, 'cfdi_id': 1}).to_list(10000)
     
