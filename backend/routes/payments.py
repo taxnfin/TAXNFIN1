@@ -526,8 +526,22 @@ async def backfill_payment_categories(request: Request, current_user: Dict = Dep
     This updates payments that have cfdi_id but are missing category_id/subcategory_id.
     """
     company_id = await get_active_company_id(request, current_user)
-    
-    # Find all payments with cfdi_id but missing or empty category
+
+    # Check first if any payments are linked to CFDIs at all
+    total_with_cfdi = await db.payments.count_documents({
+        'company_id': company_id,
+        'cfdi_id': {'$ne': None, '$exists': True},
+    })
+    if total_with_cfdi == 0:
+        return {
+            'status': 'no_cfdi_payments',
+            'message': 'No hay pagos vinculados a CFDI para categorizar. Usa Auto-categorizar con IA para los demás pagos.',
+            'updated_count': 0,
+            'total_checked': 0,
+            'errors': []
+        }
+
+    # Find payments with cfdi_id that are missing or empty category
     payments_to_update = await db.payments.find({
         'company_id': company_id,
         'cfdi_id': {'$ne': None, '$exists': True},
@@ -537,7 +551,7 @@ async def backfill_payment_categories(request: Request, current_user: Dict = Dep
             {'category_id': ''},
         ]
     }, {'_id': 0, 'id': 1, 'cfdi_id': 1}).to_list(10000)
-    
+
     updated_count = 0
     errors = []
     
