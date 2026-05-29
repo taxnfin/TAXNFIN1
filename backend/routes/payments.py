@@ -932,9 +932,11 @@ async def get_payments_breakdown(request: Request, current_user: Dict = Depends(
 @router.post("/sync-contalink")
 async def sync_payments_from_contalink(
     request: Request,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(get_current_user),
+    date_from: str = Query(None, description="Fecha inicio YYYY-MM-DD (default: 1 año atrás)"),
+    date_to: str = Query(None, description="Fecha fin YYYY-MM-DD (default: hoy)"),
 ):
-    """Sincroniza cobranza y pagos desde Contalink"""
+    """Sincroniza cobranza y pagos desde Contalink para un rango de fechas configurable."""
     company_id = await get_active_company_id(request, current_user)
 
     # Buscar credenciales con formato de contalink.py (type="contalink")
@@ -962,15 +964,25 @@ async def sync_payments_from_contalink(
     errors = []
 
     now = datetime.now(timezone.utc)
-    for months_back in range(3):
-        if months_back == 0:
-            target = now
-        else:
-            first_of_month = now.replace(day=1)
-            target = first_of_month - timedelta(days=30 * months_back)
 
-        year = target.year
-        month = target.month
+    # Parse or default the date range
+    dt_to = datetime.strptime(date_to, "%Y-%m-%d").replace(tzinfo=timezone.utc) if date_to else now
+    dt_from = (
+        datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        if date_from
+        else dt_to.replace(year=dt_to.year - 1)
+    )
+
+    # Build list of (year, month) pairs covering the full range
+    months_to_sync = []
+    cur = dt_from.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    end_month = dt_to.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    while cur <= end_month:
+        months_to_sync.append((cur.year, cur.month))
+        # Advance to next month safely
+        cur = (cur.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+    for year, month in months_to_sync:
         last_day = cal.monthrange(year, month)[1]
         start = f"{year}-{month:02d}-01"
         end = f"{year}-{month:02d}-{last_day:02d}"
@@ -1151,12 +1163,26 @@ async def sync_payments_from_contalink(
             errors.append(f"Recibidas {start}: {str(e)}")
             logger.error(f"sync-contalink received error: {e}")
 
+    # Persist sync range to integrations record for reference
+    await db.integrations.update_one(
+        {"company_id": company_id, "type": "contalink", "active": True},
+        {"$set": {
+            "last_sync_from": dt_from.strftime("%Y-%m-%d"),
+            "last_sync_to":   dt_to.strftime("%Y-%m-%d"),
+            "last_sync_at":   now.isoformat(),
+            "last_sync_created": created,
+        }}
+    )
+
     return {
         "success": True,
         "created": created,
         "skipped": skipped,
         "errors":  errors,
-        "message": f"Contalink sync: {created} movimientos importados, {skipped} ya existian.",
+        "sync_from": dt_from.strftime("%Y-%m-%d"),
+        "sync_to":   dt_to.strftime("%Y-%m-%d"),
+        "months_synced": len(months_to_sync),
+        "message": f"Contalink sync ({dt_from.strftime('%Y-%m-%d')} → {dt_to.strftime('%Y-%m-%d')}): {created} importados, {skipped} ya existían.",
     }
 
 @router.post("/fix-contalink-status")

@@ -55,6 +55,9 @@ const PaymentsModule = () => {
   const [useCustomTc, setUseCustomTc] = useState(false);
   const [activeTab, setActiveTab] = useState('real');
   const [syncingContalink, setSyncingContalink] = useState(false);
+  const [syncDateDialogOpen, setSyncDateDialogOpen] = useState(false);
+  const [syncDateFrom, setSyncDateFrom] = useState('');
+  const [syncDateTo, setSyncDateTo] = useState('');
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [masMenuOpen, setMasMenuOpen] = useState(false);
   const [uploadingHistorico, setUploadingHistorico] = useState(false); // 'real', 'proyeccion', 'breakdown'
@@ -638,7 +641,7 @@ const PaymentsModule = () => {
   };
 
   // Sync all connected ERPs (Contalink + Alegra) to db.payments
-  const handleSyncContalink = async () => {
+  const handleSyncContalink = async (dateFrom = null, dateTo = null) => {
     setSyncingContalink(true);
     const results = [];
     let anySuccess = false;
@@ -649,7 +652,11 @@ const PaymentsModule = () => {
       // 400 means "not configured" → skip silently.
       let contalinkConfigured = false;
       try {
-        const res = await api.post('/payments/sync-contalink');
+        const params = new URLSearchParams();
+        if (dateFrom) params.append('date_from', dateFrom);
+        if (dateTo) params.append('date_to', dateTo);
+        const url = `/payments/sync-contalink${params.toString() ? '?' + params.toString() : ''}`;
+        const res = await api.post(url);
         results.push(`Contalink: ${res.data.message || 'sincronizado'}`);
         anySuccess = true;
         contalinkConfigured = true;
@@ -824,7 +831,14 @@ const PaymentsModule = () => {
                 }}
               >
                 {[
-                  { icon:'⬇', label:'Sync ERP (Contalink/Alegra)', sub:'Trae datos del período actual', action: () => { setImportMenuOpen(false); handleSyncContalink(); }, loading: syncingContalink },
+                  { icon:'⬇', label:'Sync ERP (Contalink/Alegra)', sub:'Selecciona rango de fechas', action: () => {
+                    setImportMenuOpen(false);
+                    const today = new Date().toISOString().split('T')[0];
+                    const yearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                    setSyncDateFrom(yearAgo);
+                    setSyncDateTo(today);
+                    setSyncDateDialogOpen(true);
+                  }, loading: syncingContalink },
                   { icon:'📂', label:'Histórico Contalink', sub:'Sube Excel INGR-EGRE de meses anteriores', action: () => { setImportMenuOpen(false); document.getElementById('upload-historico-input').click(); } },
                   { icon:'🏦', label:'Desde Banco', sub:'Importa estado de cuenta bancario', action: () => { setImportMenuOpen(false); setImportBankDialogOpen(true); } },
                   { icon:'📄', label:'Importar PDF', sub:'Facturas o comprobantes en PDF', action: () => { setImportMenuOpen(false); setPdfUploaderOpen(true); } },
@@ -2425,6 +2439,51 @@ const PaymentsModule = () => {
         categories={categories}
         bankAccounts={bankAccounts}
       />
+
+      {/* Sync ERP — date range dialog */}
+      <Dialog open={syncDateDialogOpen} onOpenChange={setSyncDateDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rango de sincronización</DialogTitle>
+            <DialogDescription>
+              Selecciona el período a importar desde Contalink / Alegra.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Desde</Label>
+              <Input
+                type="date"
+                value={syncDateFrom}
+                onChange={e => setSyncDateFrom(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Hasta</Label>
+              <Input
+                type="date"
+                value={syncDateTo}
+                onChange={e => setSyncDateTo(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSyncDateDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-[#0F172A]"
+              disabled={!syncDateFrom || !syncDateTo || syncingContalink}
+              onClick={() => {
+                setSyncDateDialogOpen(false);
+                handleSyncContalink(syncDateFrom, syncDateTo);
+              }}
+            >
+              {syncingContalink ? 'Sincronizando...' : 'Sincronizar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
