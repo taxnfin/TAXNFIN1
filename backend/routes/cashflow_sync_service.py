@@ -655,7 +655,14 @@ async def auto_categorize_payments(
     cat_by_code = {c["code"]: c for c in all_categories}
 
     # 2. Cargar documentos sin categoría de las tres colecciones
-    no_cat_filter = [{"category_id": None}, {"category_id": {"$exists": False}}, {"category_id": ""}]
+    no_cat_filter = [
+        {"category_id": None},
+        {"category_id": {"$exists": False}},
+        {"category_id": ""},
+        {"category_name": {"$exists": False}},
+        {"category_name": None},
+        {"category_name": ""},
+    ]
 
     pay_q: dict = {"company_id": company_id}
     if solo_sin_categoria:
@@ -826,7 +833,7 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
             continue
 
         try:
-            await coll.update_one(
+            result = await coll.update_one(
                 {"_id": item["_oid"], "company_id": company_id},
                 {"$set": {
                     "category_id":    category_code,
@@ -835,13 +842,24 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
                     "categorized_at": datetime.now(timezone.utc).isoformat(),
                 }}
             )
-            updated += 1
-            results.append({
-                "id":            oid_str,
-                "collection":    item["_col"],
-                "category_code": category_code,
-                "category_name": cat_doc["nombre"],
-            })
+            if result.modified_count > 0:
+                updated += 1
+                results.append({
+                    "id":            oid_str,
+                    "collection":    item["_col"],
+                    "category_code": category_code,
+                    "category_name": cat_doc["nombre"],
+                })
+            else:
+                # Document found but not modified — verify category_name is actually set
+                doc = await coll.find_one(
+                    {"_id": item["_oid"]},
+                    {"_id": 0, "category_id": 1, "category_name": 1}
+                )
+                if not doc or not doc.get("category_name"):
+                    errors.append(f"No se pudo guardar category_name en {oid_str} (col={item['_col']})")
+                else:
+                    updated += 1  # already had the same values — count as done
         except Exception as e:
             errors.append(f"Error actualizando {oid_str}: {str(e)}")
 
