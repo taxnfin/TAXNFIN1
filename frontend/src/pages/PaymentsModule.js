@@ -1629,7 +1629,7 @@ const PaymentsModule = () => {
             onClick={async () => {
               setSyncingCategories(true);
               try {
-                const res = await api.post('/cashflow-sync/auto-categorize?limit=200');
+                const res = await api.post('/cashflow-sync/auto-categorize?limit=50');
                 const { updated, processed } = res.data;
                 if (updated > 0) {
                   toast.success(`✅ ${updated} de ${processed} pagos categorizados con IA`);

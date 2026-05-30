@@ -621,17 +621,18 @@ class CategorizationOverride(BaseModel):
 async def auto_categorize_payments(
     request: Request,
     current_user: Dict = Depends(get_current_user),
-    limit: int = 100,
+    limit: int = 50,
     solo_sin_categoria: bool = True,
 ):
     """
     Categoriza con IA los documentos sin categoría de tres colecciones:
     db.payments, db.cfdis y db.cashflow_movements.
 
-    - limit: máximo de documentos por colección (default 100)
+    - limit: máximo de documentos por colección (default 50, máximo 50)
     - solo_sin_categoria: si False, re-categoriza todos
     """
     import httpx, os, json
+    limit = min(limit, 50)  # hard cap: más de 50 por colección trunca la respuesta de Claude
     from bson import ObjectId
 
     company_id = await get_active_company_id(request, current_user)
@@ -787,9 +788,16 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
     try:
         clean = raw_text.replace("```json", "").replace("```", "").strip()
         assignments = json.loads(clean)
-    except Exception as e:
-        logger.error(f"auto_categorize JSON parse error: {e} — raw: {raw_text[:500]}")
-        raise HTTPException(status_code=500, detail=f"Error parseando respuesta de IA: {str(e)}")
+    except json.JSONDecodeError as e:
+        logger.error(f"auto_categorize JSON parse error: {e} — raw (first 500): {raw_text[:500]}")
+        return {
+            "success": False,
+            "processed": len(all_items),
+            "updated": 0,
+            "errors": [f"Respuesta de IA incompleta (JSON inválido): {str(e)}. Intenta de nuevo — el batch era demasiado grande."],
+            "results": [],
+            "by_collection": {"payments": 0, "cfdis": 0, "cashflow_movements": 0},
+        }
 
     # 7. Escribir resultados en la colección correcta de cada item
     updated = 0
