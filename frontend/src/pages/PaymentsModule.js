@@ -1728,13 +1728,7 @@ const PaymentsModule = () => {
                     <TableCell>
                       <select
                           className={`text-xs border rounded px-1 py-0.5 cursor-pointer ${categoryName ? 'bg-white text-gray-700 border-gray-200' : 'bg-amber-50 text-amber-700'}`}
-                          value={(() => {
-                              if (!payment.category_id) return '';
-                              const cat = categories.find(c => (c.code || c.id) === payment.category_id);
-                              if (!cat) return '';
-                              const subExists = cat.subcategorias?.some(s => s.id === payment.subcategory_id);
-                              return subExists ? `${payment.category_id}|${payment.subcategory_id}` : `${payment.category_id}|`;
-                            })()}
+                          value={payment.category_id ? `${payment.category_id}|` : ''}
                           onChange={async (e) => {
                             const [catId, subcatId] = e.target.value.split('|');
                             try {
