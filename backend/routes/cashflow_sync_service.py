@@ -835,12 +835,15 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
         try:
             result = await coll.update_one(
                 {"_id": item["_oid"], "company_id": company_id},
-                {"$set": {
-                    "category_id":    category_code,
-                    "category_name":  cat_doc["nombre"],
-                    "categorized_by": "ai",
-                    "categorized_at": datetime.now(timezone.utc).isoformat(),
-                }}
+                {
+                    "$set": {
+                        "category_id":    category_code,
+                        "category_name":  cat_doc["nombre"],
+                        "categorized_by": "ai",
+                        "categorized_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                    "$unset": {"subcategory_id": ""},
+                }
             )
             if result.modified_count > 0:
                 updated += 1
@@ -924,12 +927,15 @@ async def recategorize_payment(
 
     result = await db.payments.update_one(
         {"_id": payment_doc["_id"]},
-        {"$set": {
-            "category_id":    data.category_id,
-            "category_name":  cat_doc["nombre"],
-            "categorized_by": "manual",
-            "categorized_at": datetime.now(timezone.utc).isoformat(),
-        }}
+        {
+            "$set": {
+                "category_id":    data.category_id,
+                "category_name":  cat_doc["nombre"],
+                "categorized_by": "manual",
+                "categorized_at": datetime.now(timezone.utc).isoformat(),
+            },
+            "$unset": {"subcategory_id": ""},
+        }
     )
 
     if result.matched_count == 0:
