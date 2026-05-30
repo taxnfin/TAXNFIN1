@@ -1748,12 +1748,17 @@ const PaymentsModule = () => {
                           <option value="">Sin categoría</option>
                           {categories.filter(c => (payment.tipo === 'cobro' ? c.tipo === 'ingreso' : c.tipo === 'egreso')).map(cat => (
                             <optgroup key={cat.code || cat.id} label={cat.nombre}>
-                              {cat.subcategorias?.map(sub => (
-                                <option key={sub.id} value={`${cat.code || cat.id}|${sub.id}`}>
-                                  {sub.nombre}
-                                </option>
-                              ))}
-                              {(!cat.subcategorias || cat.subcategorias.length === 0) && (
+                              {/* Opción padre siempre presente — necesaria cuando auto-categorize escribe solo category_id sin subcategory_id */}
+                              {cat.subcategorias && cat.subcategorias.length > 0 ? (
+                                <>
+                                  <option value={`${cat.code || cat.id}|`}>{cat.nombre} (General)</option>
+                                  {cat.subcategorias.map(sub => (
+                                    <option key={sub.id} value={`${cat.code || cat.id}|${sub.id}`}>
+                                      — {sub.nombre}
+                                    </option>
+                                  ))}
+                                </>
+                              ) : (
                                 <option value={`${cat.code || cat.id}|`}>{cat.nombre}</option>
                               )}
                             </optgroup>
