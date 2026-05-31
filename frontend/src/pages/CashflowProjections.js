@@ -59,6 +59,10 @@ const CashflowProjections = () => {
     try { return localStorage.getItem('cashflow_custom_start_date') || ''; } catch { return ''; }
   });
   
+  // Date range filter for week display (empty = default: current week onward)
+  const [filterFechaInicio, setFilterFechaInicio] = useState('');
+  const [filterFechaFin, setFilterFechaFin] = useState('');
+
   // Currency selector for projections
   const [selectedCurrency, setSelectedCurrency] = useState('MXN');
   const [fxRates, setFxRates] = useState({ MXN: 1, USD: 17.4545, EUR: 20.4852, GBP: 22.00, JPY: 0.13, CHF: 20.00, CAD: 13.00, CNY: 2.40 });
@@ -412,9 +416,9 @@ const CashflowProjections = () => {
         : fourWeeksAgo;
     }
     
-    // Generate 30 weeks: up to 17 historical (Real) + 1 current (Actual) + 12 projected
+    // Generate 52 weeks: historical (Real) + 1 current (Actual) + up to 35 projected forward
     const weeks = [];
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 52; i++) {
       const weekStart = addWeeks(startWeek, i);
       const weekEnd = addWeeks(weekStart, 1);
       const isPast = weekEnd <= today;
@@ -1863,12 +1867,32 @@ const CashflowProjections = () => {
   const weeklyTotals = calculateRunningTotals();
   const cfoKPIs = calculateCFOKPIs(weeklyTotals);
   const chartData = prepareChartData(weeklyTotals);
+
+  // Column visibility mask — true = show this week column in the table
+  // Default: hide past weeks; show current + future
+  const columnVisible = weeklyTotals.map(w => {
+    if (filterFechaInicio) {
+      const start = new Date(filterFechaInicio + 'T00:00:00');
+      if (w.weekEnd <= start) return false;
+    } else {
+      if (w.isPast) return false; // default: past weeks hidden
+    }
+    if (filterFechaFin) {
+      const end = new Date(filterFechaFin + 'T23:59:59');
+      if (w.weekStart > end) return false;
+    }
+    return true;
+  });
+
+  // Subset of weeklyTotals for TOTAL column calculations and final-saldo references
+  const displayedTotals = weeklyTotals.filter((_, i) => columnVisible[i]);
+
   const customConceptsIngresos = customConcepts.filter(c => c.tipo === 'ingreso');
   const customConceptsEgresos = customConcepts.filter(c => c.tipo === 'egreso');
-  const grandTotalIngresos = weeklyTotals.reduce((sum, w) => sum + w.ingresos.total, 0);
-  const grandTotalEgresos = weeklyTotals.reduce((sum, w) => sum + w.egresos.total, 0);
-  const grandTotalCompraUSD = weeklyTotals.reduce((sum, w) => sum + (w.compraUSD || 0), 0);
-  const grandTotalVentaUSD = weeklyTotals.reduce((sum, w) => sum + (w.ventaUSD || 0), 0);
+  const grandTotalIngresos = displayedTotals.reduce((sum, w) => sum + w.ingresos.total, 0);
+  const grandTotalEgresos = displayedTotals.reduce((sum, w) => sum + w.egresos.total, 0);
+  const grandTotalCompraUSD = displayedTotals.reduce((sum, w) => sum + (w.compraUSD || 0), 0);
+  const grandTotalVentaUSD = displayedTotals.reduce((sum, w) => sum + (w.ventaUSD || 0), 0);
   const grandTotalFlujoDivisas = grandTotalVentaUSD - grandTotalCompraUSD;
   const grandTotalFlujo = grandTotalIngresos - grandTotalEgresos + grandTotalFlujoDivisas;
 
@@ -1892,15 +1916,52 @@ const CashflowProjections = () => {
             {t.cashflowProjections}
           </h1>
           <p className="text-[#64748B]">
-            {language === 'es' ? `Modelo Rolling 18 semanas (4 Real + 1 Actual + 13 Proyectado) | Inicio: ${DIAS_SEMANA_TR.find(d => d.value === companyConfig.inicio_semana)?.label || t.monday}` :
-             language === 'en' ? `18-week Rolling Model (4 Real + 1 Current + 13 Projected) | Start: ${DIAS_SEMANA_TR.find(d => d.value === companyConfig.inicio_semana)?.label || t.monday}` :
-             `Modelo Rolling 18 semanas (4 Real + 1 Atual + 13 Projetado) | Início: ${DIAS_SEMANA_TR.find(d => d.value === companyConfig.inicio_semana)?.label || t.monday}`}
+            {language === 'es' ? `Modelo Rolling 52 semanas | Inicio: ${DIAS_SEMANA_TR.find(d => d.value === companyConfig.inicio_semana)?.label || t.monday}` :
+             language === 'en' ? `52-week Rolling Model | Start: ${DIAS_SEMANA_TR.find(d => d.value === companyConfig.inicio_semana)?.label || t.monday}` :
+             `Modelo Rolling 52 semanas | Início: ${DIAS_SEMANA_TR.find(d => d.value === companyConfig.inicio_semana)?.label || t.monday}`}
             {selectedCurrency !== 'MXN' && (
               <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-sm">
                 TC: 1 {selectedCurrency} = ${fxRates[selectedCurrency]?.toFixed(4) || '?'} MXN
               </span>
             )}
           </p>
+          {/* Date range filter — past weeks hidden by default */}
+          <div className="flex items-center gap-3 mt-2 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <Filter size={13} className="text-gray-400" />
+              <span className="text-xs text-gray-500 font-medium">Rango de semanas:</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs text-gray-400">Desde</Label>
+              <Input
+                type="date"
+                value={filterFechaInicio}
+                onChange={e => setFilterFechaInicio(e.target.value)}
+                className="h-7 w-36 text-xs"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs text-gray-400">Hasta</Label>
+              <Input
+                type="date"
+                value={filterFechaFin}
+                onChange={e => setFilterFechaFin(e.target.value)}
+                className="h-7 w-36 text-xs"
+              />
+            </div>
+            {(filterFechaInicio || filterFechaFin) ? (
+              <button
+                className="text-xs text-blue-600 hover:underline"
+                onClick={() => { setFilterFechaInicio(''); setFilterFechaFin(''); }}
+              >
+                Ver solo futuras
+              </button>
+            ) : null}
+            <span className="text-xs text-gray-400">
+              {displayedTotals.length} semana{displayedTotals.length !== 1 ? 's' : ''} visibles
+              {!filterFechaInicio && ` (semanas pasadas ocultas)`}
+            </span>
+          </div>
         </div>
         <div className="flex gap-2">
           {/* Language Selector */}
@@ -2201,7 +2262,7 @@ const CashflowProjections = () => {
         <TabsList>
           <TabsTrigger value="weekly" className="gap-2">
             <Calendar size={16} />
-            Vista Semanal (18 semanas)
+            Vista Semanal (52 semanas)
           </TabsTrigger>
           <TabsTrigger value="monthly" className="gap-2">
             <Calendar size={16} />
@@ -2598,21 +2659,21 @@ const CashflowProjections = () => {
                   <TableHeader>
                     <TableRow className="bg-gray-100">
                       <TableHead className="sticky left-0 bg-gray-100 min-w-[200px] font-bold">CONCEPTO</TableHead>
-                      {weeklyTotals.map((week, idx) => (
+                      {weeklyTotals.map((week, idx) => columnVisible[idx] ? (
                         <TableHead key={idx} className={`text-center min-w-[90px] ${
-                          week.dataType === 'real' ? 'bg-yellow-50' : 
+                          week.dataType === 'real' ? 'bg-yellow-50' :
                           week.dataType === 'actual' ? 'bg-blue-50' : 'bg-gray-50'
                         }`}>
                           <div className="font-bold">{week.label}</div>
                           <div className="text-xs text-gray-500">{week.dateLabel}</div>
                           <div className={`text-xs font-semibold ${
-                            week.dataType === 'real' ? 'text-yellow-600' : 
+                            week.dataType === 'real' ? 'text-yellow-600' :
                             week.dataType === 'actual' ? 'text-blue-600' : 'text-gray-400'
                           }`}>
                             {week.dataType === 'real' ? 'Real' : week.dataType === 'actual' ? 'Actual' : 'Proy'}
                           </div>
                         </TableHead>
-                      ))}
+                      ) : null)}
                       <TableHead className="text-center min-w-[120px] bg-blue-50 font-bold">TOTAL</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -2627,13 +2688,13 @@ const CashflowProjections = () => {
                               SALDO INICIAL SEMANA
                             </div>
                           </TableCell>
-                          {weeklyTotals.map((week, idx) => (
+                          {weeklyTotals.map((week, idx) => columnVisible[idx] ? (
                             <TableCell key={idx} className="text-center text-blue-700 font-bold text-sm">
                               {formatCurrency(week.saldoInicial)}
                             </TableCell>
-                          ))}
+                          ) : null)}
                           <TableCell className="text-center bg-blue-200 text-blue-800 font-bold">
-                            {formatCurrency(saldoInicialBancos)}
+                            {formatCurrency(displayedTotals[0]?.saldoInicial || saldoInicialBancos)}
                           </TableCell>
                         </TableRow>
 
@@ -2643,24 +2704,24 @@ const CashflowProjections = () => {
                         <div className="flex items-center gap-2">
                           <TrendingUp className="text-green-600" size={16} />
                           INGRESOS
-                          {weeklyTotals.some(w => w.dataType === 'real' || w.dataType === 'actual') && (
+                          {displayedTotals.some(w => w.dataType === 'real' || w.dataType === 'actual') && (
                             <span className="text-xs px-2 py-0.5 bg-green-200 text-green-800 rounded">S1-S5 Real</span>
                           )}
                         </div>
                       </TableCell>
-                      {weeklyTotals.map((week, idx) => (
+                      {weeklyTotals.map((week, idx) => columnVisible[idx] ? (
                         <TableCell key={idx} className={`text-center font-bold text-sm ${
-                          week.dataType === 'real' ? 'text-green-800 bg-green-100' : 
+                          week.dataType === 'real' ? 'text-green-800 bg-green-100' :
                           week.dataType === 'actual' ? 'text-green-700 bg-green-50' : 'text-green-600'
                         }`}>
                           {formatCurrency(week.ingresos.total)}
                         </TableCell>
-                      ))}
+                      ) : null)}
                       <TableCell className="text-center bg-green-100 text-green-800 font-bold">
                         {formatCurrency(grandTotalIngresos)}
                       </TableCell>
                     </TableRow>
-                    
+
                     {/* Ingresos by Category - Show "Cobranza" or category name, also show "Sin categoría" */}
                     {/* Exclude "Compra de USD" category as it's shown separately */}
                     {(() => {
@@ -2695,15 +2756,15 @@ const CashflowProjections = () => {
                                   {categoryName === 'Sin categoría' ? 'Cobranza' : categoryName}
                                 </button>
                               </TableCell>
-                              {weekTotals.map((total, idx) => (
-                                <TableCell 
-                                  key={idx} 
+                              {weekTotals.map((total, idx) => columnVisible[idx] ? (
+                                <TableCell
+                                  key={idx}
                                   className={`text-center text-green-600 ${total > 0 ? 'cursor-pointer hover:bg-green-100 hover:underline' : ''}`}
                                   onClick={() => total > 0 && handleCellClick(idx, 'ingreso', categoryName)}
                                 >
                                   {total > 0 ? formatCurrency(total) : '-'}
                                 </TableCell>
-                              ))}
+                              ) : null)}
                               <TableCell className="text-center bg-green-50 text-green-700">
                                 {formatCurrency(categoryTotal)}
                               </TableCell>
@@ -2730,15 +2791,15 @@ const CashflowProjections = () => {
                                     <TableCell className="sticky left-0 bg-green-50/30 pl-14 text-sm text-gray-600">
                                       └ {subName}
                                     </TableCell>
-                                    {subTotals.map((total, idx) => (
-                                      <TableCell 
-                                        key={idx} 
+                                    {subTotals.map((total, idx) => columnVisible[idx] ? (
+                                      <TableCell
+                                        key={idx}
                                         className={`text-center text-green-500 text-sm ${total > 0 ? 'cursor-pointer hover:bg-green-100 hover:underline' : ''}`}
                                         onClick={() => total > 0 && handleCellClick(idx, 'ingreso', categoryName, subName)}
                                       >
                                         {total > 0 ? formatCurrency(total) : '-'}
                                       </TableCell>
-                                    ))}
+                                    ) : null)}
                                     <TableCell className="text-center bg-green-50 text-green-600 text-sm">
                                       {formatCurrency(subTotal)}
                                     </TableCell>
@@ -2757,19 +2818,19 @@ const CashflowProjections = () => {
                         <div className="flex items-center gap-2">
                           <TrendingDown className="text-red-600" size={16} />
                           EGRESOS
-                          {weeklyTotals.some(w => w.dataType === 'real' || w.dataType === 'actual') && (
+                          {displayedTotals.some(w => w.dataType === 'real' || w.dataType === 'actual') && (
                             <span className="text-xs px-2 py-0.5 bg-red-200 text-red-800 rounded">S1-S5 Real</span>
                           )}
                         </div>
                       </TableCell>
-                      {weeklyTotals.map((week, idx) => (
+                      {weeklyTotals.map((week, idx) => columnVisible[idx] ? (
                         <TableCell key={idx} className={`text-center font-bold text-sm ${
-                          week.dataType === 'real' ? 'text-red-800 bg-red-100' : 
+                          week.dataType === 'real' ? 'text-red-800 bg-red-100' :
                           week.dataType === 'actual' ? 'text-red-700 bg-red-50' : 'text-red-600'
                         }`}>
                           {formatCurrency(week.egresos.total)}
                         </TableCell>
-                      ))}
+                      ) : null)}
                       <TableCell className="text-center bg-red-100 text-red-800 font-bold">
                         {formatCurrency(grandTotalEgresos)}
                       </TableCell>
@@ -2809,15 +2870,15 @@ const CashflowProjections = () => {
                                   {categoryName === 'Sin categoría' ? 'Proveedores Costo' : categoryName}
                                 </button>
                               </TableCell>
-                              {weekTotals.map((total, idx) => (
-                                <TableCell 
-                                  key={idx} 
+                              {weekTotals.map((total, idx) => columnVisible[idx] ? (
+                                <TableCell
+                                  key={idx}
                                   className={`text-center text-red-600 ${total > 0 ? 'cursor-pointer hover:bg-red-100 hover:underline' : ''}`}
                                   onClick={() => total > 0 && handleCellClick(idx, 'egreso', categoryName)}
                                 >
                                   {total > 0 ? formatCurrency(total) : '-'}
                                 </TableCell>
-                              ))}
+                              ) : null)}
                               <TableCell className="text-center bg-red-50 text-red-700">
                                 {formatCurrency(categoryTotal)}
                               </TableCell>
@@ -2844,15 +2905,15 @@ const CashflowProjections = () => {
                                     <TableCell className="sticky left-0 bg-red-50/30 pl-14 text-sm text-gray-600">
                                       └ {subName}
                                     </TableCell>
-                                    {subTotals.map((total, idx) => (
-                                      <TableCell 
-                                        key={idx} 
+                                    {subTotals.map((total, idx) => columnVisible[idx] ? (
+                                      <TableCell
+                                        key={idx}
                                         className={`text-center text-red-500 text-sm ${total > 0 ? 'cursor-pointer hover:bg-red-100 hover:underline' : ''}`}
                                         onClick={() => total > 0 && handleCellClick(idx, 'egreso', categoryName, subName)}
                                       >
                                         {total > 0 ? formatCurrency(total) : '-'}
                                       </TableCell>
-                                    ))}
+                                    ) : null)}
                                     <TableCell className="text-center bg-red-50 text-red-600 text-sm">
                                       {formatCurrency(subTotal)}
                                     </TableCell>
@@ -2875,11 +2936,11 @@ const CashflowProjections = () => {
                               OPERACIONES CON DIVISAS
                             </div>
                           </TableCell>
-                          {weeklyTotals.map((week, idx) => (
+                          {weeklyTotals.map((week, idx) => columnVisible[idx] ? (
                             <TableCell key={idx} className={`text-center font-bold ${(week.flujoDivisas || 0) >= 0 ? 'text-purple-700' : 'text-purple-700'}`}>
                               {formatCurrency(week.flujoDivisas || 0)}
                             </TableCell>
-                          ))}
+                          ) : null)}
                           <TableCell className="text-center bg-purple-100 text-purple-800 font-bold">
                             {formatCurrency(grandTotalFlujoDivisas)}
                           </TableCell>
@@ -2893,11 +2954,11 @@ const CashflowProjections = () => {
                               Venta de USD (entrada MXN)
                             </div>
                           </TableCell>
-                          {weeklyTotals.map((week, idx) => (
+                          {weeklyTotals.map((week, idx) => columnVisible[idx] ? (
                             <TableCell key={idx} className="text-center text-green-600">
                               {(week.ventaUSD || 0) > 0 ? formatCurrency(week.ventaUSD) : '-'}
                             </TableCell>
-                          ))}
+                          ) : null)}
                           <TableCell className="text-center bg-green-50 text-green-700">
                             {formatCurrency(grandTotalVentaUSD)}
                           </TableCell>
@@ -2911,11 +2972,11 @@ const CashflowProjections = () => {
                               Compra de USD (salida MXN)
                             </div>
                           </TableCell>
-                          {weeklyTotals.map((week, idx) => (
+                          {weeklyTotals.map((week, idx) => columnVisible[idx] ? (
                             <TableCell key={idx} className="text-center text-red-600">
                               {(week.compraUSD || 0) > 0 ? `(${formatCurrency(week.compraUSD)})` : '-'}
                             </TableCell>
-                          ))}
+                          ) : null)}
                           <TableCell className="text-center bg-red-50 text-red-700">
                             {grandTotalCompraUSD > 0 ? `(${formatCurrency(grandTotalCompraUSD)})` : '$0.00'}
                           </TableCell>
@@ -2928,14 +2989,14 @@ const CashflowProjections = () => {
                       <TableCell className="sticky left-0 bg-blue-100">
                         FLUJO NETO
                       </TableCell>
-                      {weeklyTotals.map((week, idx) => (
-                        <TableCell 
-                          key={idx} 
+                      {weeklyTotals.map((week, idx) => columnVisible[idx] ? (
+                        <TableCell
+                          key={idx}
                           className={`text-center font-bold ${week.flujoNeto >= 0 ? 'text-green-700' : 'text-red-700'}`}
                         >
                           {formatCurrency(week.flujoNeto)}
                         </TableCell>
-                      ))}
+                      ) : null)}
                       <TableCell className={`text-center font-bold ${grandTotalFlujo >= 0 ? 'text-green-800 bg-green-100' : 'text-red-800 bg-red-100'}`}>
                         {formatCurrency(grandTotalFlujo)}
                       </TableCell>
@@ -2946,16 +3007,16 @@ const CashflowProjections = () => {
                       <TableCell className="sticky left-0 bg-[#0F172A]">
                         SALDO FINAL SEMANA
                       </TableCell>
-                      {weeklyTotals.map((week, idx) => (
-                        <TableCell 
-                          key={idx} 
+                      {weeklyTotals.map((week, idx) => columnVisible[idx] ? (
+                        <TableCell
+                          key={idx}
                           className={`text-center font-bold text-sm ${week.saldoFinal >= 0 ? 'text-green-400' : 'text-red-400'}`}
                         >
                           {formatCurrency(week.saldoFinal)}
                         </TableCell>
-                      ))}
+                      ) : null)}
                       <TableCell className="text-center font-bold">
-                        {formatCurrency(weeklyTotals[weeklyTotals.length - 1]?.saldoFinal || 0)}
+                        {formatCurrency(displayedTotals[displayedTotals.length - 1]?.saldoFinal || 0)}
                       </TableCell>
                     </TableRow>
 
@@ -2968,11 +3029,12 @@ const CashflowProjections = () => {
                         </div>
                       </TableCell>
                       {weeklyTotals.map((week, idx) => {
+                        if (!columnVisible[idx]) return null;
                         const gap = week.saldoFinal - umbralMinimoCaja;
                         const isNegative = gap < 0;
                         return (
-                          <TableCell 
-                            key={idx} 
+                          <TableCell
+                            key={idx}
                             className={`text-center text-sm ${isNegative ? 'text-red-600 bg-red-50 font-bold' : 'text-green-600'}`}
                           >
                             {isNegative ? `(${formatCurrency(Math.abs(gap))})` : formatCurrency(gap)}
@@ -2981,7 +3043,7 @@ const CashflowProjections = () => {
                       })}
                       <TableCell className="text-center bg-amber-100 text-amber-800 font-bold">
                         {(() => {
-                          const finalGap = (weeklyTotals[weeklyTotals.length - 1]?.saldoFinal || 0) - umbralMinimoCaja;
+                          const finalGap = (displayedTotals[displayedTotals.length - 1]?.saldoFinal || 0) - umbralMinimoCaja;
                           return finalGap < 0 ? `(${formatCurrency(Math.abs(finalGap))})` : formatCurrency(finalGap);
                         })()}
                       </TableCell>
