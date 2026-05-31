@@ -3185,11 +3185,11 @@ const CashflowProjections = () => {
                               PROVEEDOR / CLIENTE
                             </div>
                           </TableCell>
-                          {weeklyTotals.map((week, idx) => (
+                          {weeklyTotals.map((week, idx) => columnVisible[idx] ? (
                             <TableCell key={idx} className="text-center text-xs text-gray-600">
                               Tot: {formatCurrency(week.ingresos.total - week.egresos.total)}
                             </TableCell>
-                          ))}
+                          ) : null)}
                           <TableCell className="text-center bg-gray-200 font-bold">TOTAL</TableCell>
                         </TableRow>
 
@@ -3218,8 +3218,12 @@ const CashflowProjections = () => {
                           }
 
                           return sortedParties.map(party => {
-                            const totalIngresos = Object.values(party.weeks).reduce((s, w) => s + w.ingresos, 0);
-                            const totalEgresos = Object.values(party.weeks).reduce((s, w) => s + w.egresos, 0);
+                            const totalIngresos = Object.entries(party.weeks)
+                              .filter(([wIdx]) => columnVisible[parseInt(wIdx)])
+                              .reduce((s, [, w]) => s + w.ingresos, 0);
+                            const totalEgresos = Object.entries(party.weeks)
+                              .filter(([wIdx]) => columnVisible[parseInt(wIdx)])
+                              .reduce((s, [, w]) => s + w.egresos, 0);
                             const netTotal = totalIngresos - totalEgresos;
                             
                             if (totalIngresos === 0 && totalEgresos === 0) return null;
@@ -3245,13 +3249,14 @@ const CashflowProjections = () => {
                                   </div>
                                 </TableCell>
                                 {weeklyTotals.map((_, weekIdx) => {
+                                  if (!columnVisible[weekIdx]) return null;
                                   const weekData = party.weeks[weekIdx] || { ingresos: 0, egresos: 0 };
                                   const netValue = weekData.ingresos - weekData.egresos;
                                   const hasItems = weekData.ingresos > 0 || weekData.egresos > 0;
-                                  
+
                                   return (
-                                    <TableCell 
-                                      key={weekIdx} 
+                                    <TableCell
+                                      key={weekIdx}
                                       className={`text-center text-sm ${
                                         netValue > 0 ? 'text-green-600' : 
                                         netValue < 0 ? 'text-red-600' : 'text-gray-400'
@@ -3300,6 +3305,7 @@ const CashflowProjections = () => {
                             TOTAL NETO
                           </TableCell>
                           {weeklyTotals.map((week, idx) => {
+                            if (!columnVisible[idx]) return null;
                             const net = week.ingresos.total - week.egresos.total;
                             return (
                               <TableCell key={idx} className={`text-center font-bold ${net >= 0 ? 'text-green-700' : 'text-red-700'}`}>
