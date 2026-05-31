@@ -34,7 +34,6 @@ const CashflowProjections = () => {
   const [language, setLanguage] = useState('es');
   const [loading, setLoading] = useState(true);
   const [weeklyData, setWeeklyData] = useState([]);
-  const [monthlyData, setMonthlyData] = useState([]);
   const [cxcCxpData, setCxcCxpData] = useState({ cxc: [], cxp: [] });
   const [cfdis, setCfdis] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -252,8 +251,7 @@ const CashflowProjections = () => {
         setWeeklyData(weeks);
       }
 
-      // Monthly view — misma fuente que semanal para que cuadren
-      processMonthlyData(allPayments, catRes.data, customStartDate, porSemana);
+      // Vista mensual se deriva de weeklyTotals en render — no requiere llamada separada
     } catch (error) {
       toast.error(t?.errorLoadingData || 'Error loading data');
     } finally {
@@ -1885,9 +1883,43 @@ const CashflowProjections = () => {
     }
   };
 
+  // Única fuente de verdad para la vista mensual: agrega weeklyTotals por mes.
+  // Garantiza que mensual === semanal para los mismos períodos.
+  const buildMonthlyFromWeeks = (weekTotals) => {
+    const monthMap = {};
+    const todayRef = new Date();
+    weekTotals.forEach(week => {
+      const key = format(week.weekStart, 'yyyy-MM');
+      if (!monthMap[key]) {
+        const mStart = startOfMonth(week.weekStart);
+        const mEnd   = addMonths(mStart, 1);
+        monthMap[key] = {
+          label:      format(mStart, 'MMM yyyy', { locale: es }),
+          monthStart: mStart,
+          monthEnd:   mEnd,
+          isPast:     mEnd <= todayRef,
+          isCurrent:  mStart <= todayRef && todayRef < mEnd,
+          ingresos:   { total: 0, byCategory: {} },
+          egresos:    { total: 0, byCategory: {} },
+        };
+      }
+      const m = monthMap[key];
+      m.ingresos.total += week.ingresos.total || 0;
+      m.egresos.total  += week.egresos.total  || 0;
+      Object.entries(week.ingresos.byCategory || {}).forEach(([cat, catData]) => {
+        m.ingresos.byCategory[cat] = (m.ingresos.byCategory[cat] || 0) + (catData.total || 0);
+      });
+      Object.entries(week.egresos.byCategory || {}).forEach(([cat, catData]) => {
+        m.egresos.byCategory[cat] = (m.egresos.byCategory[cat] || 0) + (catData.total || 0);
+      });
+    });
+    return Object.values(monthMap).sort((a, b) => a.monthStart - b.monthStart);
+  };
+
   if (loading) return <div className="p-8">{t.loading}</div>;
 
   const weeklyTotals = calculateRunningTotals();
+  const monthlyData  = buildMonthlyFromWeeks(weeklyTotals); // derivado de weeklyTotals — misma fuente
   const cfoKPIs = calculateCFOKPIs(weeklyTotals);
   const chartData = prepareChartData(weeklyTotals);
 
@@ -3369,26 +3401,27 @@ const CashflowProjections = () => {
                       </TableCell>
                     </TableRow>
                     
-                    {/* Ingresos by Category */}
-                    {categories.filter(c => c.tipo === 'ingreso').map(category => {
-                      const monthTotals = monthlyData.map(m => m.ingresos.byCategory[category.nombre] || 0);
-                      const total = monthTotals.reduce((s, t) => s + t, 0);
-                      if (total === 0) return null;
-                      
-                      return (
-                        <TableRow key={`monthly-ing-${category.id}`} className="hover:bg-green-50">
-                          <TableCell className="sticky left-0 bg-white pl-8">{category.nombre}</TableCell>
-                          {monthTotals.map((t, idx) => (
-                            <TableCell key={idx} className="text-center text-green-600">
-                              {t > 0 ? formatCurrency(t) : '-'}
-                            </TableCell>
-                          ))}
-                          <TableCell className="text-center bg-green-50">
-                            {formatCurrency(total)}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                    {/* Ingresos by Category — claves reales del dato, igual que Por Categoría */}
+                    {(() => {
+                      const allCats = new Set();
+                      monthlyData.forEach(m => Object.keys(m.ingresos.byCategory).forEach(c => allCats.add(c)));
+                      return Array.from(allCats).map(catName => {
+                        const monthTotals = monthlyData.map(m => m.ingresos.byCategory[catName] || 0);
+                        const total = monthTotals.reduce((s, t) => s + t, 0);
+                        if (total === 0) return null;
+                        return (
+                          <TableRow key={`monthly-ing-${catName}`} className="hover:bg-green-50">
+                            <TableCell className="sticky left-0 bg-white pl-8">{catName === 'Sin categoría' ? 'Cobranza' : catName}</TableCell>
+                            {monthTotals.map((t, idx) => (
+                              <TableCell key={idx} className="text-center text-green-600">
+                                {t > 0 ? formatCurrency(t) : '-'}
+                              </TableCell>
+                            ))}
+                            <TableCell className="text-center bg-green-50">{formatCurrency(total)}</TableCell>
+                          </TableRow>
+                        );
+                      });
+                    })()}
 
                     {/* EGRESOS */}
                     <TableRow className="bg-red-100 font-bold">
@@ -3406,26 +3439,27 @@ const CashflowProjections = () => {
                       </TableCell>
                     </TableRow>
                     
-                    {/* Egresos by Category */}
-                    {categories.filter(c => c.tipo === 'egreso').map(category => {
-                      const monthTotals = monthlyData.map(m => m.egresos.byCategory[category.nombre] || 0);
-                      const total = monthTotals.reduce((s, t) => s + t, 0);
-                      if (total === 0) return null;
-                      
-                      return (
-                        <TableRow key={`monthly-egr-${category.id}`} className="hover:bg-red-50">
-                          <TableCell className="sticky left-0 bg-white pl-8">{category.nombre}</TableCell>
+                    {/* Egresos by Category — claves reales del dato, igual que Por Categoría */}
+                    {(() => {
+                      const allCats = new Set();
+                      monthlyData.forEach(m => Object.keys(m.egresos.byCategory).forEach(c => allCats.add(c)));
+                      return Array.from(allCats).map(catName => {
+                        const monthTotals = monthlyData.map(m => m.egresos.byCategory[catName] || 0);
+                        const total = monthTotals.reduce((s, t) => s + t, 0);
+                        if (total === 0) return null;
+                        return (
+                        <TableRow key={`monthly-egr-${catName}`} className="hover:bg-red-50">
+                          <TableCell className="sticky left-0 bg-white pl-8">{catName === 'Sin categoría' ? 'Proveedores Costo' : catName}</TableCell>
                           {monthTotals.map((t, idx) => (
                             <TableCell key={idx} className="text-center text-red-600">
                               {t > 0 ? formatCurrency(t) : '-'}
                             </TableCell>
                           ))}
-                          <TableCell className="text-center bg-red-50">
-                            {formatCurrency(total)}
-                          </TableCell>
+                          <TableCell className="text-center bg-red-50">{formatCurrency(total)}</TableCell>
                         </TableRow>
-                      );
-                    })}
+                        );
+                      });
+                    })()}
 
                     {/* FLUJO NETO */}
                     <TableRow className="bg-blue-100 font-bold border-t-2">
