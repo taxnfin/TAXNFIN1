@@ -116,11 +116,6 @@ async def get_proyecciones_por_semana(
         {"company_id": company_id, "semana": {"$ne": None}}, {"_id": 0}
     ).to_list(1000)
 
-    # LOG TEMPORAL — diagnóstico de campos disponibles
-    logger.info(f"[por-semana] company_id={company_id} total_docs={len(docs)}")
-    for d in docs[:5]:
-        logger.info(f"[por-semana] doc={d}")
-
     cat_docs = await db.cxc_categorias.find(
         {"company_id": company_id}, {"_id": 0}
     ).to_list(1000)
