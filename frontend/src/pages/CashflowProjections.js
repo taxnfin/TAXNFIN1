@@ -140,8 +140,10 @@ const CashflowProjections = () => {
   useEffect(() => {}, [cxcCxpData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = async () => {
+    console.log('[DEBUG] loadData() iniciado'); // ── DEBUG TEMPORAL
     setLoading(true);
     try {
+      console.log('[DEBUG] Iniciando Promise.all con 11 endpoints'); // ── DEBUG TEMPORAL
       const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes, fxRes, paymentsRes, bankTxnsRes, reconRes, bankAccountsRes] = await Promise.all([
         api.get('/cfdi?limit=500'),
         api.get('/cashflow-sync/categories'),
@@ -223,6 +225,7 @@ const CashflowProjections = () => {
       };
       
       const companyId = getActiveCompanyId();
+      console.log('[DEBUG] Promise.all completado. companyId resuelto:', companyId); // ── DEBUG TEMPORAL
       // ── Cargar proyecciones CxC/CxP ANTES de procesar semanas ────────
       let porSemana = {};
       try {
@@ -274,6 +277,7 @@ const CashflowProjections = () => {
 
       // Vista mensual se deriva de weeklyTotals en render — no requiere llamada separada
     } catch (error) {
+      console.error('[DEBUG] ERROR en loadData — try exterior atrapó:', error?.message, error); // ── DEBUG TEMPORAL
       toast.error(t?.errorLoadingData || 'Error loading data');
     } finally {
       setLoading(false);
