@@ -136,45 +136,9 @@ const CashflowProjections = () => {
   }, [customStartDate]);
 
   // Inyectar proyecciones manuales CxC/CxP en semanas futuras del modelo
-  useEffect(() => {
-    if (!weeklyData.length) return;
-    const porSemana = cxcCxpData?.porSemana;
-    if (!porSemana || !Object.keys(porSemana).length) return;
-
-    setWeeklyData(prev => prev.map(week => {
-      if (week.dataType !== 'proyectado') return week;
-      const data = porSemana[week.label]; // e.g. porSemana["S3"]
-      if (!data) return week;
-
-      const cxcTotal = data.cxc || 0;
-      const cxpTotal = data.cxp || 0;
-      if (!cxcTotal && !cxpTotal) return week;
-
-      const newWeek = { ...week };
-      if (cxcTotal > 0) {
-        newWeek.ingresos = { ...week.ingresos, total: week.ingresos.total + cxcTotal };
-        newWeek.ingresos.byCategory = {
-          ...week.ingresos.byCategory,
-          'CxC Contalink': {
-            total: (week.ingresos.byCategory?.['CxC Contalink']?.total || 0) + cxcTotal,
-            items: []
-          }
-        };
-      }
-      if (cxpTotal > 0) {
-        newWeek.egresos = { ...week.egresos, total: week.egresos.total + cxpTotal };
-        newWeek.egresos.byCategory = {
-          ...week.egresos.byCategory,
-          'CxP Contalink': {
-            total: (week.egresos.byCategory?.['CxP Contalink']?.total || 0) + cxpTotal,
-            items: []
-          }
-        };
-      }
-      return newWeek;
-    }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cxcCxpData]);
+  // CxC/CxP ya se inyectan en processWeeklyData (PASO 3) por matching de fecha.
+  // Este useEffect queda desactivado para evitar doble-conteo.
+  useEffect(() => {}, [cxcCxpData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = async () => {
     setLoading(true);
@@ -731,12 +695,19 @@ const CashflowProjections = () => {
     });
     
     // ── PASO 3: Inyectar proyecciones CxC/CxP por semana y categoría ──
-    // porSemana formato: { "S14": { cxc: 100, cxp: 200, byCategory: { "Ventas": { cxc: 100, cxp: 0 } } } }
+    // Los keys del backend (e.g. "S14") se calculan como Jan-5 + (n-1)*7 días del año actual.
+    // Se busca la semana correspondiente por FECHA para evitar desfase con el label secuencial.
     if (porSemana && Object.keys(porSemana).length > 0) {
-      weeks.forEach(week => {
-        const semanaData = porSemana[week.label];
-        if (!semanaData) return;
-        // Solo inyectar en semanas futuras (proyectadas)
+      const refYearStart = new Date(today.getFullYear(), 0, 5); // ancla igual que backend y vista mensual
+
+      Object.entries(porSemana).forEach(([semanaLabel, semanaData]) => {
+        const weekNum = parseInt(semanaLabel.replace('S', ''), 10) - 1;
+        const semanaDate = new Date(refYearStart.getTime() + weekNum * 7 * 24 * 60 * 60 * 1000);
+
+        const weekIdx = weeks.findIndex(w => semanaDate >= w.weekStart && semanaDate < w.weekEnd);
+        if (weekIdx === -1) return;
+
+        const week = weeks[weekIdx];
         if (week.isPast || week.isCurrent) return;
 
         const byCat = semanaData.byCategory || {};
