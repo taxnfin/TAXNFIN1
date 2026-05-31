@@ -387,7 +387,12 @@ const CashflowProjections = () => {
     const today = new Date();
     const currentWeekStart = getWeekStart(today, weekStartDay);
     
-    // Find earliest payment date for starting point
+    // Fiscal year anchor for LABELS: S1 = week of Dec 29, 2025 (ISO week 1/2026).
+    // Weeks before this date display as S{isoWeek}/{shortYear} (e.g. S52/25).
+    // startWeek remains dynamic so historical data before the anchor stays visible.
+    const FISCAL_YEAR_START = new Date(2025, 11, 29);
+
+    // Find earliest payment date to anchor the historical display window
     let earliestDate = null;
     payments.filter(p => p.estatus === 'completado' || p.estatus === 'pagado' || p.status === 'pagado' || p.es_real === true).forEach(p => {
       const fecha = p.fecha_pago;
@@ -396,13 +401,10 @@ const CashflowProjections = () => {
         if (!earliestDate || d < earliestDate) earliestDate = d;
       }
     });
-    
+
     const fourWeeksAgo = addWeeks(currentWeekStart, -17);
-    
-    // Priority order for window start:
-    // 1. Explicit user override (customStart) — lets the user choose any week (e.g., Jan 2026)
-    // 2. Earliest payment date (clamped to >= 17 weeks ago, to show full quarter of history)
-    // 3. Default: 17 weeks before today
+
+    // Window start priority: 1) explicit customStart, 2) earliest payment, 3) 17 weeks ago
     let startWeek;
     if (customStart) {
       const parsed = new Date(customStart);
@@ -430,11 +432,19 @@ const CashflowProjections = () => {
       if (isPast) dataType = 'real';
       else if (isCurrent) dataType = 'actual';
       
+      const fiscalDiff = Math.round(
+        (weekStart.getTime() - FISCAL_YEAR_START.getTime()) / (7 * 24 * 60 * 60 * 1000)
+      );
+      const displayLabel = fiscalDiff >= 0
+        ? `S${fiscalDiff + 1}`
+        : `S${53 + fiscalDiff}/${String(weekStart.getFullYear()).slice(-2)}`;
+
       weeks.push({
         weekNum: i + 1,
         weekStart,
         weekEnd,
         label: `S${i + 1}`,
+        displayLabel,
         dateLabel: format(weekStart, 'dd MMM', { locale: es }),
         isPast,
         isCurrent,
@@ -1514,7 +1524,7 @@ const CashflowProjections = () => {
     
     setDrillDownData({
       weekNum: weekIdx + 1,
-      weekLabel: week.label || `S${weekIdx + 1}`,
+      weekLabel: week.displayLabel || week.label || `S${weekIdx + 1}`,
       dateLabel: week.dateLabel || '',
       dataType: week.dataType,
       tipo,
@@ -2664,7 +2674,7 @@ const CashflowProjections = () => {
                           week.dataType === 'real' ? 'bg-yellow-50' :
                           week.dataType === 'actual' ? 'bg-blue-50' : 'bg-gray-50'
                         }`}>
-                          <div className="font-bold">{week.label}</div>
+                          <div className="font-bold">{week.displayLabel || week.label}</div>
                           <div className="text-xs text-gray-500">{week.dateLabel}</div>
                           <div className={`text-xs font-semibold ${
                             week.dataType === 'real' ? 'text-yellow-600' :
@@ -3239,7 +3249,7 @@ const CashflowProjections = () => {
                                           const items = weekData.items || [];
                                           setDrillDownData({
                                             weekNum: weekIdx + 1,
-                                            weekLabel: weeklyData[weekIdx]?.label || `S${weekIdx + 1}`,
+                                            weekLabel: weeklyData[weekIdx]?.displayLabel || weeklyData[weekIdx]?.label || `S${weekIdx + 1}`,
                                             dateLabel: weeklyData[weekIdx]?.dateLabel || '',
                                             dataType: weeklyData[weekIdx]?.dataType,
                                             tipo: netValue >= 0 ? 'ingreso' : 'egreso',
