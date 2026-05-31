@@ -720,14 +720,27 @@ const CashflowProjections = () => {
               week.ingresos.byCategory[catName] = { total: 0, bySubcategory: {}, items: [] };
             }
             week.ingresos.byCategory[catName].total += monto;
-            // Ítem sintético para que processDataByParty() lo contabilice y los totales cuadren
-            week.ingresos.byCategory[catName].items.push({
-              id: `cxc-proy-${semanaLabel}-${catName}`,
-              monto,
-              concepto: 'CxC Proyectado',
-              beneficiario: catName,
-              source: 'cxc_proyeccion'
-            });
+            // Un ítem por beneficiario real (del backend); fallback a ítem agrupado si no hay detalle
+            const cxcItems = (montos.items || []).filter(it => it.tipo === 'cxc');
+            if (cxcItems.length > 0) {
+              cxcItems.forEach(it => {
+                week.ingresos.byCategory[catName].items.push({
+                  id: `cxc-${it.nombre}-${semanaLabel}`,
+                  monto: it.monto,
+                  concepto: `CxC - ${it.nombre}`,
+                  beneficiario: it.nombre,
+                  source: 'cxc_proyeccion'
+                });
+              });
+            } else {
+              week.ingresos.byCategory[catName].items.push({
+                id: `cxc-proy-${semanaLabel}-${catName}`,
+                monto,
+                concepto: 'CxC Proyectado',
+                beneficiario: catName,
+                source: 'cxc_proyeccion'
+              });
+            }
             if (!week.ingresos.byCategory[catName].bySubcategory['CxC']) {
               week.ingresos.byCategory[catName].bySubcategory['CxC'] = { total: 0, items: [] };
             }
@@ -741,14 +754,27 @@ const CashflowProjections = () => {
               week.egresos.byCategory[catName] = { total: 0, bySubcategory: {}, items: [] };
             }
             week.egresos.byCategory[catName].total += monto;
-            // Ítem sintético para que processDataByParty() lo contabilice y los totales cuadren
-            week.egresos.byCategory[catName].items.push({
-              id: `cxp-proy-${semanaLabel}-${catName}`,
-              monto,
-              concepto: 'CxP Proyectado',
-              beneficiario: catName,
-              source: 'cxp_proyeccion'
-            });
+            // Un ítem por beneficiario real (del backend); fallback a ítem agrupado si no hay detalle
+            const cxpItems = (montos.items || []).filter(it => it.tipo === 'cxp');
+            if (cxpItems.length > 0) {
+              cxpItems.forEach(it => {
+                week.egresos.byCategory[catName].items.push({
+                  id: `cxp-${it.nombre}-${semanaLabel}`,
+                  monto: it.monto,
+                  concepto: `CxP - ${it.nombre}`,
+                  beneficiario: it.nombre,
+                  source: 'cxp_proyeccion'
+                });
+              });
+            } else {
+              week.egresos.byCategory[catName].items.push({
+                id: `cxp-proy-${semanaLabel}-${catName}`,
+                monto,
+                concepto: 'CxP Proyectado',
+                beneficiario: catName,
+                source: 'cxp_proyeccion'
+              });
+            }
             if (!week.egresos.byCategory[catName].bySubcategory['CxP']) {
               week.egresos.byCategory[catName].bySubcategory['CxP'] = { total: 0, items: [] };
             }

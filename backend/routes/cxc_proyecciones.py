@@ -128,6 +128,7 @@ async def get_proyecciones_por_semana(
         tipo   = doc.get("tipo", "cxc")
         monto  = doc.get("monto", 0)
         nombre = doc.get("nombre", "")
+        moneda = doc.get("moneda", "MXN")
         if not semana:
             continue
 
@@ -141,10 +142,17 @@ async def get_proyecciones_por_semana(
         result[semana][tipo] = round(result[semana][tipo] + monto, 2)
 
         if cat_name not in result[semana]["byCategory"]:
-            result[semana]["byCategory"][cat_name] = {"cxc": 0.0, "cxp": 0.0}
+            result[semana]["byCategory"][cat_name] = {"cxc": 0.0, "cxp": 0.0, "items": []}
         result[semana]["byCategory"][cat_name][tipo] = round(
             result[semana]["byCategory"][cat_name][tipo] + monto, 2
         )
+        # Guardar ítem individual para que el drill-down muestre el beneficiario real
+        result[semana]["byCategory"][cat_name]["items"].append({
+            "nombre": nombre,
+            "tipo":   tipo,
+            "monto":  monto,
+            "moneda": moneda,
+        })
 
     return result
 
