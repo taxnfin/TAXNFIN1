@@ -42,6 +42,7 @@ DEFAULT_CATEGORIES = [
     {"code": "ING-009", "nombre": "Venta de activos",            "tipo": "ingreso",  "subtipo": "inversion",  "icon": "🏗️", "color": "#8B5CF6"},
     {"code": "ING-010", "nombre": "Préstamos recibidos",         "tipo": "ingreso",  "subtipo": "financiero", "icon": "🏦", "color": "#3B82F6"},
     {"code": "ING-011", "nombre": "Aportaciones de socios",      "tipo": "ingreso",  "subtipo": "financiero", "icon": "🤝", "color": "#3B82F6"},
+    {"code": "ING-012", "nombre": "Venta de combustible",        "tipo": "ingreso",  "subtipo": "operativo",  "icon": "⛽", "color": "#22C55E"},
     {"code": "ING-099", "nombre": "Otros ingresos",              "tipo": "ingreso",  "subtipo": "otro",       "icon": "➕", "color": "#22C55E"},
 
     # ── EGRESOS OPERATIVOS ────────────────────────────────────────────
@@ -60,7 +61,7 @@ DEFAULT_CATEGORIES = [
     {"code": "EGR-013", "nombre": "Mantenimiento y reparaciones","tipo": "egreso",   "subtipo": "operativo",  "icon": "🔧", "color": "#EF4444"},
     {"code": "EGR-014", "nombre": "Papelería y consumibles",     "tipo": "egreso",   "subtipo": "operativo",  "icon": "📄", "color": "#EF4444"},
     {"code": "EGR-015", "nombre": "Software y suscripciones",    "tipo": "egreso",   "subtipo": "operativo",  "icon": "💻", "color": "#EF4444"},
-    {"code": "EGR-022", "nombre": "Combustible y gasolina",      "tipo": "egreso",   "subtipo": "operativo",  "icon": "⛽", "color": "#EF4444"},
+    {"code": "EGR-022", "nombre": "Combustible",                  "tipo": "egreso",   "subtipo": "operativo",  "icon": "⛽", "color": "#EF4444"},
     {"code": "EGR-023", "nombre": "Fletes y transportes",        "tipo": "egreso",   "subtipo": "operativo",  "icon": "🚚", "color": "#EF4444"},
     {"code": "EGR-024", "nombre": "Gastos de representación",    "tipo": "egreso",   "subtipo": "operativo",  "icon": "🍽️", "color": "#EF4444"},
     # ── EGRESOS FINANCIEROS ───────────────────────────────────────────
@@ -763,7 +764,8 @@ INSTRUCCIONES:
 - Si el concepto menciona "Cobranza" o es de un cliente → ING-001 (Ventas de productos).
 - Si el beneficiario es un banco → EGR-018 (Comisiones bancarias).
 - Si el concepto menciona nómina, salarios, IMSS → EGR-001 o EGR-002.
-- Si el concepto menciona combustible, gasolina, gas LP, diésel → EGR-022 (Combustible y gasolina).
+- Si el concepto menciona "venta de combustible", "venta gasolina" o el pago es un COBRO de combustible → ING-012 (Venta de combustible).
+- Si el concepto menciona combustible, gasolina, gas LP, diésel como GASTO o el pago es tipo=pago → EGR-022 (Combustible).
 - Si el concepto menciona flete, transporte, envío, mensajería, courier → EGR-023 (Fletes y transportes).
 - Si el concepto menciona comida, restaurante, alimentos, representación → EGR-024 (Gastos de representación).
 - Si no puedes determinar → ING-099 para ingresos, EGR-099 para egresos.
