@@ -3223,94 +3223,70 @@ const CashflowProjections = () => {
                           </TableCell>
                         </TableRow>
 
-                        {/* Header row for totals */}
-                        <TableRow className="bg-gray-100 font-bold border-b-2">
-                          <TableCell className="sticky left-0 bg-gray-100">
-                            <div className="flex items-center gap-2">
-                              <Building2 size={16} className="text-gray-600" />
-                              PROVEEDOR / CLIENTE
-                            </div>
-                          </TableCell>
-                          {weeklyTotals.map((week, idx) => columnVisible[idx] ? (
-                            <TableCell key={idx} className="text-center text-xs text-gray-600">
-                              Tot: {formatCurrency(week.ingresos.total - week.egresos.total)}
-                            </TableCell>
-                          ) : null)}
-                          <TableCell className="text-center bg-gray-200 font-bold">TOTAL</TableCell>
-                        </TableRow>
-
-                        {/* Render each party */}
+                        {/* Header + filas + TOTAL NETO comparten filteredParties */}
                         {(() => {
                           const partyData = processDataByParty(weeklyTotals);
-                          // Apply filters
                           const filteredParties = filterPartyData(partyData);
-                          // Sort by total absolute value (most important first)
-                          const sortedParties = filteredParties.sort((a, b) => {
-                            const totalA = Object.values(a.weeks).reduce((s, w) => s + Math.abs(w.ingresos - w.egresos), 0);
-                            const totalB = Object.values(b.weeks).reduce((s, w) => s + Math.abs(w.ingresos - w.egresos), 0);
-                            return totalB - totalA;
+                          const sortedParties = [...filteredParties].sort((a, b) => {
+                            const tot = (p) => Object.entries(p.weeks).filter(([i]) => columnVisible[+i]).reduce((s, [, w]) => s + Math.abs(w.ingresos - w.egresos), 0);
+                            return tot(b) - tot(a);
                           });
+                          const filteredWeekNet = (wi) => filteredParties.reduce((s, p) => {
+                            const wd = p.weeks[wi] || { ingresos: 0, egresos: 0 };
+                            return s + (wd.ingresos - wd.egresos);
+                          }, 0);
+                          const filteredGrandNet = weeklyTotals.reduce((s, _, i) => columnVisible[i] ? s + filteredWeekNet(i) : s, 0);
 
-                          if (sortedParties.length === 0) {
-                            return (
+                          return (<>
+                            {/* Header — totales de terceros filtrados */}
+                            <TableRow className="bg-gray-100 font-bold border-b-2">
+                              <TableCell className="sticky left-0 bg-gray-100">
+                                <div className="flex items-center gap-2">
+                                  <Building2 size={16} className="text-gray-600" />
+                                  PROVEEDOR / CLIENTE
+                                </div>
+                              </TableCell>
+                              {weeklyTotals.map((_, idx) => columnVisible[idx] ? (
+                                <TableCell key={idx} className="text-center text-xs text-gray-600">
+                                  Tot: {formatCurrency(filteredWeekNet(idx))}
+                                </TableCell>
+                              ) : null)}
+                              <TableCell className="text-center bg-gray-200 font-bold">TOTAL</TableCell>
+                            </TableRow>
+
+                            {/* Filas de terceros */}
+                            {sortedParties.length === 0 ? (
                               <TableRow>
                                 <TableCell colSpan={weeklyTotals.length + 2} className="text-center py-8 text-gray-500">
-                                  {hasPartyFiltersActive() 
+                                  {hasPartyFiltersActive()
                                     ? 'No hay terceros que coincidan con los filtros seleccionados'
                                     : 'No hay datos de proveedores/clientes para mostrar'}
                                 </TableCell>
                               </TableRow>
-                            );
-                          }
-
-                          return sortedParties.map(party => {
-                            const totalIngresos = Object.entries(party.weeks)
-                              .filter(([wIdx]) => columnVisible[parseInt(wIdx)])
-                              .reduce((s, [, w]) => s + w.ingresos, 0);
-                            const totalEgresos = Object.entries(party.weeks)
-                              .filter(([wIdx]) => columnVisible[parseInt(wIdx)])
-                              .reduce((s, [, w]) => s + w.egresos, 0);
-                            const netTotal = totalIngresos - totalEgresos;
-                            
-                            if (totalIngresos === 0 && totalEgresos === 0) return null;
-                            
-                            return (
-                              <TableRow 
-                                key={party.id} 
-                                className={`hover:bg-gray-50 ${party.tipo === 'cliente' ? 'hover:bg-green-50/30' : 'hover:bg-red-50/30'}`}
-                              >
-                                <TableCell className="sticky left-0 bg-white">
-                                  <div className="flex items-center gap-2">
-                                    {party.tipo === 'cliente' ? (
-                                      <User size={14} className="text-blue-500" />
-                                    ) : (
-                                      <Building2 size={14} className="text-orange-500" />
-                                    )}
-                                    <span className="truncate max-w-[170px]" title={party.nombre}>
-                                      {party.nombre}
-                                    </span>
-                                    <Badge variant="outline" className="text-xs ml-1">
-                                      {party.tipo === 'cliente' ? 'C' : 'P'}
-                                    </Badge>
-                                  </div>
-                                </TableCell>
-                                {weeklyTotals.map((_, weekIdx) => {
-                                  if (!columnVisible[weekIdx]) return null;
-                                  const weekData = party.weeks[weekIdx] || { ingresos: 0, egresos: 0 };
-                                  const netValue = weekData.ingresos - weekData.egresos;
-                                  const hasItems = weekData.ingresos > 0 || weekData.egresos > 0;
-
-                                  return (
-                                    <TableCell
-                                      key={weekIdx}
-                                      className={`text-center text-sm ${
-                                        netValue > 0 ? 'text-green-600' : 
-                                        netValue < 0 ? 'text-red-600' : 'text-gray-400'
-                                      } ${hasItems ? 'cursor-pointer hover:bg-gray-100 hover:underline' : ''}`}
-                                      onClick={() => {
-                                        if (hasItems) {
-                                          // Open drill-down with party's items for this week
-                                          const items = weekData.items || [];
+                            ) : sortedParties.map(party => {
+                              const totalIngresos = Object.entries(party.weeks).filter(([wi]) => columnVisible[+wi]).reduce((s, [, w]) => s + w.ingresos, 0);
+                              const totalEgresos  = Object.entries(party.weeks).filter(([wi]) => columnVisible[+wi]).reduce((s, [, w]) => s + w.egresos,  0);
+                              const netTotal = totalIngresos - totalEgresos;
+                              if (totalIngresos === 0 && totalEgresos === 0) return null;
+                              return (
+                                <TableRow key={party.id} className={`hover:bg-gray-50 ${party.tipo === 'cliente' ? 'hover:bg-green-50/30' : 'hover:bg-red-50/30'}`}>
+                                  <TableCell className="sticky left-0 bg-white">
+                                    <div className="flex items-center gap-2">
+                                      {party.tipo === 'cliente' ? <User size={14} className="text-blue-500" /> : <Building2 size={14} className="text-orange-500" />}
+                                      <span className="truncate max-w-[170px]" title={party.nombre}>{party.nombre}</span>
+                                      <Badge variant="outline" className="text-xs ml-1">{party.tipo === 'cliente' ? 'C' : 'P'}</Badge>
+                                    </div>
+                                  </TableCell>
+                                  {weeklyTotals.map((_, weekIdx) => {
+                                    if (!columnVisible[weekIdx]) return null;
+                                    const weekData = party.weeks[weekIdx] || { ingresos: 0, egresos: 0 };
+                                    const netValue = weekData.ingresos - weekData.egresos;
+                                    const hasItems = weekData.ingresos > 0 || weekData.egresos > 0;
+                                    return (
+                                      <TableCell key={weekIdx}
+                                        className={`text-center text-sm ${netValue > 0 ? 'text-green-600' : netValue < 0 ? 'text-red-600' : 'text-gray-400'} ${hasItems ? 'cursor-pointer hover:bg-gray-100 hover:underline' : ''}`}
+                                        onClick={() => {
+                                          if (!hasItems) return;
                                           setDrillDownData({
                                             weekNum: weekIdx + 1,
                                             weekLabel: weeklyData[weekIdx]?.displayLabel || weeklyData[weekIdx]?.label || `S${weekIdx + 1}`,
@@ -3319,50 +3295,37 @@ const CashflowProjections = () => {
                                             tipo: netValue >= 0 ? 'ingreso' : 'egreso',
                                             categoryName: party.nombre,
                                             subcategoryName: party.tipo === 'cliente' ? 'Cliente' : 'Proveedor',
-                                            items: items.map(item => ({
-                                              ...item,
-                                              tercero: party.nombre,
-                                              terceroTipo: party.tipo
-                                            })),
+                                            items: (weekData.items || []).map(item => ({ ...item, tercero: party.nombre, terceroTipo: party.tipo })),
                                             total: netValue
                                           });
                                           setDrillDownOpen(true);
-                                        }
-                                      }}
-                                    >
-                                      {netValue !== 0 ? formatCurrency(netValue) : '-'}
-                                    </TableCell>
-                                  );
-                                })}
-                                <TableCell className={`text-center font-bold ${
-                                  netTotal > 0 ? 'bg-green-50 text-green-700' : 
-                                  netTotal < 0 ? 'bg-red-50 text-red-700' : 'text-gray-500'
-                                }`}>
-                                  {formatCurrency(netTotal)}
-                                </TableCell>
-                              </TableRow>
-                            );
-                          });
-                        })()}
+                                        }}
+                                      >
+                                        {netValue !== 0 ? formatCurrency(netValue) : '-'}
+                                      </TableCell>
+                                    );
+                                  })}
+                                  <TableCell className={`text-center font-bold ${netTotal > 0 ? 'bg-green-50 text-green-700' : netTotal < 0 ? 'bg-red-50 text-red-700' : 'text-gray-500'}`}>
+                                    {formatCurrency(netTotal)}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
 
-                        {/* Totals row */}
-                        <TableRow className="bg-gray-200 font-bold border-t-2">
-                          <TableCell className="sticky left-0 bg-gray-200">
-                            TOTAL NETO
-                          </TableCell>
-                          {weeklyTotals.map((week, idx) => {
-                            if (!columnVisible[idx]) return null;
-                            const net = week.ingresos.total - week.egresos.total;
-                            return (
-                              <TableCell key={idx} className={`text-center font-bold ${net >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                {formatCurrency(net)}
+                            {/* TOTAL NETO — filtrado */}
+                            <TableRow className="bg-gray-200 font-bold border-t-2">
+                              <TableCell className="sticky left-0 bg-gray-200">TOTAL NETO</TableCell>
+                              {weeklyTotals.map((_, idx) => columnVisible[idx] ? (
+                                <TableCell key={idx} className={`text-center font-bold ${filteredWeekNet(idx) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                  {formatCurrency(filteredWeekNet(idx))}
+                                </TableCell>
+                              ) : null)}
+                              <TableCell className={`text-center font-bold ${filteredGrandNet >= 0 ? 'text-green-800 bg-green-100' : 'text-red-800 bg-red-100'}`}>
+                                {formatCurrency(filteredGrandNet)}
                               </TableCell>
-                            );
-                          })}
-                          <TableCell className={`text-center font-bold ${grandTotalFlujo >= 0 ? 'text-green-800 bg-green-100' : 'text-red-800 bg-red-100'}`}>
-                            {formatCurrency(grandTotalFlujo)}
-                          </TableCell>
-                        </TableRow>
+                            </TableRow>
+                          </>);
+                        })()}
                       </>
                     )}
                   </TableBody>
