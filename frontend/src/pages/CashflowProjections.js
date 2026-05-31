@@ -228,6 +228,27 @@ const CashflowProjections = () => {
       try {
         const proyRes = await api.get('/cxc-proyecciones/por-semana');
         porSemana = proyRes.data || {};
+
+        // ── DEBUG TEMPORAL: verificar datos del endpoint /por-semana ──────────
+        const requestUrl = proyRes.config?.url || '/cxc-proyecciones/por-semana';
+        const requestHeaders = proyRes.config?.headers || {};
+        console.group('=== DEBUG /cxc-proyecciones/por-semana ===');
+        console.log('URL llamada:', requestUrl);
+        console.log('X-Company-ID header:', requestHeaders['X-Company-ID'] || requestHeaders['x-company-id'] || '(no enviado)');
+        console.log('HTTP status:', proyRes.status);
+        console.log('Total semanas devueltas:', Object.keys(porSemana).length);
+        console.log('Semanas con datos:', Object.keys(porSemana));
+        if (porSemana['S23']) {
+          console.log('S23 datos:', JSON.stringify(porSemana['S23'], null, 2));
+        } else {
+          console.warn('S23 NO encontrada en la respuesta del endpoint');
+          console.log('Todas las semanas y sus totales cxc:',
+            Object.entries(porSemana).map(([k, v]) => `${k}: cxc=${v.cxc} cxp=${v.cxp}`).join(' | ')
+          );
+        }
+        console.groupEnd();
+        // ── FIN DEBUG ─────────────────────────────────────────────────────────
+
         if (Object.keys(porSemana).length > 0) {
           setCxcCxpData({ porSemana });
         }
