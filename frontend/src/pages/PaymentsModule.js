@@ -220,20 +220,28 @@ const PaymentsModule = () => {
     }
   };
 
+  const loadCategories = async () => {
+    try {
+      const res = await api.get('/cashflow-sync/categories');
+      setCategories(res.data);
+    } catch (error) {
+      console.error('Error loading categories:', error);
+    }
+  };
+
   const loadPartiesData = async () => {
     try {
-      const [customersRes, vendorsRes, categoriesRes] = await Promise.all([
+      const [customersRes, vendorsRes] = await Promise.all([
         api.get('/customers'),
         api.get('/vendors'),
-        api.get('/cashflow-sync/categories')
       ]);
       const cleanName = (obj) => (obj.nombre || obj.name || '').replace(/\s+/g, ' ').trim();
       setCustomers([...customersRes.data].sort((a, b) => cleanName(a).localeCompare(cleanName(b), 'es', { sensitivity: 'base' })));
       setVendors([...vendorsRes.data].sort((a, b) => cleanName(a).localeCompare(cleanName(b), 'es', { sensitivity: 'base' })));
-      setCategories(categoriesRes.data);
     } catch (error) {
       console.error('Error loading parties:', error);
     }
+    await loadCategories();
   };
 
   // Load pending CFDIs for selected party
@@ -709,6 +717,7 @@ const PaymentsModule = () => {
         toast.success(`✅ ${updated} de ${processed} pagos categorizados con IA`);
         setPayments([]); // Forzar re-render limpio
         await loadData();
+        await loadCategories(); // Asegurar que el select tiene las opciones actualizadas
       } else {
         toast.info('No hay pagos sin categoría o ya están todos categorizados');
       }

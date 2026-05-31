@@ -655,6 +655,7 @@ async def auto_categorize_payments(
     cat_by_code = {c["code"]: c for c in all_categories}
 
     # 2. Cargar documentos sin categoría de las tres colecciones
+    valid_codes = {c["code"] for c in all_categories}  # e.g. {"ING-001", "EGR-001", ...}
     no_cat_filter = [
         {"category_id": None},
         {"category_id": {"$exists": False}},
@@ -662,6 +663,9 @@ async def auto_categorize_payments(
         {"category_name": {"$exists": False}},
         {"category_name": None},
         {"category_name": ""},
+        # También atrapa category_id con UUID del sistema antiguo (db.categories)
+        # que no coincide con ningún código válido del sistema actual
+        {"category_id": {"$nin": list(valid_codes)}},
     ]
 
     pay_q: dict = {"company_id": company_id}
@@ -827,6 +831,14 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
         if not item:
             errors.append(f"Item no encontrado: {oid_str}")
             continue
+
+        # Validar que el tipo de categoría coincida con el tipo del documento
+        item_tipo     = item.get("tipo", "pago")
+        expected_tipo = "ingreso" if item_tipo == "cobro" else "egreso"
+        if cat_doc.get("tipo") and cat_doc["tipo"] != expected_tipo:
+            fallback_code = "ING-099" if expected_tipo == "ingreso" else "EGR-099"
+            cat_doc       = cat_by_code.get(fallback_code, cat_doc)
+            category_code = fallback_code
 
         coll = col_map.get(item["_col"])
         if coll is None:
