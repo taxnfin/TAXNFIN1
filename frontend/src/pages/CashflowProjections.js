@@ -1045,53 +1045,59 @@ const CashflowProjections = () => {
   const calculateRunningTotals = () => {
     let saldoInicial = saldoInicialBancos;
     const totals = [];
-    
+
     weeklyData.forEach((week, idx) => {
-      // Add custom concepts for this week
-      const customIngresos = customConcepts
-        .filter(c => c.tipo === 'ingreso' && (c.semana === idx + 1 || c.recurrente))
-        .reduce((sum, c) => sum + c.monto, 0);
-      const customEgresos = customConcepts
-        .filter(c => c.tipo === 'egreso' && (c.semana === idx + 1 || c.recurrente))
-        .reduce((sum, c) => sum + c.monto, 0);
-      
-      // Get USD operations for this week
+      const weekCustomIng = customConcepts.filter(c => c.tipo === 'ingreso' && (c.semana === idx + 1 || c.recurrente));
+      const weekCustomEgr = customConcepts.filter(c => c.tipo === 'egreso' && (c.semana === idx + 1 || c.recurrente));
+
+      const customIngresos = weekCustomIng.reduce((sum, c) => sum + c.monto, 0);
+      const customEgresos  = weekCustomEgr.reduce((sum, c) => sum + c.monto, 0);
+
+      // Enriquecer byCategory con custom concepts como ítems sintéticos,
+      // igual que PASO 3 hace con CxC/CxP — así los tres niveles suman lo mismo.
+      const ingByCategory = { ...week.ingresos.byCategory };
+      weekCustomIng.forEach(c => {
+        ingByCategory[c.nombre] = {
+          total:         (ingByCategory[c.nombre]?.total || 0) + c.monto,
+          bySubcategory: { ...(ingByCategory[c.nombre]?.bySubcategory || {}) },
+          items: [
+            ...(ingByCategory[c.nombre]?.items || []),
+            { id: `custom-ing-${c.id || c.nombre}-${idx}`, monto: c.monto, concepto: c.nombre, beneficiario: c.nombre, source: 'custom_concept' }
+          ]
+        };
+      });
+
+      const egrByCategory = { ...week.egresos.byCategory };
+      weekCustomEgr.forEach(c => {
+        egrByCategory[c.nombre] = {
+          total:         (egrByCategory[c.nombre]?.total || 0) + c.monto,
+          bySubcategory: { ...(egrByCategory[c.nombre]?.bySubcategory || {}) },
+          items: [
+            ...(egrByCategory[c.nombre]?.items || []),
+            { id: `custom-egr-${c.id || c.nombre}-${idx}`, monto: c.monto, concepto: c.nombre, beneficiario: c.nombre, source: 'custom_concept' }
+          ]
+        };
+      });
+
       const compraUSD = week.compraUSD || 0;
-      const ventaUSD = week.ventaUSD || 0;
-      
-      // TOTALES DIRECTOS: ya vienen calculados como suma de categorías
+      const ventaUSD  = week.ventaUSD  || 0;
       const totalIngresos = (week.ingresos.total || 0) + customIngresos;
-      const totalEgresos = (week.egresos.total || 0) + customEgresos;
-      
-      // Net cash flow from operations (excluding USD conversions)
+      const totalEgresos  = (week.egresos.total  || 0) + customEgresos;
       const flujoNetoOperativo = totalIngresos - totalEgresos;
       const flujoDivisas = ventaUSD - compraUSD;
-      const flujoNeto = flujoNetoOperativo + flujoDivisas;
-      const saldoFinal = saldoInicial + flujoNeto;
-      
+      const flujoNeto    = flujoNetoOperativo + flujoDivisas;
+      const saldoFinal   = saldoInicial + flujoNeto;
+
       totals.push({
         ...week,
-        ingresos: { 
-          ...week.ingresos, 
-          total: totalIngresos,
-          custom: customIngresos
-        },
-        egresos: { 
-          ...week.egresos, 
-          total: totalEgresos,
-          custom: customEgresos
-        },
-        compraUSD,
-        ventaUSD,
-        flujoDivisas,
-        saldoInicial,
-        flujoNeto,
-        saldoFinal
+        ingresos: { ...week.ingresos, byCategory: ingByCategory, total: totalIngresos, custom: customIngresos },
+        egresos:  { ...week.egresos,  byCategory: egrByCategory, total: totalEgresos,  custom: customEgresos  },
+        compraUSD, ventaUSD, flujoDivisas, saldoInicial, flujoNeto, saldoFinal
       });
-      
+
       saldoInicial = saldoFinal;
     });
-    
+
     return totals;
   };
 
@@ -1543,11 +1549,11 @@ const CashflowProjections = () => {
   // =====================================================================
   // VISTA POR PROVEEDOR/CLIENTE: Procesar datos agrupados por tercero
   // =====================================================================
-  const processDataByParty = () => {
+  const processDataByParty = (sourceWeeks = weeklyData) => {
     // Create a map: { terceroId: { nombre, tipo, weeks: { weekIdx: { ingresos, egresos } } } }
     const partyMap = {};
-    
-    weeklyData.forEach((week, weekIdx) => {
+
+    sourceWeeks.forEach((week, weekIdx) => {
       // Process ingresos
       Object.entries(week.ingresos.byCategory).forEach(([catName, catData]) => {
         (catData.items || []).forEach(item => {
@@ -1730,7 +1736,7 @@ const CashflowProjections = () => {
 
   // Export party data (filtered or all)
   const exportPartyReport = () => {
-    const partyData = processDataByParty();
+    const partyData = processDataByParty(calculateRunningTotals());
     const filteredParties = filterPartyData(partyData);
     
     if (filteredParties.length === 0) {
@@ -2776,7 +2782,7 @@ const CashflowProjections = () => {
                     {(() => {
                       // Collect all unique category names from ingresos including "Sin categoría"
                       const allIngresoCategories = new Set();
-                      weeklyData.forEach(w => {
+                      weeklyTotals.forEach(w => {
                         Object.keys(w.ingresos.byCategory).forEach(cat => {
                           // Exclude USD operations from INGRESOS section
                           if (!cat.toLowerCase().includes('compra de usd') && !cat.toLowerCase().includes('compra usd')) {
@@ -2784,11 +2790,11 @@ const CashflowProjections = () => {
                           }
                         });
                       });
-                      
+
                       return Array.from(allIngresoCategories).map(categoryName => {
                         const categoryKey = `ing-${categoryName}`;
                         const isExpanded = expandedRows[categoryKey];
-                        const weekTotals = weeklyData.map(w => w.ingresos.byCategory[categoryName]?.total || 0);
+                        const weekTotals = weeklyTotals.map(w => w.ingresos.byCategory[categoryName]?.total || 0);
                         const categoryTotal = weekTotals.reduce((sum, t) => sum + t, 0);
                         
                         if (categoryTotal === 0) return null;
@@ -2821,7 +2827,7 @@ const CashflowProjections = () => {
                             {/* Subcategorías expandibles */}
                             {isExpanded && (() => {
                               const allSubcategories = new Set();
-                              weeklyData.forEach(w => {
+                              weeklyTotals.forEach(w => {
                                 const cat = w.ingresos.byCategory[categoryName];
                                 if (cat?.bySubcategory) {
                                   Object.keys(cat.bySubcategory).forEach(sub => allSubcategories.add(sub));
@@ -2829,7 +2835,7 @@ const CashflowProjections = () => {
                               });
                               
                               return Array.from(allSubcategories).map(subName => {
-                                const subTotals = weeklyData.map(w => 
+                                const subTotals = weeklyTotals.map(w =>
                                   w.ingresos.byCategory[categoryName]?.bySubcategory?.[subName]?.total || 0
                                 );
                                 const subTotal = subTotals.reduce((s, t) => s + t, 0);
@@ -2890,7 +2896,7 @@ const CashflowProjections = () => {
                     {(() => {
                       // Collect all unique category names from egresos including "Sin categoría"
                       const allEgresoCategories = new Set();
-                      weeklyData.forEach(w => {
+                      weeklyTotals.forEach(w => {
                         Object.keys(w.egresos.byCategory).forEach(cat => {
                           // Exclude USD operations from EGRESOS section
                           if (!cat.toLowerCase().includes('venta de usd') && !cat.toLowerCase().includes('venta usd')) {
@@ -2898,11 +2904,11 @@ const CashflowProjections = () => {
                           }
                         });
                       });
-                      
+
                       return Array.from(allEgresoCategories).map(categoryName => {
                         const categoryKey = `egr-${categoryName}`;
                         const isExpanded = expandedRows[categoryKey];
-                        const weekTotals = weeklyData.map(w => w.egresos.byCategory[categoryName]?.total || 0);
+                        const weekTotals = weeklyTotals.map(w => w.egresos.byCategory[categoryName]?.total || 0);
                         const categoryTotal = weekTotals.reduce((sum, t) => sum + t, 0);
                         
                         if (categoryTotal === 0) return null;
@@ -2935,7 +2941,7 @@ const CashflowProjections = () => {
                             {/* Subcategorías expandibles */}
                             {isExpanded && (() => {
                               const allSubcategories = new Set();
-                              weeklyData.forEach(w => {
+                              weeklyTotals.forEach(w => {
                                 const cat = w.egresos.byCategory[categoryName];
                                 if (cat?.bySubcategory) {
                                   Object.keys(cat.bySubcategory).forEach(sub => allSubcategories.add(sub));
@@ -2943,7 +2949,7 @@ const CashflowProjections = () => {
                               });
                               
                               return Array.from(allSubcategories).map(subName => {
-                                const subTotals = weeklyData.map(w => 
+                                const subTotals = weeklyTotals.map(w =>
                                   w.egresos.byCategory[categoryName]?.bySubcategory?.[subName]?.total || 0
                                 );
                                 const subTotal = subTotals.reduce((s, t) => s + t, 0);
@@ -3221,7 +3227,7 @@ const CashflowProjections = () => {
 
                         {/* Render each party */}
                         {(() => {
-                          const partyData = processDataByParty();
+                          const partyData = processDataByParty(weeklyTotals);
                           // Apply filters
                           const filteredParties = filterPartyData(partyData);
                           // Sort by total absolute value (most important first)
