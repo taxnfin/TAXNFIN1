@@ -45,6 +45,7 @@ const PaymentsModule = () => {
   const [filterTipo, setFilterTipo] = useState('all');
   const [filterEstatus, setFilterEstatus] = useState('all');
   const [filterEsReal, setFilterEsReal] = useState('all');
+  const [filterCategoria, setFilterCategoria] = useState('all');
   const [filterFechaDesde, setFilterFechaDesde] = useState('');
   const [filterFechaHasta, setFilterFechaHasta] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, payment: null });
@@ -1568,6 +1569,34 @@ const PaymentsModule = () => {
               </Select>
             </div>
             <div className="space-y-1">
+              <Label className="text-xs">Categoría</Label>
+              <Select value={filterCategoria} onValueChange={setFilterCategoria}>
+                <SelectTrigger className="w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="sin_categoria">Sin categoría</SelectItem>
+                  {categories.filter(c => c.tipo === 'ingreso').length > 0 && (
+                    <>
+                      <SelectItem value="__header_ing__" disabled className="text-xs text-gray-400 font-semibold">── Ingresos ──</SelectItem>
+                      {categories.filter(c => c.tipo === 'ingreso').map(c => (
+                        <SelectItem key={c.code || c.id} value={c.code || c.id}>{c.nombre}</SelectItem>
+                      ))}
+                    </>
+                  )}
+                  {categories.filter(c => c.tipo === 'egreso').length > 0 && (
+                    <>
+                      <SelectItem value="__header_egr__" disabled className="text-xs text-gray-400 font-semibold">── Egresos ──</SelectItem>
+                      {categories.filter(c => c.tipo === 'egreso').map(c => (
+                        <SelectItem key={c.code || c.id} value={c.code || c.id}>{c.nombre}</SelectItem>
+                      ))}
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
               <Label className="text-xs">Desde</Label>
               <Input
                 type="date"
@@ -1588,6 +1617,7 @@ const PaymentsModule = () => {
             <Button variant="outline" onClick={() => {
               setFilterTipo('all');
               setFilterEstatus('all');
+              setFilterCategoria('all');
               setFilterFechaDesde('');
               setFilterFechaHasta('');
             }}>
@@ -1692,6 +1722,9 @@ const PaymentsModule = () => {
                   if (filterTipo !== 'all' && p.tipo !== filterTipo) return false;
                   if (filterEsReal === 'real') return p.es_real === true;
                   if (filterEsReal === 'proyeccion') return p.es_real === false;
+                  // Category filter
+                  if (filterCategoria === 'sin_categoria') return !p.category_id;
+                  if (filterCategoria !== 'all') return p.category_id === filterCategoria;
                   return true;
                 }).map((payment) => {
                   // Find category and subcategory names
