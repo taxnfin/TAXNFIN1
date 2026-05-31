@@ -1920,6 +1920,57 @@ const CashflowProjections = () => {
 
   const weeklyTotals = calculateRunningTotals();
   const monthlyData  = buildMonthlyFromWeeks(weeklyTotals); // derivado de weeklyTotals — misma fuente
+
+  // ── DEBUG TEMPORAL: comparar Por Categoría vs Por Proveedor/Cliente en S24/S25/S27 ──
+  ['S24', 'S25', 'S27'].forEach(targetLabel => {
+    const wIdx = weeklyTotals.findIndex(w => w.displayLabel === targetLabel);
+    if (wIdx === -1) return;
+    const wData = weeklyData[wIdx];
+    const wTotal = weeklyTotals[wIdx];
+
+    // Todos los ítems que Por Categoría contabiliza (mismas arrays que usa byCategory)
+    const catItems = [];
+    Object.entries(wData.ingresos.byCategory || {}).forEach(([cat, catData]) =>
+      (catData.items || []).forEach(item => catItems.push({ cat, id: item.id, monto: item.monto, beneficiario: item.beneficiario, source: item.source }))
+    );
+    const catEgItems = [];
+    Object.entries(wData.egresos.byCategory || {}).forEach(([cat, catData]) =>
+      (catData.items || []).forEach(item => catEgItems.push({ cat, id: item.id, monto: item.monto, beneficiario: item.beneficiario, source: item.source }))
+    );
+
+    // Lo que processDataByParty acumula para este weekIdx
+    const partyData = processDataByParty();
+    const partyIngItems = [];
+    const partyEgItems = [];
+    partyData.forEach(party => {
+      const wd = party.weeks[wIdx];
+      if (!wd) return;
+      (wd.items || []).forEach(item => {
+        if (item.tipo === 'ingreso') partyIngItems.push({ party: party.nombre, id: item.id, monto: item.monto });
+        else partyEgItems.push({ party: party.nombre, id: item.id, monto: item.monto });
+      });
+    });
+
+    console.group(`=== DEBUG ${targetLabel} (weekIdx=${wIdx}, ${wData.dateLabel}) ===`);
+    console.log(`Por Categoría  INGRESOS total: ${wTotal.ingresos.total.toFixed(2)}  (${catItems.length} ítems)`);
+    console.log(`Por Proveedor  INGRESOS total: ${partyIngItems.reduce((s,i)=>s+i.monto,0).toFixed(2)}  (${partyIngItems.length} ítems)`);
+    console.log(`Por Categoría  EGRESOS  total: ${wTotal.egresos.total.toFixed(2)}  (${catEgItems.length} ítems)`);
+    console.log(`Por Proveedor  EGRESOS  total: ${partyEgItems.reduce((s,i)=>s+i.monto,0).toFixed(2)}  (${partyEgItems.length} ítems)`);
+
+    // Ítems en Por Categoría pero no en Por Proveedor (por ID)
+    const partyIngIds = new Set(partyIngItems.map(i => i.id));
+    const onlyInCat = catItems.filter(i => !partyIngIds.has(i.id));
+    if (onlyInCat.length) console.warn('Solo en Por Categoría (faltan en Por Proveedor):', onlyInCat);
+
+    const catIngIds = new Set(catItems.map(i => i.id));
+    const onlyInParty = partyIngItems.filter(i => !catIngIds.has(i.id));
+    if (onlyInParty.length) console.warn('Solo en Por Proveedor (no están en Por Categoría):', onlyInParty);
+
+    if (!onlyInCat.length && !onlyInParty.length) console.log('✅ Mismos ítems en ambas vistas para ingresos');
+    console.groupEnd();
+  });
+  // ── FIN DEBUG ──
+
   const cfoKPIs = calculateCFOKPIs(weeklyTotals);
   const chartData = prepareChartData(weeklyTotals);
 
