@@ -241,18 +241,18 @@ const CashflowProjections = () => {
           const compRes = await api.get(`/companies/${companyId}`);
           const weekStart = compRes.data?.inicio_semana ?? 1;
           setCompanyConfig({ ...compRes.data, inicio_semana: weekStart });
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, validPayments, customStartDate, porSemana);
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, allPayments, customStartDate, porSemana);
           setWeeklyData(weeks);
         } catch {
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate, porSemana);
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, allPayments, customStartDate, porSemana);
           setWeeklyData(weeks);
         }
       } else {
-        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate, porSemana);
+        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, allPayments, customStartDate, porSemana);
         setWeeklyData(weeks);
       }
 
-      // Monthly view
+      // Monthly view — misma fuente que semanal para que cuadren
       processMonthlyData(allPayments, catRes.data, customStartDate, porSemana);
     } catch (error) {
       toast.error(t?.errorLoadingData || 'Error loading data');
