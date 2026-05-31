@@ -697,7 +697,8 @@ const PaymentsModule = () => {
 
       if (anySuccess) {
         toast.success(`Sync completado — ${results.join(' · ')}`);
-        loadData();
+        await loadData();
+        await loadCategories();
       } else if (results.length > 0) {
         toast.error(results.join(' · '));
       } else {

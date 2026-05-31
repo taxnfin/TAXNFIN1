@@ -671,17 +671,18 @@ async def auto_categorize_payments(
     pay_q: dict = {"company_id": company_id}
     if solo_sin_categoria:
         pay_q["$or"] = no_cat_filter
-    payments_raw = await db.payments.find(pay_q).limit(limit).to_list(limit)
+    # Procesar los más recientes primero — coincide con lo que el usuario ve en el frontend
+    payments_raw = await db.payments.find(pay_q).sort([("_id", -1)]).limit(limit).to_list(limit)
 
     cfdi_q: dict = {"company_id": company_id}
     if solo_sin_categoria:
         cfdi_q["$or"] = no_cat_filter
-    cfdis_raw = await db.cfdis.find(cfdi_q).limit(limit).to_list(limit)
+    cfdis_raw = await db.cfdis.find(cfdi_q).sort([("_id", -1)]).limit(limit).to_list(limit)
 
     mov_q: dict = {"company_id": company_id}
     if solo_sin_categoria:
         mov_q["$or"] = no_cat_filter
-    movements_raw = await db.cashflow_movements.find(mov_q).limit(limit).to_list(limit)
+    movements_raw = await db.cashflow_movements.find(mov_q).sort([("_id", -1)]).limit(limit).to_list(limit)
 
     # 3. Construir lista unificada con etiqueta de colección origen
     all_items = []
