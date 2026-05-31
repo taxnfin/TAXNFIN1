@@ -718,14 +718,14 @@ const CashflowProjections = () => {
     });
     
     // ── PASO 3: Inyectar proyecciones CxC/CxP por semana y categoría ──
-    // Los keys del backend (e.g. "S14") se calculan como Jan-5 + (n-1)*7 días del año actual.
-    // Se busca la semana correspondiente por FECHA para evitar desfase con el label secuencial.
+    // El backend genera el label "S23" contando semanas desde el lunes anterior al 1-ene del año
+    // en curso (= FISCAL_YEAR_START = Dec 29, 2025). Se usa la misma ancla para convertir el
+    // label a fecha y encontrar la semana correcta en el modelo.
     if (porSemana && Object.keys(porSemana).length > 0) {
-      const refYearStart = new Date(today.getFullYear(), 0, 5); // ancla igual que backend y vista mensual
-
+      // FISCAL_YEAR_START ya está definido arriba: new Date(2025, 11, 29) = Dec 29, 2025
       Object.entries(porSemana).forEach(([semanaLabel, semanaData]) => {
         const weekNum = parseInt(semanaLabel.replace('S', ''), 10) - 1;
-        const semanaDate = new Date(refYearStart.getTime() + weekNum * 7 * 24 * 60 * 60 * 1000);
+        const semanaDate = new Date(FISCAL_YEAR_START.getTime() + weekNum * 7 * 24 * 60 * 60 * 1000);
 
         const weekIdx = weeks.findIndex(w => semanaDate >= w.weekStart && semanaDate < w.weekEnd);
         if (weekIdx === -1) return;
