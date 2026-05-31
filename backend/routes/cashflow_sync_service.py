@@ -60,6 +60,9 @@ DEFAULT_CATEGORIES = [
     {"code": "EGR-013", "nombre": "Mantenimiento y reparaciones","tipo": "egreso",   "subtipo": "operativo",  "icon": "🔧", "color": "#EF4444"},
     {"code": "EGR-014", "nombre": "Papelería y consumibles",     "tipo": "egreso",   "subtipo": "operativo",  "icon": "📄", "color": "#EF4444"},
     {"code": "EGR-015", "nombre": "Software y suscripciones",    "tipo": "egreso",   "subtipo": "operativo",  "icon": "💻", "color": "#EF4444"},
+    {"code": "EGR-022", "nombre": "Combustible y gasolina",      "tipo": "egreso",   "subtipo": "operativo",  "icon": "⛽", "color": "#EF4444"},
+    {"code": "EGR-023", "nombre": "Fletes y transportes",        "tipo": "egreso",   "subtipo": "operativo",  "icon": "🚚", "color": "#EF4444"},
+    {"code": "EGR-024", "nombre": "Gastos de representación",    "tipo": "egreso",   "subtipo": "operativo",  "icon": "🍽️", "color": "#EF4444"},
     # ── EGRESOS FINANCIEROS ───────────────────────────────────────────
     {"code": "EGR-016", "nombre": "Pago de crédito bancario",    "tipo": "egreso",   "subtipo": "financiero", "icon": "🏦", "color": "#F59E0B"},
     {"code": "EGR-017", "nombre": "Intereses pagados",           "tipo": "egreso",   "subtipo": "financiero", "icon": "📉", "color": "#F59E0B"},
@@ -761,6 +764,9 @@ INSTRUCCIONES:
 - Si el concepto menciona "Cobranza" o es de un cliente → ING-001 (Ventas de productos).
 - Si el beneficiario es un banco → EGR-018 (Comisiones bancarias).
 - Si el concepto menciona nómina, salarios, IMSS → EGR-001 o EGR-002.
+- Si el concepto menciona combustible, gasolina, gas LP, diésel → EGR-022 (Combustible y gasolina).
+- Si el concepto menciona flete, transporte, envío, mensajería, courier → EGR-023 (Fletes y transportes).
+- Si el concepto menciona comida, restaurante, alimentos, representación → EGR-024 (Gastos de representación).
 - Si no puedes determinar → ING-099 para ingresos, EGR-099 para egresos.
 
 Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
