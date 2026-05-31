@@ -1755,23 +1755,36 @@ const PaymentsModule = () => {
                           }}
                         >
                           <option value="">Sin categoría</option>
-                          {categories.filter(c => (payment.tipo === 'cobro' ? c.tipo === 'ingreso' : c.tipo === 'egreso')).map(cat => (
-                            <optgroup key={cat.code || cat.id} label={cat.nombre}>
-                              {/* Opción padre siempre presente — necesaria cuando auto-categorize escribe solo category_id sin subcategory_id */}
-                              {cat.subcategorias && cat.subcategorias.length > 0 ? (
-                                <>
-                                  <option value={`${cat.code || cat.id}|`}>{cat.nombre} (General)</option>
-                                  {cat.subcategorias.map(sub => (
-                                    <option key={sub.id} value={`${cat.code || cat.id}|${sub.id}`}>
-                                      — {sub.nombre}
-                                    </option>
-                                  ))}
-                                </>
-                              ) : (
-                                <option value={`${cat.code || cat.id}|`}>{cat.nombre}</option>
-                              )}
+                          {/* Ingresos */}
+                          {categories.filter(c => c.tipo === 'ingreso').length > 0 && (
+                            <optgroup label="── Ingresos ──">
+                              {categories.filter(c => c.tipo === 'ingreso').map(cat => (
+                                cat.subcategorias && cat.subcategorias.length > 0 ? [
+                                  <option key={`${cat.code || cat.id}|`} value={`${cat.code || cat.id}|`}>{cat.nombre} (General)</option>,
+                                  ...cat.subcategorias.map(sub => (
+                                    <option key={`${cat.code || cat.id}|${sub.id}`} value={`${cat.code || cat.id}|${sub.id}`}>— {sub.nombre}</option>
+                                  ))
+                                ] : (
+                                  <option key={`${cat.code || cat.id}|`} value={`${cat.code || cat.id}|`}>{cat.nombre}</option>
+                                )
+                              ))}
                             </optgroup>
-                          ))}
+                          )}
+                          {/* Egresos */}
+                          {categories.filter(c => c.tipo === 'egreso').length > 0 && (
+                            <optgroup label="── Egresos ──">
+                              {categories.filter(c => c.tipo === 'egreso').map(cat => (
+                                cat.subcategorias && cat.subcategorias.length > 0 ? [
+                                  <option key={`${cat.code || cat.id}|`} value={`${cat.code || cat.id}|`}>{cat.nombre} (General)</option>,
+                                  ...cat.subcategorias.map(sub => (
+                                    <option key={`${cat.code || cat.id}|${sub.id}`} value={`${cat.code || cat.id}|${sub.id}`}>— {sub.nombre}</option>
+                                  ))
+                                ] : (
+                                  <option key={`${cat.code || cat.id}|`} value={`${cat.code || cat.id}|`}>{cat.nombre}</option>
+                                )
+                              ))}
+                            </optgroup>
+                          )}
                         </select>
                     </TableCell>
                     <TableCell className="max-w-[150px] truncate text-sm">{payment.concepto}</TableCell>
