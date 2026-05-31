@@ -1827,9 +1827,6 @@ const CashflowProjections = () => {
   const weeklyTotals = calculateRunningTotals();
   const monthlyData  = buildMonthlyFromWeeks(weeklyTotals); // derivado de weeklyTotals — misma fuente
 
-  const cfoKPIs = calculateCFOKPIs(weeklyTotals);
-  const chartData = prepareChartData(weeklyTotals);
-
   // Column visibility mask — true = show this week column in the table
   // Default: hide past weeks; show current + future
   const columnVisible = weeklyTotals.map(w => {
@@ -1848,6 +1845,10 @@ const CashflowProjections = () => {
 
   // Subset of weeklyTotals for TOTAL column calculations and final-saldo references
   const displayedTotals = weeklyTotals.filter((_, i) => columnVisible[i]);
+
+  // KPIs y gráficos usan solo las semanas visibles (respetan el filtro de rango)
+  const cfoKPIs = calculateCFOKPIs(displayedTotals);
+  const chartData = prepareChartData(displayedTotals);
 
   const customConceptsIngresos = customConcepts.filter(c => c.tipo === 'ingreso');
   const customConceptsEgresos = customConcepts.filter(c => c.tipo === 'egreso');
@@ -2363,24 +2364,33 @@ const CashflowProjections = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="py-2">
+                {(() => {
+                  const visReales = displayedTotals.filter(w => w.dataType === 'real' || w.dataType === 'actual');
+                  const visProy   = displayedTotals.filter(w => w.dataType === 'proyectado');
+                  const lbl = (arr) => arr.length === 0 ? '—'
+                    : arr.length === 1 ? (arr[0].displayLabel || arr[0].label)
+                    : `${arr[0].displayLabel || arr[0].label} – ${arr[arr.length-1].displayLabel || arr[arr.length-1].label}`;
+                  return (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">Ingresos Reales (S1-S{cfoKPIs.semanasRealesCount})</div>
+                    <div className="text-xs text-gray-500 mb-1">Ingresos Reales ({lbl(visReales)})</div>
                     <div className="text-xl font-bold text-green-600">{formatCurrency(cfoKPIs.totalIngresosReales)}</div>
                   </div>
                   <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">Egresos Reales (S1-S{cfoKPIs.semanasRealesCount})</div>
+                    <div className="text-xs text-gray-500 mb-1">Egresos Reales ({lbl(visReales)})</div>
                     <div className="text-xl font-bold text-red-600">{formatCurrency(cfoKPIs.totalEgresosReales)}</div>
                   </div>
                   <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">Ingresos Proyectados (S{cfoKPIs.semanasRealesCount + 1}-S{cfoKPIs.semanasRealesCount + cfoKPIs.semanasProyectadasCount})</div>
+                    <div className="text-xs text-gray-500 mb-1">Ingresos Proyectados ({lbl(visProy)})</div>
                     <div className="text-xl font-bold text-green-500">{formatCurrency(cfoKPIs.totalIngresosProyectados)}</div>
                   </div>
                   <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">Egresos Proyectados (S{cfoKPIs.semanasRealesCount + 1}-S{cfoKPIs.semanasRealesCount + cfoKPIs.semanasProyectadasCount})</div>
+                    <div className="text-xs text-gray-500 mb-1">Egresos Proyectados ({lbl(visProy)})</div>
                     <div className="text-xl font-bold text-red-500">{formatCurrency(cfoKPIs.totalEgresosProyectados)}</div>
                   </div>
                 </div>
+                  );
+                })()}
                 <div className="mt-4 grid grid-cols-2 gap-4">
                   <div className="text-center p-4 bg-blue-100 rounded-lg">
                     <div className="text-sm text-blue-700 mb-1">Flujo Neto Real Acumulado</div>
