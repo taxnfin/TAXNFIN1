@@ -1597,7 +1597,14 @@ const CashflowProjections = () => {
             terceroNombre = payment.beneficiario;
             terceroTipo = 'cliente';
           }
-          
+          // Fallback para ítems sintéticos (CxC/CxP proyectados, custom concepts):
+          // item.beneficiario ya trae el nombre real del cliente/proveedor
+          if (terceroId === 'sin-asignar' && item.beneficiario) {
+            terceroId = item.beneficiario;
+            terceroNombre = item.beneficiario;
+            terceroTipo = 'cliente';
+          }
+
           if (!partyMap[terceroId]) {
             partyMap[terceroId] = {
               id: terceroId,
@@ -1606,16 +1613,16 @@ const CashflowProjections = () => {
               weeks: {}
             };
           }
-          
+
           if (!partyMap[terceroId].weeks[weekIdx]) {
             partyMap[terceroId].weeks[weekIdx] = { ingresos: 0, egresos: 0, items: [] };
           }
-          
+
           partyMap[terceroId].weeks[weekIdx].ingresos += item.monto || 0;
           partyMap[terceroId].weeks[weekIdx].items.push({ ...item, tipo: 'ingreso' });
         });
       });
-      
+
       // Process egresos
       Object.entries(week.egresos.byCategory).forEach(([catName, catData]) => {
         (catData.items || []).forEach(item => {
@@ -1659,7 +1666,14 @@ const CashflowProjections = () => {
             terceroNombre = payment.beneficiario;
             terceroTipo = 'proveedor';
           }
-          
+          // Fallback para ítems sintéticos (CxC/CxP proyectados, custom concepts):
+          // item.beneficiario ya trae el nombre real del cliente/proveedor
+          if (terceroId === 'sin-asignar' && item.beneficiario) {
+            terceroId = item.beneficiario;
+            terceroNombre = item.beneficiario;
+            terceroTipo = 'proveedor';
+          }
+
           if (!partyMap[terceroId]) {
             partyMap[terceroId] = {
               id: terceroId,
