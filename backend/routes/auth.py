@@ -31,6 +31,7 @@ class ResetPasswordRequest(BaseModel):
 async def _send_reset_email(email: str, reset_link: str, token: str) -> None:
     """Send reset email via Resend. Logs the link to console if RESEND_API_KEY not set."""
     api_key = os.environ.get('RESEND_API_KEY', '')
+    logger.info("[RESEND] api_key present=%s key_prefix=%s", bool(api_key), api_key[:8] if api_key else 'NONE')
 
     if not api_key:
         logger.warning(
@@ -43,6 +44,7 @@ async def _send_reset_email(email: str, reset_link: str, token: str) -> None:
 
     resend.api_key = api_key
     from_address = os.environ.get('RESEND_FROM', 'TaxnFin <noreply@taxnfin.com>')
+    logger.info("[RESEND] from=%s to=%s", from_address, email)
 
     text_body = (
         f"Recibimos una solicitud para restablecer tu contraseña.\n\n"
@@ -76,10 +78,11 @@ async def _send_reset_email(email: str, reset_link: str, token: str) -> None:
     }
 
     try:
-        await asyncio.to_thread(resend.Emails.send, params)
-        logger.info("Reset email sent to %s via Resend", email)
+        logger.info("[RESEND] calling resend.Emails.send ...")
+        result = await asyncio.to_thread(resend.Emails.send, params)
+        logger.info("[RESEND] send OK — response: %s", result)
     except Exception as exc:
-        logger.error("Failed to send reset email to %s via Resend: %s", email, exc)
+        logger.error("[RESEND] send FAILED — %s: %s", type(exc).__name__, exc)
         raise
 
 
@@ -185,12 +188,18 @@ async def forgot_password(payload: ForgotPasswordRequest):
 
     Always returns a generic success message to avoid user enumeration.
     """
+    logger.info("[FORGOT-PW] request received for email=%s", payload.email)
+
     frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+    logger.info("[FORGOT-PW] FRONTEND_URL=%s", frontend_url)
+
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
     reset_link = f"{frontend_url}/reset-password?token={token}"
 
     user = await db.users.find_one({'email': payload.email}, {'_id': 0, 'id': 1})
+    logger.info("[FORGOT-PW] user found=%s", bool(user))
+
     if user:
         await db.password_resets.insert_one({
             'token': token,
@@ -200,11 +209,12 @@ async def forgot_password(payload: ForgotPasswordRequest):
             'used': False,
             'created_at': datetime.now(timezone.utc).isoformat(),
         })
+        logger.info("[FORGOT-PW] reset token saved to DB, calling _send_reset_email ...")
         try:
             await _send_reset_email(payload.email, reset_link, token)
-        except Exception:
-            # Email failure is non-fatal; link already logged by _send_reset_email
-            pass
+            logger.info("[FORGOT-PW] _send_reset_email completed without exception")
+        except Exception as exc:
+            logger.error("[FORGOT-PW] _send_reset_email raised %s: %s", type(exc).__name__, exc)
 
     return {"message": "Si el email existe, recibirás instrucciones para restablecer tu contraseña."}
 
