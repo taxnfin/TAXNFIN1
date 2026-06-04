@@ -77,13 +77,24 @@ async def _send_reset_email(email: str, reset_link: str, token: str) -> None:
         "text": text_body,
     }
 
+    async def _call_resend() -> object:
+        return await asyncio.wait_for(
+            asyncio.to_thread(resend.Emails.send, params),
+            timeout=60.0,
+        )
+
     try:
-        logger.info("[RESEND] calling resend.Emails.send ...")
-        result = await asyncio.to_thread(resend.Emails.send, params)
+        logger.info("[RESEND] calling resend.Emails.send (attempt 1) ...")
+        result = await _call_resend()
         logger.info("[RESEND] send OK — response: %s", result)
     except Exception as exc:
-        logger.error("[RESEND] send FAILED — %s: %s", type(exc).__name__, exc)
-        raise
+        logger.warning("[RESEND] attempt 1 failed (%s: %s), retrying ...", type(exc).__name__, exc)
+        try:
+            result = await _call_resend()
+            logger.info("[RESEND] retry OK — response: %s", result)
+        except Exception as exc2:
+            logger.error("[RESEND] send FAILED after retry — %s: %s", type(exc2).__name__, exc2)
+            raise
 
 
 @router.post("/register", response_model=User)
