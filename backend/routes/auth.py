@@ -6,9 +6,8 @@ from datetime import datetime, timezone, timedelta
 import secrets
 import os
 import logging
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import asyncio
+import resend
 
 from core.database import db
 from core.auth import (
@@ -30,11 +29,10 @@ class ResetPasswordRequest(BaseModel):
 
 
 async def _send_reset_email(email: str, reset_link: str, token: str) -> None:
-    """Send reset email via SMTP. Logs the link to console if SMTP not configured."""
-    smtp_host = os.environ.get('SMTP_HOST', '')
-    smtp_user = os.environ.get('SMTP_USER', '')
+    """Send reset email via Resend. Logs the link to console if RESEND_API_KEY not set."""
+    api_key = os.environ.get('RESEND_API_KEY', '')
 
-    if not smtp_host or not smtp_user:
+    if not api_key:
         logger.warning(
             "\n" + "=" * 60 + "\n"
             "DEV MODE — Password Reset Link for %s:\n%s\n"
@@ -43,14 +41,8 @@ async def _send_reset_email(email: str, reset_link: str, token: str) -> None:
         )
         return
 
-    smtp_port = int(os.environ.get('SMTP_PORT', '587'))
-    smtp_password = os.environ.get('SMTP_PASSWORD', '')
-    smtp_from = os.environ.get('SMTP_FROM', smtp_user)
-
-    msg = MIMEMultipart('alternative')
-    msg['Subject'] = 'Restablece tu contraseña — TaxnFin Cashflow'
-    msg['From'] = smtp_from
-    msg['To'] = email
+    resend.api_key = api_key
+    from_address = os.environ.get('RESEND_FROM', 'TaxnFin <noreply@taxnfin.com>')
 
     text_body = (
         f"Recibimos una solicitud para restablecer tu contraseña.\n\n"
@@ -74,17 +66,20 @@ async def _send_reset_email(email: str, reset_link: str, token: str) -> None:
       </p>
     </body></html>
     """
-    msg.attach(MIMEText(text_body, 'plain'))
-    msg.attach(MIMEText(html_body, 'html'))
+
+    params = {
+        "from": from_address,
+        "to": [email],
+        "subject": "Restablece tu contraseña — TaxnFin Cashflow",
+        "html": html_body,
+        "text": text_body,
+    }
 
     try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_password)
-            server.sendmail(smtp_from, email, msg.as_string())
-        logger.info("Reset email sent to %s", email)
+        await asyncio.to_thread(resend.Emails.send, params)
+        logger.info("Reset email sent to %s via Resend", email)
     except Exception as exc:
-        logger.error("Failed to send reset email to %s: %s", email, exc)
+        logger.error("Failed to send reset email to %s via Resend: %s", email, exc)
         raise
 
 
