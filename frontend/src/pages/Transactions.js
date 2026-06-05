@@ -46,6 +46,7 @@ const AgingModule = () => {
   const [oficialTotalCxP, setOficialTotalCxP] = useState(null);
   const [proyecciones, setProyecciones] = useState({}); // { "CLIENTE X_cxc": "S3", ... }
   const [proyDocs, setProyDocs] = useState([]);          // docs completos de /cxc-proyecciones (incluyen monto guardado)
+  const [semanaFiltro, setSemanaFiltro] = useState({ cxc: 'todas', cxp: 'todas' }); // filtro de la tabla Totales por Semana
   const [semanasModelo, setSemanasModelo] = useState([]); // semanas proyectadas del modelo
   const [categorias, setCategorias] = useState({});       // { "NOMBRE_tipo": { code, name } }
   const [autoCategorizing, setAutoCategorizing] = useState(false);
@@ -621,24 +622,56 @@ const AgingModule = () => {
     const porSemana = {};
     const sinAsignar = { count: 0, totalMXN: 0 };
     allCfdis.forEach(cfdi => {
-      const semana = proyecciones[`${getPartyName(cfdi, tipo)}_${tipo}`];
+      const nombre = getPartyName(cfdi, tipo);
+      const semana = proyecciones[`${nombre}_${tipo}`];
       if (!semana) {
         sinAsignar.count += 1;
         sinAsignar.totalMXN += cfdi.pendienteMXN;
         return;
       }
-      if (!porSemana[semana]) porSemana[semana] = { count: 0, totalMXN: 0, montoCashflow: 0 };
+      if (!porSemana[semana]) porSemana[semana] = { count: 0, totalMXN: 0, montoCashflow: 0, agingItems: [], cfItems: [] };
       porSemana[semana].count += 1;
       porSemana[semana].totalMXN += cfdi.pendienteMXN;
+      porSemana[semana].agingItems.push({ nombre, monto: cfdi.pendienteMXN });
     });
     // Monto guardado en cxc_proyecciones (lo que realmente pasa al Cash Flow)
     proyDocs.filter(p => p.tipo === tipo && p.semana).forEach(p => {
-      if (!porSemana[p.semana]) porSemana[p.semana] = { count: 0, totalMXN: 0, montoCashflow: 0 };
+      if (!porSemana[p.semana]) porSemana[p.semana] = { count: 0, totalMXN: 0, montoCashflow: 0, agingItems: [], cfItems: [] };
       porSemana[p.semana].montoCashflow += p.monto || 0;
+      porSemana[p.semana].cfItems.push({ nombre: p.nombre, monto: p.monto || 0 });
     });
     const semanaRows = Object.entries(porSemana).sort((a, b) => semanaOrd(a[0]) - semanaOrd(b[0]));
     const totalAsignadoMXN = semanaRows.reduce((s, [, r]) => s + r.totalMXN, 0);
     const totalCashflowMXN = semanaRows.reduce((s, [, r]) => s + r.montoCashflow, 0);
+
+    // Analiza por qué difieren Aging vs Cash Flow en una semana:
+    // - soloCF: proveedores con monto guardado en Cash Flow que ya NO están en el Aging actual
+    // - soloAging: proveedores en el Aging cuya asignación no tiene monto en Cash Flow
+    // - desactualizados: están en ambos pero el monto guardado difiere del pendiente actual
+    const analizarSemana = (r) => {
+      const agingMap = new Map(r.agingItems.map(i => [i.nombre, i.monto]));
+      const cfMap = new Map(r.cfItems.map(i => [i.nombre, i.monto]));
+      const soloCF = r.cfItems.filter(i => !agingMap.has(i.nombre));
+      const soloAging = r.agingItems.filter(i => !cfMap.has(i.nombre));
+      const desactualizados = r.cfItems.filter(i =>
+        agingMap.has(i.nombre) && Math.abs(agingMap.get(i.nombre) - i.monto) > 1);
+      return {
+        agingMap, cfMap, soloCF, soloAging, desactualizados,
+        sumSoloCF: soloCF.reduce((s, i) => s + i.monto, 0),
+        sumSoloAging: soloAging.reduce((s, i) => s + i.monto, 0),
+      };
+    };
+    const fmtD = (mxn) => formatCurrency(fromMXN(mxn, displayCurrency), displayCurrency);
+    const motivoDiferencia = (a) => {
+      const partes = [];
+      if (a.soloCF.length) partes.push(`${a.soloCF.length} del Cash Flow no está(n) en el Aging actual (${fmtD(a.sumSoloCF)})`);
+      if (a.soloAging.length) partes.push(`${a.soloAging.length} del Aging sin monto en Cash Flow (${fmtD(a.sumSoloAging)})`);
+      if (a.desactualizados.length) partes.push(`${a.desactualizados.length} con monto guardado desactualizado vs pendiente actual`);
+      return partes.join(' · ');
+    };
+    const filtroActivo = semanaFiltro[tipo] || 'todas';
+    const visibleRows = filtroActivo === 'todas' ? semanaRows : semanaRows.filter(([s]) => s === filtroActivo);
+    const semanaDetalle = filtroActivo !== 'todas' ? porSemana[filtroActivo] : null;
 
     return (
       <div className="space-y-6">
@@ -665,14 +698,37 @@ const AgingModule = () => {
         {/* Totales por Semana Proyectada */}
         <Card data-testid={`semana-totals-${tipo}`}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Calendar size={16} />
-              Totales por Semana Proyectada
-            </CardTitle>
-            <CardDescription>
-              {tipo === 'cxc' ? 'Cobros' : 'Pagos'} pendientes agrupados por la semana asignada en la columna
-              Proyección — verifica que los montos pasen correctamente al Cash Flow
-            </CardDescription>
+            <div className="flex justify-between items-start gap-4">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Calendar size={16} />
+                  Totales por Semana Proyectada
+                </CardTitle>
+                <CardDescription>
+                  {tipo === 'cxc' ? 'Cobros' : 'Pagos'} pendientes agrupados por la semana asignada en la columna
+                  Proyección — verifica que los montos pasen correctamente al Cash Flow
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-gray-600 whitespace-nowrap">Semana</label>
+                <Select
+                  value={filtroActivo}
+                  onValueChange={(v) => setSemanaFiltro(prev => ({ ...prev, [tipo]: v }))}
+                >
+                  <SelectTrigger className="h-8 w-[160px] text-sm" data-testid={`semana-filtro-${tipo}`}>
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas</SelectItem>
+                    {semanaRows.map(([semana]) => (
+                      <SelectItem key={semana} value={semana}>
+                        {semana}{semanaInfo.get(semana)?.dateLabel ? ` · ${semanaInfo.get(semana).dateLabel}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {semanaRows.length === 0 && sinAsignar.count === 0 ? (
@@ -696,9 +752,11 @@ const AgingModule = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {semanaRows.map(([semana, r]) => {
+                  {visibleRows.map(([semana, r]) => {
                     const diff = r.totalMXN - r.montoCashflow;
                     const cuadra = Math.abs(diff) <= 1;
+                    const analisis = cuadra ? null : analizarSemana(r);
+                    const motivo = analisis ? motivoDiferencia(analisis) : '';
                     return (
                       <TableRow key={semana} data-testid={`semana-total-${tipo}-${semana}`}>
                         <TableCell>
@@ -714,13 +772,25 @@ const AgingModule = () => {
                         <TableCell className="text-right font-mono text-sm bg-blue-50">
                           {formatCurrency(fromMXN(r.montoCashflow, displayCurrency), displayCurrency)}
                         </TableCell>
-                        <TableCell className={`text-right font-mono text-xs ${cuadra ? 'text-green-600' : 'text-red-600 font-semibold'}`}>
-                          {cuadra ? '✓' : formatCurrency(fromMXN(diff, displayCurrency), displayCurrency)}
+                        <TableCell
+                          className={`text-right text-xs ${cuadra ? 'text-green-600 font-mono' : 'text-red-600'}`}
+                          title={motivo}
+                        >
+                          {cuadra ? '✓' : (
+                            <div className="space-y-0.5">
+                              <div className="font-mono font-semibold">
+                                {formatCurrency(fromMXN(diff, displayCurrency), displayCurrency)}
+                              </div>
+                              <div className="text-[10px] leading-tight text-gray-500 max-w-[220px] ml-auto">
+                                {motivo || 'montos iguales por proveedor pero con redondeo distinto'}
+                              </div>
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
                   })}
-                  {sinAsignar.count > 0 && (
+                  {filtroActivo === 'todas' && sinAsignar.count > 0 && (
                     <TableRow className="bg-amber-50" data-testid={`semana-total-${tipo}-sin-asignar`}>
                       <TableCell colSpan={2}>
                         <span className="text-xs text-amber-700 font-medium flex items-center gap-1">
@@ -736,26 +806,89 @@ const AgingModule = () => {
                       <TableCell />
                     </TableRow>
                   )}
-                  <TableRow className="bg-gray-100 font-semibold border-t-2">
-                    <TableCell colSpan={2}>Total asignado</TableCell>
-                    <TableCell className="text-center text-sm">
-                      {semanaRows.reduce((s, [, r]) => s + r.count, 0)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {formatCurrency(fromMXN(totalAsignadoMXN, displayCurrency), displayCurrency)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm bg-blue-50">
-                      {formatCurrency(fromMXN(totalCashflowMXN, displayCurrency), displayCurrency)}
-                    </TableCell>
-                    <TableCell className={`text-right font-mono text-xs ${Math.abs(totalAsignadoMXN - totalCashflowMXN) <= 1 ? 'text-green-600' : 'text-red-600 font-semibold'}`}>
-                      {Math.abs(totalAsignadoMXN - totalCashflowMXN) <= 1
-                        ? '✓'
-                        : formatCurrency(fromMXN(totalAsignadoMXN - totalCashflowMXN, displayCurrency), displayCurrency)}
-                    </TableCell>
-                  </TableRow>
+                  {filtroActivo === 'todas' && (
+                    <TableRow className="bg-gray-100 font-semibold border-t-2">
+                      <TableCell colSpan={2}>Total asignado</TableCell>
+                      <TableCell className="text-center text-sm">
+                        {semanaRows.reduce((s, [, r]) => s + r.count, 0)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {formatCurrency(fromMXN(totalAsignadoMXN, displayCurrency), displayCurrency)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm bg-blue-50">
+                        {formatCurrency(fromMXN(totalCashflowMXN, displayCurrency), displayCurrency)}
+                      </TableCell>
+                      <TableCell className={`text-right font-mono text-xs ${Math.abs(totalAsignadoMXN - totalCashflowMXN) <= 1 ? 'text-green-600' : 'text-red-600 font-semibold'}`}>
+                        {Math.abs(totalAsignadoMXN - totalCashflowMXN) <= 1
+                          ? '✓'
+                          : formatCurrency(fromMXN(totalAsignadoMXN - totalCashflowMXN, displayCurrency), displayCurrency)}
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             )}
+
+            {/* Detalle de la semana filtrada: qué facturas componen cada lado */}
+            {semanaDetalle && (() => {
+              const a = analizarSemana(semanaDetalle);
+              return (
+                <div className="mt-4 grid grid-cols-2 gap-4" data-testid={`semana-detalle-${tipo}`}>
+                  {/* Lado Aging */}
+                  <div className="border rounded-sm p-3">
+                    <h4 className="text-xs font-semibold text-gray-700 mb-2">
+                      En Aging — {filtroActivo} ({semanaDetalle.agingItems.length} factura(s) · {fmtD(semanaDetalle.totalMXN)})
+                    </h4>
+                    <div className="max-h-64 overflow-y-auto space-y-1">
+                      {semanaDetalle.agingItems.length === 0 ? (
+                        <div className="text-xs text-gray-400 py-2">Ninguna factura del Aging actual está asignada a esta semana</div>
+                      ) : semanaDetalle.agingItems.map((item, i) => (
+                        <div key={i} className="flex justify-between items-center text-xs py-1 border-b border-gray-100">
+                          <span className="truncate max-w-[60%]" title={item.nombre}>{item.nombre}</span>
+                          <span className="flex items-center gap-2">
+                            <span className="font-mono">{fmtD(item.monto)}</span>
+                            {!a.cfMap.has(item.nombre) && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700">sin monto en Cash Flow</span>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Lado Cash Flow */}
+                  <div className="border rounded-sm p-3 bg-blue-50/30">
+                    <h4 className="text-xs font-semibold text-gray-700 mb-2">
+                      En Cash Flow — {filtroActivo} ({semanaDetalle.cfItems.length} registro(s) · {fmtD(semanaDetalle.montoCashflow)})
+                    </h4>
+                    <div className="max-h-64 overflow-y-auto space-y-1">
+                      {semanaDetalle.cfItems.length === 0 ? (
+                        <div className="text-xs text-gray-400 py-2">Ningún monto guardado en Cash Flow para esta semana</div>
+                      ) : semanaDetalle.cfItems.map((item, i) => {
+                        const enAging = a.agingMap.has(item.nombre);
+                        const pendienteActual = a.agingMap.get(item.nombre);
+                        const desactualizado = enAging && Math.abs(pendienteActual - item.monto) > 1;
+                        return (
+                          <div key={i} className="flex justify-between items-center text-xs py-1 border-b border-gray-100">
+                            <span className="truncate max-w-[50%]" title={item.nombre}>{item.nombre}</span>
+                            <span className="flex items-center gap-2">
+                              <span className="font-mono">{fmtD(item.monto)}</span>
+                              {!enAging && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700">no está en Aging actual</span>
+                              )}
+                              {desactualizado && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700" title={`Pendiente actual en Aging: ${fmtD(pendienteActual)}`}>
+                                  Aging: {fmtD(pendienteActual)}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
 
