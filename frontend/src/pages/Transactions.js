@@ -47,6 +47,8 @@ const AgingModule = () => {
   const [proyecciones, setProyecciones] = useState({}); // { "CLIENTE X_cxc": "S3", ... }
   const [proyDocs, setProyDocs] = useState([]);          // docs completos de /cxc-proyecciones (incluyen monto guardado)
   const [semanaFiltro, setSemanaFiltro] = useState({ cxc: 'todas', cxp: 'todas' }); // filtro de la tabla Totales por Semana
+  const [syncingProy, setSyncingProy] = useState(false);   // sincronización de montos con Aging
+  const [historialSync, setHistorialSync] = useState([]);  // histórico de diferencias (cxc_proyecciones_hist)
   const [semanasModelo, setSemanasModelo] = useState([]); // semanas proyectadas del modelo
   const [categorias, setCategorias] = useState({});       // { "NOMBRE_tipo": { code, name } }
   const [autoCategorizing, setAutoCategorizing] = useState(false);
@@ -59,13 +61,14 @@ const AgingModule = () => {
     setLoading(true);
     const refreshParam = forceRefresh ? '?refresh=true' : '';
     try {
-      const [cxcRes, cxpRes, fxRes, proyRes, semanasRes, catRes] = await Promise.all([
+      const [cxcRes, cxpRes, fxRes, proyRes, semanasRes, catRes, histRes] = await Promise.all([
         api.get(`/contalink/cxc${refreshParam}`),
         api.get(`/contalink/cxp${refreshParam}`),
         api.get('/fx-rates/latest'),
         api.get('/cxc-proyecciones').catch(() => ({ data: [] })),
         api.get('/cxc-proyecciones/semanas-modelo').catch(() => ({ data: [] })),
         api.get('/contalink/categorias-cxc').catch(() => ({ data: { categorias_guardadas: [] } })),
+        api.get('/cxc-proyecciones/historial-sync').catch(() => ({ data: [] })),
       ]);
 
       const toLocal = (facturas, tipo) => (facturas || []).map(f => {
@@ -118,6 +121,7 @@ const AgingModule = () => {
       setProyecciones(proyMap);
       setProyDocs(proyRes.data || []);
       setSemanasModelo(semanasRes.data || []);
+      setHistorialSync(histRes.data || []);
 
       // Construir mapa de categorías: { "NOMBRE_tipo": { code, name } }
       const catMap = {};
@@ -159,6 +163,28 @@ const AgingModule = () => {
       toast.success(`${nombre} asignado a ${semana || 'sin semana'}`);
     } catch (err) {
       toast.error('Error guardando proyección');
+    }
+  };
+
+  const handleSincronizarMontos = async (tipo) => {
+    const label = tipo === 'cxc' ? 'CxC' : 'CxP';
+    const ok = window.confirm(
+      `Sincronizar montos de ${label} con el Aging actual:\n\n` +
+      `• Los que ya NO están en el Aging se eliminarán del Cash Flow (se asumen ${tipo === 'cxc' ? 'cobrados' : 'pagados'})\n` +
+      `• Los montos desactualizados se reemplazarán por el pendiente actual\n\n` +
+      `Cada cambio queda registrado en el histórico Proyectado vs Pagado. ¿Continuar?`
+    );
+    if (!ok) return;
+    setSyncingProy(true);
+    try {
+      const res = await api.post(`/cxc-proyecciones/sincronizar?tipo=${tipo}`);
+      const { actualizados, eliminados, sin_cambio } = res.data;
+      toast.success(`Sincronizado ${label}: ${actualizados} actualizado(s), ${eliminados} eliminado(s), ${sin_cambio} sin cambio`);
+      await loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error sincronizando montos');
+    } finally {
+      setSyncingProy(false);
     }
   };
 
@@ -673,6 +699,32 @@ const AgingModule = () => {
     const visibleRows = filtroActivo === 'todas' ? semanaRows : semanaRows.filter(([s]) => s === filtroActivo);
     const semanaDetalle = filtroActivo !== 'todas' ? porSemana[filtroActivo] : null;
 
+    // ── Proyectado vs Pagado (histórico de sincronizaciones) ──
+    // pagado estimado = Σ diferencias archivadas al sincronizar (lo que dejó de estar pendiente);
+    // pendiente actual = monto vigente en Cash Flow; proyectado original = pagado + pendiente
+    const histPorSemana = {};
+    historialSync.filter(h => h.tipo === tipo && h.semana).forEach(h => {
+      if (!histPorSemana[h.semana]) histPorSemana[h.semana] = { pagado: 0, eventos: 0, ultimoSync: null };
+      histPorSemana[h.semana].pagado += h.diferencia || 0;
+      histPorSemana[h.semana].eventos += 1;
+      if (!histPorSemana[h.semana].ultimoSync || h.sync_at > histPorSemana[h.semana].ultimoSync) {
+        histPorSemana[h.semana].ultimoSync = h.sync_at;
+      }
+    });
+    const histRows = Object.entries(histPorSemana)
+      .map(([semana, h]) => {
+        const pendienteActual = porSemana[semana]?.montoCashflow || 0;
+        const proyectado = h.pagado + pendienteActual;
+        return [semana, { ...h, pendienteActual, proyectado,
+          avance: proyectado > 0 ? Math.min(100, Math.max(0, (h.pagado / proyectado) * 100)) : 0 }];
+      })
+      .sort((a, b) => semanaOrd(a[0]) - semanaOrd(b[0]));
+    const histTotales = histRows.reduce((acc, [, h]) => ({
+      pagado: acc.pagado + h.pagado,
+      pendiente: acc.pendiente + h.pendienteActual,
+      proyectado: acc.proyectado + h.proyectado,
+    }), { pagado: 0, pendiente: 0, proyectado: 0 });
+
     return (
       <div className="space-y-6">
         {/* Summary Cards */}
@@ -710,6 +762,17 @@ const AgingModule = () => {
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                  onClick={() => handleSincronizarMontos(tipo)}
+                  disabled={syncingProy}
+                  data-testid={`sync-montos-${tipo}`}
+                >
+                  <RefreshCw size={12} className={syncingProy ? 'animate-spin' : ''} />
+                  {syncingProy ? 'Sincronizando...' : 'Sincronizar con Aging'}
+                </Button>
                 <label className="text-xs font-medium text-gray-600 whitespace-nowrap">Semana</label>
                 <Select
                   value={filtroActivo}
@@ -891,6 +954,73 @@ const AgingModule = () => {
             })()}
           </CardContent>
         </Card>
+
+        {/* Proyectado vs Pagado por Semana (histórico de sincronizaciones) */}
+        {histRows.length > 0 && (
+          <Card data-testid={`proyectado-vs-pagado-${tipo}`}>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText size={16} />
+                Proyectado vs Pagado por Semana
+              </CardTitle>
+              <CardDescription>
+                Diferencias registradas al sincronizar con el Aging: lo proyectado originalmente vs lo que
+                dejó de estar pendiente ({tipo === 'cxc' ? 'cobrado' : 'pagado'} estimado)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50">
+                    <TableHead>Semana</TableHead>
+                    <TableHead>Inicio</TableHead>
+                    <TableHead className="text-right">Proyectado Original</TableHead>
+                    <TableHead className="text-right bg-emerald-50">{tipo === 'cxc' ? 'Cobrado' : 'Pagado'} (estimado)</TableHead>
+                    <TableHead className="text-right">Pendiente Actual</TableHead>
+                    <TableHead className="text-right">Avance</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {histRows.map(([semana, h]) => (
+                    <TableRow key={semana} data-testid={`proy-vs-pagado-${tipo}-${semana}`}>
+                      <TableCell>
+                        <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800 font-semibold">{semana}</span>
+                      </TableCell>
+                      <TableCell className="text-xs text-gray-500">
+                        {semanaInfo.get(semana)?.dateLabel || '—'}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">{fmtD(h.proyectado)}</TableCell>
+                      <TableCell className={`text-right font-mono text-sm bg-emerald-50 ${h.pagado > 0 ? 'text-emerald-700' : 'text-gray-400'}`}>
+                        {fmtD(h.pagado)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">{fmtD(h.pendienteActual)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${h.avance >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`}
+                              style={{ width: `${h.avance}%` }}
+                            />
+                          </div>
+                          <span className="font-mono text-xs text-gray-600 w-10 text-right">{h.avance.toFixed(0)}%</span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow className="bg-gray-100 font-semibold border-t-2">
+                    <TableCell colSpan={2}>Total</TableCell>
+                    <TableCell className="text-right font-mono text-sm">{fmtD(histTotales.proyectado)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm bg-emerald-50 text-emerald-700">{fmtD(histTotales.pagado)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">{fmtD(histTotales.pendiente)}</TableCell>
+                    <TableCell className="text-right font-mono text-xs text-gray-600">
+                      {histTotales.proyectado > 0 ? `${Math.min(100, Math.max(0, (histTotales.pagado / histTotales.proyectado) * 100)).toFixed(0)}%` : '—'}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Filters Section */}
         <Card className="border-blue-200 bg-blue-50/50">
