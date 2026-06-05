@@ -41,6 +41,35 @@ def _parse_currency(val) -> float:
         return 0.0
 
 
+def _detect_cxp_columns(ws):
+    """Detecta la fila de encabezados y los índices de columnas por nombre.
+
+    Soporta layouts con buckets 91-120 y +120 (como el reporte de CxC).
+    Devuelve (data_start_row, cols) o (None, None) si no se detectan encabezados.
+    """
+    import re
+    for hr in range(0, min(6, ws.nrows)):
+        headers = [str(ws.cell_value(hr, c)).strip().upper() for c in range(ws.ncols)]
+        if not any("VENCER" in h for h in headers):
+            continue
+        cols = {}
+        for c, h in enumerate(headers):
+            if not h:
+                continue
+            if "VENCER" in h:                                       cols.setdefault("por_vencer", c)
+            elif re.search(r"\b1\b\D+\b30\b", h):                   cols.setdefault("d1_30", c)
+            elif re.search(r"\b31\b\D+\b60\b", h):                  cols.setdefault("d31_60", c)
+            elif re.search(r"\b61\b\D+\b90\b", h):                  cols.setdefault("d61_90", c)
+            elif re.search(r"\b91\b\D+\b120\b", h):                 cols.setdefault("d91_120", c)
+            elif re.search(r"(\+|MAS|MÁS|>)\s*(DE\s+)?120\b", h):   cols.setdefault("mas120", c)
+            elif re.search(r"(\+|MAS|MÁS|>)\s*(DE\s+)?90\b", h):    cols.setdefault("mas90", c)
+            elif "TOTAL" in h and "%" not in h and "PORCENT" not in h:
+                cols["total"] = c  # última columna TOTAL gana (es el total de la fila)
+        if "total" in cols and ("d1_30" in cols or "por_vencer" in cols):
+            return hr + 1, cols
+    return None, None
+
+
 def _parse_cxp_excel(content: bytes) -> dict:
     import xlrd
     wb = xlrd.open_workbook(file_contents=content)
@@ -48,41 +77,61 @@ def _parse_cxp_excel(content: bytes) -> dict:
     empresa = str(ws.cell_value(0, 0)).strip()
     rfc     = str(ws.cell_value(0, 1)).strip()
     fecha   = str(ws.cell_value(0, 2)).strip()
+
+    # Detectar columnas por encabezado (soporta buckets 91-120 y +120);
+    # fallback al layout legado de columnas fijas si no hay encabezados reconocibles
+    data_start, cols = _detect_cxp_columns(ws)
+    if cols is None:
+        data_start = 3
+        cols = {"por_vencer": 3, "d1_30": 4, "d31_60": 5, "d61_90": 6, "mas90": 7, "total": 8}
+
+    def _cell(r, key):
+        c = cols.get(key)
+        return _parse_currency(ws.cell_value(r, c)) if c is not None and c < ws.ncols else 0.0
+
     proveedores = []
-    total_por_vencer = total_1_30 = total_31_60 = total_61_90 = total_mas90 = total_general = 0.0
-    for r in range(3, ws.nrows):
+    total_por_vencer = total_1_30 = total_31_60 = total_61_90 = 0.0
+    total_mas90 = total_91_120 = total_mas120 = total_general = 0.0
+    for r in range(data_start, ws.nrows):
         nombre = str(ws.cell_value(r, 1)).strip()
         if not nombre or nombre.upper() in ("TOTAL", "PORCENTAJES", "PORCENTAJES TOTALES"):
             break
-        por_vencer = _parse_currency(ws.cell_value(r, 3))
-        d1_30      = _parse_currency(ws.cell_value(r, 4))
-        d31_60     = _parse_currency(ws.cell_value(r, 5))
-        d61_90     = _parse_currency(ws.cell_value(r, 6))
-        mas90      = _parse_currency(ws.cell_value(r, 7))
-        total      = _parse_currency(ws.cell_value(r, 8))
+        por_vencer = _cell(r, "por_vencer")
+        d1_30      = _cell(r, "d1_30")
+        d31_60     = _cell(r, "d31_60")
+        d61_90     = _cell(r, "d61_90")
+        mas90      = _cell(r, "mas90")
+        d91_120    = _cell(r, "d91_120")
+        mas120     = _cell(r, "mas120")
+        total      = _cell(r, "total")
         if total == 0: continue
         if total < 0:
             total_general += total
             continue
-        if mas90 > 0:    dias_vencido = 91
-        elif d61_90 > 0: dias_vencido = 61
-        elif d31_60 > 0: dias_vencido = 31
-        elif d1_30 > 0:  dias_vencido = 1
-        else:            dias_vencido = 0
+        if mas120 > 0:    dias_vencido = 121
+        elif d91_120 > 0: dias_vencido = 91
+        elif mas90 > 0:   dias_vencido = 91
+        elif d61_90 > 0:  dias_vencido = 61
+        elif d31_60 > 0:  dias_vencido = 31
+        elif d1_30 > 0:   dias_vencido = 1
+        else:             dias_vencido = 0
         proveedores.append({"nombre": nombre, "proveedor_nombre": nombre, "proveedor_rfc": "",
             "saldo_pendiente": total, "por_vencer": por_vencer, "vencido_1_30": d1_30,
             "vencido_31_60": d31_60, "vencido_61_90": d61_90, "vencido_mas90": mas90,
+            "vencido_91_120": d91_120, "vencido_mas120": mas120,
             "total": total, "moneda": "MXN", "dias_vencido": dias_vencido,
             "fecha_emision": "", "fecha_vencimiento": "", "uuid": ""})
         total_por_vencer += por_vencer; total_1_30 += d1_30; total_31_60 += d31_60
-        total_61_90 += d61_90; total_mas90 += mas90; total_general += total
+        total_61_90 += d61_90; total_mas90 += mas90
+        total_91_120 += d91_120; total_mas120 += mas120; total_general += total
     return {"empresa": empresa, "rfc": rfc, "fecha_reporte": fecha, "facturas": proveedores,
         "aging": {"corriente": round(total_por_vencer,2), "vencido_30": round(total_1_30,2),
             "vencido_60": round(total_31_60,2), "vencido_90": round(total_61_90,2),
-            "vencido_mas90": round(total_mas90,2)},
+            "vencido_91_120": round(total_91_120,2), "vencido_mas120": round(total_mas120,2),
+            "vencido_mas90": round(total_mas90+total_91_120+total_mas120,2)},
         "total_pendiente": round(total_general,2), "num_proveedores": len(proveedores),
         "num_facturas": len(proveedores),
-        "pct_vencido": round((total_1_30+total_31_60+total_61_90+total_mas90)/max(total_general,1)*100,1)}
+        "pct_vencido": round((total_1_30+total_31_60+total_61_90+total_mas90+total_91_120+total_mas120)/max(total_general,1)*100,1)}
 
 
 def _parse_cxc_excel(content: bytes) -> dict:

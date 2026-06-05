@@ -45,6 +45,7 @@ const AgingModule = () => {
   const [oficialTotalCxC, setOficialTotalCxC] = useState(null);
   const [oficialTotalCxP, setOficialTotalCxP] = useState(null);
   const [proyecciones, setProyecciones] = useState({}); // { "CLIENTE X_cxc": "S3", ... }
+  const [proyDocs, setProyDocs] = useState([]);          // docs completos de /cxc-proyecciones (incluyen monto guardado)
   const [semanasModelo, setSemanasModelo] = useState([]); // semanas proyectadas del modelo
   const [categorias, setCategorias] = useState({});       // { "NOMBRE_tipo": { code, name } }
   const [autoCategorizing, setAutoCategorizing] = useState(false);
@@ -87,6 +88,17 @@ const AgingModule = () => {
           plazo:            0,
           pendiente:        f.saldo_pendiente || f.total || 0,
           pendienteMXN:     f.saldo_pendiente || f.total || 0,
+          // Desglose por bucket del Excel de Contalink (cuando existe):
+          // permite repartir el saldo de un proveedor entre varias tarjetas de antigüedad
+          desglose_aging: (f.por_vencer != null || f.vencido_1_30 != null || f.vencido_mas90 != null ||
+                           f.vencido_91_120 != null || f.vencido_mas120 != null) ? {
+            'vigente': f.por_vencer || 0,
+            '1-30':    f.vencido_1_30 || 0,
+            '31-60':   f.vencido_31_60 || 0,
+            '61-90':   f.vencido_61_90 || 0,
+            '91-120':  (f.vencido_91_120 || 0) + (f.vencido_mas90 || 0),
+            '120+':    f.vencido_mas120 || 0,
+          } : null,
         };
       });
 
@@ -103,6 +115,7 @@ const AgingModule = () => {
         proyMap[`${p.nombre}_${p.tipo}`] = p.semana;
       });
       setProyecciones(proyMap);
+      setProyDocs(proyRes.data || []);
       setSemanasModelo(semanasRes.data || []);
 
       // Construir mapa de categorías: { "NOMBRE_tipo": { code, name } }
@@ -138,6 +151,10 @@ const AgingModule = () => {
     try {
       await api.post('/cxc-proyecciones', { nombre, tipo, semana, monto, moneda: 'MXN' });
       setProyecciones(prev => ({ ...prev, [`${nombre}_${tipo}`]: semana }));
+      setProyDocs(prev => {
+        const rest = prev.filter(p => !(p.nombre === nombre && p.tipo === tipo));
+        return [...rest, { nombre, tipo, semana, monto, moneda: 'MXN' }];
+      });
       toast.success(`${nombre} asignado a ${semana || 'sin semana'}`);
     } catch (err) {
       toast.error('Error guardando proyección');
@@ -333,12 +350,12 @@ const AgingModule = () => {
 
     // Group by aging bucket
     const buckets = {
-      'vigente': { label: 'Vigente', cfdis: [], total: 0, totalMXN: 0, color: 'bg-green-100 text-green-800' },
-      '1-30': { label: '1-30 días', cfdis: [], total: 0, totalMXN: 0, color: 'bg-yellow-100 text-yellow-800' },
-      '31-60': { label: '31-60 días', cfdis: [], total: 0, totalMXN: 0, color: 'bg-orange-100 text-orange-800' },
-      '61-90': { label: '61-90 días', cfdis: [], total: 0, totalMXN: 0, color: 'bg-red-100 text-red-800' },
-      '91-120': { label: '91-120 días', cfdis: [], total: 0, totalMXN: 0, color: 'bg-red-200 text-red-900' },
-      '120+': { label: '+120 días', cfdis: [], total: 0, totalMXN: 0, color: 'bg-red-300 text-red-900' }
+      'vigente': { label: 'Vigente', cfdis: [], total: 0, totalMXN: 0, numFacturas: 0, color: 'bg-green-100 text-green-800' },
+      '1-30': { label: '1-30 días', cfdis: [], total: 0, totalMXN: 0, numFacturas: 0, color: 'bg-yellow-100 text-yellow-800' },
+      '31-60': { label: '31-60 días', cfdis: [], total: 0, totalMXN: 0, numFacturas: 0, color: 'bg-orange-100 text-orange-800' },
+      '61-90': { label: '61-90 días', cfdis: [], total: 0, totalMXN: 0, numFacturas: 0, color: 'bg-red-100 text-red-800' },
+      '91-120': { label: '91-120 días', cfdis: [], total: 0, totalMXN: 0, numFacturas: 0, color: 'bg-red-200 text-red-900' },
+      '120+': { label: '+120 días', cfdis: [], total: 0, totalMXN: 0, numFacturas: 0, color: 'bg-red-300 text-red-900' }
     };
 
     filtered.forEach(cfdi => {
@@ -374,8 +391,24 @@ const AgingModule = () => {
         esRetencion,
         retencionSAT: esRetencion ? pendiente : 0,
       });
-      buckets[bucket].total += pendiente;
-      buckets[bucket].totalMXN += pendienteMXN;
+
+      // Si el Excel de Contalink trae el desglose por columnas (Vigente, 1-30...+120),
+      // repartir el saldo del proveedor entre los buckets reales en lugar de
+      // acumular todo en el bucket de mayor antigüedad
+      const tieneDesglose = cfdi.desglose_aging &&
+        Object.values(cfdi.desglose_aging).some(v => Math.abs(v) > 0.01);
+      if (tieneDesglose) {
+        Object.entries(cfdi.desglose_aging).forEach(([bKey, amt]) => {
+          if (!amt) return;
+          buckets[bKey].total += amt;
+          buckets[bKey].totalMXN += convertToMXN(amt, moneda, cfdi.tipo_cambio);
+          buckets[bKey].numFacturas += 1;
+        });
+      } else {
+        buckets[bucket].total += pendiente;
+        buckets[bucket].totalMXN += pendienteMXN;
+        buckets[bucket].numFacturas += 1;
+      }
     });
 
     return buckets;
@@ -577,7 +610,36 @@ const AgingModule = () => {
     
     // Recalculate totals based on filtered data
     const filteredTotalMXN = filteredCfdis.reduce((sum, cfdi) => sum + cfdi.pendienteMXN, 0);
-    
+
+    // ── Totales por Semana Proyectada ──
+    // Agrupa las facturas pendientes por la semana asignada en la columna Proyección
+    // y las compara contra el monto guardado que pasa al Cash Flow
+    const semanaInfo = new Map(semanasModelo.map((s, i) => [s.label, { ...s, idx: i }]));
+    const semanaOrd = (label) => semanaInfo.has(label)
+      ? semanaInfo.get(label).idx
+      : 1000 + (parseInt(String(label).replace(/\D/g, ''), 10) || 0);
+    const porSemana = {};
+    const sinAsignar = { count: 0, totalMXN: 0 };
+    allCfdis.forEach(cfdi => {
+      const semana = proyecciones[`${getPartyName(cfdi, tipo)}_${tipo}`];
+      if (!semana) {
+        sinAsignar.count += 1;
+        sinAsignar.totalMXN += cfdi.pendienteMXN;
+        return;
+      }
+      if (!porSemana[semana]) porSemana[semana] = { count: 0, totalMXN: 0, montoCashflow: 0 };
+      porSemana[semana].count += 1;
+      porSemana[semana].totalMXN += cfdi.pendienteMXN;
+    });
+    // Monto guardado en cxc_proyecciones (lo que realmente pasa al Cash Flow)
+    proyDocs.filter(p => p.tipo === tipo && p.semana).forEach(p => {
+      if (!porSemana[p.semana]) porSemana[p.semana] = { count: 0, totalMXN: 0, montoCashflow: 0 };
+      porSemana[p.semana].montoCashflow += p.monto || 0;
+    });
+    const semanaRows = Object.entries(porSemana).sort((a, b) => semanaOrd(a[0]) - semanaOrd(b[0]));
+    const totalAsignadoMXN = semanaRows.reduce((s, [, r]) => s + r.totalMXN, 0);
+    const totalCashflowMXN = semanaRows.reduce((s, [, r]) => s + r.montoCashflow, 0);
+
     return (
       <div className="space-y-6">
         {/* Summary Cards */}
@@ -594,11 +656,108 @@ const AgingModule = () => {
                 <div className={`text-lg font-bold ${bucket.totalMXN > 0 ? (key === 'vigente' ? 'text-green-600' : 'text-red-600') : 'text-gray-400'}`}>
                   {formatCurrency(fromMXN(bucket.totalMXN, displayCurrency), displayCurrency)}
                 </div>
-                <div className="text-xs text-gray-500">{bucket.cfdis.length} factura(s)</div>
+                <div className="text-xs text-gray-500">{bucket.numFacturas} factura(s)</div>
               </CardContent>
             </Card>
           ))}
         </div>
+
+        {/* Totales por Semana Proyectada */}
+        <Card data-testid={`semana-totals-${tipo}`}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Calendar size={16} />
+              Totales por Semana Proyectada
+            </CardTitle>
+            <CardDescription>
+              {tipo === 'cxc' ? 'Cobros' : 'Pagos'} pendientes agrupados por la semana asignada en la columna
+              Proyección — verifica que los montos pasen correctamente al Cash Flow
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {semanaRows.length === 0 && sinAsignar.count === 0 ? (
+              <div className="text-sm text-gray-500 py-4 text-center">
+                No hay facturas pendientes
+              </div>
+            ) : semanaRows.length === 0 ? (
+              <div className="text-sm text-gray-500 py-4 text-center">
+                Ninguna factura tiene semana asignada. Usa la columna "Proyección" de la tabla de detalle para asignar semanas.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50">
+                    <TableHead>Semana</TableHead>
+                    <TableHead>Inicio</TableHead>
+                    <TableHead className="text-center">Facturas</TableHead>
+                    <TableHead className="text-right">Total Pendiente (Aging)</TableHead>
+                    <TableHead className="text-right bg-blue-50">Monto en Cash Flow</TableHead>
+                    <TableHead className="text-right">Diferencia</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {semanaRows.map(([semana, r]) => {
+                    const diff = r.totalMXN - r.montoCashflow;
+                    const cuadra = Math.abs(diff) <= 1;
+                    return (
+                      <TableRow key={semana} data-testid={`semana-total-${tipo}-${semana}`}>
+                        <TableCell>
+                          <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800 font-semibold">{semana}</span>
+                        </TableCell>
+                        <TableCell className="text-xs text-gray-500">
+                          {semanaInfo.get(semana)?.dateLabel || '—'}
+                        </TableCell>
+                        <TableCell className="text-center text-sm">{r.count}</TableCell>
+                        <TableCell className="text-right font-mono text-sm">
+                          {formatCurrency(fromMXN(r.totalMXN, displayCurrency), displayCurrency)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm bg-blue-50">
+                          {formatCurrency(fromMXN(r.montoCashflow, displayCurrency), displayCurrency)}
+                        </TableCell>
+                        <TableCell className={`text-right font-mono text-xs ${cuadra ? 'text-green-600' : 'text-red-600 font-semibold'}`}>
+                          {cuadra ? '✓' : formatCurrency(fromMXN(diff, displayCurrency), displayCurrency)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {sinAsignar.count > 0 && (
+                    <TableRow className="bg-amber-50" data-testid={`semana-total-${tipo}-sin-asignar`}>
+                      <TableCell colSpan={2}>
+                        <span className="text-xs text-amber-700 font-medium flex items-center gap-1">
+                          <AlertTriangle size={12} />
+                          Sin asignar
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center text-sm text-amber-700">{sinAsignar.count}</TableCell>
+                      <TableCell className="text-right font-mono text-sm text-amber-700">
+                        {formatCurrency(fromMXN(sinAsignar.totalMXN, displayCurrency), displayCurrency)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm bg-blue-50 text-gray-400">—</TableCell>
+                      <TableCell />
+                    </TableRow>
+                  )}
+                  <TableRow className="bg-gray-100 font-semibold border-t-2">
+                    <TableCell colSpan={2}>Total asignado</TableCell>
+                    <TableCell className="text-center text-sm">
+                      {semanaRows.reduce((s, [, r]) => s + r.count, 0)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm">
+                      {formatCurrency(fromMXN(totalAsignadoMXN, displayCurrency), displayCurrency)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm bg-blue-50">
+                      {formatCurrency(fromMXN(totalCashflowMXN, displayCurrency), displayCurrency)}
+                    </TableCell>
+                    <TableCell className={`text-right font-mono text-xs ${Math.abs(totalAsignadoMXN - totalCashflowMXN) <= 1 ? 'text-green-600' : 'text-red-600 font-semibold'}`}>
+                      {Math.abs(totalAsignadoMXN - totalCashflowMXN) <= 1
+                        ? '✓'
+                        : formatCurrency(fromMXN(totalAsignadoMXN - totalCashflowMXN, displayCurrency), displayCurrency)}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Filters Section */}
         <Card className="border-blue-200 bg-blue-50/50">
