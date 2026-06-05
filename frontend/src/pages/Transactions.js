@@ -27,6 +27,7 @@ const AgingModule = () => {
     cliente: '',
     moneda: 'todas',
     antiguedad: 'todas',
+    semanaProyectada: 'todas',
     fechaDesde: '',
     fechaHasta: ''
   });
@@ -36,6 +37,7 @@ const AgingModule = () => {
     proveedor: '',
     moneda: 'todas',
     antiguedad: 'todas',
+    semanaProyectada: 'todas',
     fechaDesde: '',
     fechaHasta: ''
   });
@@ -478,6 +480,16 @@ const AgingModule = () => {
         return bucket === filters.antiguedad;
       });
     }
+
+    // Filter by semana proyectada (columna Proyección)
+    if (filters.semanaProyectada && filters.semanaProyectada !== 'todas') {
+      filtered = filtered.filter(cfdi => {
+        const semana = proyecciones[`${getPartyName(cfdi, tipo)}_${tipo}`] || '';
+        return filters.semanaProyectada === 'sin-asignar'
+          ? !semana
+          : semana === filters.semanaProyectada;
+      });
+    }
     
     // Filter by fecha desde
     if (filters.fechaDesde && filters.fechaDesde.trim() !== '') {
@@ -527,6 +539,7 @@ const AgingModule = () => {
         cliente: '',
         moneda: 'todas',
         antiguedad: 'todas',
+        semanaProyectada: 'todas',
         fechaDesde: '',
         fechaHasta: ''
       });
@@ -535,6 +548,7 @@ const AgingModule = () => {
         proveedor: '',
         moneda: 'todas',
         antiguedad: 'todas',
+        semanaProyectada: 'todas',
         fechaDesde: '',
         fechaHasta: ''
       });
@@ -549,6 +563,7 @@ const AgingModule = () => {
       (searchTerm && searchTerm.trim() !== '') ||
       filters.moneda !== 'todas' ||
       filters.antiguedad !== 'todas' ||
+      (filters.semanaProyectada || 'todas') !== 'todas' ||
       (filters.fechaDesde && filters.fechaDesde.trim() !== '') ||
       (filters.fechaHasta && filters.fechaHasta.trim() !== '')
     );
@@ -698,6 +713,11 @@ const AgingModule = () => {
     const filtroActivo = semanaFiltro[tipo] || 'todas';
     const visibleRows = filtroActivo === 'todas' ? semanaRows : semanaRows.filter(([s]) => s === filtroActivo);
     const semanaDetalle = filtroActivo !== 'todas' ? porSemana[filtroActivo] : null;
+
+    // Semanas proyectadas en uso (para el filtro de la tabla de detalle)
+    const semanasAsignadas = [...new Set(Object.entries(proyecciones)
+      .filter(([k, v]) => v && k.endsWith(`_${tipo}`))
+      .map(([, v]) => v))].sort((a, b) => semanaOrd(a) - semanaOrd(b));
 
     // ── Proyectado vs Pagado (histórico de sincronizaciones) ──
     // pagado estimado = Σ diferencias archivadas al sincronizar (lo que dejó de estar pendiente);
@@ -1045,7 +1065,7 @@ const AgingModule = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-5 gap-4">
+            <div className="grid grid-cols-6 gap-4">
               {/* Search by Cliente/Proveedor */}
               <div className="space-y-1">
                 <label className="text-xs font-medium text-gray-600">
@@ -1113,6 +1133,34 @@ const AgingModule = () => {
                   <SelectContent>
                     {agingOptions.map(option => (
                       <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filter by Semana Proyectada */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-600">Semana Proyectada</label>
+                <Select
+                  value={filters.semanaProyectada || 'todas'}
+                  onValueChange={(value) => {
+                    if (tipo === 'cxc') {
+                      setCxcFilters(prev => ({ ...prev, semanaProyectada: value }));
+                    } else {
+                      setCxpFilters(prev => ({ ...prev, semanaProyectada: value }));
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-sm" data-testid={`filter-${tipo}-semana`}>
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas</SelectItem>
+                    <SelectItem value="sin-asignar">— Sin asignar</SelectItem>
+                    {semanasAsignadas.map(semana => (
+                      <SelectItem key={semana} value={semana}>
+                        {semana}{semanaInfo.get(semana)?.dateLabel ? ` · ${semanaInfo.get(semana).dateLabel}` : ''}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
