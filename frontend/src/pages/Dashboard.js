@@ -40,6 +40,7 @@ const Dashboard = () => {
   const [lastRateSync, setLastRateSync] = useState(null);
   const [schedulerStatus, setSchedulerStatus] = useState(null);
   const [fxAlerts, setFxAlerts] = useState(null);
+  const [topClientesCxc, setTopClientesCxc] = useState([]); // top deudores del Aging CxC (MXN)
   
   const [scenarioConfig, setScenarioConfig] = useState(() => {
     const saved = localStorage.getItem('scenarioConfig');
@@ -72,7 +73,8 @@ const Dashboard = () => {
     loadBankAccounts();
     loadSchedulerStatus();
     loadFxAlerts();
-    
+    loadTopClientesCxc();
+
     let weekStartDay = 1;
     try {
       const sel = localStorage.getItem('selectedCompany');
@@ -134,6 +136,25 @@ const Dashboard = () => {
     }
   };
 
+  // Top clientes con mayor saldo pendiente del Aging CxC (caché de Contalink, montos MXN)
+  const loadTopClientesCxc = async () => {
+    try {
+      const res = await api.get('/contalink/cxc');
+      const facturas = res.data?.facturas || [];
+      const top = facturas
+        .filter(f => (f.saldo_pendiente || 0) > 0)
+        .sort((a, b) => (b.saldo_pendiente || 0) - (a.saldo_pendiente || 0))
+        .slice(0, 5)
+        .map(f => ({
+          nombre: f.nombre || f.cliente_nombre || 'Sin nombre',
+          monto: f.saldo_pendiente || 0
+        }));
+      setTopClientesCxc(top);
+    } catch {
+      /* Aging CxC no disponible — la recomendación se muestra sin detalle */
+    }
+  };
+
   const syncFxRates = async () => {
     setSyncingRates(true);
     try {
@@ -157,6 +178,10 @@ const Dashboard = () => {
       if (selectedAccount && selectedAccount !== 'all') {
         url += `&bank_account_id=${selectedAccount}`;
       }
+      // El rango de fechas genera la ventana de semanas en el backend —
+      // todos los gráficos y KPIs derivan de esas semanas
+      if (dateFrom) url += `&fecha_inicio=${dateFrom}`;
+      if (dateTo) url += `&fecha_fin=${dateTo}`;
       const response = await api.get(url);
       setDashboardData(response.data);
     } catch (error) {
@@ -515,7 +540,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Flujo de Efectivo - 13 Semanas</CardTitle>
+            <CardTitle className="text-sm font-medium">Flujo de Efectivo - {chartData.length} Semanas</CardTitle>
             <CardDescription>Ingresos, egresos y saldo acumulado</CardDescription>
           </CardHeader>
           <CardContent>
@@ -677,18 +702,27 @@ const Dashboard = () => {
                   <div className="text-xs text-gray-500">Semanas de operación con saldo actual</div>
                 </div>
                 <div className="text-right">
-                  <span className={`text-2xl font-bold ${
-                    (trend.avg_flow_4w < 0 && saldoInicial > 0) 
-                      ? (Math.abs(saldoInicial / trend.avg_flow_4w) > 13 ? 'text-green-600' : 
-                         Math.abs(saldoInicial / trend.avg_flow_4w) > 6 ? 'text-amber-600' : 'text-red-600')
-                      : 'text-green-600'
-                  }`}>
-                    {trend.avg_flow_4w < 0 && saldoInicial > 0 
-                      ? Math.round(Math.abs(saldoInicial / trend.avg_flow_4w))
-                      : '∞'
-                    }
-                  </span>
-                  <span className="text-sm text-gray-500 ml-1">semanas</span>
+                  {(() => {
+                    // Runway = saldo actual / burn rate semanal (egresos promedio de las
+                    // semanas visibles) — cuántas semanas opera la empresa con la caja actual
+                    const burnRateSemanal = chartData.reduce((sum, w) => sum + (w.egresos || 0), 0) / Math.max(chartData.length, 1);
+                    const runway = burnRateSemanal > 0 ? Math.max(0, saldoInicial) / burnRateSemanal : null;
+                    return (
+                      <>
+                        <span className={`text-2xl font-bold ${
+                          runway === null ? 'text-gray-400' :
+                          runway > 13 ? 'text-green-600' :
+                          runway > 6 ? 'text-amber-600' : 'text-red-600'
+                        }`}>
+                          {runway === null ? '—' : Math.round(runway)}
+                        </span>
+                        <span className="text-sm text-gray-500 ml-1">semanas</span>
+                        {runway === null && (
+                          <div className="text-xs text-gray-400">sin egresos en el período</div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
               <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
@@ -773,7 +807,8 @@ const Dashboard = () => {
                   recommendations.push({
                     priority: 'alta', icon: '📞',
                     text: 'Intensificar gestión de cobranza',
-                    detail: `Los ingresos cubren solo ${((totalIng/totalEgr)*100).toFixed(0)}% de los egresos`
+                    detail: `Los ingresos cubren solo ${((totalIng/totalEgr)*100).toFixed(0)}% de los egresos`,
+                    clientes: topClientesCxc // top deudores del Aging CxC con nombre y monto
                   });
                 }
                 if (risks.saldos_ociosos > 0) {
@@ -811,13 +846,28 @@ const Dashboard = () => {
                     'bg-green-50 border border-green-200'
                   }`}>
                     <span className="text-xl">{rec.icon}</span>
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <div className={`font-medium text-sm ${
                         rec.priority === 'alta' ? 'text-red-800' :
                         rec.priority === 'media' ? 'text-amber-800' :
                         'text-green-800'
                       }`}>{rec.text}</div>
                       <div className="text-xs text-gray-600">{rec.detail}</div>
+                      {rec.clientes && rec.clientes.length > 0 && (
+                        <div className="mt-2 space-y-1" data-testid="top-clientes-cobranza">
+                          <div className="text-[11px] font-semibold text-gray-500 uppercase">
+                            Clientes con mayor saldo pendiente (Aging CxC)
+                          </div>
+                          {rec.clientes.map((c, i) => (
+                            <div key={i} className="flex justify-between items-center gap-2 text-xs bg-white/70 rounded px-2 py-1">
+                              <span className="truncate" title={c.nombre}>{c.nombre}</span>
+                              <span className="font-mono font-semibold whitespace-nowrap">
+                                ${c.monto.toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ));

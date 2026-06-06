@@ -284,14 +284,18 @@ async def get_dashboard_report(
 
 @router.get("/reports/dashboard-from-payments")
 async def get_dashboard_from_payments(
-    request: Request, 
+    request: Request,
     current_user: Dict = Depends(get_current_user),
     moneda_vista: str = Query('MXN', description='Moneda para mostrar datos'),
-    bank_account_id: Optional[str] = Query(None, description='Filtrar por cuenta bancaria específica')
+    bank_account_id: Optional[str] = Query(None, description='Filtrar por cuenta bancaria específica'),
+    fecha_inicio: Optional[str] = Query(None, description='Inicio del rango (YYYY-MM-DD) — genera semanas que cubran el rango'),
+    fecha_fin: Optional[str] = Query(None, description='Fin del rango (YYYY-MM-DD)')
 ):
     """
     Dashboard alternativo que genera datos directamente desde pagos reales.
     Usa la misma lógica que CashflowProjections para consistencia.
+    Sin fecha_inicio/fecha_fin genera la ventana default de 13 semanas
+    (4 pasadas + actual + 8 futuras); con rango genera las semanas que lo cubran.
     """
     from datetime import datetime, timedelta
     
@@ -373,17 +377,34 @@ async def get_dashboard_from_payments(
     compra_usd_id = next((c['id'] for c in categories if 'compra' in c.get('nombre', '').lower() and 'usd' in c.get('nombre', '').lower()), None)
     venta_usd_id = next((c['id'] for c in categories if 'venta' in c.get('nombre', '').lower() and 'usd' in c.get('nombre', '').lower()), None)
     
-    # Generate 13 weeks (4 past, current, 8 future)
+    # Generate weeks window
     today = datetime.now()
     # Find Monday of current week
     days_since_monday = today.weekday()
     current_monday = today - timedelta(days=days_since_monday)
-    start_monday = current_monday - timedelta(weeks=4)
-    
+
+    def _parse_fecha(s):
+        try:
+            return datetime.fromisoformat(s) if s else None
+        except ValueError:
+            return None
+
+    rango_inicio = _parse_fecha(fecha_inicio)
+    rango_fin    = _parse_fecha(fecha_fin)
+
+    if rango_inicio and rango_fin and rango_fin >= rango_inicio:
+        # Ventana dinámica: semanas (lunes a lunes) que cubren el rango pedido (cap 60)
+        start_monday = rango_inicio - timedelta(days=rango_inicio.weekday())
+        num_weeks = min(int((rango_fin - start_monday).days // 7) + 1, 60)
+    else:
+        # Default: 13 semanas (4 pasadas, actual, 8 futuras)
+        start_monday = current_monday - timedelta(weeks=4)
+        num_weeks = 13
+
     weeks_data = []
     running_balance = saldo_bancos_mxn
-    
-    for i in range(13):
+
+    for i in range(num_weeks):
         week_start = start_monday + timedelta(weeks=i)
         week_end = week_start + timedelta(days=7)
         is_past = week_end <= today
