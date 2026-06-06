@@ -124,21 +124,7 @@ def _parse_cxp_excel(content: bytes) -> dict:
         total_por_vencer += por_vencer; total_1_30 += d1_30; total_31_60 += d31_60
         total_61_90 += d61_90; total_mas90 += mas90
         total_91_120 += d91_120; total_mas120 += mas120; total_general += total
-
-    # TEMPORAL (diagnóstico buckets +120): verificar qué campos guarda el parser nuevo.
-    # Quitar cuando los buckets cuadren con Contalink.
-    if proveedores:
-        logger.info(f"[CXP PARSER 57c44c5] columnas detectadas: {cols} | data_start={data_start}")
-        logger.info(f"[CXP PARSER 57c44c5] primera factura: {proveedores[0]}")
-    else:
-        logger.warning(f"[CXP PARSER 57c44c5] 0 proveedores parseados | columnas={cols} | data_start={data_start}")
-
     return {"empresa": empresa, "rfc": rfc, "fecha_reporte": fecha, "facturas": proveedores,
-        # TEMPORAL (diagnóstico): visible en la respuesta del upload en DevTools
-        "parser_debug": {"version": "57c44c5+log", "columnas_detectadas": cols,
-            "data_start": data_start,
-            "primera_factura_campos": sorted(proveedores[0].keys()) if proveedores else [],
-            "primera_factura": proveedores[0] if proveedores else None},
         "aging": {"corriente": round(total_por_vencer,2), "vencido_30": round(total_1_30,2),
             "vencido_60": round(total_31_60,2), "vencido_90": round(total_61_90,2),
             "vencido_91_120": round(total_91_120,2), "vencido_mas120": round(total_mas120,2),
