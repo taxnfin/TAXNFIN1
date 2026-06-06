@@ -1899,7 +1899,6 @@ const CashflowProjections = () => {
   if (loading) return <div className="p-8">{t.loading}</div>;
 
   const weeklyTotals = calculateRunningTotals();
-  const monthlyData  = buildMonthlyFromWeeks(weeklyTotals); // derivado de weeklyTotals — misma fuente
 
   // Column visibility mask — true = show this week column in the table
   // Default: hide past weeks; show current + future
@@ -1919,6 +1918,10 @@ const CashflowProjections = () => {
 
   // Subset of weeklyTotals for TOTAL column calculations and final-saldo references
   const displayedTotals = weeklyTotals.filter((_, i) => columnVisible[i]);
+
+  // Vista Mensual derivada SOLO de las semanas visibles (respeta el filtro de
+  // rango Desde/Hasta, igual que la Vista Semanal) — misma fuente de verdad
+  const monthlyData = buildMonthlyFromWeeks(displayedTotals);
 
   // KPIs y gráficos usan solo las semanas visibles (respetan el filtro de rango)
   const cfoKPIs = calculateCFOKPIs(displayedTotals);
