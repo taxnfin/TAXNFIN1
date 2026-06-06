@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import api from '@/api/axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -74,6 +74,8 @@ const CashflowProjections = () => {
   // PDF export state
   const [exportingPdf, setExportingPdf] = useState(false);
   const reportRef = useRef(null);
+  // Ref para el patrón "latest ref": openKpiModal lee de aquí en lugar de closures del render
+  const kpiStateRef = useRef({ cfoKPIs: null, KPI_DEFS: null, formatCurrency: null });
   const [newConcept, setNewConcept] = useState({
     nombre: '',
     tipo: 'egreso',
@@ -115,6 +117,9 @@ const CashflowProjections = () => {
   const [reconciliations, setReconciliations] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
 
+  // KPI Insight modal — status: 'good' | 'warning' | 'danger' | 'neutral'
+  const [kpiModal, setKpiModal] = useState({ open: false, name: '', formula: '', description: '', values: {}, insight: '', loading: false, status: 'neutral', kpiKey: '' });
+
   // Currency list - All available currencies
   const CURRENCIES = [
     { code: 'MXN', name: 'Peso Mexicano', symbol: '$' },
@@ -140,10 +145,8 @@ const CashflowProjections = () => {
   useEffect(() => {}, [cxcCxpData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = async () => {
-    console.log('[DEBUG] loadData() iniciado'); // ── DEBUG TEMPORAL
     setLoading(true);
     try {
-      console.log('[DEBUG] Iniciando Promise.all con 11 endpoints'); // ── DEBUG TEMPORAL
       const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes, fxRes, paymentsRes, bankTxnsRes, reconRes, bankAccountsRes] = await Promise.all([
         api.get('/cfdi?limit=500'),
         api.get('/cashflow-sync/categories'),
@@ -225,32 +228,11 @@ const CashflowProjections = () => {
       };
       
       const companyId = getActiveCompanyId();
-      console.log('[DEBUG] Promise.all completado. companyId resuelto:', companyId); // ── DEBUG TEMPORAL
       // ── Cargar proyecciones CxC/CxP ANTES de procesar semanas ────────
       let porSemana = {};
       try {
         const proyRes = await api.get('/cxc-proyecciones/por-semana');
         porSemana = proyRes.data || {};
-
-        // ── DEBUG TEMPORAL: verificar datos del endpoint /por-semana ──────────
-        const requestUrl = proyRes.config?.url || '/cxc-proyecciones/por-semana';
-        const requestHeaders = proyRes.config?.headers || {};
-        console.group('=== DEBUG /cxc-proyecciones/por-semana ===');
-        console.log('URL llamada:', requestUrl);
-        console.log('X-Company-ID header:', requestHeaders['X-Company-ID'] || requestHeaders['x-company-id'] || '(no enviado)');
-        console.log('HTTP status:', proyRes.status);
-        console.log('Total semanas devueltas:', Object.keys(porSemana).length);
-        console.log('Semanas con datos:', Object.keys(porSemana));
-        if (porSemana['S23']) {
-          console.log('S23 datos:', JSON.stringify(porSemana['S23'], null, 2));
-        } else {
-          console.warn('S23 NO encontrada en la respuesta del endpoint');
-          console.log('Todas las semanas y sus totales cxc:',
-            Object.entries(porSemana).map(([k, v]) => `${k}: cxc=${v.cxc} cxp=${v.cxp}`).join(' | ')
-          );
-        }
-        console.groupEnd();
-        // ── FIN DEBUG ─────────────────────────────────────────────────────────
 
         if (Object.keys(porSemana).length > 0) {
           setCxcCxpData({ porSemana });
@@ -277,7 +259,7 @@ const CashflowProjections = () => {
 
       // Vista mensual se deriva de weeklyTotals en render — no requiere llamada separada
     } catch (error) {
-      console.error('[DEBUG] ERROR en loadData — try exterior atrapó:', error?.message, error); // ── DEBUG TEMPORAL
+      console.error('Error loading cashflow data:', error);
       toast.error(t?.errorLoadingData || 'Error loading data');
     } finally {
       setLoading(false);
@@ -721,6 +703,8 @@ const CashflowProjections = () => {
     // El backend genera el label "S23" contando semanas desde el lunes anterior al 1-ene del año
     // en curso (= FISCAL_YEAR_START = Dec 29, 2025). Se usa la misma ancla para convertir el
     // label a fecha y encontrar la semana correcta en el modelo.
+    // Semanas futuras: se inyecta el monto completo. Semana ACTUAL: solo el remanente
+    // (asignado − real ya registrado) para no duplicar. Semanas pasadas: nunca.
     if (porSemana && Object.keys(porSemana).length > 0) {
       // FISCAL_YEAR_START ya está definido arriba: new Date(2025, 11, 29) = Dec 29, 2025
       Object.entries(porSemana).forEach(([semanaLabel, semanaData]) => {
@@ -731,13 +715,30 @@ const CashflowProjections = () => {
         if (weekIdx === -1) return;
 
         const week = weeks[weekIdx];
-        if (week.isPast || week.isCurrent) return;
+        if (week.isPast) return;
+
+        // Semana ACTUAL: inyectar solo el REMANENTE = asignado − lo ya registrado como
+        // real en la semana (cobranza/pagos), para no duplicar contra los datos reales.
+        // El remanente se reparte proporcionalmente entre categorías e ítems
+        // (factor = remanente / asignado). Semanas futuras: factor 1 (se inyecta completo).
+        let factorCxc = 1, factorCxp = 1;
+        if (week.isCurrent) {
+          const cxcAsignado = semanaData.cxc || 0;
+          const cxpAsignado = semanaData.cxp || 0;
+          const remCxc = Math.max(0, cxcAsignado - week.ingresos.total);
+          const remCxp = Math.max(0, cxpAsignado - week.egresos.total);
+          factorCxc = cxcAsignado > 0 ? remCxc / cxcAsignado : 0;
+          factorCxp = cxpAsignado > 0 ? remCxp / cxpAsignado : 0;
+          if (factorCxc <= 0 && factorCxp <= 0) return;
+        }
+        const sufijoCxc = factorCxc < 0.999 ? ' (remanente)' : '';
+        const sufijoCxp = factorCxp < 0.999 ? ' (remanente)' : '';
 
         const byCat = semanaData.byCategory || {};
         Object.entries(byCat).forEach(([catName, montos]) => {
           // CxC → ingresos
-          if ((montos.cxc || 0) > 0) {
-            const monto = montos.cxc;
+          if ((montos.cxc || 0) * factorCxc > 0.005) {
+            const monto = montos.cxc * factorCxc;
             week.ingresos.total += monto;
             if (!week.ingresos.byCategory[catName]) {
               week.ingresos.byCategory[catName] = { total: 0, bySubcategory: {}, items: [] };
@@ -749,8 +750,8 @@ const CashflowProjections = () => {
               cxcItems.forEach(it => {
                 week.ingresos.byCategory[catName].items.push({
                   id: `cxc-${it.nombre}-${semanaLabel}`,
-                  monto: it.monto,
-                  concepto: `CxC - ${it.nombre}`,
+                  monto: it.monto * factorCxc,
+                  concepto: `CxC - ${it.nombre}${sufijoCxc}`,
                   beneficiario: it.nombre,
                   source: 'cxc_proyeccion'
                 });
@@ -759,7 +760,7 @@ const CashflowProjections = () => {
               week.ingresos.byCategory[catName].items.push({
                 id: `cxc-proy-${semanaLabel}-${catName}`,
                 monto,
-                concepto: 'CxC Proyectado',
+                concepto: `CxC Proyectado${sufijoCxc}`,
                 beneficiario: catName,
                 source: 'cxc_proyeccion'
               });
@@ -770,8 +771,8 @@ const CashflowProjections = () => {
             week.ingresos.byCategory[catName].bySubcategory['CxC'].total += monto;
           }
           // CxP → egresos
-          if ((montos.cxp || 0) > 0) {
-            const monto = montos.cxp;
+          if ((montos.cxp || 0) * factorCxp > 0.005) {
+            const monto = montos.cxp * factorCxp;
             week.egresos.total += monto;
             if (!week.egresos.byCategory[catName]) {
               week.egresos.byCategory[catName] = { total: 0, bySubcategory: {}, items: [] };
@@ -783,8 +784,8 @@ const CashflowProjections = () => {
               cxpItems.forEach(it => {
                 week.egresos.byCategory[catName].items.push({
                   id: `cxp-${it.nombre}-${semanaLabel}`,
-                  monto: it.monto,
-                  concepto: `CxP - ${it.nombre}`,
+                  monto: it.monto * factorCxp,
+                  concepto: `CxP - ${it.nombre}${sufijoCxp}`,
                   beneficiario: it.nombre,
                   source: 'cxp_proyeccion'
                 });
@@ -793,7 +794,7 @@ const CashflowProjections = () => {
               week.egresos.byCategory[catName].items.push({
                 id: `cxp-proy-${semanaLabel}-${catName}`,
                 monto,
-                concepto: 'CxP Proyectado',
+                concepto: `CxP Proyectado${sufijoCxp}`,
                 beneficiario: catName,
                 source: 'cxp_proyeccion'
               });
@@ -996,54 +997,67 @@ const CashflowProjections = () => {
 
   // =====================================================================
   // CÁLCULO DE KPIs "GRADO CFO"
+  // Recibe `totals` = displayedTotals (semanas visibles según filtro activo).
   // =====================================================================
   const calculateCFOKPIs = (totals) => {
     if (!totals || totals.length === 0) return null;
-    
-    // Separar semanas por tipo de dato
-    const semanasReales = totals.filter(w => w.dataType === 'real' || w.dataType === 'actual');
+
+    // Clasificar semanas: real/actual = datos históricos confirmados; proyectado = CxC/CxP futuros
+    const semanasReales      = totals.filter(w => w.dataType === 'real' || w.dataType === 'actual');
     const semanasProyectadas = totals.filter(w => w.dataType === 'proyectado');
-    
-    // 1. NET BURN RATE - Promedio semanal de flujo neto
-    const burnRateReal = semanasReales.length > 0 
-      ? semanasReales.reduce((sum, w) => sum + w.flujoNeto, 0) / semanasReales.length 
+
+    // ─── 1. NET BURN RATE ────────────────────────────────────────────────────
+    // Promedio semanal de caja neta generada (+) o consumida (−) por el negocio.
+    // Fórmula: BurnRate = Σ(FlujoNeto_i) / N
+    //   FlujoNeto_i = Ingresos_i − Egresos_i + (VentaUSD_i − CompraUSD_i)
+    //   N = número de semanas del tipo analizado (reales o proyectadas)
+    // Se separa en "real" (pagos confirmados) y "proyectado" (CxC/CxP futuros)
+    // para detectar cambios de tendencia entre el pasado y el pronóstico.
+    // Interpretación: positivo = saludable; negativo = consumo de reservas (alerta).
+    const burnRateReal = semanasReales.length > 0
+      ? semanasReales.reduce((sum, w) => sum + w.flujoNeto, 0) / semanasReales.length
       : 0;
-    const burnRateProyectado = semanasProyectadas.length > 0 
-      ? semanasProyectadas.reduce((sum, w) => sum + w.flujoNeto, 0) / semanasProyectadas.length 
+    const burnRateProyectado = semanasProyectadas.length > 0
+      ? semanasProyectadas.reduce((sum, w) => sum + w.flujoNeto, 0) / semanasProyectadas.length
       : 0;
-    
-    // 2. FORECAST ACCURACY - Variación % Real vs Proyectado (solo para semanas que tienen ambos)
-    // Para calcular accuracy, comparamos ingresos/egresos reales vs lo que se había proyectado
-    // Aquí usamos las semanas reales como proxy, dado que no tenemos los datos originales proyectados
-    const totalIngresosReales = semanasReales.reduce((sum, w) => sum + w.ingresos.total, 0);
-    const totalEgresosReales = semanasReales.reduce((sum, w) => sum + w.egresos.total, 0);
-    const totalFlujoNetoReal = semanasReales.reduce((sum, w) => sum + w.flujoNeto, 0);
-    
+
+    // ─── 2. TOTALES REALES Y PROYECTADOS ─────────────────────────────────────
+    // Suma directa de ingresos/egresos de las semanas de cada tipo.
+    const totalIngresosReales      = semanasReales.reduce((sum, w) => sum + w.ingresos.total, 0);
+    const totalEgresosReales       = semanasReales.reduce((sum, w) => sum + w.egresos.total,  0);
+    const totalFlujoNetoReal       = semanasReales.reduce((sum, w) => sum + w.flujoNeto, 0);
     const totalIngresosProyectados = semanasProyectadas.reduce((sum, w) => sum + w.ingresos.total, 0);
-    const totalEgresosProyectados = semanasProyectadas.reduce((sum, w) => sum + w.egresos.total, 0);
+    const totalEgresosProyectados  = semanasProyectadas.reduce((sum, w) => sum + w.egresos.total,  0);
     const totalFlujoNetoProyectado = semanasProyectadas.reduce((sum, w) => sum + w.flujoNeto, 0);
-    
-    // Accuracy: qué tan cerca están los ingresos reales del promedio proyectado (escalado)
-    // Si no hay proyecciones previas, mostrar N/A
+
+    // Promedios semanales proyectados (utilizados en comparativas)
     const promedioIngresosSemanal = totalIngresosProyectados / Math.max(semanasProyectadas.length, 1);
-    const promedioEgresosSemanal = totalEgresosProyectados / Math.max(semanasProyectadas.length, 1);
-    
-    // 3. CASH GAP ANALYSIS - Diferencia vs umbral mínimo por semana
+    const promedioEgresosSemanal  = totalEgresosProyectados  / Math.max(semanasProyectadas.length, 1);
+
+    // ─── 3. CASH GAP ANALYSIS ────────────────────────────────────────────────
+    // Compara el saldo proyectado de cada semana contra el umbral mínimo de operación.
+    // Fórmula: Gap_i = SaldoFinal_i − UmbralMínimoOperativo
+    //   "Semana en riesgo" = semana donde SaldoFinal_i < UmbralMínimoOperativo
+    // UmbralMínimoOperativo: configurable en Ajustes (default: $500,000 MXN).
+    //   Representa la caja mínima para cubrir gastos operativos del período.
+    // Semana crítica = semana con el saldo final más bajo (mayor vulnerabilidad).
+    // Semáforo: 0 en riesgo = cómodo; 1-2 = atención; >2 = intervención urgente.
     const cashGapByWeek = totals.map(w => ({
-      semana: w.label,
+      semana:    w.displayLabel || w.label,
       saldoFinal: w.saldoFinal,
-      gap: w.saldoFinal - umbralMinimoCaja,
-      enRiesgo: w.saldoFinal < umbralMinimoCaja
+      gap:        w.saldoFinal - umbralMinimoCaja,
+      enRiesgo:   w.saldoFinal < umbralMinimoCaja,
     }));
-    
     const semanasEnRiesgo = cashGapByWeek.filter(w => w.enRiesgo);
-    const semanaCritica = cashGapByWeek.reduce((min, w) => 
-      w.saldoFinal < min.saldoFinal ? w : min, 
+    const semanaCritica   = cashGapByWeek.reduce(
+      (min, w) => w.saldoFinal < min.saldoFinal ? w : min,
       cashGapByWeek[0] || { saldoFinal: 0, semana: 'N/A' }
     );
-    
-    // 4. FLUJO DE CAJA ACUMULADO - Real vs Proyectado
-    let acumuladoReal = 0;
+
+    // ─── 4. FLUJO DE CAJA ACUMULADO ──────────────────────────────────────────
+    // Acumula el flujo neto semana a semana, separando la curva real de la proyectada.
+    // La curva proyectada parte del último valor real acumulado (continuidad).
+    let acumuladoReal       = 0;
     let acumuladoProyectado = 0;
     const flujoAcumulado = totals.map(w => {
       if (w.dataType === 'real' || w.dataType === 'actual') {
@@ -1054,26 +1068,40 @@ const CashflowProjections = () => {
         return { ...w, acumuladoReal, acumuladoProyectado: acumuladoReal + acumuladoProyectado };
       }
     });
-    
-    // 5. VOLATILIDAD - Desviación estándar del flujo neto real
+
+    // ─── 5. VOLATILIDAD DEL FLUJO ────────────────────────────────────────────
+    // Mide la irregularidad del flujo neto semanal con desviación estándar poblacional.
+    // Fórmula σ: √( Σ(FlujoNeto_i − μ)² / N )   μ = BurnRateReal, N = semanas reales
+    // Coeficiente de Variación (CV) normaliza σ para comparar períodos distintos:
+    //   CV = (σ / |BurnRateReal|) × 100%
+    // Umbrales: CV < 25% = flujo estable (bajo riesgo operativo)
+    //           CV 25-50% = volatilidad moderada (monitorear de cerca)
+    //           CV > 50%  = alta volatilidad (riesgo de déficit inesperado)
+    // Solo usa semanas reales para evitar distorsión por datos proyectados.
     let volatilidad = 0;
     if (semanasReales.length > 1) {
-      const mediaFlujo = totalFlujoNetoReal / semanasReales.length;
+      const mediaFlujo    = totalFlujoNetoReal / semanasReales.length;
       const sumaCuadrados = semanasReales.reduce((sum, w) => sum + Math.pow(w.flujoNeto - mediaFlujo, 2), 0);
-      volatilidad = Math.sqrt(sumaCuadrados / semanasReales.length);
+      volatilidad         = Math.sqrt(sumaCuadrados / semanasReales.length);
     }
-    
-    // Coeficiente de variación (volatilidad relativa)
     const coeficienteVariacion = burnRateReal !== 0 ? (volatilidad / Math.abs(burnRateReal)) * 100 : 0;
-    
-    // 6. RUNWAY - Semanas de operación con saldo actual
-    const saldoActual = totals.find(w => w.dataType === 'actual')?.saldoFinal || totals[0]?.saldoFinal || 0;
-    const egresoPromedio = (totalEgresosReales + totalEgresosProyectados) / totals.length;
-    const runway = egresoPromedio > 0 ? Math.floor(saldoActual / egresoPromedio) : 999;
-    
-    // 7. RATIO COBRANZA VS PAGOS
-    const ratioCobranzaPagos = totalEgresosReales > 0 
-      ? (totalIngresosReales / totalEgresosReales) 
+
+    // ─── 6. RUNWAY ───────────────────────────────────────────────────────────
+    // Semanas de operación disponibles con el saldo actual sin ingresos adicionales.
+    // Fórmula: Runway = SaldoActual / EgresoPromedioSemanal
+    //   SaldoActual = saldoFinal de la semana dataType==='actual' (o primera semana visible)
+    //   EgresoPromedio = (ΣEgresosReales + ΣEgresosProyectados) / TotalSemanasVisibles
+    // Umbrales: ≥16 semanas = posición cómoda; 8-15 = atención; <8 = alerta crítica.
+    const saldoActual    = totals.find(w => w.dataType === 'actual')?.saldoFinal || totals[0]?.saldoFinal || 0;
+    const egresoPromedio = (totalEgresosReales + totalEgresosProyectados) / Math.max(totals.length, 1);
+    const runway         = egresoPromedio > 0 ? Math.floor(saldoActual / egresoPromedio) : 999;
+
+    // ─── 7. RATIO COBRANZA VS PAGOS ──────────────────────────────────────────
+    // Mide la autosuficiencia operativa: ¿cobra la empresa más de lo que paga?
+    // Fórmula: Ratio = IngresosReales / EgresosReales (solo semanas reales confirmadas)
+    // Ratio > 1.0 = autosuficiente; = 1.0 = equilibrio; < 1.0 = déficit (consume reservas).
+    const ratioCobranzaPagos = totalEgresosReales > 0
+      ? totalIngresosReales / totalEgresosReales
       : totalIngresosReales > 0 ? 999 : 1;
     
     return {
@@ -1822,6 +1850,52 @@ const CashflowProjections = () => {
     return Object.values(monthMap).sort((a, b) => a.monthStart - b.monthStart);
   };
 
+  // useCallback sin deps: función estable que siempre lee los valores más recientes via kpiStateRef
+  const openKpiModal = useCallback(async (kpiKey) => {
+    console.log('KPI CLICK', kpiKey);
+    const { cfoKPIs: kpis, KPI_DEFS: defs, formatCurrency: fmt } = kpiStateRef.current;
+    if (!kpis || !defs) {
+      console.warn('[KPI Modal] kpis o defs no disponibles aún', { kpis: !!kpis, defs: !!defs });
+      return;
+    }
+    try {
+      const def = defs[kpiKey];
+      const values = def.getValues(kpis, fmt);
+
+      let status = 'neutral';
+      if (kpiKey === 'burnRate') {
+        status = kpis.burnRateReal >= 0 ? 'good'
+               : kpis.burnRateReal >= -(kpis.promedioEgresosSemanal * 0.1) ? 'warning' : 'danger';
+      } else if (kpiKey === 'cashGap') {
+        status = kpis.semanasEnRiesgo.length === 0 ? 'good'
+               : kpis.semanasEnRiesgo.length <= 2 ? 'warning' : 'danger';
+      } else if (kpiKey === 'volatilidad') {
+        status = kpis.coeficienteVariacion < 25 ? 'good'
+               : kpis.coeficienteVariacion < 50 ? 'warning' : 'danger';
+      } else if (kpiKey === 'operativos') {
+        status = (kpis.runway >= 16 && kpis.ratioCobranzaPagos >= 1) ? 'good'
+               : (kpis.runway >= 8 || kpis.ratioCobranzaPagos >= 0.8) ? 'warning' : 'danger';
+      }
+
+      setKpiModal({ open: true, name: def.name, formula: def.formula, description: def.description, values, insight: '', loading: true, status, kpiKey });
+
+      try {
+        const res = await api.post('/cashflow-kpi/insight', {
+          kpi_name: def.name,
+          formula: def.formula,
+          description: def.description,
+          values: Object.fromEntries(Object.entries(values).map(([k, v]) => [k, String(v)])),
+        });
+        setKpiModal(prev => ({ ...prev, insight: res.data.insight, loading: false }));
+      } catch {
+        setKpiModal(prev => ({ ...prev, insight: 'No se pudo obtener el análisis en este momento.', loading: false }));
+      }
+    } catch (err) {
+      console.error('[KPI Modal] Error al abrir modal:', err);
+      toast.error('Error al abrir el análisis del KPI');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (loading) return <div className="p-8">{t.loading}</div>;
 
   const weeklyTotals = calculateRunningTotals();
@@ -1858,6 +1932,59 @@ const CashflowProjections = () => {
   const grandTotalVentaUSD = displayedTotals.reduce((sum, w) => sum + (w.ventaUSD || 0), 0);
   const grandTotalFlujoDivisas = grandTotalVentaUSD - grandTotalCompraUSD;
   const grandTotalFlujo = grandTotalIngresos - grandTotalEgresos + grandTotalFlujoDivisas;
+
+  // ─── KPI INSIGHT: abre modal y llama a Claude para interpretar el KPI ──────
+  const KPI_DEFS = {
+    burnRate: {
+      name: 'Net Burn Rate',
+      formula: 'BurnRate = Σ(FlujoNeto_i) / N   donde FlujoNeto = Ingresos − Egresos + Divisas',
+      description: 'Promedio semanal de caja neta generada (>0) o consumida (<0) por el negocio.',
+      getValues: (k) => ({
+        'Burn Rate Real (promedio semanal)': k.burnRateReal,
+        'Burn Rate Proyectado (promedio semanal)': k.burnRateProyectado,
+        'Delta Proyectado vs Real': k.burnRateDelta,
+        'Semanas reales analizadas': k.semanasRealesCount,
+        'Semanas proyectadas': k.semanasProyectadasCount,
+      }),
+    },
+    cashGap: {
+      name: 'Cash Gap Analysis',
+      formula: 'Gap_i = SaldoFinal_i − UmbralMínimoOperativo',
+      description: 'Identifica semanas donde el saldo proyectado cae por debajo del mínimo operativo configurado.',
+      getValues: (k, fmt) => ({
+        'Umbral mínimo de caja': fmt(umbralMinimoCaja),
+        'Semanas en riesgo (en rango visible)': k.semanasEnRiesgo.length,
+        'Semana con saldo más bajo': k.semanaCritica?.semana || 'N/A',
+        'Saldo en semana crítica': fmt(k.semanaCritica?.saldoFinal || 0),
+      }),
+    },
+    volatilidad: {
+      name: 'Volatilidad del Flujo',
+      formula: 'σ = √(Σ(FlujoNeto_i − Media)² / N)   |   CV = σ / |BurnRateReal| × 100',
+      description: 'Desviación estándar del flujo neto semanal real. CV>50% = alta volatilidad.',
+      getValues: (k, fmt) => ({
+        'Desviación estándar (σ)': fmt(k.volatilidad),
+        'Coeficiente de variación (CV)': `${k.coeficienteVariacion.toFixed(1)}%`,
+        'Burn Rate Real (media)': fmt(k.burnRateReal),
+        'Nivel de riesgo': k.coeficienteVariacion > 50 ? 'Alto' : k.coeficienteVariacion > 25 ? 'Moderado' : 'Bajo',
+      }),
+    },
+    operativos: {
+      name: 'Indicadores Operativos',
+      formula: 'Runway = SaldoActual / EgresoPromedioSemanal   |   Ratio = IngresoReal / EgresoReal',
+      description: 'Runway: semanas de operación disponibles. Ratio cobranza/pagos: eficiencia de cobro vs pago.',
+      getValues: (k, fmt) => ({
+        'Runway (semanas de operación)': k.runway === 999 ? 'Sin límite' : `${k.runway} semanas`,
+        'Ratio Cobranza / Pagos': k.ratioCobranzaPagos?.toFixed(2),
+        'Total Ingresos Reales': fmt(k.totalIngresosReales),
+        'Total Egresos Reales': fmt(k.totalEgresosReales),
+        'Flujo Neto Real Total': fmt(k.totalFlujoNetoReal),
+      }),
+    },
+  };
+
+  // Sincronizar ref para que openKpiModal (useCallback estable) lea los valores del render actual
+  kpiStateRef.current = { cfoKPIs, KPI_DEFS, formatCurrency };
 
   // Days of week translated
   const DIAS_SEMANA_TR = [
@@ -2245,35 +2372,46 @@ const CashflowProjections = () => {
           {cfoKPIs && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4" data-testid="cfo-kpis-section">
               {/* Net Burn Rate */}
-              <Card className="border-l-4 border-l-blue-500">
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-                    <Activity size={14} />
-                    Net Burn Rate
+              <div
+                className="rounded-lg border bg-white shadow-sm border-l-4 border-l-blue-500 cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => {
+                  console.log('TEST INLINE CLICK — setKpiModal directo');
+                  setKpiModal({ open: true, name: 'Net Burn Rate', formula: 'BurnRate = Σ(FlujoNeto) / N', description: 'Test directo', values: { 'Burn Rate Real': formatCurrency(cfoKPIs.burnRateReal) }, insight: '', loading: false, status: 'good', kpiKey: 'burnRate' });
+                }}
+                data-testid="kpi-burn-rate"
+              >
+                <div className="p-6 pt-4">
+                  <div className="flex items-center justify-between text-sm text-gray-500 mb-1">
+                    <div className="flex items-center gap-2"><Activity size={14} />Net Burn Rate</div>
+                    <span className="text-xs text-blue-400">Ver análisis →</span>
                   </div>
                   <div className="space-y-1">
                     <div className="flex justify-between items-baseline">
-                      <span className="text-xs text-gray-400">Real (S1-S4):</span>
+                      <span className="text-xs text-gray-400">Real (promedio/sem):</span>
                       <span className={`text-lg font-bold ${cfoKPIs.burnRateReal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {formatCurrency(cfoKPIs.burnRateReal)}/sem
                       </span>
                     </div>
                     <div className="flex justify-between items-baseline">
-                      <span className="text-xs text-gray-400">Proy (S6-S18):</span>
+                      <span className="text-xs text-gray-400">Proyectado (promedio/sem):</span>
                       <span className={`text-lg font-bold ${cfoKPIs.burnRateProyectado >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {formatCurrency(cfoKPIs.burnRateProyectado)}/sem
                       </span>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
 
               {/* Cash Gap Analysis */}
-              <Card className={`border-l-4 ${cfoKPIs.semanasEnRiesgo.length > 0 ? 'border-l-red-500' : 'border-l-green-500'}`}>
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-                    <AlertTriangle size={14} />
-                    Cash Gap Analysis
+              <div
+                className={`rounded-lg border bg-white shadow-sm border-l-4 ${cfoKPIs.semanasEnRiesgo.length > 0 ? 'border-l-red-500' : 'border-l-green-500'} cursor-pointer hover:shadow-md transition-shadow`}
+                onClick={() => openKpiModal('cashGap')}
+                data-testid="kpi-cash-gap"
+              >
+                <div className="p-6 pt-4">
+                  <div className="flex items-center justify-between text-sm text-gray-500 mb-1">
+                    <div className="flex items-center gap-2"><AlertTriangle size={14} />Cash Gap Analysis</div>
+                    <span className="text-xs text-blue-400">Ver análisis →</span>
                   </div>
                   <div className="space-y-1">
                     <div className="flex justify-between items-baseline">
@@ -2283,7 +2421,7 @@ const CashflowProjections = () => {
                     <div className="flex justify-between items-baseline">
                       <span className="text-xs text-gray-400">Semanas en riesgo:</span>
                       <span className={`text-lg font-bold ${cfoKPIs.semanasEnRiesgo.length > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        {cfoKPIs.semanasEnRiesgo.length} de 18
+                        {cfoKPIs.semanasEnRiesgo.length} visible{cfoKPIs.semanasEnRiesgo.length !== 1 ? 's' : ''}
                       </span>
                     </div>
                     {cfoKPIs.semanaCritica && (
@@ -2295,25 +2433,27 @@ const CashflowProjections = () => {
                       </div>
                     )}
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
 
               {/* Volatilidad del Flujo */}
-              <Card className="border-l-4 border-l-purple-500">
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-                    <BarChart3 size={14} />
-                    Volatilidad del Flujo
+              <div
+                className="rounded-lg border bg-white shadow-sm border-l-4 border-l-purple-500 cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => openKpiModal('volatilidad')}
+                data-testid="kpi-volatilidad"
+              >
+                <div className="p-6 pt-4">
+                  <div className="flex items-center justify-between text-sm text-gray-500 mb-1">
+                    <div className="flex items-center gap-2"><BarChart3 size={14} />Volatilidad del Flujo</div>
+                    <span className="text-xs text-blue-400">Ver análisis →</span>
                   </div>
                   <div className="space-y-1">
                     <div className="flex justify-between items-baseline">
-                      <span className="text-xs text-gray-400">Desv. Estándar:</span>
-                      <span className="text-lg font-bold text-purple-600">
-                        {formatCurrency(cfoKPIs.volatilidad)}
-                      </span>
+                      <span className="text-xs text-gray-400">Desv. Estándar (σ):</span>
+                      <span className="text-lg font-bold text-purple-600">{formatCurrency(cfoKPIs.volatilidad)}</span>
                     </div>
                     <div className="flex justify-between items-baseline">
-                      <span className="text-xs text-gray-400">Coef. Variación:</span>
+                      <span className="text-xs text-gray-400">Coef. Variación (CV):</span>
                       <span className={`text-sm font-medium ${cfoKPIs.coeficienteVariacion > 50 ? 'text-red-500' : cfoKPIs.coeficienteVariacion > 25 ? 'text-amber-500' : 'text-green-500'}`}>
                         {cfoKPIs.coeficienteVariacion.toFixed(1)}%
                       </span>
@@ -2322,15 +2462,19 @@ const CashflowProjections = () => {
                       {cfoKPIs.coeficienteVariacion > 50 ? '⚠️ Alta volatilidad' : cfoKPIs.coeficienteVariacion > 25 ? '⚡ Volatilidad moderada' : '✅ Flujo estable'}
                     </p>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
 
-              {/* Runway & Ratio */}
-              <Card className="border-l-4 border-l-amber-500">
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-                    <Target size={14} />
-                    Indicadores Operativos
+              {/* Indicadores Operativos */}
+              <div
+                className="rounded-lg border bg-white shadow-sm border-l-4 border-l-amber-500 cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => openKpiModal('operativos')}
+                data-testid="kpi-operativos"
+              >
+                <div className="p-6 pt-4">
+                  <div className="flex items-center justify-between text-sm text-gray-500 mb-1">
+                    <div className="flex items-center gap-2"><Target size={14} />Indicadores Operativos</div>
+                    <span className="text-xs text-blue-400">Ver análisis →</span>
                   </div>
                   <div className="space-y-1">
                     <div className="flex justify-between items-baseline">
@@ -2349,8 +2493,8 @@ const CashflowProjections = () => {
                       {cfoKPIs.ratioCobranzaPagos >= 1 ? '✅ Cobranza > Pagos' : '⚠️ Pagos > Cobranza'}
                     </p>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </div>
           )}
 
@@ -3505,6 +3649,82 @@ const CashflowProjections = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* ===== KPI INSIGHT MODAL ===== */}
+      <Dialog open={kpiModal.open} onOpenChange={(o) => setKpiModal(prev => ({ ...prev, open: o }))}>
+        <DialogContent className="max-w-xl" data-testid="kpi-insight-modal">
+          <DialogHeader className="pb-3 border-b border-slate-100">
+            <DialogTitle className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5 text-[#0F172A]">
+                {kpiModal.kpiKey === 'burnRate'    && <Activity     size={20} className="text-blue-600 flex-shrink-0" />}
+                {kpiModal.kpiKey === 'cashGap'     && <AlertTriangle size={20} className={kpiModal.status === 'danger' ? 'text-red-600 flex-shrink-0' : 'text-amber-600 flex-shrink-0'} />}
+                {kpiModal.kpiKey === 'volatilidad' && <BarChart3    size={20} className="text-purple-600 flex-shrink-0" />}
+                {kpiModal.kpiKey === 'operativos'  && <Target       size={20} className="text-amber-600 flex-shrink-0" />}
+                <span className="font-bold text-base leading-tight">{kpiModal.name}</span>
+              </div>
+              <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${
+                kpiModal.status === 'good'    ? 'bg-green-100 text-green-700 ring-1 ring-green-200'  :
+                kpiModal.status === 'warning' ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-200' :
+                kpiModal.status === 'danger'  ? 'bg-red-100   text-red-700   ring-1 ring-red-200'   :
+                'bg-slate-100 text-slate-600 ring-1 ring-slate-200'
+              }`}>
+                {kpiModal.status === 'good' ? '● Favorable' : kpiModal.status === 'warning' ? '● Atención' : kpiModal.status === 'danger' ? '● Riesgo' : '● Neutral'}
+              </span>
+            </DialogTitle>
+            {kpiModal.description && (
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{kpiModal.description}</p>
+            )}
+          </DialogHeader>
+
+          <div className="space-y-4 mt-3 max-h-[65vh] overflow-y-auto pr-0.5">
+            {/* Fórmula */}
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Fórmula</div>
+              <code className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap font-mono">{kpiModal.formula}</code>
+            </div>
+
+            {/* Valores que entran al cálculo */}
+            <div>
+              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Valores que entran al cálculo</div>
+              <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
+                {Object.entries(kpiModal.values).map(([k, v]) => (
+                  <div key={k} className="flex justify-between items-center px-3 py-2 bg-white hover:bg-slate-50 transition-colors">
+                    <span className="text-xs text-slate-500 mr-4">{k}</span>
+                    <span className="text-xs font-semibold text-slate-800 text-right">{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Análisis AI */}
+            <div className={`rounded-lg p-4 border ${
+              kpiModal.status === 'good'    ? 'bg-gradient-to-br from-green-50  to-emerald-50 border-green-100'  :
+              kpiModal.status === 'danger'  ? 'bg-gradient-to-br from-red-50    to-rose-50    border-red-100'    :
+              kpiModal.status === 'warning' ? 'bg-gradient-to-br from-amber-50  to-yellow-50  border-amber-100'  :
+              'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-100'
+            }`}>
+              <div className="flex items-center gap-2 mb-2.5">
+                <div className="w-5 h-5 rounded-full bg-[#0F172A] flex items-center justify-center text-white text-[9px] font-bold tracking-tight flex-shrink-0">AI</div>
+                <span className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Análisis CFO · Claude Sonnet</span>
+              </div>
+              {kpiModal.loading ? (
+                <div className="flex items-center gap-2.5 text-sm text-slate-500 py-1">
+                  <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                  <span>Analizando el contexto del negocio...</span>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-700 leading-relaxed">{kpiModal.insight}</p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="border-t border-slate-100 pt-3 mt-1">
+            <Button variant="outline" size="sm" onClick={() => setKpiModal(prev => ({ ...prev, open: false }))}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ===== DRILL-DOWN DIALOG ===== */}
       <Dialog open={drillDownOpen} onOpenChange={setDrillDownOpen}>
