@@ -36,11 +36,17 @@ def _open_worksheet(content: bytes):
     """Abre la primera hoja de un archivo .xls o .xlsx y devuelve una interfaz
     compatible con xlrd (cell_value(row, col) con índices base-0, nrows, ncols)."""
     import io
-    if content[:4] == b'\xd0\xcf\x11\xe0':          # OLE2 magic bytes → .xls
+    magic = content[:4]
+    logger.info(f"[xlsx_diag] magic bytes: {magic.hex()}, tamaño: {len(content)} bytes")
+    if magic == b'\xd0\xcf\x11\xe0':                  # OLE2 magic bytes → .xls
         import xlrd
-        return xlrd.open_workbook(file_contents=content).sheet_by_index(0)
-    import openpyxl                                   # ZIP/OOXML → .xlsx
+        ws = xlrd.open_workbook(file_contents=content).sheet_by_index(0)
+        logger.info(f"[xlsx_diag] engine=xlrd  nrows={ws.nrows} ncols={ws.ncols}")
+        _log_rows(ws, engine="xlrd")
+        return ws
+    import openpyxl                                    # ZIP/OOXML → .xlsx
     _wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+    logger.info(f"[xlsx_diag] engine=openpyxl  hojas={[s.title for s in _wb.worksheets]}")
     _ws = _wb.worksheets[0]
     # max_row/max_column pueden ser None en xlsx generados por exportadores externos;
     # si alguno es 0/None se escanean las celdas para obtener las dimensiones reales.
@@ -52,6 +58,7 @@ def _open_worksheet(content: bytes):
                 if _cell.value is not None:
                     _nrows = max(_nrows, _cell.row)
                     _ncols = max(_ncols, _cell.column)
+    logger.info(f"[xlsx_diag] engine=openpyxl  nrows={_nrows} ncols={_ncols}")
     class _Sheet:
         nrows = _nrows
         ncols = _ncols
@@ -61,7 +68,16 @@ def _open_worksheet(content: bytes):
                 return "" if v is None else v
             except Exception:
                 return ""
-    return _Sheet()
+    sheet = _Sheet()
+    _log_rows(sheet, engine="openpyxl")
+    return sheet
+
+
+def _log_rows(ws, engine: str):
+    """Imprime las primeras 5 filas completas para diagnóstico de estructura."""
+    for r in range(min(5, ws.nrows)):
+        row_vals = [ws.cell_value(r, c) for c in range(min(ws.ncols, 15))]
+        logger.info(f"[xlsx_diag] [{engine}] fila {r}: {row_vals}")
 
 
 def _parse_currency(val) -> float:
@@ -237,6 +253,8 @@ async def upload_cxp_excel(request: Request, file: UploadFile = File(...),
     try:
         result = _parse_cxp_excel(content)
     except Exception as e:
+        import traceback
+        logger.error(f"[upload_cxp] ERROR parsing {file.filename}: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"Error leyendo el archivo: {str(e)}")
     result.update({"cut_date": date.today().isoformat(), "source": "excel_upload",
         "fetched_at": datetime.now(timezone.utc).isoformat()})
@@ -256,6 +274,8 @@ async def upload_cxc_excel(request: Request, file: UploadFile = File(...),
     try:
         result = _parse_cxc_excel(content)
     except Exception as e:
+        import traceback
+        logger.error(f"[upload_cxc] ERROR parsing {file.filename}: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"Error leyendo el archivo: {str(e)}")
     result.update({"cut_date": date.today().isoformat(), "source": "excel_upload",
         "fetched_at": datetime.now(timezone.utc).isoformat()})
