@@ -317,6 +317,76 @@ const Dashboard = () => {
   const hasRiskAlerts = risks.liquidez_critica || risks.tendencia_negativa || risks.semanas_con_deficit > 0;
   const hasFxAlerts = fxAlerts?.has_alerts;
 
+  // ── Semáforo de Decisiones ─────────────────────────────────────────────
+  // Estado verde/amarillo/rojo de las áreas clave. Todos los cálculos sobre
+  // semanas con datos reales (is_past/is_current); 'neutral' = sin datos.
+  const semaforos = (() => {
+    const reales = chartData.filter(w => w.is_past || w.is_current);
+    const items = [];
+
+    // 1. LIQUIDEZ — runway = saldo actual real / burn rate semanal
+    const saldoActual = reales.length > 0 ? reales[reales.length - 1].saldo_final : saldoInicial;
+    const burnSemanal = reales.length > 0
+      ? reales.reduce((s, w) => s + (w.egresos || 0), 0) / reales.length
+      : 0;
+    const runway = burnSemanal > 0 ? Math.max(0, saldoActual) / burnSemanal : null;
+    items.push({
+      nombre: 'Liquidez',
+      estado: runway === null ? 'neutral' : runway > 12 ? 'verde' : runway >= 6 ? 'amarillo' : 'rojo',
+      valor: runway === null ? '—' : `${Math.round(runway)} semanas`,
+      explicacion: runway === null ? 'Sin egresos registrados para calcular runway'
+        : runway > 12 ? 'Caja para más de 3 meses de operación'
+        : runway >= 6 ? 'Caja justa: vigila cobranza y pagos grandes'
+        : 'Riesgo de caja: requiere acciones inmediatas',
+    });
+
+    // 2. COBRANZA — ratio ingresos/egresos de las semanas reales
+    const ingReal = reales.reduce((s, w) => s + (w.ingresos || 0), 0);
+    const egrReal = reales.reduce((s, w) => s + (w.egresos || 0), 0);
+    const ratio = egrReal > 0 ? (ingReal / egrReal) * 100 : null;
+    items.push({
+      nombre: 'Cobranza',
+      estado: ratio === null ? 'neutral' : ratio > 80 ? 'verde' : ratio >= 60 ? 'amarillo' : 'rojo',
+      valor: ratio === null ? '—' : `${ratio.toFixed(0)}%`,
+      explicacion: ratio === null ? 'Sin egresos para comparar'
+        : ratio > 80 ? 'Lo cobrado cubre los pagos del período'
+        : ratio >= 60 ? 'Cobranza por debajo de los pagos: dar seguimiento'
+        : 'Cobranza muy por debajo de los pagos: intensificar gestión',
+    });
+
+    // 3. EGRESOS — burn rate últimas 4 semanas reales vs las 4 anteriores
+    const ult4 = reales.slice(-4);
+    const prev4 = reales.slice(-8, -4);
+    const burnAct = ult4.length > 0 ? ult4.reduce((s, w) => s + (w.egresos || 0), 0) / ult4.length : 0;
+    const burnPrev = prev4.length > 0 ? prev4.reduce((s, w) => s + (w.egresos || 0), 0) / prev4.length : 0;
+    const deltaPct = burnPrev > 0 ? ((burnAct - burnPrev) / burnPrev) * 100 : null;
+    items.push({
+      nombre: 'Egresos',
+      estado: deltaPct === null ? 'neutral' : deltaPct <= 0 ? 'verde' : deltaPct < 15 ? 'amarillo' : 'rojo',
+      valor: deltaPct === null
+        ? `${formatCurrency(burnAct)}/sem`
+        : `${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(0)}% vs mes anterior`,
+      explicacion: deltaPct === null ? 'Sin mes anterior completo para comparar'
+        : deltaPct <= 0 ? `Burn rate bajó: ${formatCurrency(burnAct)}/sem actual`
+        : deltaPct < 15 ? `Burn rate subió moderado: ${formatCurrency(burnAct)}/sem actual`
+        : `Burn rate disparado: ${formatCurrency(burnAct)}/sem actual`,
+    });
+
+    // 4. CARTERA VENCIDA — pct_vencido del Aging CxC
+    const pct = agingCxc.pctVencido;
+    items.push({
+      nombre: 'Cartera Vencida',
+      estado: pct == null ? 'neutral' : pct < 30 ? 'verde' : pct <= 60 ? 'amarillo' : 'rojo',
+      valor: pct == null ? '—' : `${pct.toFixed(0)}%`,
+      explicacion: pct == null ? 'Sin datos del Aging CxC (sube el Excel de Contalink)'
+        : pct < 30 ? 'Cartera sana: la mayoría al corriente'
+        : pct <= 60 ? 'Cartera deteriorándose: priorizar vencidos'
+        : 'Cartera crítica: la mayoría del saldo está vencido',
+    });
+
+    return items;
+  })();
+
   return (
     <div className="p-6 space-y-6 bg-[#F8FAFC] min-h-screen" data-testid="dashboard-page">
       {/* FX Rate Alerts Banner */}
@@ -656,6 +726,43 @@ const Dashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Semáforo de Decisiones */}
+      <Card className="shadow-sm" data-testid="semaforo-decisiones">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <AlertCircle size={16} className="text-[#6366F1]" />
+            Semáforo de Decisiones
+          </CardTitle>
+          <CardDescription>Estado actual de las áreas clave del negocio</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {semaforos.map((s) => {
+              const colores = {
+                verde:    { dot: 'bg-green-500', bg: 'bg-green-50 border-green-200', text: 'text-green-700' },
+                amarillo: { dot: 'bg-amber-400', bg: 'bg-amber-50 border-amber-200', text: 'text-amber-700' },
+                rojo:     { dot: 'bg-red-500',   bg: 'bg-red-50 border-red-200',     text: 'text-red-700' },
+                neutral:  { dot: 'bg-gray-300',  bg: 'bg-gray-50 border-gray-200',   text: 'text-gray-500' },
+              }[s.estado];
+              return (
+                <div
+                  key={s.nombre}
+                  className={`p-3 rounded-lg border ${colores.bg}`}
+                  data-testid={`semaforo-${s.nombre.toLowerCase().replace(/ /g, '-')}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`w-3 h-3 rounded-full ${colores.dot} ${s.estado === 'rojo' ? 'animate-pulse' : ''}`} />
+                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{s.nombre}</span>
+                  </div>
+                  <div className={`text-xl font-bold mono ${colores.text}`}>{s.valor}</div>
+                  <p className="text-xs text-gray-500 mt-1 leading-snug">{s.explicacion}</p>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
