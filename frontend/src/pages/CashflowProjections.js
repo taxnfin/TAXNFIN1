@@ -1700,9 +1700,9 @@ const CashflowProjections = () => {
         const weekData = party.weeks[weekIdx];
         if (!weekData || (weekData.ingresos === 0 && weekData.egresos === 0)) return;
         
-        const weekLabel = `S${weekIdx + 1}`;
+        const weekLabel = week.displayLabel || `S${weekIdx + 1}`;
         const dataType = week.dataType === 'real' ? 'Real' : week.dataType === 'actual' ? 'Actual' : 'Proyectado';
-        
+
         reportData.push({
           'Proveedor/Cliente': party.nombre,
           'Tipo Tercero': party.tipo === 'cliente' ? 'Cliente' : 'Proveedor',
@@ -1742,9 +1742,9 @@ const CashflowProjections = () => {
     const reportData = [];
     
     weeklyData.forEach((week, weekIdx) => {
-      const weekLabel = `S${weekIdx + 1}`;
+      const weekLabel = week.displayLabel || `S${weekIdx + 1}`;
       const dataType = week.dataType === 'real' ? 'Real' : week.dataType === 'actual' ? 'Actual' : 'Proyectado';
-      
+
       // Process ingresos
       Object.entries(week.ingresos.byCategory).forEach(([catName, catData]) => {
         (catData.items || []).forEach(item => {

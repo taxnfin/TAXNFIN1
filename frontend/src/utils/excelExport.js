@@ -332,7 +332,7 @@ export const exportProjections = (weeklyData, saldoInicial, currency = 'MXN', fx
     const convert = (val) => currency === 'MXN' ? val : val / fxRate;
     
     const data = weeklyData.map((week, idx) => ({
-      'Semana': week.label || `Sem ${idx + 1}`,
+      'Semana': week.displayLabel || week.label || `Sem ${idx + 1}`,
       'Fecha Inicio': week.weekStart ? format(new Date(week.weekStart), 'dd/MM/yyyy') : '',
       'Saldo Inicial': convert(week.saldoInicial || (idx === 0 ? saldoInicial : 0)),
       'Ingresos': convert(week.ingresos?.total || 0),
