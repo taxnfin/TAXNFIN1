@@ -841,10 +841,22 @@ const Dashboard = () => {
                   <div className="text-xs text-gray-500">Promedio de egresos semanales</div>
                 </div>
                 <div className="text-right">
-                  <span className="text-lg font-bold text-red-600">
-                    {formatCurrency(chartData.reduce((sum, w) => sum + (w.egresos || 0), 0) / Math.max(chartData.length, 1))}
-                  </span>
-                  <span className="text-xs text-gray-500 ml-1">/sem</span>
+                  {(() => {
+                    // Mismo cálculo que usa RUNWAY: egresos promedio de las semanas
+                    // con datos reales (is_past/is_current), sin diluir por futuras vacías
+                    const semanasReales = chartData.filter(w => w.is_past || w.is_current);
+                    const burnRateSemanal = semanasReales.length > 0
+                      ? semanasReales.reduce((sum, w) => sum + (w.egresos || 0), 0) / semanasReales.length
+                      : 0;
+                    return (
+                      <>
+                        <span className="text-lg font-bold text-red-600">
+                          {formatCurrency(burnRateSemanal)}
+                        </span>
+                        <span className="text-xs text-gray-500 ml-1">/sem</span>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
               <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
