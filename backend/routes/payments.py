@@ -411,57 +411,23 @@ async def complete_payment(payment_id: str, request: Request, current_user: Dict
     return {'status': 'success', 'message': 'Pago completado'}
 
 
-@router.delete("/{payment_id}")
-async def delete_payment(payment_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
-    """Delete a payment with CFDI amount reversal"""
-    company_id = await get_active_company_id(request, current_user)
-    existing = await db.payments.find_one({'id': payment_id, 'company_id': company_id}, {'_id': 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Pago no encontrado")
-    
-    # If payment was completed and linked to a CFDI, reverse the collected/paid amount
-    if existing.get('estatus') == 'completado' and existing.get('cfdi_id'):
-        cfdi = await db.cfdis.find_one({'id': existing['cfdi_id']}, {'_id': 0})
-        if cfdi:
-            if existing['tipo'] == 'cobro':
-                current_cobrado = cfdi.get('monto_cobrado', 0) or 0
-                new_cobrado = max(0, current_cobrado - existing['monto'])
-                await db.cfdis.update_one(
-                    {'id': existing['cfdi_id']},
-                    {'$set': {'monto_cobrado': new_cobrado}}
-                )
-                logger.info(f"Reversed CFDI {existing['cfdi_id']} monto_cobrado after payment delete: {current_cobrado} -> {new_cobrado}")
-            else:
-                current_pagado = cfdi.get('monto_pagado', 0) or 0
-                new_pagado = max(0, current_pagado - existing['monto'])
-                await db.cfdis.update_one(
-                    {'id': existing['cfdi_id']},
-                    {'$set': {'monto_pagado': new_pagado}}
-                )
-                logger.info(f"Reversed CFDI {existing['cfdi_id']} monto_pagado after payment delete: {current_pagado} -> {new_pagado}")
-    
-    await db.payments.delete_one({'id': payment_id})
-    await audit_log(company_id, 'Payment', payment_id, 'DELETE', current_user['id'])
-    return {'status': 'success', 'message': 'Pago eliminado'}
-
-
 @router.delete("/bulk/all")
 async def delete_all_payments(request: Request, current_user: Dict = Depends(get_current_user)):
     """Delete ALL payments/collections for the current company with CFDI reset"""
     company_id = await get_active_company_id(request, current_user)
-    
+
     # Reset all CFDIs monto_cobrado and monto_pagado
     await db.cfdis.update_many(
         {'company_id': company_id},
         {'$set': {'monto_cobrado': 0, 'monto_pagado': 0}}
     )
-    
+
     # Delete all payments
     result = await db.payments.delete_many({'company_id': company_id})
-    
-    await audit_log(company_id, 'Payment', 'BULK_DELETE', 'DELETE', current_user['id'], 
+
+    await audit_log(company_id, 'Payment', 'BULK_DELETE', 'DELETE', current_user['id'],
                     {'count': result.deleted_count, 'action': 'delete_all_payments'})
-    
+
     return {
         'status': 'success',
         'message': f'Se eliminaron {result.deleted_count} pagos/cobranzas',
@@ -546,6 +512,41 @@ async def delete_payments_by_date_range(
         'fecha_inicio': fecha_inicio,
         'fecha_fin': fecha_fin,
     }
+
+
+# /{payment_id} must come AFTER all specific paths to avoid capturing them as IDs
+@router.delete("/{payment_id}")
+async def delete_payment(payment_id: str, request: Request, current_user: Dict = Depends(get_current_user)):
+    """Delete a payment with CFDI amount reversal"""
+    company_id = await get_active_company_id(request, current_user)
+    existing = await db.payments.find_one({'id': payment_id, 'company_id': company_id}, {'_id': 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+
+    # If payment was completed and linked to a CFDI, reverse the collected/paid amount
+    if existing.get('estatus') == 'completado' and existing.get('cfdi_id'):
+        cfdi = await db.cfdis.find_one({'id': existing['cfdi_id']}, {'_id': 0})
+        if cfdi:
+            if existing['tipo'] == 'cobro':
+                current_cobrado = cfdi.get('monto_cobrado', 0) or 0
+                new_cobrado = max(0, current_cobrado - existing['monto'])
+                await db.cfdis.update_one(
+                    {'id': existing['cfdi_id']},
+                    {'$set': {'monto_cobrado': new_cobrado}}
+                )
+                logger.info(f"Reversed CFDI {existing['cfdi_id']} monto_cobrado after payment delete: {current_cobrado} -> {new_cobrado}")
+            else:
+                current_pagado = cfdi.get('monto_pagado', 0) or 0
+                new_pagado = max(0, current_pagado - existing['monto'])
+                await db.cfdis.update_one(
+                    {'id': existing['cfdi_id']},
+                    {'$set': {'monto_pagado': new_pagado}}
+                )
+                logger.info(f"Reversed CFDI {existing['cfdi_id']} monto_pagado after payment delete: {current_pagado} -> {new_pagado}")
+
+    await db.payments.delete_one({'id': payment_id})
+    await audit_log(company_id, 'Payment', payment_id, 'DELETE', current_user['id'])
+    return {'status': 'success', 'message': 'Pago eliminado'}
 
 
 @router.post("/reset-empresa")
