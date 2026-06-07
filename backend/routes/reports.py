@@ -455,7 +455,18 @@ async def get_dashboard_from_payments(
         })
 
         running_balance = saldo_final
-    
+
+    # [DEBUG-TEMP] Auditar cascadeo de saldo por semana
+    for _w in weeks_data:
+        logger.info(
+            f"[saldo_debug] {_w['week_label']} ({_w['date_label']}) "
+            f"is_past={_w['is_past']} is_current={_w['is_current']} "
+            f"ingresos={_w['ingresos']:,.0f} egresos={_w['egresos']:,.0f} "
+            f"flujo={_w['flujo_neto']:,.0f} saldo_inicial={_w['saldo_inicial']:,.0f} "
+            f"saldo_final={_w['saldo_final']:,.0f}"
+        )
+    logger.info(f"[saldo_debug] saldo_proyectado final (running_balance) = {running_balance:,.0f}")
+
     # Calculate varianza (change vs previous week) for each week
     for i, week in enumerate(weeks_data):
         if i == 0:
