@@ -59,6 +59,7 @@ const PaymentsModule = () => {
   const [syncDateDialogOpen, setSyncDateDialogOpen] = useState(false);
   const [syncDateFrom, setSyncDateFrom] = useState('');
   const [syncDateTo, setSyncDateTo] = useState('');
+  const [syncResult, setSyncResult] = useState(null); // { ok: bool, message: string } | null
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [masMenuOpen, setMasMenuOpen] = useState(false);
   const [uploadingHistorico, setUploadingHistorico] = useState(false); // 'real', 'proyeccion', 'breakdown'
@@ -705,13 +706,19 @@ const PaymentsModule = () => {
       }
 
       if (anySuccess) {
-        toast.success(`Sync completado — ${results.join(' · ')}`);
+        const msg = results.join(' · ');
+        toast.success(`Sync completado — ${msg}`);
+        setSyncResult({ ok: true, message: msg });
         await loadData();
         await loadCategories();
       } else if (results.length > 0) {
-        toast.error(results.join(' · '));
+        const msg = results.join(' · ');
+        toast.error(msg);
+        setSyncResult({ ok: false, message: msg });
       } else {
-        toast.warning('No hay ERPs configurados. Ve a Integraciones para conectar Contalink o Alegra.');
+        const msg = 'No hay ERPs configurados. Ve a Integraciones para conectar Contalink o Alegra.';
+        toast.warning(msg);
+        setSyncResult({ ok: false, message: msg });
       }
     } finally {
       setSyncingContalink(false);
@@ -896,9 +903,10 @@ const PaymentsModule = () => {
                   { icon:'⬇', label:'Sync ERP (Contalink/Alegra)', sub:'Selecciona rango de fechas', action: () => {
                     setImportMenuOpen(false);
                     const today = new Date().toISOString().split('T')[0];
-                    const yearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-                    setSyncDateFrom(yearAgo);
+                    const yearStart = `${new Date().getFullYear()}-01-01`;
+                    setSyncDateFrom(yearStart);
                     setSyncDateTo(today);
+                    setSyncResult(null);
                     setSyncDateDialogOpen(true);
                   }, loading: syncingContalink },
                   { icon:'📂', label:'Histórico Contalink', sub:'Sube Excel INGR-EGRE de meses anteriores', action: () => { setImportMenuOpen(false); document.getElementById('upload-historico-input').click(); } },
@@ -2652,46 +2660,106 @@ const PaymentsModule = () => {
       />
 
       {/* Sync ERP — date range dialog */}
-      <Dialog open={syncDateDialogOpen} onOpenChange={setSyncDateDialogOpen}>
+      <Dialog
+        open={syncDateDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && syncingContalink) return; // block close while syncing
+          if (!open) setSyncResult(null);
+          setSyncDateDialogOpen(open);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Rango de sincronización</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw size={16} />
+              Sincronizar Contalink / Alegra
+            </DialogTitle>
             <DialogDescription>
-              Selecciona el período a importar desde Contalink / Alegra.
+              Solo se importarán movimientos dentro del rango seleccionado.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Desde</Label>
-              <Input
-                type="date"
-                value={syncDateFrom}
-                onChange={e => setSyncDateFrom(e.target.value)}
-              />
+
+          {/* Phase 1 — date selection (hidden while syncing or after result) */}
+          {!syncingContalink && !syncResult && (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Fecha inicio</Label>
+                  <Input
+                    type="date"
+                    value={syncDateFrom}
+                    onChange={e => setSyncDateFrom(e.target.value)}
+                    data-testid="sync-date-from"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Fecha fin</Label>
+                  <Input
+                    type="date"
+                    value={syncDateTo}
+                    onChange={e => setSyncDateTo(e.target.value)}
+                    data-testid="sync-date-to"
+                  />
+                </div>
+              </div>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Hasta</Label>
-              <Input
-                type="date"
-                value={syncDateTo}
-                onChange={e => setSyncDateTo(e.target.value)}
-              />
+          )}
+
+          {/* Phase 2 — syncing in progress */}
+          {syncingContalink && (
+            <div className="py-6 flex flex-col items-center gap-3 text-center">
+              <RefreshCw size={28} className="animate-spin text-blue-600" />
+              <p className="text-sm font-medium text-gray-700">
+                Sincronizando del{' '}
+                <span className="font-mono">{syncDateFrom}</span> al{' '}
+                <span className="font-mono">{syncDateTo}</span>…
+              </p>
+              <p className="text-xs text-gray-400">Esto puede tomar unos segundos</p>
             </div>
-          </div>
+          )}
+
+          {/* Phase 3 — result */}
+          {!syncingContalink && syncResult && (
+            <div className={`rounded-lg border p-4 my-2 ${syncResult.ok ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+              <p className={`text-sm font-semibold ${syncResult.ok ? 'text-green-700' : 'text-red-700'}`}>
+                {syncResult.ok ? '✓' : '✗'} {syncResult.message}
+              </p>
+            </div>
+          )}
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSyncDateDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button
-              className="bg-[#0F172A]"
-              disabled={!syncDateFrom || !syncDateTo || syncingContalink}
-              onClick={() => {
-                setSyncDateDialogOpen(false);
-                handleSyncContalink(syncDateFrom, syncDateTo);
-              }}
-            >
-              {syncingContalink ? 'Sincronizando...' : 'Sincronizar'}
-            </Button>
+            {/* Cancelar — only when not syncing and no result yet */}
+            {!syncingContalink && !syncResult && (
+              <Button variant="outline" onClick={() => setSyncDateDialogOpen(false)}>
+                Cancelar
+              </Button>
+            )}
+
+            {/* Sincronizar button — shown when not syncing and no result yet */}
+            {!syncingContalink && !syncResult && (
+              <Button
+                className="bg-[#0F172A]"
+                disabled={!syncDateFrom || !syncDateTo}
+                data-testid="sync-execute-btn"
+                onClick={() => {
+                  setSyncResult(null);
+                  handleSyncContalink(syncDateFrom, syncDateTo);
+                }}
+              >
+                Sincronizar →
+              </Button>
+            )}
+
+            {/* Cerrar — shown after result */}
+            {!syncingContalink && syncResult && (
+              <Button
+                variant={syncResult.ok ? 'default' : 'outline'}
+                className={syncResult.ok ? 'bg-[#0F172A]' : ''}
+                onClick={() => { setSyncResult(null); setSyncDateDialogOpen(false); }}
+              >
+                Cerrar
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
