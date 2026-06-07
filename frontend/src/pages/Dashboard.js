@@ -41,6 +41,7 @@ const Dashboard = () => {
   const [schedulerStatus, setSchedulerStatus] = useState(null);
   const [fxAlerts, setFxAlerts] = useState(null);
   const [topClientesCxc, setTopClientesCxc] = useState([]); // top deudores del Aging CxC (MXN)
+  const [agingCxc, setAgingCxc] = useState({ pctVencido: null, totalPendiente: 0 }); // resumen del Aging CxC
   // Saldo Inicial: 'auto' = saldo de Contalink (S1, lo calcula el backend) | 'manual' = capturado por el usuario
   const [saldoConfig, setSaldoConfig] = useState(() => {
     try {
@@ -160,6 +161,10 @@ const Dashboard = () => {
           monto: f.saldo_pendiente || 0
         }));
       setTopClientesCxc(top);
+      setAgingCxc({
+        pctVencido: res.data?.pct_vencido ?? null,
+        totalPendiente: res.data?.total_pendiente || 0,
+      });
     } catch (error) {
       // No bloquea el dashboard, pero deja rastro para diagnóstico
       console.warn('loadTopClientesCxc: no se pudo cargar el Aging CxC —', error?.response?.status, error?.message);
@@ -914,9 +919,7 @@ const Dashboard = () => {
             <div className="space-y-2">
               {(() => {
                 const recommendations = [];
-                const totalIng = chartData.reduce((sum, w) => sum + (w.ingresos || 0), 0);
-                const totalEgr = chartData.reduce((sum, w) => sum + (w.egresos || 0), 0);
-                const minWeek = chartData.reduce((min, w) => 
+                const minWeek = chartData.reduce((min, w) =>
                   (!min || w.saldo_final < min.saldo_final) ? w : min, null);
 
                 if (risks.liquidez_critica || (minWeek && minWeek.saldo_final < 0)) {
@@ -927,11 +930,16 @@ const Dashboard = () => {
                     clientes: topClientesCxc // top deudores del Aging CxC — también aplica aquí
                   });
                 }
-                if (totalIng < totalEgr * 0.8) {
+                // Basada en el Aging CxC real (no en el rango visible): se dispara si
+                // más del 30% de la cartera está vencida; prioridad alta arriba del 50%
+                if ((agingCxc.pctVencido ?? 0) > 30) {
+                  const vencidoMXN = agingCxc.totalPendiente * (agingCxc.pctVencido / 100);
                   recommendations.push({
-                    priority: 'alta', icon: '📞',
+                    priority: agingCxc.pctVencido > 50 ? 'alta' : 'media', icon: '📞',
                     text: 'Intensificar gestión de cobranza',
-                    detail: `Los ingresos cubren solo ${((totalIng/totalEgr)*100).toFixed(0)}% de los egresos`,
+                    detail: `El ${agingCxc.pctVencido.toFixed(0)}% de la cartera CxC está vencido ` +
+                      `($${vencidoMXN.toLocaleString('es-MX', {maximumFractionDigits: 0})} de ` +
+                      `$${agingCxc.totalPendiente.toLocaleString('es-MX', {maximumFractionDigits: 0})} MXN)`,
                     clientes: topClientesCxc // top deudores del Aging CxC con nombre y monto
                   });
                 }
