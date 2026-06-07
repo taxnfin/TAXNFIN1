@@ -86,31 +86,12 @@ const Dashboard = () => {
     loadFxAlerts();
     loadTopClientesCxc();
 
-    let weekStartDay = 1;
-    try {
-      const sel = localStorage.getItem('selectedCompany');
-      if (sel) {
-        const parsed = JSON.parse(sel);
-        if (parsed?.inicio_semana !== undefined && parsed?.inicio_semana !== null) {
-          weekStartDay = parsed.inicio_semana;
-        }
-      }
-    } catch {/* ignore */}
-    
+    // Default = 13S: 13 semanas FUTURAS (hoy → hoy + 91 días)
     const today = new Date();
-    const day = today.getDay();
-    let diff = day - weekStartDay;
-    if (diff < 0) diff += 7;
-    const currentWeekStart = new Date(today);
-    currentWeekStart.setDate(today.getDate() - diff);
-    
-    const startDate = new Date(currentWeekStart);
-    startDate.setDate(currentWeekStart.getDate() - 28);
-    
-    const endDate = new Date(currentWeekStart);
-    endDate.setDate(currentWeekStart.getDate() + 63);
-    
-    setDateFrom(startDate.toISOString().split('T')[0]);
+    const endDate = new Date(today);
+    endDate.setDate(today.getDate() + 91);
+
+    setDateFrom(today.toISOString().split('T')[0]);
     setDateTo(endDate.toISOString().split('T')[0]);
   }, []);
 
@@ -221,20 +202,25 @@ const Dashboard = () => {
 
   const setQuickDateRange = (range) => {
     const today = new Date();
-    let from = new Date(today);
-    
+    const from = new Date(today);
+    const to = new Date(today);
+
     switch(range) {
+      // Históricos: hacia atrás desde hoy
       case '1w': from.setDate(today.getDate() - 7); break;
       case '1m': from.setMonth(today.getMonth() - 1); break;
       case '3m': from.setMonth(today.getMonth() - 3); break;
       case '6m': from.setMonth(today.getMonth() - 6); break;
       case '1y': from.setFullYear(today.getFullYear() - 1); break;
+      // 13S (default): 13 semanas FUTURAS — hoy → hoy + 91 días
       case '13w':
-      default:   from.setDate(today.getDate() - 91); break;
+      default:
+        to.setDate(today.getDate() + 91);
+        break;
     }
-    
+
     setDateFrom(from.toISOString().split('T')[0]);
-    setDateTo(today.toISOString().split('T')[0]);
+    setDateTo(to.toISOString().split('T')[0]);
   };
 
   const formatCurrency = (amount) => {
