@@ -160,8 +160,9 @@ const Dashboard = () => {
           monto: f.saldo_pendiente || 0
         }));
       setTopClientesCxc(top);
-    } catch {
-      /* Aging CxC no disponible — la recomendación se muestra sin detalle */
+    } catch (error) {
+      // No bloquea el dashboard, pero deja rastro para diagnóstico
+      console.warn('loadTopClientesCxc: no se pudo cargar el Aging CxC —', error?.response?.status, error?.message);
     }
   };
 
@@ -922,7 +923,8 @@ const Dashboard = () => {
                   recommendations.push({
                     priority: 'alta', icon: '🚨',
                     text: 'Acelerar cobranza o buscar línea de crédito',
-                    detail: `Semana ${minWeek?.semana} proyecta déficit de ${formatCurrency(Math.abs(minWeek?.saldo_final || 0))}`
+                    detail: `Semana ${minWeek?.semana} proyecta déficit de ${formatCurrency(Math.abs(minWeek?.saldo_final || 0))}`,
+                    clientes: topClientesCxc // top deudores del Aging CxC — también aplica aquí
                   });
                 }
                 if (totalIng < totalEgr * 0.8) {
