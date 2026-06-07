@@ -47,6 +47,8 @@ def _open_worksheet(content: bytes):
     import openpyxl                                    # ZIP/OOXML → .xlsx
     _wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
     logger.info(f"[xlsx_diag] engine=openpyxl  hojas={[s.title for s in _wb.worksheets]}")
+    if not _wb.worksheets:
+        raise ValueError("El archivo xlsx no contiene hojas de cálculo")
     _ws = _wb.worksheets[0]
     # max_row/max_column pueden ser None en xlsx generados por exportadores externos;
     # si alguno es 0/None se escanean las celdas para obtener las dimensiones reales.
@@ -120,6 +122,48 @@ def _detect_cxp_columns(ws):
     return None, None
 
 
+def _detect_cxc_columns(ws):
+    """Detecta fila de encabezados y columnas del reporte Aging CxC de Contalink.
+
+    Formato conocido (fila 3, 0-indexed):
+      Clave | Cliente | Crédito/Anticipo | Por Vencer | Vencido |
+      1-30  | (vacío) | 31-60 | 61-90 | (vacío) | 91-120 | Sobre 120 | Total
+
+    Diferencias vs CxP: usa "Sobre 120" (no "+120"), la columna de nombre es
+    "Cliente" (no "Proveedor"), y puede tener hasta 8 filas de metadata antes
+    de los encabezados.
+
+    Devuelve (data_start_row, cols, nombre_col) o (None, None, 1).
+    """
+    import re
+    SCAN_COLS = max(ws.ncols, 25)
+    for hr in range(0, min(8, ws.nrows)):
+        headers = [str(ws.cell_value(hr, c)).strip().upper() for c in range(SCAN_COLS)]
+        if not any("VENCER" in h or h in ("CLIENTE", "NOMBRE") for h in headers):
+            continue
+        cols = {}
+        nombre_col = 1  # default; se sobreescribe si se detecta "CLIENTE"
+        for c, h in enumerate(headers):
+            if not h:
+                continue
+            if h in ("CLIENTE", "NOMBRE", "RAZÓN SOCIAL", "RAZON SOCIAL"):
+                nombre_col = c
+            elif "VENCER" in h and "VENCID" not in h:                   cols.setdefault("por_vencer", c)
+            elif re.search(r"\b1\b\D+\b30\b", h):                       cols.setdefault("d1_30", c)
+            elif re.search(r"\b31\b\D+\b60\b", h):                      cols.setdefault("d31_60", c)
+            elif re.search(r"\b61\b\D+\b90\b", h):                      cols.setdefault("d61_90", c)
+            elif re.search(r"\b91\b\D+\b120\b", h):                     cols.setdefault("d91_120", c)
+            elif re.search(r"(\+|MAS|MÁS|>|SOBRE)\s*(DE\s+)?120\b", h): cols.setdefault("mas120", c)
+            elif re.search(r"(\+|MAS|MÁS|>|SOBRE)\s*(DE\s+)?90\b", h):  cols.setdefault("mas90", c)
+            elif "TOTAL" in h and "%" not in h and "PORCENT" not in h:
+                cols["total"] = c
+        if "total" in cols and ("d1_30" in cols or "por_vencer" in cols):
+            logger.info(f"[xlsx_diag] _detect_cxc_columns: header_row={hr} data_start={hr+1} "
+                        f"nombre_col={nombre_col} cols={cols}")
+            return hr + 1, cols, nombre_col
+    return None, None, 1
+
+
 def _parse_cxp_excel(content: bytes) -> dict:
     ws = _open_worksheet(content)
     empresa = str(ws.cell_value(0, 0)).strip()
@@ -187,22 +231,21 @@ def _parse_cxc_excel(content: bytes) -> dict:
     empresa = str(ws.cell_value(1, 3)).strip() if ws.nrows > 1 else ""
     rfc     = str(ws.cell_value(2, 3)).strip() if ws.nrows > 2 else ""
 
-    # Detectar columnas por encabezado (mismo mecanismo que CxP).
-    # Fallback al layout fijo original si no se encuentran encabezados reconocibles.
-    data_start, cols = _detect_cxp_columns(ws)
+    data_start, cols, nombre_col = _detect_cxc_columns(ws)
     if cols is None:
         data_start = 4
+        nombre_col = 1
         cols = {"por_vencer": 3, "d1_30": 5, "d31_60": 7, "d61_90": 8, "d91_120": 10, "mas120": 11, "total": 12}
 
     def _cell(r, key):
         c = cols.get(key)
-        return _parse_currency(ws.cell_value(r, c)) if c is not None and c < ws.ncols else 0.0
+        return _parse_currency(ws.cell_value(r, c)) if c is not None else 0.0
 
     clientes = []
     total_por_vencer = total_1_30 = total_31_60 = total_61_90 = 0.0
     total_91_120 = total_mas120 = total_general = 0.0
     for r in range(data_start, ws.nrows):
-        nombre = str(ws.cell_value(r, 1)).strip() or str(ws.cell_value(r, 0)).strip()
+        nombre = str(ws.cell_value(r, nombre_col)).strip() or str(ws.cell_value(r, max(0, nombre_col - 1))).strip()
         if not nombre or nombre.lower().startswith("total") or nombre.lower().startswith("porcentaje"):
             break
         por_vencer = _cell(r, "por_vencer")
