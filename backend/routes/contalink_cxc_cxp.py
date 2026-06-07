@@ -42,12 +42,25 @@ def _open_worksheet(content: bytes):
     import openpyxl                                   # ZIP/OOXML → .xlsx
     _wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
     _ws = _wb.worksheets[0]
+    # max_row/max_column pueden ser None en xlsx generados por exportadores externos;
+    # si alguno es 0/None se escanean las celdas para obtener las dimensiones reales.
+    _nrows = _ws.max_row or 0
+    _ncols = _ws.max_column or 0
+    if _nrows == 0 or _ncols == 0:
+        for _row in _ws.iter_rows():
+            for _cell in _row:
+                if _cell.value is not None:
+                    _nrows = max(_nrows, _cell.row)
+                    _ncols = max(_ncols, _cell.column)
     class _Sheet:
-        nrows = _ws.max_row or 0
-        ncols = _ws.max_column or 0
+        nrows = _nrows
+        ncols = _ncols
         def cell_value(self, r, c):
-            v = _ws.cell(row=r + 1, column=c + 1).value
-            return "" if v is None else v
+            try:
+                v = _ws.cell(row=r + 1, column=c + 1).value
+                return "" if v is None else v
+            except Exception:
+                return ""
     return _Sheet()
 
 
@@ -68,7 +81,9 @@ def _detect_cxp_columns(ws):
     """
     import re
     for hr in range(0, min(6, ws.nrows)):
-        headers = [str(ws.cell_value(hr, c)).strip().upper() for c in range(ws.ncols)]
+        # Siempre escanear al menos 25 columnas: max_column puede ser 0 en xlsx
+        # generados por exportadores que no escriben la dimensión de la hoja.
+        headers = [str(ws.cell_value(hr, c)).strip().upper() for c in range(max(ws.ncols, 25))]
         if not any("VENCER" in h for h in headers):
             continue
         cols = {}
@@ -110,7 +125,7 @@ def _parse_cxp_excel(content: bytes) -> dict:
     total_por_vencer = total_1_30 = total_31_60 = total_61_90 = 0.0
     total_mas90 = total_91_120 = total_mas120 = total_general = 0.0
     for r in range(data_start, ws.nrows):
-        nombre = str(ws.cell_value(r, 1)).strip()
+        nombre = str(ws.cell_value(r, 1)).strip() or str(ws.cell_value(r, 0)).strip()
         if not nombre or nombre.upper() in ("TOTAL", "PORCENTAJES", "PORCENTAJES TOTALES"):
             break
         por_vencer = _cell(r, "por_vencer")
@@ -171,7 +186,7 @@ def _parse_cxc_excel(content: bytes) -> dict:
     total_por_vencer = total_1_30 = total_31_60 = total_61_90 = 0.0
     total_91_120 = total_mas120 = total_general = 0.0
     for r in range(data_start, ws.nrows):
-        nombre = str(ws.cell_value(r, 1)).strip()
+        nombre = str(ws.cell_value(r, 1)).strip() or str(ws.cell_value(r, 0)).strip()
         if not nombre or nombre.lower().startswith("total") or nombre.lower().startswith("porcentaje"):
             break
         por_vencer = _cell(r, "por_vencer")
