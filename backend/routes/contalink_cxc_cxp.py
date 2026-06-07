@@ -231,30 +231,24 @@ def _parse_cxc_excel(content: bytes) -> dict:
     empresa = str(ws.cell_value(1, 3)).strip() if ws.nrows > 1 else ""
     rfc     = str(ws.cell_value(2, 3)).strip() if ws.nrows > 2 else ""
 
-    data_start, cols, nombre_col = _detect_cxc_columns(ws)
-    if cols is None:
-        data_start = 4
-        nombre_col = 1
-        cols = {"por_vencer": 3, "d1_30": 5, "d31_60": 7, "d61_90": 8, "d91_120": 10, "mas120": 11, "total": 12}
-
-    def _cell(r, key):
-        c = cols.get(key)
-        return _parse_currency(ws.cell_value(r, c)) if c is not None else 0.0
-
+    # Layout fijo del reporte Aging CxC de Contalink (fila 3 = headers, datos desde fila 4):
+    # col 0=Clave  col 1=Cliente  col 2=Crédito/Anticipo  col 3=Por Vencer
+    # col 4=Vencido(subtotal)  col 5=1-30  col 6=vacía  col 7=31-60  col 8=61-90
+    # col 9=vacía  col 10=91-120  col 11=Sobre 120  col 12=Total  col 13=Límite Crédito
     clientes = []
     total_por_vencer = total_1_30 = total_31_60 = total_61_90 = 0.0
     total_91_120 = total_mas120 = total_general = 0.0
-    for r in range(data_start, ws.nrows):
-        nombre = str(ws.cell_value(r, nombre_col)).strip() or str(ws.cell_value(r, max(0, nombre_col - 1))).strip()
-        if not nombre or nombre.lower().startswith("total") or nombre.lower().startswith("porcentaje"):
-            break
-        por_vencer = _cell(r, "por_vencer")
-        d1_30      = _cell(r, "d1_30")
-        d31_60     = _cell(r, "d31_60")
-        d61_90     = _cell(r, "d61_90")
-        d91_120    = _cell(r, "d91_120")
-        mas120     = _cell(r, "mas120")
-        total      = _cell(r, "total")
+    for r in range(4, ws.nrows):
+        nombre = str(ws.cell_value(r, 1)).strip()
+        if not nombre or nombre.lower().startswith("total"):
+            continue
+        por_vencer = _parse_currency(ws.cell_value(r, 3))
+        d1_30      = _parse_currency(ws.cell_value(r, 5))
+        d31_60     = _parse_currency(ws.cell_value(r, 7))
+        d61_90     = _parse_currency(ws.cell_value(r, 8))
+        d91_120    = _parse_currency(ws.cell_value(r, 10))
+        mas120     = _parse_currency(ws.cell_value(r, 11))
+        total      = _parse_currency(ws.cell_value(r, 12))
         if total == 0: continue
         if total < 0:  # Nota de crédito: descuenta del total neto sin alterar buckets de aging
             total_general += total
