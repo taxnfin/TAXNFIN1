@@ -805,10 +805,18 @@ const Dashboard = () => {
                 </div>
                 <div className="text-right">
                   {(() => {
-                    // Runway = saldo actual / burn rate semanal (egresos promedio de las
-                    // semanas visibles) — cuántas semanas opera la empresa con la caja actual
-                    const burnRateSemanal = chartData.reduce((sum, w) => sum + (w.egresos || 0), 0) / Math.max(chartData.length, 1);
-                    const runway = burnRateSemanal > 0 ? Math.max(0, saldoInicial) / burnRateSemanal : null;
+                    // RUNWAY = saldo actual real / burn rate semanal promedio
+                    // Saldo actual real = saldo final de la ÚLTIMA semana con datos reales
+                    // (is_past/is_current — no proyectadas). Burn rate = egresos promedio
+                    // de esas mismas semanas reales.
+                    const semanasReales = chartData.filter(w => w.is_past || w.is_current);
+                    const saldoActual = semanasReales.length > 0
+                      ? semanasReales[semanasReales.length - 1].saldo_final
+                      : saldoInicial; // fallback si la ventana no incluye semanas reales
+                    const burnRateSemanal = semanasReales.length > 0
+                      ? semanasReales.reduce((sum, w) => sum + (w.egresos || 0), 0) / semanasReales.length
+                      : 0;
+                    const runway = burnRateSemanal > 0 ? Math.max(0, saldoActual) / burnRateSemanal : null;
                     return (
                       <>
                         <span className={`text-2xl font-bold ${
