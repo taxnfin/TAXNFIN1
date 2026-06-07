@@ -13,7 +13,7 @@ import {
 import { 
   TrendingUp, TrendingDown, DollarSign, FileText, CheckCircle2, ArrowRightLeft, 
   Wallet, Building2, AlertTriangle, AlertCircle, PiggyBank, Layers, RefreshCw,
-  Filter, ArrowUpRight, ArrowDownRight, Minus, Calendar, Settings
+  Filter, ArrowUpRight, ArrowDownRight, Minus, Calendar, Settings, Pencil
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -41,6 +41,16 @@ const Dashboard = () => {
   const [schedulerStatus, setSchedulerStatus] = useState(null);
   const [fxAlerts, setFxAlerts] = useState(null);
   const [topClientesCxc, setTopClientesCxc] = useState([]); // top deudores del Aging CxC (MXN)
+  // Saldo Inicial: 'auto' = saldo de Contalink (S1, lo calcula el backend) | 'manual' = capturado por el usuario
+  const [saldoConfig, setSaldoConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dashboardSaldoInicial');
+      if (saved) return JSON.parse(saved);
+    } catch {/* ignore */}
+    return { mode: 'auto', valor: 0 };
+  });
+  const [saldoDialogOpen, setSaldoDialogOpen] = useState(false);
+  const [tempSaldoConfig, setTempSaldoConfig] = useState({ mode: 'auto', valor: 0 });
   
   const [scenarioConfig, setScenarioConfig] = useState(() => {
     const saved = localStorage.getItem('scenarioConfig');
@@ -214,9 +224,25 @@ const Dashboard = () => {
     return `${curr.symbol}${amount.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
   };
 
+  const handleSaveSaldoConfig = () => {
+    const cfg = { mode: tempSaldoConfig.mode, valor: Number(tempSaldoConfig.valor) || 0 };
+    setSaldoConfig(cfg);
+    localStorage.setItem('dashboardSaldoInicial', JSON.stringify(cfg)); // persiste entre sesiones
+    setSaldoDialogOpen(false);
+    toast.success(cfg.mode === 'auto'
+      ? 'Saldo Inicial: automático (Contalink S1)'
+      : `Saldo Inicial manual: ${formatCurrency(cfg.valor)}`);
+  };
+
   if (loading && !dashboardData) {
     return <div className="p-8">Cargando dashboard...</div>;
   }
+
+  // Saldo Inicial según el modo configurado. El delta vs el saldo del backend
+  // desplaza los saldos acumulados de todas las semanas, el proyectado y el runway.
+  const saldoBackendS1 = dashboardData?.saldo_bancos || 0;
+  const saldoInicial = saldoConfig.mode === 'manual' ? (Number(saldoConfig.valor) || 0) : saldoBackendS1;
+  const saldoDelta = saldoInicial - saldoBackendS1;
 
   const chartData = (dashboardData?.weeks || []).map((week, idx) => ({
     semana: week.week_label || `S${idx + 1}`,
@@ -224,8 +250,8 @@ const Dashboard = () => {
     ingresos: week.ingresos_display ?? week.ingresos ?? 0,
     egresos: week.egresos_display ?? week.egresos ?? 0,
     flujo_neto: week.flujo_neto_display ?? week.flujo_neto ?? 0,
-    saldo_inicial: week.saldo_inicial_display ?? week.saldo_inicial ?? 0,
-    saldo_final: week.saldo_final_display ?? week.saldo_final ?? 0,
+    saldo_inicial: (week.saldo_inicial_display ?? week.saldo_inicial ?? 0) + saldoDelta,
+    saldo_final: (week.saldo_final_display ?? week.saldo_final ?? 0) + saldoDelta,
     venta_usd: week.venta_usd || 0,
     compra_usd: week.compra_usd || 0,
     num_payments: week.num_payments || 0,
@@ -236,8 +262,7 @@ const Dashboard = () => {
   }));
 
   const kpis = dashboardData?.kpis || {};
-  const saldoInicial = dashboardData?.saldo_bancos || 0;
-  const saldoFinalProyectado = dashboardData?.saldo_proyectado || 0;
+  const saldoFinalProyectado = (dashboardData?.saldo_proyectado || 0) + saldoDelta;
   const burnRate = dashboardData?.burn_rate || 0;
   const runwayWeeks = dashboardData?.runway_weeks;
   const criticalWeek = dashboardData?.critical_week;
@@ -486,7 +511,20 @@ const Dashboard = () => {
         <Card className="border-l-4 border-l-green-500 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-[#64748B] flex items-center justify-between">
-              <span>Saldo Inicial</span>
+              <span className="flex items-center gap-1.5">
+                Saldo Inicial
+                <button
+                  onClick={() => {
+                    setTempSaldoConfig({ mode: saldoConfig.mode, valor: saldoConfig.valor || saldoBackendS1 });
+                    setSaldoDialogOpen(true);
+                  }}
+                  className="text-gray-400 hover:text-blue-600 transition-colors"
+                  title="Configurar saldo inicial"
+                  data-testid="edit-saldo-inicial"
+                >
+                  <Pencil size={12} />
+                </button>
+              </span>
               <Building2 className="h-4 w-4" />
             </CardTitle>
           </CardHeader>
@@ -495,10 +533,74 @@ const Dashboard = () => {
               {formatCurrency(saldoInicial)}
             </div>
             <p className="text-xs text-[#94A3B8] mt-1">
+              {saldoConfig.mode === 'manual' ? 'Manual · ' : ''}
               {filteredAccount ? `${filteredAccount.nombre}` : `Consolidado en ${displayCurrency}`}
             </p>
           </CardContent>
         </Card>
+
+        {/* Modal de configuración del Saldo Inicial */}
+        <Dialog open={saldoDialogOpen} onOpenChange={setSaldoDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Configurar Saldo Inicial</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                tempSaldoConfig.mode === 'auto' ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+              }`}>
+                <input
+                  type="radio"
+                  name="saldoMode"
+                  checked={tempSaldoConfig.mode === 'auto'}
+                  onChange={() => setTempSaldoConfig(prev => ({ ...prev, mode: 'auto' }))}
+                  className="mt-1"
+                  data-testid="saldo-mode-auto"
+                />
+                <div>
+                  <div className="font-medium text-sm">
+                    Usar saldo de Contalink (S1: {formatCurrency(saldoBackendS1)})
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    Saldo acumulado de la semana más antigua disponible en los pagos
+                  </div>
+                </div>
+              </label>
+              <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                tempSaldoConfig.mode === 'manual' ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+              }`}>
+                <input
+                  type="radio"
+                  name="saldoMode"
+                  checked={tempSaldoConfig.mode === 'manual'}
+                  onChange={() => setTempSaldoConfig(prev => ({ ...prev, mode: 'manual' }))}
+                  className="mt-1"
+                  data-testid="saldo-mode-manual"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-sm">Ingresar manualmente</div>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={tempSaldoConfig.valor}
+                    disabled={tempSaldoConfig.mode !== 'manual'}
+                    onChange={(e) => setTempSaldoConfig(prev => ({ ...prev, valor: e.target.value }))}
+                    className="h-8 mt-2"
+                    placeholder="0.00"
+                    data-testid="saldo-manual-input"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    En {displayCurrency} · se guarda en este navegador
+                  </p>
+                </div>
+              </label>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSaldoDialogOpen(false)}>Cancelar</Button>
+              <Button onClick={handleSaveSaldoConfig} className="bg-[#0F172A]" data-testid="saldo-save-btn">Guardar</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Card className="border-l-4 border-l-blue-500 shadow-sm">
           <CardHeader className="pb-2">

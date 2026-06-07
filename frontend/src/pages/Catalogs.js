@@ -43,6 +43,8 @@ const BANCOS_MEXICO = [
   'Banco Sabadell',
   'Bancrea',
   'ABC Capital',
+  'Consubanco',
+  'Banco del Bienestar',
   'American Express',
   'Bank of America',
   'JP Morgan',

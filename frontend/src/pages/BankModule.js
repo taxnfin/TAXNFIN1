@@ -13,9 +13,16 @@ import { Plus, CheckCircle, Building2, Edit2, Trash2, DollarSign, CreditCard } f
 import { format } from 'date-fns';
 
 const BANKS = [
-  'BBVA', 'Santander', 'Banorte', 'HSBC', 'Scotiabank', 'Banamex', 
+  // Banca múltiple principal
+  'BBVA', 'Santander', 'Banorte', 'HSBC', 'Scotiabank', 'Banamex',
   'BanBajío', 'Afirme', 'Banregio', 'Inbursa', 'Banco Azteca',
-  'Albo', 'Clara', 'Clip', 'MercadoPago', 'Stripe', 'PayPal'
+  // Banca mediana y especializada
+  'ABC Capital', 'Actinver', 'Banca Mifel', 'Banco Base', 'Banco del Bienestar',
+  'BanCoppel', 'Bancrea', 'Bansí', 'CIBanco', 'Compartamos Banco', 'Consubanco',
+  'Intercam', 'Invex', 'Monex', 'Multiva', 'Sabadell', 'Ve por Más',
+  // Fintech y pasarelas de pago
+  'Albo', 'Clara', 'Clip', 'Hey Banco', 'MercadoPago', 'Stripe', 'PayPal',
+  'Otro'
 ];
 
 const CURRENCIES = ['MXN', 'USD', 'EUR', 'GBP', 'CAD'];
