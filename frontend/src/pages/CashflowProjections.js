@@ -1925,6 +1925,40 @@ const CashflowProjections = () => {
 
   // KPIs y gráficos usan solo las semanas visibles (respetan el filtro de rango)
   const cfoKPIs = calculateCFOKPIs(displayedTotals);
+
+  // ── RUNWAY (conservador y proyectado) — derivado de weeklyTotals ──────────
+  // Usa la serie COMPLETA (no displayedTotals): el runway es una métrica absoluta
+  // y el filtro default oculta las semanas pasadas, que son la base del cálculo.
+  // dataType en este modelo: 'real' | 'actual' (semana en curso) | 'proyectado'.
+  const runwayKPI = (() => {
+    const reales = weeklyTotals.filter(w => w.dataType === 'real' || w.dataType === 'actual');
+
+    // Paso 1: saldo base = saldo final de la última semana con datos reales
+    const saldoBase = reales.length > 0
+      ? reales[reales.length - 1].saldoFinal
+      : (weeklyTotals[0]?.saldoInicial || 0);
+
+    // Paso 2: net burn histórico (últimas 4 semanas reales)
+    // flujoNeto = ingresos − egresos (+ flujo de divisas), el neto semanal del modelo
+    const ultimas4 = reales.slice(-4);
+    const avgNetBurn = ultimas4.length > 0
+      ? ultimas4.reduce((s, w) => s + w.flujoNeto, 0) / ultimas4.length
+      : 0;
+    // Solo hay runway conservador si en promedio se consume caja (avgNetBurn < 0)
+    const conservador = avgNetBurn < 0 ? saldoBase / Math.abs(avgNetBurn) : null;
+
+    // Paso 3: runway proyectado — iterar las semanas proyectadas acumulando flujo
+    const proyectadas = weeklyTotals.filter(w => w.dataType === 'proyectado');
+    let saldoAcumulado = saldoBase;
+    let proyectado = null;
+    for (let i = 0; i < proyectadas.length; i++) {
+      saldoAcumulado += proyectadas[i].flujoNeto;
+      if (saldoAcumulado <= 0) { proyectado = i + 1; break; }
+    }
+    // proyectado === null → la caja no se agota dentro del horizonte proyectado
+
+    return { saldoBase, avgNetBurn, conservador, proyectado, horizonte: proyectadas.length };
+  })();
   const chartData = prepareChartData(displayedTotals);
 
   const customConceptsIngresos = customConcepts.filter(c => c.tipo === 'ingreso');
@@ -2373,7 +2407,7 @@ const CashflowProjections = () => {
           
           {/* ===== CFO KPIs DASHBOARD ===== */}
           {cfoKPIs && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4" data-testid="cfo-kpis-section">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-4" data-testid="cfo-kpis-section">
               {/* Net Burn Rate */}
               <div
                 className="rounded-lg border bg-white shadow-sm border-l-4 border-l-blue-500 cursor-pointer hover:shadow-md transition-shadow"
@@ -2498,6 +2532,56 @@ const CashflowProjections = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Runway (conservador / proyectado) */}
+              {(() => {
+                const { conservador, proyectado, avgNetBurn, horizonte } = runwayKPI;
+                const semanasAMeses = (sem) => (sem / 4.33).toFixed(1);
+                // Color del card según runway CONSERVADOR; caja positiva = verde
+                const borderColor = conservador === null ? 'border-l-green-500'
+                  : conservador > 12 ? 'border-l-green-500'
+                  : conservador >= 6 ? 'border-l-amber-500'
+                  : 'border-l-red-500';
+                const consColor = conservador === null ? 'text-green-600'
+                  : conservador > 12 ? 'text-green-600'
+                  : conservador >= 6 ? 'text-amber-600'
+                  : 'text-red-600';
+                return (
+                  <div
+                    className={`rounded-lg border bg-white shadow-sm border-l-4 ${borderColor} hover:shadow-md transition-shadow`}
+                    data-testid="kpi-runway"
+                  >
+                    <div className="p-6 pt-4">
+                      <div className="flex items-center justify-between text-sm text-gray-500 mb-1">
+                        <div className="flex items-center gap-2"><Calendar size={14} />Runway</div>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-baseline">
+                          <span className="text-xs text-gray-400">Conservador:</span>
+                          <span className={`text-lg font-bold ${consColor}`}>
+                            {conservador === null
+                              ? 'Caja positiva ✓'
+                              : `${Math.round(conservador)} sem (${semanasAMeses(conservador)} meses)`}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-baseline">
+                          <span className="text-xs text-gray-400">Proyectado:</span>
+                          <span className={`text-lg font-bold ${proyectado === null ? 'text-green-600' : proyectado > 12 ? 'text-green-600' : proyectado >= 6 ? 'text-amber-600' : 'text-red-600'}`}>
+                            {proyectado === null
+                              ? `>${horizonte} sem ✓`
+                              : `${proyectado} sem (${semanasAMeses(proyectado)} meses)`}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {conservador === null
+                            ? `Net burn promedio 4 sem: ${formatCurrency(avgNetBurn)}/sem (genera caja)`
+                            : `Net burn promedio 4 sem: ${formatCurrency(avgNetBurn)}/sem`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
