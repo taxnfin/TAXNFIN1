@@ -78,6 +78,14 @@ const PaymentsModule = () => {
   
   // PDF Invoice Uploader state
   const [pdfUploaderOpen, setPdfUploaderOpen] = useState(false);
+
+  // Delete by date range
+  const [deleteRangeOpen, setDeleteRangeOpen] = useState(false);
+  const [deleteRangeFrom, setDeleteRangeFrom] = useState('');
+  const [deleteRangeTo, setDeleteRangeTo] = useState('');
+  const [deleteRangePreview, setDeleteRangePreview] = useState(null); // { count, monto_total }
+  const [deleteRangePreviewing, setDeleteRangePreviewing] = useState(false);
+  const [deleteRangeDeleting, setDeleteRangeDeleting] = useState(false);
   
   // States for clients/vendors and invoices
   const [customers, setCustomers] = useState([]);
@@ -750,6 +758,49 @@ const PaymentsModule = () => {
     }
   };
 
+  const handlePreviewDeleteByRange = async () => {
+    if (!deleteRangeFrom || !deleteRangeTo) {
+      toast.error('Selecciona fecha inicio y fecha fin');
+      return;
+    }
+    if (deleteRangeFrom > deleteRangeTo) {
+      toast.error('La fecha inicio debe ser anterior a la fecha fin');
+      return;
+    }
+    setDeleteRangePreviewing(true);
+    setDeleteRangePreview(null);
+    try {
+      const res = await api.get('/payments/by-date-range/preview', {
+        params: { fecha_inicio: deleteRangeFrom, fecha_fin: deleteRangeTo },
+      });
+      setDeleteRangePreview(res.data);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error consultando rango');
+    } finally {
+      setDeleteRangePreviewing(false);
+    }
+  };
+
+  const handleExecuteDeleteByRange = async () => {
+    if (!deleteRangePreview || deleteRangePreview.count === 0) return;
+    setDeleteRangeDeleting(true);
+    try {
+      const res = await api.delete('/payments/by-date-range', {
+        params: { fecha_inicio: deleteRangeFrom, fecha_fin: deleteRangeTo },
+      });
+      toast.success(`Se eliminaron ${res.data.eliminados} movimientos`);
+      setDeleteRangeOpen(false);
+      setDeleteRangeFrom('');
+      setDeleteRangeTo('');
+      setDeleteRangePreview(null);
+      loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error eliminando movimientos');
+    } finally {
+      setDeleteRangeDeleting(false);
+    }
+  };
+
   // Toggle selection of bank movement for import
   const toggleBankMovementSelection = (txnId) => {
     setSelectedBankMovements(prev => 
@@ -930,6 +981,7 @@ const PaymentsModule = () => {
                   { icon:'✅', label:'Auto-Conciliar', sub:'Concilia automáticamente', action: () => { setMasMenuOpen(false); handleAutoMatch(); } },
                   { icon:'📊', label:'Exportar Excel', sub:'Descarga todos los movimientos', action: () => { setMasMenuOpen(false); handleExportPayments(); } },
                   null, // separador
+                  { icon:'🗓️', label:'Eliminar por fecha', sub:'Elimina movimientos de un rango', action: () => { setMasMenuOpen(false); setDeleteRangeOpen(true); setDeleteRangePreview(null); }, danger: true },
                   { icon:'🗑️', label:'Borrar Todo', sub:'Elimina todos los registros', action: () => { setMasMenuOpen(false); handleDeleteAllPayments(); }, danger: true },
                 ].map((item, idx) => item === null ? (
                   <div key={idx} style={{height:'1px', background:'#E2E8F0', margin:'4px 6px'}} />
@@ -1923,6 +1975,104 @@ const PaymentsModule = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Delete by Date Range Dialog */}
+      <Dialog open={deleteRangeOpen} onOpenChange={(open) => {
+        if (!open) { setDeleteRangePreview(null); }
+        setDeleteRangeOpen(open);
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Eliminar movimientos por fecha
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona el rango de fechas. Se filtran por <strong>fecha de vencimiento</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Fecha inicio</Label>
+                <Input
+                  type="date"
+                  value={deleteRangeFrom}
+                  onChange={(e) => { setDeleteRangeFrom(e.target.value); setDeleteRangePreview(null); }}
+                  data-testid="delete-range-from"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Fecha fin</Label>
+                <Input
+                  type="date"
+                  value={deleteRangeTo}
+                  onChange={(e) => { setDeleteRangeTo(e.target.value); setDeleteRangePreview(null); }}
+                  data-testid="delete-range-to"
+                />
+              </div>
+            </div>
+
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={handlePreviewDeleteByRange}
+              disabled={!deleteRangeFrom || !deleteRangeTo || deleteRangePreviewing}
+              data-testid="delete-range-preview-btn"
+            >
+              {deleteRangePreviewing ? '⟳ Consultando...' : 'Ver movimientos afectados'}
+            </Button>
+
+            {deleteRangePreview && (
+              <div className={`rounded-lg border p-4 space-y-3 ${deleteRangePreview.count > 0 ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50'}`}>
+                {deleteRangePreview.count > 0 ? (
+                  <>
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                      <p className="text-sm font-semibold text-red-700">Esta acción no se puede deshacer</p>
+                    </div>
+                    <div className="text-sm space-y-1 text-gray-700">
+                      <div className="flex justify-between">
+                        <span>Rango:</span>
+                        <span className="font-mono">{deleteRangeFrom} → {deleteRangeTo}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Movimientos a eliminar:</span>
+                        <span className="font-bold text-red-700">{deleteRangePreview.count.toLocaleString('es-MX')}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Monto total (MXN equiv.):</span>
+                        <span className="font-bold">${deleteRangePreview.monto_total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-500 text-center">No se encontraron movimientos en este rango.</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteRangeOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={handleExecuteDeleteByRange}
+              disabled={!deleteRangePreview || deleteRangePreview.count === 0 || deleteRangeDeleting}
+              data-testid="delete-range-confirm-btn"
+            >
+              {deleteRangeDeleting
+                ? '⟳ Eliminando...'
+                : deleteRangePreview?.count > 0
+                  ? `Eliminar ${deleteRangePreview.count.toLocaleString('es-MX')} movimientos`
+                  : 'Eliminar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* View Payment Dialog */}
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>

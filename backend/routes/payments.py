@@ -469,6 +469,85 @@ async def delete_all_payments(request: Request, current_user: Dict = Depends(get
     }
 
 
+@router.get("/by-date-range/preview")
+async def preview_delete_by_date_range(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    fecha_inicio: str = Query(..., description="Fecha inicio YYYY-MM-DD"),
+    fecha_fin: str = Query(..., description="Fecha fin YYYY-MM-DD"),
+):
+    """Preview: count and total amount of payments in a date range (before deleting)."""
+    company_id = await get_active_company_id(request, current_user)
+
+    if fecha_inicio > fecha_fin:
+        raise HTTPException(status_code=400, detail="fecha_inicio debe ser <= fecha_fin")
+
+    query = {
+        'company_id': company_id,
+        'fecha_vencimiento': {'$gte': fecha_inicio, '$lte': fecha_fin + 'T23:59:59'},
+    }
+    payments = await db.payments.find(query, {'_id': 0, 'monto': 1, 'moneda': 1, 'tipo_cambio_historico': 1}).to_list(10000)
+
+    # Sum amounts converting to MXN where possible
+    monto_total = 0.0
+    for p in payments:
+        monto = p.get('monto') or 0
+        moneda = p.get('moneda', 'MXN')
+        tc = p.get('tipo_cambio_historico') or 1
+        monto_total += monto if moneda == 'MXN' else monto * tc
+
+    return {
+        'count': len(payments),
+        'monto_total': round(monto_total, 2),
+        'fecha_inicio': fecha_inicio,
+        'fecha_fin': fecha_fin,
+    }
+
+
+@router.delete("/by-date-range")
+async def delete_payments_by_date_range(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    fecha_inicio: str = Query(..., description="Fecha inicio YYYY-MM-DD"),
+    fecha_fin: str = Query(..., description="Fecha fin YYYY-MM-DD"),
+):
+    """Delete all payments for the company within a date range.
+    Resets monto_cobrado / monto_pagado on linked CFDIs."""
+    company_id = await get_active_company_id(request, current_user)
+
+    if fecha_inicio > fecha_fin:
+        raise HTTPException(status_code=400, detail="fecha_inicio debe ser <= fecha_fin")
+
+    query = {
+        'company_id': company_id,
+        'fecha_vencimiento': {'$gte': fecha_inicio, '$lte': fecha_fin + 'T23:59:59'},
+    }
+
+    # Collect CFDI IDs linked to these payments before deleting
+    affected = await db.payments.find(query, {'_id': 0, 'cfdi_id': 1}).to_list(10000)
+    cfdi_ids = list({p['cfdi_id'] for p in affected if p.get('cfdi_id')})
+
+    result = await db.payments.delete_many(query)
+
+    # Reset monto_cobrado / monto_pagado on affected CFDIs
+    if cfdi_ids:
+        await db.cfdis.update_many(
+            {'company_id': company_id, 'uuid': {'$in': cfdi_ids}},
+            {'$set': {'monto_cobrado': 0, 'monto_pagado': 0}},
+        )
+
+    await audit_log(
+        company_id, 'Payment', 'BULK_DELETE_BY_DATE', 'DELETE', current_user['id'],
+        {'count': result.deleted_count, 'fecha_inicio': fecha_inicio, 'fecha_fin': fecha_fin},
+    )
+
+    return {
+        'eliminados': result.deleted_count,
+        'fecha_inicio': fecha_inicio,
+        'fecha_fin': fecha_fin,
+    }
+
+
 @router.post("/reset-empresa")
 async def reset_empresa(request: Request, current_user: Dict = Depends(get_current_user)):
     """
