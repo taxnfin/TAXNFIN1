@@ -36,6 +36,7 @@ const Dashboard = () => {
   const [bankAccounts, setBankAccounts] = useState([]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [rangoActivo, setRangoActivo] = useState('13w'); // botón rápido activo; 'custom' si editan fechas a mano
   const [syncingRates, setSyncingRates] = useState(false);
   const [lastRateSync, setLastRateSync] = useState(null);
   const [schedulerStatus, setSchedulerStatus] = useState(null);
@@ -99,7 +100,7 @@ const Dashboard = () => {
     if (dateFrom && dateTo) {
       loadDashboardData();
     }
-  }, [viewCurrency, selectedAccount, dateFrom, dateTo]);
+  }, [viewCurrency, selectedAccount, dateFrom, dateTo, rangoActivo]);
 
   const loadBankAccounts = async () => {
     try {
@@ -188,8 +189,16 @@ const Dashboard = () => {
         url += `&bank_account_id=${selectedAccount}`;
       }
       // El rango de fechas genera la ventana de semanas en el backend —
-      // todos los gráficos y KPIs derivan de esas semanas
-      if (dateFrom) url += `&fecha_inicio=${dateFrom}`;
+      // todos los gráficos y KPIs derivan de esas semanas.
+      // En 13S se amplía la petición 8 semanas hacia atrás para que KPIs y
+      // semáforos tengan historial real; el gráfico luego oculta esas semanas.
+      let fechaInicioReq = dateFrom;
+      if (rangoActivo === '13w' && dateFrom) {
+        const d = new Date(dateFrom + 'T00:00:00');
+        d.setDate(d.getDate() - 56); // 8 semanas de historial
+        fechaInicioReq = d.toISOString().split('T')[0];
+      }
+      if (fechaInicioReq) url += `&fecha_inicio=${fechaInicioReq}`;
       if (dateTo) url += `&fecha_fin=${dateTo}`;
       const response = await api.get(url);
       setDashboardData(response.data);
@@ -221,6 +230,7 @@ const Dashboard = () => {
 
     setDateFrom(from.toISOString().split('T')[0]);
     setDateTo(to.toISOString().split('T')[0]);
+    setRangoActivo(range);
   };
 
   const formatCurrency = (amount) => {
@@ -277,6 +287,13 @@ const Dashboard = () => {
     is_past: week.is_past,
     is_current: week.is_current
   }));
+
+  // En 13S los datos traen 8 semanas pasadas extra (para KPIs y semáforos),
+  // pero los gráficos solo muestran desde la semana actual hacia adelante.
+  // KPIs, semáforos y recomendaciones siguen usando chartData completo.
+  const displayChartData = rangoActivo === '13w'
+    ? chartData.filter(w => !w.is_past)
+    : chartData;
 
   const kpis = dashboardData?.kpis || {};
   const saldoFinalProyectado = (dashboardData?.saldo_proyectado || 0) + saldoDelta;
@@ -511,22 +528,28 @@ const Dashboard = () => {
           <div className="flex items-center gap-2 bg-[#F8FAFC] rounded-md px-3 py-1.5 border">
             <Calendar size={14} className="text-[#64748B]" />
             <Input 
-              type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+              type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setRangoActivo('custom'); }}
               className="w-32 h-7 border-0 bg-transparent p-0 text-sm" data-testid="date-from"
             />
             <span className="text-[#64748B] text-sm">-</span>
             <Input 
-              type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+              type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setRangoActivo('custom'); }}
               className="w-32 h-7 border-0 bg-transparent p-0 text-sm" data-testid="date-to"
             />
           </div>
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" onClick={() => setQuickDateRange('1w')} className="h-7 px-2 text-xs">1S</Button>
-            <Button variant="ghost" size="sm" onClick={() => setQuickDateRange('1m')} className="h-7 px-2 text-xs">1M</Button>
-            <Button variant="ghost" size="sm" onClick={() => setQuickDateRange('3m')} className="h-7 px-2 text-xs">3M</Button>
-            <Button variant="ghost" size="sm" onClick={() => setQuickDateRange('6m')} className="h-7 px-2 text-xs">6M</Button>
-            <Button variant="ghost" size="sm" onClick={() => setQuickDateRange('1y')} className="h-7 px-2 text-xs">1A</Button>
-            <Button variant="ghost" size="sm" onClick={() => setQuickDateRange('13w')} className="h-7 px-2 text-xs bg-[#E0F2FE]">13S</Button>
+            {[['1w', '1S'], ['1m', '1M'], ['3m', '3M'], ['6m', '6M'], ['1y', '1A'], ['13w', '13S']].map(([r, label]) => (
+              <Button
+                key={r}
+                variant="ghost"
+                size="sm"
+                onClick={() => setQuickDateRange(r)}
+                className={`h-7 px-2 text-xs ${rangoActivo === r ? 'bg-[#E0F2FE] font-semibold text-blue-700' : ''}`}
+                data-testid={`quick-range-${r}`}
+              >
+                {label}
+              </Button>
+            ))}
           </div>
         </div>
       </div>
@@ -779,13 +802,13 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Flujo de Efectivo - {chartData.length} Semanas</CardTitle>
+            <CardTitle className="text-sm font-medium">Flujo de Efectivo - {displayChartData.length} Semanas</CardTitle>
             <CardDescription>Ingresos, egresos y saldo acumulado</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData}>
+                <ComposedChart data={displayChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
                   <XAxis dataKey="semana" tick={{fontSize: 11}} stroke="#94A3B8" />
                   <YAxis tick={{fontSize: 11}} stroke="#94A3B8" tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
@@ -812,7 +835,7 @@ const Dashboard = () => {
           <CardContent>
             <div className="h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData.slice(1)}>
+                <BarChart data={displayChartData.slice(1)}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
                   <XAxis dataKey="semana" tick={{fontSize: 11}} stroke="#94A3B8" />
                   <YAxis tick={{fontSize: 11}} stroke="#94A3B8" tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
@@ -822,7 +845,7 @@ const Dashboard = () => {
                   />
                   <ReferenceLine y={0} stroke="#94A3B8" />
                   <Bar dataKey="varianza" name="Varianza" fill={(entry) => entry.varianza >= 0 ? '#10B981' : '#EF4444'}>
-                    {chartData.slice(1).map((entry, index) => (
+                    {displayChartData.slice(1).map((entry, index) => (
                       <rect key={index} fill={entry.varianza >= 0 ? '#10B981' : '#EF4444'} />
                     ))}
                   </Bar>
