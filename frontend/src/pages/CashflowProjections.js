@@ -744,31 +744,35 @@ const CashflowProjections = () => {
               week.ingresos.byCategory[catName] = { total: 0, bySubcategory: {}, items: [] };
             }
             week.ingresos.byCategory[catName].total += monto;
+            if (!week.ingresos.byCategory[catName].bySubcategory['CxC']) {
+              week.ingresos.byCategory[catName].bySubcategory['CxC'] = { total: 0, items: [] };
+            }
+            week.ingresos.byCategory[catName].bySubcategory['CxC'].total += monto;
             // Un ítem por beneficiario real (del backend); fallback a ítem agrupado si no hay detalle
             const cxcItems = (montos.items || []).filter(it => it.tipo === 'cxc');
             if (cxcItems.length > 0) {
               cxcItems.forEach(it => {
-                week.ingresos.byCategory[catName].items.push({
+                const newItem = {
                   id: `cxc-${it.nombre}-${semanaLabel}`,
                   monto: it.monto * factorCxc,
                   concepto: `CxC - ${it.nombre}${sufijoCxc}`,
                   beneficiario: it.nombre,
                   source: 'cxc_proyeccion'
-                });
+                };
+                week.ingresos.byCategory[catName].items.push(newItem);
+                week.ingresos.byCategory[catName].bySubcategory['CxC'].items.push(newItem);
               });
             } else {
-              week.ingresos.byCategory[catName].items.push({
+              const newItem = {
                 id: `cxc-proy-${semanaLabel}-${catName}`,
                 monto,
                 concepto: `CxC Proyectado${sufijoCxc}`,
                 beneficiario: catName,
                 source: 'cxc_proyeccion'
-              });
+              };
+              week.ingresos.byCategory[catName].items.push(newItem);
+              week.ingresos.byCategory[catName].bySubcategory['CxC'].items.push(newItem);
             }
-            if (!week.ingresos.byCategory[catName].bySubcategory['CxC']) {
-              week.ingresos.byCategory[catName].bySubcategory['CxC'] = { total: 0, items: [] };
-            }
-            week.ingresos.byCategory[catName].bySubcategory['CxC'].total += monto;
           }
           // CxP → egresos
           if ((montos.cxp || 0) * factorCxp > 0.005) {
@@ -778,31 +782,35 @@ const CashflowProjections = () => {
               week.egresos.byCategory[catName] = { total: 0, bySubcategory: {}, items: [] };
             }
             week.egresos.byCategory[catName].total += monto;
+            if (!week.egresos.byCategory[catName].bySubcategory['CxP']) {
+              week.egresos.byCategory[catName].bySubcategory['CxP'] = { total: 0, items: [] };
+            }
+            week.egresos.byCategory[catName].bySubcategory['CxP'].total += monto;
             // Un ítem por beneficiario real (del backend); fallback a ítem agrupado si no hay detalle
             const cxpItems = (montos.items || []).filter(it => it.tipo === 'cxp');
             if (cxpItems.length > 0) {
               cxpItems.forEach(it => {
-                week.egresos.byCategory[catName].items.push({
+                const newItem = {
                   id: `cxp-${it.nombre}-${semanaLabel}`,
                   monto: it.monto * factorCxp,
                   concepto: `CxP - ${it.nombre}${sufijoCxp}`,
                   beneficiario: it.nombre,
                   source: 'cxp_proyeccion'
-                });
+                };
+                week.egresos.byCategory[catName].items.push(newItem);
+                week.egresos.byCategory[catName].bySubcategory['CxP'].items.push(newItem);
               });
             } else {
-              week.egresos.byCategory[catName].items.push({
+              const newItem = {
                 id: `cxp-proy-${semanaLabel}-${catName}`,
                 monto,
                 concepto: `CxP Proyectado${sufijoCxp}`,
                 beneficiario: catName,
                 source: 'cxp_proyeccion'
-              });
+              };
+              week.egresos.byCategory[catName].items.push(newItem);
+              week.egresos.byCategory[catName].bySubcategory['CxP'].items.push(newItem);
             }
-            if (!week.egresos.byCategory[catName].bySubcategory['CxP']) {
-              week.egresos.byCategory[catName].bySubcategory['CxP'] = { total: 0, items: [] };
-            }
-            week.egresos.byCategory[catName].bySubcategory['CxP'].total += monto;
           }
         });
       });
