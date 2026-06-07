@@ -38,12 +38,13 @@ const Dashboard = () => {
   const [dateTo, setDateTo] = useState('');
   const [rangoActivo, setRangoActivo] = useState('13w'); // botón rápido activo; 'custom' si editan fechas a mano
   const [syncingRates, setSyncingRates] = useState(false);
+  const [saldoBancosActual, setSaldoBancosActual] = useState(0); // saldo real desde bank-accounts/summary
   const [lastRateSync, setLastRateSync] = useState(null);
   const [schedulerStatus, setSchedulerStatus] = useState(null);
   const [fxAlerts, setFxAlerts] = useState(null);
   const [topClientesCxc, setTopClientesCxc] = useState([]); // top deudores del Aging CxC (MXN)
   const [agingCxc, setAgingCxc] = useState({ pctVencido: null, totalPendiente: 0, vencido: 0, bruto: 0, v30: 0, vmas60: 0 }); // resumen del Aging CxC
-  // Saldo Inicial: 'auto' = saldo de Contalink (S1, lo calcula el backend) | 'manual' = capturado por el usuario
+  // Saldo Inicial: 'auto' = saldo actual de cuentas bancarias (bank-accounts/summary) | 'manual' = capturado por el usuario
   const [saldoConfig, setSaldoConfig] = useState(() => {
     try {
       const saved = localStorage.getItem('dashboardSaldoInicial');
@@ -202,8 +203,29 @@ const Dashboard = () => {
       }
       if (fechaInicioReq) url += `&fecha_inicio=${fechaInicioReq}`;
       if (dateTo) url += `&fecha_fin=${dateTo}`;
-      const response = await api.get(url);
-      setDashboardData(response.data);
+
+      const [response, summaryRes] = await Promise.all([
+        api.get(url),
+        api.get('/bank-accounts/summary'),
+      ]);
+
+      const data = response.data;
+      const weeks = data?.weeks || [];
+      const summaryTotalMxn = summaryRes.data?.total_mxn || 0;
+      setSaldoBancosActual(summaryTotalMxn);
+      setDashboardData(data);
+
+      // [DEBUG] Confirmar fuente de datos del KPI "Saldo Final Proyectado"
+      console.log('[Dashboard Debug] Saldo Final Proyectado KPI:', {
+        url,
+        saldo_bancos_backend: data?.saldo_bancos,
+        saldo_bancos_summary_mxn: summaryTotalMxn,
+        saldo_proyectado_backend: data?.saldo_proyectado,
+        num_semanas: weeks.length,
+        primera_semana: weeks[0] ? `${weeks[0].week_label} / ${weeks[0].abs_semana} (${weeks[0].date_label}) is_past=${weeks[0].is_past}` : null,
+        ultima_semana: weeks.length ? `${weeks[weeks.length-1].week_label} / ${weeks[weeks.length-1].abs_semana} (${weeks[weeks.length-1].date_label}) is_past=${weeks[weeks.length-1].is_past}` : null,
+        semana_actual: weeks.find(w => w.is_current) ? `${weeks.find(w => w.is_current).week_label} / ${weeks.find(w => w.is_current).abs_semana}` : 'no encontrada',
+      });
     } catch (error) {
       toast.error('Error cargando dashboard');
     } finally {
@@ -257,7 +279,7 @@ const Dashboard = () => {
     localStorage.setItem('dashboardSaldoInicial', JSON.stringify(cfg)); // persiste entre sesiones
     setSaldoDialogOpen(false);
     toast.success(cfg.mode === 'auto'
-      ? 'Saldo Inicial: automático (Contalink S1)'
+      ? 'Saldo Inicial: automático (saldo actual de cuentas bancarias)'
       : `Saldo Inicial manual: ${formatCurrency(cfg.valor)}`);
   };
 
@@ -267,12 +289,20 @@ const Dashboard = () => {
 
   // Saldo Inicial según el modo configurado. El delta vs el saldo del backend
   // desplaza los saldos acumulados de todas las semanas, el proyectado y el runway.
+  //
+  // En modo 'auto' usamos el saldo real de bank-accounts/summary (total_mxn convertido a
+  // moneda de visualización) en lugar del saldo_bancos del backend, que parte de saldo_inicial
+  // y acumula pagos históricos causando un doble conteo.
   const saldoBackendS1 = dashboardData?.saldo_bancos || 0;
-  const saldoInicial = saldoConfig.mode === 'manual' ? (Number(saldoConfig.valor) || 0) : saldoBackendS1;
+  const fxRateDisplay = dashboardData?.fx_rate || 1; // MXN por unidad de moneda_vista; 1 si MXN
+  // Convertir saldoBancosActual (siempre en MXN) a la moneda de visualización actual
+  const saldoBancosActualDisplay = fxRateDisplay > 0 ? saldoBancosActual / fxRateDisplay : saldoBancosActual;
+  const saldoInicial = saldoConfig.mode === 'manual' ? (Number(saldoConfig.valor) || 0) : saldoBancosActualDisplay;
   const saldoDelta = saldoInicial - saldoBackendS1;
 
   const chartData = (dashboardData?.weeks || []).map((week, idx) => ({
     semana: week.week_label || `S${idx + 1}`,
+    abs_semana: week.abs_semana || `S${idx + 1}`,
     date_label: week.date_label || '',
     fecha_inicio: week.fecha_inicio || null,
     fecha_fin: week.fecha_fin || null,
@@ -298,7 +328,18 @@ const Dashboard = () => {
     : chartData;
 
   const kpis = dashboardData?.kpis || {};
-  const saldoFinalProyectado = (dashboardData?.saldo_proyectado || 0) + saldoDelta;
+
+  // Saldo Final Proyectado: saldo actual real + flujo de la semana actual + todos los flujos futuros.
+  // Esto evita el doble conteo de pagos históricos que tiene saldo_proyectado del backend.
+  const currentWeek = displayChartData.find(w => w.is_current);
+  const futureWeeks = displayChartData.filter(w => !w.is_past && !w.is_current);
+  const saldoFinalProyectado = saldoInicial
+    + (currentWeek?.flujo_neto || 0)
+    + futureWeeks.reduce((sum, w) => sum + w.flujo_neto, 0);
+
+  // Label dinámico: abs_semana de la última semana proyectada visible
+  const lastDisplayWeek = displayChartData[displayChartData.length - 1];
+  const lastWeekLabel = lastDisplayWeek?.abs_semana || 'S?';
   const burnRate = dashboardData?.burn_rate || 0;
   const runwayWeeks = dashboardData?.runway_weeks;
   const criticalWeek = dashboardData?.critical_week;
@@ -685,10 +726,10 @@ const Dashboard = () => {
                 />
                 <div>
                   <div className="font-medium text-sm">
-                    Usar saldo de Contalink (S1: {formatCurrency(saldoBackendS1)})
+                    Usar saldo actual de cuentas bancarias ({formatCurrency(saldoBancosActualDisplay)})
                   </div>
                   <div className="text-xs text-gray-500 mt-0.5">
-                    Saldo acumulado de la semana más antigua disponible en los pagos
+                    Suma de saldos activos — misma fuente que CashFlow Projections
                   </div>
                 </div>
               </label>
@@ -731,7 +772,7 @@ const Dashboard = () => {
         <Card className="border-l-4 border-l-blue-500 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-[#64748B] flex items-center justify-between">
-              <span>Saldo Final Proyectado (S13)</span>
+              <span>Saldo Final Proyectado ({lastWeekLabel})</span>
               <Wallet className="h-4 w-4" />
             </CardTitle>
           </CardHeader>

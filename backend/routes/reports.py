@@ -322,8 +322,8 @@ async def get_dashboard_from_payments(
         """Convert MXN amount to display currency"""
         return convert_from_mxn(amount_mxn, moneda_vista)
     
-    # Get bank account balances - use saldo_inicial like bank-accounts/summary does
-    accounts_query = {'company_id': company_id}
+    # Get bank account balances - only active accounts, same filter as bank-accounts/summary
+    accounts_query = {'company_id': company_id, 'activo': True}
     if bank_account_id:
         accounts_query['id'] = bank_account_id
     
