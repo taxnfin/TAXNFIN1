@@ -41,7 +41,7 @@ const Dashboard = () => {
   const [schedulerStatus, setSchedulerStatus] = useState(null);
   const [fxAlerts, setFxAlerts] = useState(null);
   const [topClientesCxc, setTopClientesCxc] = useState([]); // top deudores del Aging CxC (MXN)
-  const [agingCxc, setAgingCxc] = useState({ pctVencido: null, totalPendiente: 0 }); // resumen del Aging CxC
+  const [agingCxc, setAgingCxc] = useState({ pctVencido: null, totalPendiente: 0, vencido: 0, bruto: 0 }); // resumen del Aging CxC
   // Saldo Inicial: 'auto' = saldo de Contalink (S1, lo calcula el backend) | 'manual' = capturado por el usuario
   const [saldoConfig, setSaldoConfig] = useState(() => {
     try {
@@ -161,9 +161,21 @@ const Dashboard = () => {
           monto: f.saldo_pendiente || 0
         }));
       setTopClientesCxc(top);
+      // % vencido calculado desde el desglose bruto del aging: vencido ÷ (corriente + vencido).
+      // El pct_vencido del backend divide entre el total NETO (con notas de crédito restadas),
+      // lo que puede dar >100% — aquí ambos lados son brutos y el resultado queda acotado.
+      const aging = res.data?.aging || {};
+      const vencido = (aging.vencido_30 || 0) + (aging.vencido_60 || 0) +
+                      (aging.vencido_90 || 0) + (aging.vencido_mas90 || 0);
+      const bruto = (aging.corriente || 0) + vencido;
+      const pctVencido = bruto > 0
+        ? Math.min(100, (vencido / bruto) * 100)
+        : (res.data?.pct_vencido ?? null);
       setAgingCxc({
-        pctVencido: res.data?.pct_vencido ?? null,
+        pctVencido,
         totalPendiente: res.data?.total_pendiente || 0,
+        vencido,
+        bruto,
       });
     } catch (error) {
       // No bloquea el dashboard, pero deja rastro para diagnóstico
@@ -338,6 +350,7 @@ const Dashboard = () => {
         : runway > 12 ? 'Caja para más de 3 meses de operación'
         : runway >= 6 ? 'Caja justa: vigila cobranza y pagos grandes'
         : 'Riesgo de caja: requiere acciones inmediatas',
+      composicion: `Saldo actual ${formatCurrency(saldoActual)} ÷ burn ${formatCurrency(burnSemanal)}/sem`,
     });
 
     // 2. COBRANZA — ratio ingresos/egresos de las semanas reales
@@ -352,6 +365,7 @@ const Dashboard = () => {
         : ratio > 80 ? 'Lo cobrado cubre los pagos del período'
         : ratio >= 60 ? 'Cobranza por debajo de los pagos: dar seguimiento'
         : 'Cobranza muy por debajo de los pagos: intensificar gestión',
+      composicion: `Cobrado ${formatCurrency(ingReal)} ÷ pagado ${formatCurrency(egrReal)} (sem. reales)`,
     });
 
     // 3. EGRESOS — burn rate últimas 4 semanas reales vs las 4 anteriores
@@ -370,6 +384,9 @@ const Dashboard = () => {
         : deltaPct <= 0 ? `Burn rate bajó: ${formatCurrency(burnAct)}/sem actual`
         : deltaPct < 15 ? `Burn rate subió moderado: ${formatCurrency(burnAct)}/sem actual`
         : `Burn rate disparado: ${formatCurrency(burnAct)}/sem actual`,
+      composicion: deltaPct === null
+        ? `Últimas 4 sem: ${formatCurrency(burnAct)}/sem (sin 4 previas)`
+        : `Últimas 4 sem ${formatCurrency(burnAct)}/sem vs previas ${formatCurrency(burnPrev)}/sem`,
     });
 
     // 4. CARTERA VENCIDA — pct_vencido del Aging CxC
@@ -382,6 +399,9 @@ const Dashboard = () => {
         : pct < 30 ? 'Cartera sana: la mayoría al corriente'
         : pct <= 60 ? 'Cartera deteriorándose: priorizar vencidos'
         : 'Cartera crítica: la mayoría del saldo está vencido',
+      composicion: pct == null ? 'Fuente: Aging CxC de Contalink'
+        : `Vencido $${agingCxc.vencido.toLocaleString('es-MX', {maximumFractionDigits: 0})} ÷ ` +
+          `cartera bruta $${agingCxc.bruto.toLocaleString('es-MX', {maximumFractionDigits: 0})} MXN`,
     });
 
     return items;
@@ -757,6 +777,11 @@ const Dashboard = () => {
                   </div>
                   <div className={`text-xl font-bold mono ${colores.text}`}>{s.valor}</div>
                   <p className="text-xs text-gray-500 mt-1 leading-snug">{s.explicacion}</p>
+                  {s.composicion && (
+                    <p className="text-[10px] font-mono text-gray-400 mt-1.5 pt-1.5 border-t border-gray-200/70 leading-snug">
+                      {s.composicion}
+                    </p>
+                  )}
                 </div>
               );
             })}
@@ -1063,10 +1088,9 @@ const Dashboard = () => {
                     );
                   }
                   if (carteraVencida) {
-                    const vencidoMXN = agingCxc.totalPendiente * (agingCxc.pctVencido / 100);
                     detalles.push(
-                      `Cartera CxC vencida: $${vencidoMXN.toLocaleString('es-MX', {maximumFractionDigits: 0})} de ` +
-                      `$${agingCxc.totalPendiente.toLocaleString('es-MX', {maximumFractionDigits: 0})} MXN`
+                      `Cartera CxC vencida: $${agingCxc.vencido.toLocaleString('es-MX', {maximumFractionDigits: 0})} de ` +
+                      `$${agingCxc.bruto.toLocaleString('es-MX', {maximumFractionDigits: 0})} MXN brutos`
                     );
                   }
                   recommendations.push({
