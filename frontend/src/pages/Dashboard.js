@@ -903,8 +903,11 @@ const Dashboard = () => {
                 </div>
                 <div className="text-right">
                   {(() => {
-                    const minWeek = chartData.reduce((min, w, i) => 
-                      (!min || w.saldo_final < min.saldo_final) ? {...w, idx: i} : min, null);
+                    // Solo semanas futuras (proyectadas) — mismo criterio que ¿Qué Hacer Ahora?
+                    const minWeek = chartData
+                      .filter(w => !w.is_past && !w.is_current)
+                      .reduce((min, w, i) =>
+                        (!min || w.saldo_final < min.saldo_final) ? {...w, idx: i} : min, null);
                     return minWeek ? (
                       <>
                         <span className={`text-lg font-bold ${minWeek.saldo_final < 0 ? 'text-red-600' : 'text-amber-600'}`}>
@@ -932,7 +935,10 @@ const Dashboard = () => {
             <div className="space-y-2">
               {(() => {
                 const recommendations = [];
-                const minWeek = chartData.reduce((min, w) =>
+                // Semana crítica = la semana FUTURA (proyectada) con menor saldo;
+                // las pasadas ya ocurrieron y no son accionables
+                const semanasFuturas = chartData.filter(w => !w.is_past && !w.is_current);
+                const minWeek = semanasFuturas.reduce((min, w) =>
                   (!min || w.saldo_final < min.saldo_final) ? w : min, null);
 
                 // Cobranza unificada: déficit proyectado + cartera vencida del Aging en
