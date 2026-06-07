@@ -401,6 +401,26 @@ async def get_dashboard_from_payments(
         start_monday = current_monday - timedelta(weeks=4)
         num_weeks = 13
 
+    # ── Proyecciones CxC/CxP por semana ──────────────────────────────────────
+    # La colección cxc_proyecciones usa numeración absoluta desde S1 = primer
+    # lunes del año en curso. Calculamos model_start para convertir cada
+    # week_start del loop a su semana_label absoluta y así cruzar los montos.
+    proy_raw = await db.cxc_proyecciones.find(
+        {"company_id": company_id, "semana": {"$ne": None}}, {"_id": 0}
+    ).to_list(2000)
+
+    _year_start = datetime(today.year, 1, 1)
+    _model_start = _year_start - timedelta(days=_year_start.weekday())  # lunes previo al 1-ene
+
+    proy_por_semana: dict = {}
+    for _p in proy_raw:
+        _semana = _p.get("semana")
+        _tipo   = _p.get("tipo", "cxc")
+        _monto  = convert_to_mxn(float(_p.get("monto", 0) or 0), _p.get("moneda", "MXN"))
+        if _semana not in proy_por_semana:
+            proy_por_semana[_semana] = {"cxc": 0.0, "cxp": 0.0}
+        proy_por_semana[_semana][_tipo] = proy_por_semana[_semana][_tipo] + _monto
+
     weeks_data = []
     running_balance = saldo_bancos_mxn
 
@@ -409,21 +429,24 @@ async def get_dashboard_from_payments(
         week_end = week_start + timedelta(days=7)
         is_past = week_end <= today
         is_current = week_start <= today < week_end
-        
+
+        # Semana absoluta del año (S1 = primer lunes del año) para lookup en cxc_proyecciones
+        abs_semana_label = f"S{(week_start - _model_start).days // 7 + 1}"
+
         # Filter payments for this week
         week_payments = [p for p in payments if p.get('fecha_pago')]
         week_payments = [p for p in week_payments if week_start <= datetime.fromisoformat(p['fecha_pago'].replace('Z', '+00:00').split('+')[0]) < week_end]
-        
+
         # Calculate totals excluding USD operations
         ingresos = 0
         egresos = 0
         venta_usd = 0
         compra_usd = 0
-        
+
         for p in week_payments:
             monto_mxn = convert_to_mxn(p.get('monto', 0), p.get('moneda', 'MXN'))
             cat_id = p.get('category_id')
-            
+
             if cat_id == venta_usd_id:
                 venta_usd += monto_mxn
             elif cat_id == compra_usd_id:
@@ -432,13 +455,19 @@ async def get_dashboard_from_payments(
                 ingresos += monto_mxn
             else:
                 egresos += monto_mxn
-        
-        flujo_neto = ingresos - egresos + venta_usd - compra_usd
+
+        # Sumar proyecciones CxC (cobros) y CxP (pagos) para semanas no pasadas
+        proy_semana = proy_por_semana.get(abs_semana_label, {})
+        ingreso_cxc = proy_semana.get("cxc", 0.0) if not is_past else 0.0
+        egreso_cxp  = proy_semana.get("cxp", 0.0) if not is_past else 0.0
+
+        flujo_neto = ingresos - egresos + venta_usd - compra_usd + ingreso_cxc - egreso_cxp
         saldo_final = running_balance + flujo_neto
 
         weeks_data.append({
             'week_num': i + 1,
             'week_label': f"S{i + 1}",
+            'abs_semana': abs_semana_label,
             'date_label': week_start.strftime('%d %b'),
             'fecha_inicio': week_start.isoformat(),
             'fecha_fin': week_end.isoformat(),
@@ -446,6 +475,8 @@ async def get_dashboard_from_payments(
             'is_current': is_current,
             'ingresos': round(ingresos, 2),
             'egresos': round(egresos, 2),
+            'ingreso_cxc': round(ingreso_cxc, 2),
+            'egreso_cxp': round(egreso_cxp, 2),
             'venta_usd': round(venta_usd, 2),
             'compra_usd': round(compra_usd, 2),
             'flujo_neto': round(flujo_neto, 2),
@@ -456,16 +487,21 @@ async def get_dashboard_from_payments(
 
         running_balance = saldo_final
 
-    # [DEBUG-TEMP] Auditar cascadeo de saldo por semana
+    # [DEBUG-TEMP] Auditar cascadeo de saldo por semana con proyecciones CxC/CxP
     for _w in weeks_data:
         logger.info(
-            f"[saldo_debug] {_w['week_label']} ({_w['date_label']}) "
+            f"[saldo_debug] {_w['week_label']} ({_w['abs_semana']} / {_w['date_label']}) "
             f"is_past={_w['is_past']} is_current={_w['is_current']} "
             f"ingresos={_w['ingresos']:,.0f} egresos={_w['egresos']:,.0f} "
-            f"flujo={_w['flujo_neto']:,.0f} saldo_inicial={_w['saldo_inicial']:,.0f} "
-            f"saldo_final={_w['saldo_final']:,.0f}"
+            f"cxc={_w['ingreso_cxc']:,.0f} cxp={_w['egreso_cxp']:,.0f} "
+            f"flujo={_w['flujo_neto']:,.0f} saldo_final={_w['saldo_final']:,.0f}"
         )
-    logger.info(f"[saldo_debug] saldo_proyectado final (running_balance) = {running_balance:,.0f}")
+    logger.info(
+        f"[saldo_debug] saldo_proyectado final={running_balance:,.0f} | "
+        f"proyecciones cargadas: {len(proy_por_semana)} semanas "
+        f"({sum(v['cxc'] for v in proy_por_semana.values()):,.0f} CxC / "
+        f"{sum(v['cxp'] for v in proy_por_semana.values()):,.0f} CxP)"
+    )
 
     # Calculate varianza (change vs previous week) for each week
     for i, week in enumerate(weeks_data):
