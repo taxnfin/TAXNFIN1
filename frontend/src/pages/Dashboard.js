@@ -230,6 +230,17 @@ const Dashboard = () => {
     return `${curr.symbol}${amount.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
   };
 
+  // "03 nov - 09 nov" para una semana de chartData (fecha_fin del backend es exclusiva)
+  const formatWeekRange = (week) => {
+    if (!week?.fecha_inicio) return '';
+    const ini = new Date(week.fecha_inicio);
+    const fin = week.fecha_fin
+      ? new Date(new Date(week.fecha_fin).getTime() - 86400000)
+      : new Date(ini.getTime() + 6 * 86400000);
+    const f = (d) => d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
+    return `${f(ini)} - ${f(fin)}`;
+  };
+
   const handleSaveSaldoConfig = () => {
     const cfg = { mode: tempSaldoConfig.mode, valor: Number(tempSaldoConfig.valor) || 0 };
     setSaldoConfig(cfg);
@@ -253,6 +264,8 @@ const Dashboard = () => {
   const chartData = (dashboardData?.weeks || []).map((week, idx) => ({
     semana: week.week_label || `S${idx + 1}`,
     date_label: week.date_label || '',
+    fecha_inicio: week.fecha_inicio || null,
+    fecha_fin: week.fecha_fin || null,
     ingresos: week.ingresos_display ?? week.ingresos ?? 0,
     egresos: week.egresos_display ?? week.egresos ?? 0,
     flujo_neto: week.flujo_neto_display ?? week.flujo_neto ?? 0,
@@ -922,24 +935,33 @@ const Dashboard = () => {
                 const minWeek = chartData.reduce((min, w) =>
                   (!min || w.saldo_final < min.saldo_final) ? w : min, null);
 
-                if (risks.liquidez_critica || (minWeek && minWeek.saldo_final < 0)) {
+                // Cobranza unificada: déficit proyectado + cartera vencida del Aging en
+                // UNA sola tarjeta (antes eran dos con la misma lista de clientes).
+                // % vencido se muestra como badge junto al título.
+                const hayDeficit = risks.liquidez_critica || (minWeek && minWeek.saldo_final < 0);
+                const carteraVencida = (agingCxc.pctVencido ?? 0) > 30;
+                if (hayDeficit || carteraVencida) {
+                  const detalles = [];
+                  if (hayDeficit && minWeek) {
+                    const rango = formatWeekRange(minWeek);
+                    detalles.push(
+                      `Semana ${minWeek.semana}${rango ? ` (${rango})` : ''} proyecta déficit de ` +
+                      `${formatCurrency(Math.abs(minWeek.saldo_final || 0))} — considera línea de crédito`
+                    );
+                  }
+                  if (carteraVencida) {
+                    const vencidoMXN = agingCxc.totalPendiente * (agingCxc.pctVencido / 100);
+                    detalles.push(
+                      `Cartera CxC vencida: $${vencidoMXN.toLocaleString('es-MX', {maximumFractionDigits: 0})} de ` +
+                      `$${agingCxc.totalPendiente.toLocaleString('es-MX', {maximumFractionDigits: 0})} MXN`
+                    );
+                  }
                   recommendations.push({
-                    priority: 'alta', icon: '🚨',
-                    text: 'Acelerar cobranza o buscar línea de crédito',
-                    detail: `Semana ${minWeek?.semana} proyecta déficit de ${formatCurrency(Math.abs(minWeek?.saldo_final || 0))}`,
-                    clientes: topClientesCxc // top deudores del Aging CxC — también aplica aquí
-                  });
-                }
-                // Basada en el Aging CxC real (no en el rango visible): se dispara si
-                // más del 30% de la cartera está vencida; prioridad alta arriba del 50%
-                if ((agingCxc.pctVencido ?? 0) > 30) {
-                  const vencidoMXN = agingCxc.totalPendiente * (agingCxc.pctVencido / 100);
-                  recommendations.push({
-                    priority: agingCxc.pctVencido > 50 ? 'alta' : 'media', icon: '📞',
-                    text: 'Intensificar gestión de cobranza',
-                    detail: `El ${agingCxc.pctVencido.toFixed(0)}% de la cartera CxC está vencido ` +
-                      `($${vencidoMXN.toLocaleString('es-MX', {maximumFractionDigits: 0})} de ` +
-                      `$${agingCxc.totalPendiente.toLocaleString('es-MX', {maximumFractionDigits: 0})} MXN)`,
+                    priority: (hayDeficit || agingCxc.pctVencido > 50) ? 'alta' : 'media',
+                    icon: '🚨',
+                    text: 'Acelerar gestión de cobranza',
+                    pctVencido: carteraVencida ? agingCxc.pctVencido : null, // badge junto al título
+                    detalles,
                     clientes: topClientesCxc // top deudores del Aging CxC con nombre y monto
                   });
                 }
@@ -979,12 +1001,22 @@ const Dashboard = () => {
                   }`}>
                     <span className="text-xl">{rec.icon}</span>
                     <div className="flex-1 min-w-0">
-                      <div className={`font-medium text-sm ${
+                      <div className={`font-medium text-sm flex items-center gap-2 flex-wrap ${
                         rec.priority === 'alta' ? 'text-red-800' :
                         rec.priority === 'media' ? 'text-amber-800' :
                         'text-green-800'
-                      }`}>{rec.text}</div>
-                      <div className="text-xs text-gray-600">{rec.detail}</div>
+                      }`}>
+                        {rec.text}
+                        {rec.pctVencido != null && (
+                          <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+                            {rec.pctVencido.toFixed(0)}% vencido
+                          </span>
+                        )}
+                      </div>
+                      {rec.detail && <div className="text-xs text-gray-600">{rec.detail}</div>}
+                      {rec.detalles && rec.detalles.map((d, i) => (
+                        <div key={i} className="text-xs text-gray-600">{d}</div>
+                      ))}
                       {rec.clientes && rec.clientes.length > 0 && (
                         <div className="mt-2 space-y-1" data-testid="top-clientes-cobranza">
                           <div className="text-[11px] font-semibold text-gray-500 uppercase">
