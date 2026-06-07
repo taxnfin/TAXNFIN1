@@ -42,7 +42,7 @@ const Dashboard = () => {
   const [schedulerStatus, setSchedulerStatus] = useState(null);
   const [fxAlerts, setFxAlerts] = useState(null);
   const [topClientesCxc, setTopClientesCxc] = useState([]); // top deudores del Aging CxC (MXN)
-  const [agingCxc, setAgingCxc] = useState({ pctVencido: null, totalPendiente: 0, vencido: 0, bruto: 0 }); // resumen del Aging CxC
+  const [agingCxc, setAgingCxc] = useState({ pctVencido: null, totalPendiente: 0, vencido: 0, bruto: 0, v30: 0, vmas60: 0 }); // resumen del Aging CxC
   // Saldo Inicial: 'auto' = saldo de Contalink (S1, lo calcula el backend) | 'manual' = capturado por el usuario
   const [saldoConfig, setSaldoConfig] = useState(() => {
     try {
@@ -158,6 +158,8 @@ const Dashboard = () => {
         totalPendiente: res.data?.total_pendiente || 0,
         vencido,
         bruto,
+        v30:    aging.vencido_30 || 0,
+        vmas60: (aging.vencido_60 || 0) + (aging.vencido_90 || 0) + (aging.vencido_mas90 || 0),
       });
     } catch (error) {
       // No bloquea el dashboard, pero deja rastro para diagnóstico
@@ -403,8 +405,14 @@ const Dashboard = () => {
         : pct <= 60 ? 'Cartera deteriorándose: priorizar vencidos'
         : 'Cartera crítica: la mayoría del saldo está vencido',
       composicion: pct == null ? 'Fuente: Aging CxC de Contalink'
-        : `Vencido $${agingCxc.vencido.toLocaleString('es-MX', {maximumFractionDigits: 0})} ÷ ` +
-          `cartera bruta $${agingCxc.bruto.toLocaleString('es-MX', {maximumFractionDigits: 0})} MXN`,
+        : agingCxc.vencido > 0 && agingCxc.bruto === agingCxc.vencido
+          ? (() => {
+              const p30    = Math.round(agingCxc.v30    / agingCxc.vencido * 100);
+              const pmas60 = Math.round(agingCxc.vmas60 / agingCxc.vencido * 100);
+              return `${p30}% reciente (1-30d) · ${pmas60}% crítico (+60d)`;
+            })()
+          : `Vencido $${agingCxc.vencido.toLocaleString('es-MX', {maximumFractionDigits: 0})} ÷ ` +
+            `cartera bruta $${agingCxc.bruto.toLocaleString('es-MX', {maximumFractionDigits: 0})} MXN`,
     });
 
     return items;
