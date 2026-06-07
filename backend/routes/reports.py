@@ -434,8 +434,8 @@ async def get_dashboard_from_payments(
                 egresos += monto_mxn
         
         flujo_neto = ingresos - egresos + venta_usd - compra_usd
-        saldo_final = running_balance + flujo_neto if is_past or is_current else running_balance
-        
+        saldo_final = running_balance + flujo_neto
+
         weeks_data.append({
             'week_num': i + 1,
             'week_label': f"S{i + 1}",
@@ -453,9 +453,8 @@ async def get_dashboard_from_payments(
             'saldo_final': round(saldo_final, 2),
             'num_payments': len(week_payments)
         })
-        
-        if is_past or is_current:
-            running_balance = saldo_final
+
+        running_balance = saldo_final
     
     # Calculate varianza (change vs previous week) for each week
     for i, week in enumerate(weeks_data):
