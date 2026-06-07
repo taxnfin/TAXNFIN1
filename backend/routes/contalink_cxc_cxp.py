@@ -32,6 +32,25 @@ async def _get_client(company_id: str):
     return ContalinkClient(api_key)
 
 
+def _open_worksheet(content: bytes):
+    """Abre la primera hoja de un archivo .xls o .xlsx y devuelve una interfaz
+    compatible con xlrd (cell_value(row, col) con índices base-0, nrows, ncols)."""
+    import io
+    if content[:4] == b'\xd0\xcf\x11\xe0':          # OLE2 magic bytes → .xls
+        import xlrd
+        return xlrd.open_workbook(file_contents=content).sheet_by_index(0)
+    import openpyxl                                   # ZIP/OOXML → .xlsx
+    _wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+    _ws = _wb.worksheets[0]
+    class _Sheet:
+        nrows = _ws.max_row or 0
+        ncols = _ws.max_column or 0
+        def cell_value(self, r, c):
+            v = _ws.cell(row=r + 1, column=c + 1).value
+            return "" if v is None else v
+    return _Sheet()
+
+
 def _parse_currency(val) -> float:
     if val is None:
         return 0.0
@@ -71,9 +90,7 @@ def _detect_cxp_columns(ws):
 
 
 def _parse_cxp_excel(content: bytes) -> dict:
-    import xlrd
-    wb = xlrd.open_workbook(file_contents=content)
-    ws = wb.sheet_by_index(0)
+    ws = _open_worksheet(content)
     empresa = str(ws.cell_value(0, 0)).strip()
     rfc     = str(ws.cell_value(0, 1)).strip()
     fecha   = str(ws.cell_value(0, 2)).strip()
@@ -135,9 +152,7 @@ def _parse_cxp_excel(content: bytes) -> dict:
 
 
 def _parse_cxc_excel(content: bytes) -> dict:
-    import xlrd
-    wb = xlrd.open_workbook(file_contents=content)
-    ws = wb.sheet_by_index(0)
+    ws = _open_worksheet(content)
     empresa = str(ws.cell_value(1, 3)).strip() if ws.nrows > 1 else ""
     rfc     = str(ws.cell_value(2, 3)).strip() if ws.nrows > 2 else ""
 
