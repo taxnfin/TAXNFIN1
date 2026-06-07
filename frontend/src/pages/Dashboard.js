@@ -740,9 +740,11 @@ const Dashboard = () => {
               {formatCurrency(saldoFinalProyectado)}
             </div>
             <div className="flex items-center gap-1 mt-1">
-              <TrendIcon size={14} className={trendColor} />
-              <span className={`text-xs ${trendColor}`}>
-                Tendencia {trend.direction === 'up' ? 'positiva' : trend.direction === 'down' ? 'negativa' : 'estable'}
+              <TrendIcon size={14} className={saldoFinalProyectado < 0 ? 'text-red-600' : trendColor} />
+              <span className={`text-xs ${saldoFinalProyectado < 0 ? 'text-red-600' : trendColor}`}>
+                {saldoFinalProyectado < 0
+                  ? 'Déficit proyectado'
+                  : `Tendencia ${trend.direction === 'up' ? 'positiva' : trend.direction === 'down' ? 'negativa' : 'estable'}`}
               </span>
             </div>
           </CardContent>
