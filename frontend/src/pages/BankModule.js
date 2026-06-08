@@ -145,7 +145,7 @@ const BankModule = () => {
       moneda: account.moneda,
       pais_banco: account.pais_banco || 'México',
       saldo_inicial: account.saldo_inicial?.toString() || '0',
-      fecha_saldo: account.fecha_saldo ? account.fecha_saldo.split('T')[0] : format(new Date(), "yyyy-MM-dd")
+      fecha_saldo: format(new Date(), "yyyy-MM-dd")  // siempre hoy al editar
     });
     setAccountDialogOpen(true);
   };
@@ -270,9 +270,15 @@ const BankModule = () => {
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">
                     <DollarSign size={16} className="text-[#0EA5E9]" />
-                    Balance Inicial
-                    <span className="text-xs text-[#64748B] font-normal">(importante para flujo de efectivo)</span>
+                    Saldo Actual de la Cuenta
+                    <span className="text-xs text-[#64748B] font-normal">(de tu estado de cuenta bancario de hoy)</span>
                   </Label>
+                  {editingAccount && (
+                    <p className="text-xs text-[#64748B] bg-slate-50 rounded px-2 py-1">
+                      Guardado actualmente: <span className="font-mono font-medium">{Number(editingAccount.saldo_inicial || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+                      {editingAccount.moneda && editingAccount.moneda !== 'MXN' ? ` ${editingAccount.moneda}` : ' MXN'}
+                    </p>
+                  )}
                   <Input
                     type="number"
                     step="0.01"
@@ -281,12 +287,13 @@ const BankModule = () => {
                     placeholder="0.00"
                     className="text-lg font-mono"
                   />
+                  <p className="text-xs text-amber-600">Ingresa el saldo real de tu estado de cuenta bancario. Esto actualiza el Dashboard y el flujo proyectado.</p>
                 </div>
 
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">
                     Fecha del Saldo
-                    <span className="text-xs text-[#64748B] font-normal">(para tipo de cambio histórico)</span>
+                    <span className="text-xs text-[#64748B] font-normal">(hoy por defecto)</span>
                   </Label>
                   <Input
                     type="date"
@@ -294,7 +301,6 @@ const BankModule = () => {
                     onChange={(e) => setAccountFormData({...accountFormData, fecha_saldo: e.target.value})}
                     className="font-mono"
                   />
-                  <p className="text-xs text-[#94A3B8]">Se usará el tipo de cambio de esta fecha para convertir a MXN</p>
                 </div>
 
                 <DialogFooter>

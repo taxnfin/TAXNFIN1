@@ -436,6 +436,13 @@ async def get_dashboard_from_payments(
         else:
             saldo_actual_mxn -= monto_mxn
 
+    for _acc in all_active_accs:
+        print(
+            f"[cuenta_debug] nombre={_acc.get('nombre')} banco={_acc.get('banco')} "
+            f"saldo_inicial={_acc.get('saldo_inicial')} moneda={_acc.get('moneda')} "
+            f"fecha_saldo={_acc.get('fecha_saldo')} activo={_acc.get('activo')}",
+            flush=True
+        )
     print(
         f"[saldo_actual_debug] company={company_id} "
         f"cuentas_activas={len(all_active_accs)} bank_base_mxn={bank_base_mxn:,.0f} "
