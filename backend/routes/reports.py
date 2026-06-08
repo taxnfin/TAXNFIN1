@@ -401,6 +401,47 @@ async def get_dashboard_from_payments(
         start_monday = current_monday - timedelta(weeks=4)
         num_weeks = 13
 
+    # ── Saldo actual calculado ─────────────────────────────────────────────────
+    # El campo saldo_inicial de bank_accounts es el saldo de apertura (estático).
+    # Para obtener el saldo real actual, acumulamos todos los pagos completados
+    # anteriores a la ventana (pre-window) sobre ese saldo de apertura.
+    # Esto sincroniza el Dashboard con el mismo modelo que usa CashFlow Projections.
+    pre_window_net_mxn = 0.0
+    for p in payments:
+        fecha_str = p.get('fecha_pago') or p.get('fecha_vencimiento')
+        if not fecha_str:
+            continue
+        try:
+            fecha_dt = datetime.fromisoformat(fecha_str.replace('Z', '+00:00').split('+')[0])
+        except (ValueError, AttributeError):
+            continue
+        if fecha_dt < start_monday:
+            monto_mxn = convert_to_mxn(p.get('monto', 0), p.get('moneda', 'MXN'))
+            cat_id = p.get('category_id')
+            if cat_id == venta_usd_id:
+                pre_window_net_mxn += monto_mxn
+            elif cat_id == compra_usd_id:
+                pre_window_net_mxn -= monto_mxn
+            elif p.get('tipo') == 'cobro':
+                pre_window_net_mxn += monto_mxn
+            else:
+                pre_window_net_mxn -= monto_mxn
+
+    saldo_actual_mxn = saldo_bancos_mxn + pre_window_net_mxn
+
+    # fecha_saldo más antigua entre todas las cuentas activas (para aviso de desactualización)
+    fechas_saldo = []
+    for acc in accounts:
+        fs = acc.get('fecha_saldo')
+        if fs:
+            try:
+                if isinstance(fs, str):
+                    fs = datetime.fromisoformat(fs.replace('Z', '+00:00').split('+')[0])
+                fechas_saldo.append(fs)
+            except (ValueError, AttributeError):
+                pass
+    fecha_saldo_bancos_iso = min(fechas_saldo).isoformat() if fechas_saldo else None
+
     # ── Proyecciones CxC/CxP por semana ──────────────────────────────────────
     # La colección cxc_proyecciones usa numeración absoluta desde S1 = primer
     # lunes del año en curso. Calculamos model_start para convertir cada
@@ -422,7 +463,7 @@ async def get_dashboard_from_payments(
         proy_por_semana[_semana][_tipo] = proy_por_semana[_semana][_tipo] + _monto
 
     weeks_data = []
-    running_balance = saldo_bancos_mxn
+    running_balance = saldo_actual_mxn  # parte del saldo real (apertura + flujos pre-ventana)
 
     for i in range(num_weeks):
         week_start = start_monday + timedelta(weeks=i)
@@ -606,7 +647,9 @@ async def get_dashboard_from_payments(
     response = {
         'moneda_vista': moneda_vista,
         'fx_rate': fx_rate_display,
-        'saldo_bancos': round(to_display_currency(saldo_bancos_mxn), 2),
+        'saldo_bancos': round(to_display_currency(saldo_bancos_mxn), 2),         # apertura (estático)
+        'saldo_actual': round(to_display_currency(saldo_actual_mxn), 2),          # calculado (apertura + flujos pre-ventana)
+        'fecha_saldo_bancos': fecha_saldo_bancos_iso,                              # para aviso de desactualización
         'saldo_proyectado': round(to_display_currency(running_balance), 2),
         'total_ingresos': round(to_display_currency(total_ingresos), 2),
         'total_egresos': round(to_display_currency(total_egresos), 2),

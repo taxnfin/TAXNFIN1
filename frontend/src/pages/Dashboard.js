@@ -215,17 +215,16 @@ const Dashboard = () => {
       setSaldoBancosActual(summaryTotalMxn);
       setDashboardData(data);
 
-      // [DEBUG] Confirmar fuente de datos del KPI "Saldo Final Proyectado"
-      console.log('[Dashboard Debug] Saldo Final Proyectado KPI:', {
-        url,
-        saldo_bancos_backend: data?.saldo_bancos,
-        saldo_bancos_summary_mxn: summaryTotalMxn,
-        saldo_proyectado_backend: data?.saldo_proyectado,
-        num_semanas: weeks.length,
-        primera_semana: weeks[0] ? `${weeks[0].week_label} / ${weeks[0].abs_semana} (${weeks[0].date_label}) is_past=${weeks[0].is_past}` : null,
-        ultima_semana: weeks.length ? `${weeks[weeks.length-1].week_label} / ${weeks[weeks.length-1].abs_semana} (${weeks[weeks.length-1].date_label}) is_past=${weeks[weeks.length-1].is_past}` : null,
-        semana_actual: weeks.find(w => w.is_current) ? `${weeks.find(w => w.is_current).week_label} / ${weeks.find(w => w.is_current).abs_semana}` : 'no encontrada',
+      // [PART 4 — diagnóstico cuentas bancarias] fecha_saldo por cuenta
+      console.log('[BANCO fecha_saldo]', {
+        'INSTRUCCIÓN': 'Si fecha_saldo tiene más de 30 días, actualiza en Cuentas y Bancos: editar cuenta → cambiar Saldo Actual y Fecha de Saldo a hoy.',
+        saldo_apertura_total_mxn: summaryTotalMxn,
+        saldo_calculado_actual_mxn: data?.saldo_actual,
+        fecha_saldo_mas_antigua: data?.fecha_saldo_bancos,
+        cuentas_por_banco: summaryRes.data?.por_banco,
       });
+      console.log('[Dashboard] saldo_bancos=%o saldo_actual=%o saldo_proyectado=%o semanas=%o',
+        data?.saldo_bancos, data?.saldo_actual, data?.saldo_proyectado, weeks.length);
     } catch (error) {
       toast.error('Error cargando dashboard');
     } finally {
@@ -287,18 +286,24 @@ const Dashboard = () => {
     return <div className="p-8">Cargando dashboard...</div>;
   }
 
-  // Saldo Inicial según el modo configurado. El delta vs el saldo del backend
-  // desplaza los saldos acumulados de todas las semanas, el proyectado y el runway.
-  //
-  // En modo 'auto' usamos el saldo real de bank-accounts/summary (total_mxn convertido a
-  // moneda de visualización) en lugar del saldo_bancos del backend, que parte de saldo_inicial
-  // y acumula pagos históricos causando un doble conteo.
-  const saldoBackendS1 = dashboardData?.saldo_bancos || 0;
-  const fxRateDisplay = dashboardData?.fx_rate || 1; // MXN por unidad de moneda_vista; 1 si MXN
-  // Convertir saldoBancosActual (siempre en MXN) a la moneda de visualización actual
+  // saldo_actual: saldo de apertura de cuentas bancarias + neto de todos los pagos
+  // completados anteriores a la ventana de semanas. Es la misma lógica que CashFlow.
+  // saldo_bancos: saldo de apertura estático (para referencia / modo manual).
+  const fxRateDisplay = dashboardData?.fx_rate || 1;
+  const saldoActualDisplay = dashboardData?.saldo_actual || 0;   // ya en moneda de visualización
+  // saldoBackendS1 = base del primer saldo_inicial en las semanas del backend (= saldo_actual)
+  const saldoBackendS1 = dashboardData?.saldo_actual || dashboardData?.saldo_bancos || 0;
+  // Saldo de apertura estático (para referencia en UI)
   const saldoBancosActualDisplay = fxRateDisplay > 0 ? saldoBancosActual / fxRateDisplay : saldoBancosActual;
-  const saldoInicial = saldoConfig.mode === 'manual' ? (Number(saldoConfig.valor) || 0) : saldoBancosActualDisplay;
-  const saldoDelta = saldoInicial - saldoBackendS1;
+  const saldoInicial = saldoConfig.mode === 'manual' ? (Number(saldoConfig.valor) || 0) : saldoActualDisplay;
+  const saldoDelta = saldoInicial - saldoBackendS1; // 0 en modo auto; ajuste en modo manual
+
+  // Aviso de saldo desactualizado: si la fecha_saldo más antigua supera 30 días
+  const fechaSaldoBancos = dashboardData?.fecha_saldo_bancos;
+  const diasDesdeSaldo = fechaSaldoBancos
+    ? Math.floor((Date.now() - new Date(fechaSaldoBancos).getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+  const saldoDesactualizado = diasDesdeSaldo !== null && diasDesdeSaldo > 30;
 
   const chartData = (dashboardData?.weeks || []).map((week, idx) => ({
     semana: week.week_label || `S${idx + 1}`,
@@ -703,6 +708,11 @@ const Dashboard = () => {
               {saldoConfig.mode === 'manual' ? 'Manual · ' : ''}
               {filteredAccount ? `${filteredAccount.nombre}` : `Consolidado en ${displayCurrency}`}
             </p>
+            {saldoDesactualizado && (
+              <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
+                ⚠️ Saldo al {fechaSaldoBancos ? new Date(fechaSaldoBancos).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'} · Actualiza en Cuentas y Bancos
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -726,10 +736,10 @@ const Dashboard = () => {
                 />
                 <div>
                   <div className="font-medium text-sm">
-                    Usar saldo actual de cuentas bancarias ({formatCurrency(saldoBancosActualDisplay)})
+                    Automático — saldo calculado ({formatCurrency(saldoActualDisplay)})
                   </div>
                   <div className="text-xs text-gray-500 mt-0.5">
-                    Suma de saldos activos — misma fuente que CashFlow Projections
+                    Apertura bancaria + todos los pagos conciliados · misma fuente que CashFlow Projections
                   </div>
                 </div>
               </label>
