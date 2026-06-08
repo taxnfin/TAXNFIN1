@@ -403,11 +403,13 @@ async def get_dashboard_from_payments(
 
     # ── Saldo actual calculado ─────────────────────────────────────────────────
     # El campo saldo_inicial de bank_accounts es el saldo de apertura (estático).
-    # Para obtener el saldo real actual, acumulamos todos los pagos completados
-    # anteriores a la ventana (pre-window) sobre ese saldo de apertura.
-    # Esto sincroniza el Dashboard con el mismo modelo que usa CashFlow Projections.
-    pre_window_net_mxn = 0.0
-    for p in payments:
+    # Para obtener el saldo real actual acumulamos TODOS los pagos completados
+    # hasta hoy, sin filtro de conciliación (misma lógica que CashFlow Projections).
+    # Nota: se usa all_payments (sin filtro bank_transaction), NO payments,
+    # porque los pagos de Contalink tienen bank_transaction_id pero sus
+    # transacciones no necesariamente están marcadas conciliado=True.
+    saldo_actual_mxn = saldo_bancos_mxn
+    for p in all_payments:
         fecha_str = p.get('fecha_pago') or p.get('fecha_vencimiento')
         if not fecha_str:
             continue
@@ -415,19 +417,18 @@ async def get_dashboard_from_payments(
             fecha_dt = datetime.fromisoformat(fecha_str.replace('Z', '+00:00').split('+')[0])
         except (ValueError, AttributeError):
             continue
-        if fecha_dt < start_monday:
-            monto_mxn = convert_to_mxn(p.get('monto', 0), p.get('moneda', 'MXN'))
-            cat_id = p.get('category_id')
-            if cat_id == venta_usd_id:
-                pre_window_net_mxn += monto_mxn
-            elif cat_id == compra_usd_id:
-                pre_window_net_mxn -= monto_mxn
-            elif p.get('tipo') == 'cobro':
-                pre_window_net_mxn += monto_mxn
-            else:
-                pre_window_net_mxn -= monto_mxn
-
-    saldo_actual_mxn = saldo_bancos_mxn + pre_window_net_mxn
+        if fecha_dt > today:
+            continue  # ignorar pagos con fecha futura
+        monto_mxn = convert_to_mxn(p.get('monto', 0), p.get('moneda', 'MXN'))
+        cat_id = p.get('category_id')
+        if cat_id == venta_usd_id:
+            saldo_actual_mxn += monto_mxn
+        elif cat_id == compra_usd_id:
+            saldo_actual_mxn -= monto_mxn
+        elif p.get('tipo') == 'cobro':
+            saldo_actual_mxn += monto_mxn
+        else:
+            saldo_actual_mxn -= monto_mxn
 
     # fecha_saldo más antigua entre todas las cuentas activas (para aviso de desactualización)
     fechas_saldo = []
@@ -463,7 +464,7 @@ async def get_dashboard_from_payments(
         proy_por_semana[_semana][_tipo] = proy_por_semana[_semana][_tipo] + _monto
 
     weeks_data = []
-    running_balance = saldo_actual_mxn  # parte del saldo real (apertura + flujos pre-ventana)
+    running_balance = saldo_bancos_mxn  # base del gráfico (saldo apertura + pagos conciliados)
 
     for i in range(num_weeks):
         week_start = start_monday + timedelta(weeks=i)

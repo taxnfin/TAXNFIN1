@@ -286,17 +286,17 @@ const Dashboard = () => {
     return <div className="p-8">Cargando dashboard...</div>;
   }
 
-  // saldo_actual: saldo de apertura de cuentas bancarias + neto de todos los pagos
-  // completados anteriores a la ventana de semanas. Es la misma lógica que CashFlow.
-  // saldo_bancos: saldo de apertura estático (para referencia / modo manual).
+  // saldo_actual: apertura bancaria + todos los pagos completados hasta hoy (ALL, sin filtro
+  //   de conciliación). Misma lógica que CashFlow → debe coincidir con saldo_final S_actual.
+  // saldo_bancos: saldo de apertura estático (base del gráfico semanal del backend).
+  // saldoDelta: desplaza los saldos del gráfico para que arranquen desde saldo_actual.
   const fxRateDisplay = dashboardData?.fx_rate || 1;
   const saldoActualDisplay = dashboardData?.saldo_actual || 0;   // ya en moneda de visualización
-  // saldoBackendS1 = base del primer saldo_inicial en las semanas del backend (= saldo_actual)
-  const saldoBackendS1 = dashboardData?.saldo_actual || dashboardData?.saldo_bancos || 0;
-  // Saldo de apertura estático (para referencia en UI)
+  const saldoBackendS1 = dashboardData?.saldo_bancos || 0;       // base del gráfico (apertura)
   const saldoBancosActualDisplay = fxRateDisplay > 0 ? saldoBancosActual / fxRateDisplay : saldoBancosActual;
   const saldoInicial = saldoConfig.mode === 'manual' ? (Number(saldoConfig.valor) || 0) : saldoActualDisplay;
-  const saldoDelta = saldoInicial - saldoBackendS1; // 0 en modo auto; ajuste en modo manual
+  // delta ≠ 0 en modo auto cuando saldo_actual > saldo_bancos (e.g. $8M - $2M = $6M)
+  const saldoDelta = saldoInicial - saldoBackendS1;
 
   // Aviso de saldo desactualizado: si la fecha_saldo más antigua supera 30 días
   const fechaSaldoBancos = dashboardData?.fecha_saldo_bancos;
@@ -334,12 +334,11 @@ const Dashboard = () => {
 
   const kpis = dashboardData?.kpis || {};
 
-  // Saldo Final Proyectado: saldo actual real + flujo de la semana actual + todos los flujos futuros.
-  // Esto evita el doble conteo de pagos históricos que tiene saldo_proyectado del backend.
+  // Saldo Final Proyectado: saldo_actual (ya incluye semana actual real) + flujos futuros.
+  // NO se suma currentWeek.flujo_neto: esos pagos reales ya están en saldo_actual.
   const currentWeek = displayChartData.find(w => w.is_current);
   const futureWeeks = displayChartData.filter(w => !w.is_past && !w.is_current);
   const saldoFinalProyectado = saldoInicial
-    + (currentWeek?.flujo_neto || 0)
     + futureWeeks.reduce((sum, w) => sum + w.flujo_neto, 0);
 
   // Label dinámico: abs_semana de la última semana proyectada visible
