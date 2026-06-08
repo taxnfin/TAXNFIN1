@@ -175,6 +175,11 @@ const CashflowProjections = () => {
       // Get initial bank balance
       const totalBancosMXN = bankSummaryRes.data?.total_mxn || 0;
       setSaldoInicialBancos(totalBancosMXN);
+      console.log('[CashFlow base bancaria]', {
+        total_mxn: totalBancosMXN,
+        por_banco: bankSummaryRes.data?.por_banco,
+        por_moneda: bankSummaryRes.data?.por_moneda,
+      });
       
       // Load FX rates - ensure all currencies have values
       const loadedRates = fxRes.data?.rates || {};

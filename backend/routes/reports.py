@@ -402,13 +402,20 @@ async def get_dashboard_from_payments(
         num_weeks = 13
 
     # ── Saldo actual calculado ─────────────────────────────────────────────────
-    # El campo saldo_inicial de bank_accounts es el saldo de apertura (estático).
-    # Para obtener el saldo real actual acumulamos TODOS los pagos completados
-    # hasta hoy, sin filtro de conciliación (misma lógica que CashFlow Projections).
-    # Nota: se usa all_payments (sin filtro bank_transaction), NO payments,
-    # porque los pagos de Contalink tienen bank_transaction_id pero sus
-    # transacciones no necesariamente están marcadas conciliado=True.
-    saldo_actual_mxn = saldo_bancos_mxn
+    # FUENTE: misma que /bank-accounts/summary (misma que usa CashFlow Projections).
+    # Se consultan TODAS las cuentas activas de la empresa, sin filtrar por
+    # bank_account_id, para que el KPI "Saldo Actual" siempre refleje la empresa
+    # completa aunque el gráfico esté filtrado por una cuenta específica.
+    all_active_accs = await db.bank_accounts.find(
+        {'company_id': company_id, 'activo': True}, {'_id': 0}
+    ).to_list(1000)
+    bank_base_mxn = 0.0
+    for acc in all_active_accs:
+        s = float(acc.get('saldo_inicial', 0) or 0)
+        m = acc.get('moneda', 'MXN')
+        bank_base_mxn += s if m == 'MXN' else s * fx_map.get(m, 1)
+
+    saldo_actual_mxn = bank_base_mxn
     for p in all_payments:
         fecha_str = p.get('fecha_pago') or p.get('fecha_vencimiento')
         if not fecha_str:
@@ -417,8 +424,7 @@ async def get_dashboard_from_payments(
             fecha_dt = datetime.fromisoformat(fecha_str.replace('Z', '+00:00').split('+')[0])
         except (ValueError, AttributeError):
             continue
-        if fecha_dt > today:
-            continue  # ignorar pagos con fecha futura
+        # Sin filtro de fecha futura — misma lógica que CashFlow Projections
         monto_mxn = convert_to_mxn(p.get('monto', 0), p.get('moneda', 'MXN'))
         cat_id = p.get('category_id')
         if cat_id == venta_usd_id:
@@ -430,9 +436,16 @@ async def get_dashboard_from_payments(
         else:
             saldo_actual_mxn -= monto_mxn
 
-    # fecha_saldo más antigua entre todas las cuentas activas (para aviso de desactualización)
+    logger.info(
+        f"[saldo_actual_debug] company={company_id} "
+        f"cuentas_activas={len(all_active_accs)} bank_base_mxn={bank_base_mxn:,.0f} "
+        f"all_payments={len(all_payments)} saldo_actual_mxn={saldo_actual_mxn:,.0f} "
+        f"saldo_bancos_mxn={saldo_bancos_mxn:,.0f}"
+    )
+
+    # fecha_saldo más antigua entre TODAS las cuentas activas (para aviso de desactualización)
     fechas_saldo = []
-    for acc in accounts:
+    for acc in all_active_accs:
         fs = acc.get('fecha_saldo')
         if fs:
             try:

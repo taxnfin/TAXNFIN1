@@ -215,16 +215,22 @@ const Dashboard = () => {
       setSaldoBancosActual(summaryTotalMxn);
       setDashboardData(data);
 
-      // [PART 4 — diagnóstico cuentas bancarias] fecha_saldo por cuenta
-      console.log('[BANCO fecha_saldo]', {
-        'INSTRUCCIÓN': 'Si fecha_saldo tiene más de 30 días, actualiza en Cuentas y Bancos: editar cuenta → cambiar Saldo Actual y Fecha de Saldo a hoy.',
-        saldo_apertura_total_mxn: summaryTotalMxn,
-        saldo_calculado_actual_mxn: data?.saldo_actual,
-        fecha_saldo_mas_antigua: data?.fecha_saldo_bancos,
-        cuentas_por_banco: summaryRes.data?.por_banco,
+      console.log('[Dashboard diagnóstico]', {
+        // Banco base
+        bank_summary_total_mxn:   summaryTotalMxn,           // /bank-accounts/summary (= CashFlow base)
+        saldo_bancos_dashboard:   data?.saldo_bancos,         // dashboard endpoint (puede filtrar por cuenta)
+        saldo_actual_calculado:   data?.saldo_actual,         // bank_base + all_payments net
+        fecha_saldo_bancos:       data?.fecha_saldo_bancos,
+        // Discrepancia esperada: bank_summary_total_mxn ≈ saldo_actual_calculado - payment_net
+        payment_net_estimado:     (data?.saldo_actual || 0) - (data?.saldo_bancos || 0),
+        // Gráfico
+        saldo_proyectado:         data?.saldo_proyectado,
+        semanas:                  weeks.length,
+        primera_semana:           weeks[0] ? `${weeks[0].abs_semana} saldo_inicial=${weeks[0].saldo_inicial}` : null,
+        // Cuentas bancarias del summary (expande para ver fecha_saldo de cada una)
+        summary_por_banco:        summaryRes.data?.por_banco,
+        summary_por_moneda:       summaryRes.data?.por_moneda,
       });
-      console.log('[Dashboard] saldo_bancos=%o saldo_actual=%o saldo_proyectado=%o semanas=%o',
-        data?.saldo_bancos, data?.saldo_actual, data?.saldo_proyectado, weeks.length);
     } catch (error) {
       toast.error('Error cargando dashboard');
     } finally {
