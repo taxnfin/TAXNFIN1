@@ -436,11 +436,12 @@ async def get_dashboard_from_payments(
         else:
             saldo_actual_mxn -= monto_mxn
 
-    logger.info(
+    print(
         f"[saldo_actual_debug] company={company_id} "
         f"cuentas_activas={len(all_active_accs)} bank_base_mxn={bank_base_mxn:,.0f} "
         f"all_payments={len(all_payments)} saldo_actual_mxn={saldo_actual_mxn:,.0f} "
-        f"saldo_bancos_mxn={saldo_bancos_mxn:,.0f}"
+        f"saldo_bancos_mxn={saldo_bancos_mxn:,.0f}",
+        flush=True
     )
 
     # fecha_saldo más antigua entre TODAS las cuentas activas (para aviso de desactualización)
