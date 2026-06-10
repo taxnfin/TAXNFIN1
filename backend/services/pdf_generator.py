@@ -165,20 +165,28 @@ def chart_estructura():
     fig.patch.set_alpha(0)
     ax.set_facecolor('none')
 
-    sizes  = [DATA['activo_circ'], DATA['activo_fijo'], DATA['pasivo_circ'],
+    raw    = [DATA['activo_circ'], DATA['activo_fijo'], DATA['pasivo_circ'],
               DATA['pasivo_lp'], DATA['capital']]
     labels = ['Activo\nCirc.', 'Activo\nFijo', 'Pasivo\nCirc.', 'Pasivo\nLP', 'Capital']
     cols   = ['#1A56A8', '#3B82F6', '#C0392B', '#E67E22', '#64748B']
-    pcts   = [s/sum(sizes)*100 for s in sizes]
+
+    # pie() exige valores >= 0; capital puede ser negativo (insolvencia)
+    sizes = [max(0, s) for s in raw]
+    if sum(sizes) == 0:
+        sizes = [1]; labels = ['Sin datos']; cols = ['#CBD5E1']; raw = [0]
 
     wedges, _ = ax.pie(sizes, colors=cols, startangle=90,
                        wedgeprops=dict(width=0.55, edgecolor='white', linewidth=1.5))
 
-    ax.text(0, 0, f"{fmt(DATA['activo_total'])}\nActivos", ha='center', va='center',
-            fontsize=8, color='#0D2B5E', fontweight='bold', linespacing=1.4)
+    center_lines = f"{fmt(DATA['activo_total'])}\nActivos"
+    if DATA['capital'] < 0:
+        center_lines += "\n⚠ Cap. neg."
+    ax.text(0, 0, center_lines, ha='center', va='center',
+            fontsize=7, color='#0D2B5E', fontweight='bold', linespacing=1.4)
 
-    legend_patches = [mpatches.Patch(color=c, label=f"{l.replace(chr(10),' ')} {p:.0f}%")
-                      for c, l, p in zip(cols, labels, pcts)]
+    total_pos = sum(sizes) or 1
+    legend_patches = [mpatches.Patch(color=c, label=f"{l.replace(chr(10),' ')} {fmt(v)}")
+                      for c, l, v in zip(cols, labels, raw)]
     ax.legend(handles=legend_patches, loc='lower center', bbox_to_anchor=(0.5, -0.22),
               ncol=2, fontsize=6.5, frameon=False, labelcolor='#334155')
     ax.set_title('Estructura de Capital', fontsize=9, color='#0D2B5E',
