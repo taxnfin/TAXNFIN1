@@ -1497,3 +1497,59 @@ async def get_sankey_data(
             "utilidad_neta": utilidad_neta
         }
     }
+
+
+@router.get("/top-debtors")
+async def get_top_debtors(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    limit: int = Query(5, description="Número de clientes/proveedores top")
+):
+    """Top clientes con mayor CxC pendiente y top proveedores con mayor CxP pendiente"""
+    company_id = await get_active_company_id(request, current_user)
+
+    cfdis = await db.cfdis.find(
+        {'company_id': company_id},
+        {'_id': 0, 'tipo_cfdi': 1, 'emisor_nombre': 1, 'receptor_nombre': 1,
+         'total': 1, 'monto_cobrado': 1, 'monto_pagado': 1,
+         'fecha_emision': 1, 'moneda': 1, 'tipo_cambio': 1}
+    ).to_list(10000)
+
+    cxc = {}
+    cxp = {}
+
+    for c in cfdis:
+        total = c.get('total', 0) or 0
+        tc = c.get('tipo_cambio', 1) or 1
+        moneda = c.get('moneda', 'MXN') or 'MXN'
+        total_mxn = total * tc if moneda != 'MXN' else total
+
+        if c.get('tipo_cfdi') == 'ingreso':
+            cobrado = c.get('monto_cobrado', 0) or 0
+            saldo = max(0, total_mxn - cobrado * (tc if moneda != 'MXN' else 1))
+            if saldo > 0.01:
+                nombre = c.get('receptor_nombre') or c.get('emisor_nombre') or 'Sin nombre'
+                cxc[nombre] = cxc.get(nombre, 0) + saldo
+        else:
+            pagado = c.get('monto_pagado', 0) or 0
+            saldo = max(0, total_mxn - pagado * (tc if moneda != 'MXN' else 1))
+            if saldo > 0.01:
+                nombre = c.get('emisor_nombre') or c.get('receptor_nombre') or 'Sin nombre'
+                cxp[nombre] = cxp.get(nombre, 0) + saldo
+
+    top_cxc = sorted(
+        [{'nombre': k, 'monto': round(v, 2)} for k, v in cxc.items()],
+        key=lambda x: x['monto'], reverse=True
+    )[:limit]
+
+    top_cxp = sorted(
+        [{'nombre': k, 'monto': round(v, 2)} for k, v in cxp.items()],
+        key=lambda x: x['monto'], reverse=True
+    )[:limit]
+
+    return {
+        'top_cxc': top_cxc,
+        'top_cxp': top_cxp,
+        'total_cxc': round(sum(cxc.values()), 2),
+        'total_cxp': round(sum(cxp.values()), 2)
+    }

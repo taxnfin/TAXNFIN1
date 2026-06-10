@@ -899,32 +899,6 @@ def build_pdf(output_path):
             f'Reducirlo liberaría efectivo que se puede usar para pagar deudas u otras necesidades.',
             'Acción: identificar productos de lento movimiento y hacer promociones o liquidarlos.'))
 
-    # Bloque CxC — top clientes (si hay datos)
-    cxc_data = DATA.get('top_cxc', [])
-    if cxc_data:
-        cxc_rows = ''.join([
-            f'• {c["nombre"]}: {fmt(c["monto"])} ({c.get("dias", "—")} días pendientes)\n'
-            for c in cxc_data[:5]
-        ])
-        ia_bloques.append(('📋', 'Clientes con Mayor Deuda Pendiente', colors.HexColor('#1A56A8'),
-            f'Estos son los clientes que más te deben actualmente:\n\n{cxc_rows}'
-            f'Concentrar los esfuerzos de cobranza en estos clientes primero '
-            f'puede liberar la mayor parte del efectivo atrapado en facturas.',
-            f'Acción: contactar al cliente #1 esta semana y acordar fecha concreta de pago.'))
-
-    # Bloque CxP — top proveedores
-    cxp_data = DATA.get('top_cxp', [])
-    if cxp_data:
-        cxp_rows = ''.join([
-            f'• {p["nombre"]}: {fmt(p["monto"])} ({p.get("dias", "—")} días)\n'
-            for p in cxp_data[:5]
-        ])
-        ia_bloques.append(('🏭', 'Principales Proveedores por Pagar', colors.HexColor('#D97706'),
-            f'Estos son los proveedores a quienes más se les debe:\n\n{cxp_rows}'
-            f'Mantener buena relación y negociar plazos más largos con ellos '
-            f'mejora el flujo de efectivo sin necesidad de conseguir crédito.',
-            f'Acción: negociar con el proveedor principal ampliar plazo de pago a 60-90 días.'))
-
     # Bloque 4: Deudas y solidez
     if cap < 0:
         ia_bloques.append(('⚖️', 'Deudas, Solidez y Opciones de Financiamiento', colors.HexColor('#DC2626'),
@@ -971,51 +945,171 @@ def build_pdf(output_path):
         credito_texto,
         'Acción: solicitar cotización de factoraje esta semana — sin costo y sin comprometer activos.'))
 
-    for emoji, titulo, color_bloque, texto, accion in ia_bloques:
-        bloque_header = Table(
+    def _render_ia_bloque(emoji, titulo, color_bloque, texto, accion):
+        _bh = Table(
             [[Paragraph(f'<b>{emoji} {titulo}</b>',
                 ParagraphStyle('bh', fontName='Helvetica-Bold', fontSize=10,
                                textColor=colors.white, leading=14))]],
             colWidths=[PW]
         )
-        bloque_header.setStyle(TableStyle([
+        _bh.setStyle(TableStyle([
             ('BACKGROUND',     (0,0), (-1,-1), color_bloque),
             ('TOPPADDING',     (0,0), (-1,-1), 6),
             ('BOTTOMPADDING',  (0,0), (-1,-1), 6),
             ('LEFTPADDING',    (0,0), (-1,-1), 10),
         ]))
-        story.append(bloque_header)
+        story.append(_bh)
 
-        bloque_body = Table(
+        _bb = Table(
             [[Paragraph(texto,
                 ParagraphStyle('bb', fontName='Helvetica', fontSize=8.5,
                                textColor=DGRAY, leading=13, spaceAfter=4))]],
             colWidths=[PW]
         )
-        bloque_body.setStyle(TableStyle([
+        _bb.setStyle(TableStyle([
             ('BACKGROUND',    (0,0), (-1,-1), LGRAY),
             ('TOPPADDING',    (0,0), (-1,-1), 7),
             ('BOTTOMPADDING', (0,0), (-1,-1), 4),
             ('LEFTPADDING',   (0,0), (-1,-1), 10),
             ('RIGHTPADDING',  (0,0), (-1,-1), 10),
         ]))
-        story.append(bloque_body)
+        story.append(_bb)
 
-        bloque_accion = Table(
+        _ba = Table(
             [[Paragraph(f'<b>→ {accion}</b>',
                 ParagraphStyle('ba', fontName='Helvetica', fontSize=8,
                                textColor=color_bloque, leading=11))]],
             colWidths=[PW]
         )
-        bloque_accion.setStyle(TableStyle([
+        _ba.setStyle(TableStyle([
             ('BACKGROUND',    (0,0), (-1,-1), colors.white),
             ('LINEBELOW',     (0,0), (-1,-1), 0.5, MGRAY),
             ('TOPPADDING',    (0,0), (-1,-1), 5),
             ('BOTTOMPADDING', (0,0), (-1,-1), 8),
             ('LEFTPADDING',   (0,0), (-1,-1), 10),
         ]))
-        story.append(bloque_accion)
+        story.append(_ba)
         story.append(Spacer(1, 4*mm))
+
+    # Ventas + Efectivo y Cobranza (siempre primeros 2 bloques)
+    for b in ia_bloques[:2]:
+        _render_ia_bloque(*b)
+
+    # ── Tablas CxC / CxP (renderizado directo, con tabla detallada) ──────────
+    def _fmt_nombre(n):
+        return n[:35] + '...' if len(n) > 35 else n
+
+    top_cxc = DATA.get('top_cxc', [])
+    if top_cxc:
+        cxc_total = sum(c['monto'] for c in top_cxc)
+        _cxc_h = Table(
+            [[Paragraph('<b>📋 Clientes con Mayor Deuda Pendiente</b>',
+                ParagraphStyle('bh_cxc', fontName='Helvetica-Bold', fontSize=10,
+                               textColor=colors.white, leading=14))]],
+            colWidths=[PW]
+        )
+        _cxc_h.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), TEAL),
+            ('TOPPADDING',    (0,0), (-1,-1), 6),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+            ('LEFTPADDING',   (0,0), (-1,-1), 10),
+        ]))
+        story.append(_cxc_h)
+
+        cxc_rows = [
+            [Paragraph('<b>#</b>', styles['table_header']),
+             Paragraph('<b>Cliente</b>', styles['table_header']),
+             Paragraph('<b>Monto Pendiente</b>', styles['table_header'])],
+        ]
+        for i, c in enumerate(top_cxc):
+            cxc_rows.append([
+                str(i + 1),
+                Paragraph(_fmt_nombre(c['nombre']),
+                    ParagraphStyle('cn', fontName='Helvetica', fontSize=8,
+                                   textColor=DGRAY, leading=11)),
+                Paragraph(f'<b>{fmt(c["monto"])}</b>',
+                    ParagraphStyle('cm', fontName='Helvetica-Bold', fontSize=8,
+                                   textColor=colors.HexColor('#C0392B'),
+                                   leading=11, alignment=TA_RIGHT)),
+            ])
+        cxc_tbl = Table(cxc_rows, colWidths=[PW*0.08, PW*0.62, PW*0.30])
+        cxc_tbl.setStyle(TableStyle([
+            ('BACKGROUND',     (0,0), (-1,0), NAVY),
+            ('FONTSIZE',       (0,1), (-1,-1), 8),
+            ('ALIGN',          (2,0), (2,-1), 'RIGHT'),
+            ('VALIGN',         (0,0), (-1,-1), 'MIDDLE'),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, LGRAY]),
+            ('GRID',           (0,0), (-1,-1), 0.3, MGRAY),
+            ('TOPPADDING',     (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING',  (0,0), (-1,-1), 4),
+            ('LEFTPADDING',    (0,0), (-1,-1), 6),
+        ]))
+        story.append(cxc_tbl)
+        story.append(Paragraph(
+            f'<font color="#C0392B"><b>→ Acción:</b></font> '
+            f'Total pendiente de cobrar: <b>{fmt(cxc_total)}</b>. '
+            f'Contactar al cliente #1 esta semana y acordar fecha concreta de pago.',
+            ParagraphStyle('act_cxc', fontName='Helvetica', fontSize=8, textColor=DGRAY,
+                           leading=11, spaceAfter=6*mm, leftIndent=10)
+        ))
+
+    top_cxp = DATA.get('top_cxp', [])
+    if top_cxp:
+        cxp_total = sum(p['monto'] for p in top_cxp)
+        _cxp_h = Table(
+            [[Paragraph('<b>🏭 Principales Proveedores por Pagar</b>',
+                ParagraphStyle('bh_cxp', fontName='Helvetica-Bold', fontSize=10,
+                               textColor=colors.white, leading=14))]],
+            colWidths=[PW]
+        )
+        _cxp_h.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), colors.HexColor('#D97706')),
+            ('TOPPADDING',    (0,0), (-1,-1), 6),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+            ('LEFTPADDING',   (0,0), (-1,-1), 10),
+        ]))
+        story.append(_cxp_h)
+
+        cxp_rows = [
+            [Paragraph('<b>#</b>', styles['table_header']),
+             Paragraph('<b>Proveedor</b>', styles['table_header']),
+             Paragraph('<b>Monto por Pagar</b>', styles['table_header'])],
+        ]
+        for i, p in enumerate(top_cxp):
+            cxp_rows.append([
+                str(i + 1),
+                Paragraph(_fmt_nombre(p['nombre']),
+                    ParagraphStyle('pn', fontName='Helvetica', fontSize=8,
+                                   textColor=DGRAY, leading=11)),
+                Paragraph(f'<b>{fmt(p["monto"])}</b>',
+                    ParagraphStyle('pm', fontName='Helvetica-Bold', fontSize=8,
+                                   textColor=colors.HexColor('#D97706'),
+                                   leading=11, alignment=TA_RIGHT)),
+            ])
+        cxp_tbl = Table(cxp_rows, colWidths=[PW*0.08, PW*0.62, PW*0.30])
+        cxp_tbl.setStyle(TableStyle([
+            ('BACKGROUND',     (0,0), (-1,0), NAVY),
+            ('FONTSIZE',       (0,1), (-1,-1), 8),
+            ('ALIGN',          (2,0), (2,-1), 'RIGHT'),
+            ('VALIGN',         (0,0), (-1,-1), 'MIDDLE'),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, LGRAY]),
+            ('GRID',           (0,0), (-1,-1), 0.3, MGRAY),
+            ('TOPPADDING',     (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING',  (0,0), (-1,-1), 4),
+            ('LEFTPADDING',    (0,0), (-1,-1), 6),
+        ]))
+        story.append(cxp_tbl)
+        story.append(Paragraph(
+            f'<font color="#D97706"><b>→ Acción:</b></font> '
+            f'Total por pagar: <b>{fmt(cxp_total)}</b>. '
+            f'Negociar con proveedor #1 ampliar plazo de pago a 60-90 días.',
+            ParagraphStyle('act_cxp', fontName='Helvetica', fontSize=8, textColor=DGRAY,
+                           leading=11, spaceAfter=6*mm, leftIndent=10)
+        ))
+
+    # Inventario + Deudas + Crédito (resto de bloques)
+    for b in ia_bloques[2:]:
+        _render_ia_bloque(*b)
 
     # ─── Build ───────────────────────────────────────────────────────────────
     doc.build(story, onFirstPage=portada, onLaterPages=later_pages)

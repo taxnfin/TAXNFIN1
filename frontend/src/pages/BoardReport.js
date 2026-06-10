@@ -433,6 +433,7 @@ const BoardReport = () => {
       const inc = currentMetrics.income_statement || {};
       const bal = currentMetrics.balance_sheet || {};
       const met = currentMetrics.metrics || {};
+      const debtorsRes = await api.get('/financial-statements/top-debtors').catch(() => ({ data: { top_cxc: [], top_cxp: [] } }));
       const payload = {
         empresa: company?.nombre || 'Mi Empresa',
         rfc: getDisplayRfc(company?.rfc),
@@ -472,8 +473,8 @@ const BoardReport = () => {
         deuda_ebitda: met.solvency?.debt_to_ebitda?.value || 0,
         cobertura: met.solvency?.interest_coverage?.value || 0,
         apalancamiento: met.solvency?.financial_leverage?.value || 0,
-        top_cxc: (currentMetrics?.top_cxc || []),
-        top_cxp: (currentMetrics?.top_cxp || []),
+        top_cxc: debtorsRes.data?.top_cxc || [],
+        top_cxp: debtorsRes.data?.top_cxp || [],
       };
       const response = await api.post('/reports/pdf-mejorado', payload, { responseType: 'blob' });
       const blob = new Blob([response.data], { type: 'application/pdf' });

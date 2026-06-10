@@ -761,6 +761,8 @@ class PDFMejoradoRequest(BaseModel):
     deuda_ebitda: float = 0
     cobertura: float = 0
     apalancamiento: float = 0
+    top_cxc: list = []
+    top_cxp: list = []
 
 
 @router.post("/reports/pdf-mejorado")
