@@ -238,20 +238,20 @@ def chart_cce():
     dpo_v = DATA['dpo']
     cce_v = DATA['ccc']
 
-    ax.barh(0, dio_v,  left=0,     color='#1A56A8', height=0.35, label=f'DIO: {dio_v} días')
-    ax.barh(0, dso_v,  left=dio_v, color='#3B82F6', height=0.35, label=f'DSO: {dso_v} días')
-    ax.barh(0, -dpo_v, left=0,     color='#64748B', height=0.35, label=f'DPO: {dpo_v} días (resta)')
+    ax.barh(0, dio_v,  left=0,     color='#1A56A8', height=0.35, label=f'DIO: {round(dio_v)} días')
+    ax.barh(0, dso_v,  left=dio_v, color='#3B82F6', height=0.35, label=f'DSO: {round(dso_v)} días')
+    ax.barh(0, -dpo_v, left=0,     color='#64748B', height=0.35, label=f'DPO: {round(dpo_v)} días (resta)')
 
-    ax.text(dio_v / 2,          0.25, f'DIO\n{dio_v}d', ha='center', va='bottom', fontsize=7.5,
+    ax.text(dio_v / 2,          0.25, f'DIO\n{round(dio_v)}d', ha='center', va='bottom', fontsize=7.5,
             color='white', fontweight='bold')
-    ax.text(dio_v + dso_v / 2,  0.25, f'DSO\n{dso_v}d', ha='center', va='bottom', fontsize=7.5,
+    ax.text(dio_v + dso_v / 2,  0.25, f'DSO\n{round(dso_v)}d', ha='center', va='bottom', fontsize=7.5,
             color='white', fontweight='bold')
-    ax.text(-dpo_v / 2,         0.25, f'DPO\n{dpo_v}d', ha='center', va='bottom', fontsize=7.5,
+    ax.text(-dpo_v / 2,         0.25, f'DPO\n{round(dpo_v)}d', ha='center', va='bottom', fontsize=7.5,
             color='#64748B', fontweight='bold')
 
     ax.axvline(0,     color='#CBD5E1', linewidth=1)
     ax.axvline(cce_v, color='#C0392B', linewidth=1.5, linestyle='--')
-    ax.text(cce_v, -0.3, f'CCE: {cce_v} días', ha='center', fontsize=8,
+    ax.text(cce_v, -0.3, f'CCE: {round(cce_v)} días', ha='center', fontsize=8,
             color='#C0392B', fontweight='bold')
 
     xlim_min = -(dpo_v + 50)
@@ -375,21 +375,21 @@ def build_pdf(output_path):
         # Subtítulo
         canvas_obj.setFont('Helvetica', 13)
         canvas_obj.setFillColor(DGRAY)
-        canvas_obj.drawString(16*mm, H*0.685, 'Reporte Ejecutivo Mensual')
+        canvas_obj.drawString(16*mm, H*0.67, 'Reporte Ejecutivo Mensual')
 
         # Línea de acento
         canvas_obj.setFillColor(TEAL)
-        canvas_obj.rect(16*mm, H*0.672, W - 32*mm, 1.5, fill=1, stroke=0)
+        canvas_obj.rect(16*mm, H*0.655, W - 32*mm, 1.5, fill=1, stroke=0)
 
         # Caja gris suave con período dinámico y RFC
         canvas_obj.setFillColor(LGRAY)
-        canvas_obj.roundRect(16*mm, H*0.61, W - 32*mm, 17*mm, 4, fill=1, stroke=0)
+        canvas_obj.roundRect(16*mm, H*0.58, W - 32*mm, 17*mm, 4, fill=1, stroke=0)
         canvas_obj.setFont('Helvetica-Bold', 15)
         canvas_obj.setFillColor(NAVY)
-        canvas_obj.drawString(20*mm, H*0.61 + 10*mm, DATA['periodo'])
+        canvas_obj.drawString(20*mm, H*0.58 + 10*mm, DATA['periodo'])
         canvas_obj.setFont('Helvetica', 9)
         canvas_obj.setFillColor(DGRAY)
-        canvas_obj.drawRightString(W - 20*mm, H*0.61 + 10*mm, f"RFC: {DATA['rfc']}")
+        canvas_obj.drawRightString(W - 20*mm, H*0.58 + 10*mm, f"RFC: {DATA['rfc']}")
 
         # 4 KPI cards blancas con borde y línea de color superior
         _kpis = [
@@ -581,8 +581,12 @@ def build_pdf(output_path):
     _mb_txt = 'saludable' if mb >= 30 else 'sano pero por debajo del benchmark (30-40%)'
     alerts.append(('●', _mb_col,
         f'Margen bruto del {mb:.1f}% — {_mb_txt}. El problema está en gastos operativos.'))
-    alerts.append(('✓', '#27AE60',
-        f'Capital contable positivo de {cap_s} y activos de {at_s} — base patrimonial sólida.'))
+    if cap >= 0:
+        alerts.append(('✓', '#27AE60',
+            f'Capital contable {cap_s} y activos {at_s} — base patrimonial sólida.'))
+    else:
+        alerts.append(('⚠', '#E67E22',
+            f'Capital contable negativo {cap_s} — empresa técnicamente insolvente. Activos {at_s}.'))
 
     _al_style = ParagraphStyle('al', fontName='Helvetica', fontSize=8,
                                textColor=DGRAY, leading=11, leftIndent=14, firstLineIndent=-14)
@@ -673,15 +677,15 @@ def build_pdf(output_path):
             f"(razón circulante {rc:.2f}x, prueba ácida {pa:.2f}x, capital de trabajo {ct_s}) pero el "
             f"<b>efectivo es críticamente escaso</b> — razón de efectivo {ref_:.2f}x y cash runway de apenas "
             f"<b>{crun_s}</b>. El activo circulante está atrapado en "
-            f"<b>inventario ({dio_v} días) y cuentas por cobrar ({dso_v} días)</b>. "
-            f"El Ciclo de Conversión de Efectivo de <b>{cce_v} días</b> es extremadamente largo — "
+            f"<b>inventario ({round(dio_v)} días) y cuentas por cobrar ({round(dso_v)} días)</b>. "
+            f"El Ciclo de Conversión de Efectivo de <b>{round(cce_v)} días</b> es extremadamente largo — "
             f"<b>riesgo operativo inmediato</b> de iliquidez, no de insolvencia."
         )
     else:
         liq_text = (
             f"Razón circulante <b>{rc:.2f}x</b>, prueba ácida {pa:.2f}x, razón de efectivo {ref_:.2f}x "
             f"y cash runway de {crun_s}. Capital de trabajo {ct_s}. "
-            f"CCE de {cce_v} días (DIO {dio_v}d + DSO {dso_v}d − DPO {dpo_v}d)."
+            f"CCE de {round(cce_v)} días (DIO {round(dio_v)}d + DSO {round(dso_v)}d − DPO {round(dpo_v)}d)."
         )
     story.append(Paragraph(liq_text, styles['body']))
     story.append(Spacer(1, 4*mm))
@@ -707,10 +711,10 @@ def build_pdf(output_path):
         ['Prueba Ácida',      f'{pa:.2f}x',    '>1.0x',     _rs(pa, 1.0),   'Sin inventario: OK' if pa >= 1.0 else 'Por debajo'],
         ['Razón de Efectivo', f'{ref_:.2f}x',  '>0.2x',     _rs(ref_, 0.2), 'Efectivo insuficiente' if ref_ < 0.2 else 'Adecuado'],
         ['Cash Runway',       crun_s,          '3-6 meses', _sem('Crítico') if crun < 3 else _sem('Bueno'), 'Riesgo inmediato' if crun < 1 else 'Atención' if crun < 3 else 'Adecuado'],
-        ['DSO (Cobro)',        f'{dso_v} días', '30-60d',    _ds(dso_v, 60, 90),  'Cartera muy lenta' if dso_v > 90 else 'En proceso'],
-        ['DIO (Inventario)',   f'{dio_v} días', '45-90d',    _ds(dio_v, 90, 120), 'Exceso de inventario' if dio_v > 120 else 'Elevado' if dio_v > 90 else 'Bien'],
-        ['DPO (Pago)',         f'{dpo_v} días', '30-60d',    _sem('Bueno') if dpo_v >= 30 else _sem('Atención'), 'Bien negociado' if dpo_v >= 45 else 'Mejorar'],
-        ['CCE',                f'{cce_v} días', '60-90d',    _ds(cce_v, 90, 150), 'Ciclo extremo' if cce_v > 200 else 'Muy largo' if cce_v > 150 else 'Largo'],
+        ['DSO (Cobro)',        f'{round(dso_v)} días', '30-60d',    _ds(dso_v, 60, 90),  'Cartera muy lenta' if dso_v > 90 else 'En proceso'],
+        ['DIO (Inventario)',   f'{round(dio_v)} días', '45-90d',    _ds(dio_v, 90, 120), 'Exceso de inventario' if dio_v > 120 else 'Elevado' if dio_v > 90 else 'Bien'],
+        ['DPO (Pago)',         f'{round(dpo_v)} días', '30-60d',    _sem('Bueno') if dpo_v >= 30 else _sem('Atención'), 'Bien negociado' if dpo_v >= 45 else 'Mejorar'],
+        ['CCE',                f'{round(cce_v)} días', '60-90d',    _ds(cce_v, 90, 150), 'Ciclo extremo' if cce_v > 200 else 'Muy largo' if cce_v > 150 else 'Largo'],
     ]
     liq_table = Table(liq_kpi, colWidths=[PW*0.22, PW*0.13, PW*0.16, PW*0.18, PW*0.31])
     liq_table.setStyle(TableStyle([
@@ -747,7 +751,12 @@ def build_pdf(output_path):
     def _das(v): return _sem('Bueno') if v < 40 else (_sem('Atención') if v < 60 else _sem('Crítico'))
     def _dbs(v): return (_sem('Crítico') if ebitda < 0 else
                          _sem('Bueno') if v < 3 else _sem('Atención') if v < 5 else _sem('Crítico'))
-    def _cbs(v): return _sem('Bueno') if v > 3 else (_sem('Atención') if v > 1.5 else _sem('Crítico'))
+
+    _apal_status = _sem('Crítico') if cap < 0 else (_sem('Bueno') if apal_v < 2 else _sem('Atención') if apal_v < 3 else _sem('Crítico'))
+    _apal_diag   = 'Capital negativo — insolvencia técnica' if cap < 0 else ('Moderado' if apal_v < 2.5 else 'Elevado')
+    _cob_s       = f'{cob:.0f}x' if cob < 500 else '∞'
+    _cob_status  = _sem('Bueno') if cob >= 5 else (_sem('Atención') if cob >= 2 else _sem('Crítico'))
+    _cob_diag    = 'Sin deuda financiera' if cob >= 500 else ('EBITDA negativo' if ebitda < 0 else 'OK')
 
     solv_data = [
         [Paragraph('<b>Indicador</b>', styles['table_header']),
@@ -757,10 +766,10 @@ def build_pdf(output_path):
         ['Deuda / Capital',        f'{dc:.2f}x',                _sem('Bueno') if dc == 0 else _sem('Atención'), 'Sin deuda financiera' if dc == 0 else 'Apalancamiento moderado'],
         ['Deuda / Activos',        f'{da:.1f}%',                _das(da),  'Pasivos operativos altos' if da > 40 else 'Nivel adecuado'],
         ['Deuda / EBITDA',         f'{debd:.2f}x',              _dbs(debd), 'EBITDA negativo distorsiona' if ebitda < 0 else 'Nivel manejable'],
-        ['Cobertura de Intereses', f'{min(cob, 999):.0f}x',     _cbs(cob), 'Sin carga financiera' if cob >= 999 else f'Cobertura {cob:.1f}x'],
+        ['Cobertura de Intereses', _cob_s, _cob_status, _cob_diag],
         ['Razón de Capital',       f'{er_pct:.1f}%',            _sem('Bueno') if er_pct > 50 else _sem('Atención'), 'Base patrimonial sólida' if er_pct > 50 else 'Estructura mixta'],
         ['Deuda Neta / EBITDA',    '0.00x',                     _sem('Bueno'), 'Caja > Deuda financiera'],
-        ['Apalancamiento',         f'{apal_v:.2f}x',            _sem('Bueno') if apal_v < 2 else _sem('Atención') if apal_v < 3 else _sem('Crítico'), 'Moderado, manejable' if apal_v < 2 else 'Elevado'],
+        ['Apalancamiento',         f'{apal_v:.2f}x',            _apal_status, _apal_diag],
     ]
     solv_table = Table(solv_data, colWidths=[PW*0.28, PW*0.14, PW*0.20, PW*0.38])
     solv_table.setStyle(TableStyle([
@@ -794,14 +803,14 @@ def build_pdf(output_path):
     if dso_v > 60:
         _cob_lib = (dso_v - 60) / 365 * ing
         recomendaciones.append((
-            f'🔴 URGENTE — Acelerar cobranza (DSO {dso_v}→60 días)',
+            f'🔴 URGENTE — Acelerar cobranza (DSO {round(dso_v)}→60 días)',
             f"Implementar política de cobro activa: anticipos 30-50%, descuentos por pronto pago, "
             f"seguimiento semanal de cuentas >60 días. Reducir a 60d liberaría ~{fmt(_cob_lib)} en efectivo."
         ))
     if dio_v > 90:
         _inv_lib = (dio_v - 90) / 365 * DATA['costo_ventas']
         recomendaciones.append((
-            f'🟠 IMPORTANTE — Reducir inventario (DIO {dio_v}→90 días)',
+            f'🟠 IMPORTANTE — Reducir inventario (DIO {round(dio_v)}→90 días)',
             f"Auditar inventario para identificar obsoletos y de lento movimiento. "
             f"Meta DIO<90 días liberaría ~{fmt(_inv_lib)} adicional en efectivo."
         ))
@@ -831,6 +840,118 @@ def build_pdf(output_path):
         ]))
         story.append(rec_table)
         story.append(Spacer(1, 3*mm))
+
+    story.append(PageBreak())
+
+    # ─── PAG 6: ANÁLISIS IA EN LENGUAJE SIMPLE ──────────────────────────────
+    story.append(Paragraph('¿Qué nos dicen los números?', styles['section_header']))
+    story.append(Paragraph(
+        'Resumen ejecutivo en lenguaje sencillo — sin jerga contable.',
+        ParagraphStyle('sub', fontName='Helvetica', fontSize=8, textColor=DGRAY,
+                       leading=11, spaceAfter=6*mm)
+    ))
+
+    ia_bloques = []
+
+    # Bloque 1: Ventas y rentabilidad
+    if ebitda < 0:
+        ia_bloques.append(('💰', 'Ventas y Rentabilidad', TEAL,
+            f'La empresa vendió {ing_s} en el período. Por cada peso que vendió, le quedaron '
+            f'{mb:.1f} centavos después de pagar lo que cuesta producir o comprar lo que vende. '
+            f'Eso es un margen saludable. El problema es que los gastos del día a día '
+            f'(sueldos, renta, servicios) de {gop_s} son demasiado altos y se comen toda esa ganancia '
+            f'y más, dejando a la empresa en números rojos.',
+            'Acción: revisar todos los gastos operativos línea por línea y reducir mínimo 20%.'))
+    else:
+        ia_bloques.append(('💰', 'Ventas y Rentabilidad', TEAL,
+            f'La empresa vendió {ing_s} en el período y logró generar una ganancia operativa '
+            f'de {ebitda_s}. El margen bruto del {mb:.1f}% significa que por cada peso vendido, '
+            f'quedan {mb:.1f} centavos para cubrir gastos y generar utilidad.',
+            'Mantener el control de gastos para preservar la rentabilidad.'))
+
+    # Bloque 2: Efectivo y cobranza
+    if crun < 3:
+        ia_bloques.append(('🏦', 'Efectivo y Cobranza', colors.HexColor('#DC2626'),
+            f'La empresa tiene efectivo para operar solo {crun:.1f} mes(es) más al ritmo actual. '
+            f'Esto no significa que vaya a cerrar, pero sí que necesita cobrar más rápido. '
+            f'Actualmente sus clientes tardan {round(dso_v)} días en pagar. '
+            f'Si lograra cobrarles en 60 días, tendría mucho más dinero disponible cada mes.',
+            f'Acción urgente: llamar a todos los clientes con facturas de más de 30 días y acordar un plan de pago.'))
+    else:
+        ia_bloques.append(('🏦', 'Efectivo y Cobranza', GREEN,
+            f'La empresa tiene efectivo para {crun:.1f} meses de operación. '
+            f'Sus clientes pagan en {round(dso_v)} días en promedio.',
+            'Mantener el seguimiento de cobranza para no deteriorar este indicador.'))
+
+    # Bloque 3: Inventario (solo si hay inventario elevado)
+    if dio_v > 90:
+        ia_bloques.append(('📦', 'Inventario', colors.HexColor('#D97706'),
+            f'La empresa tiene mercancía guardada por {round(dio_v)} días antes de venderla. '
+            f'Lo ideal es que no pase de 90 días. Tener inventario parado por tanto tiempo '
+            f'significa dinero "dormido" que no está generando nada. '
+            f'Reducirlo liberaría efectivo que se puede usar para pagar deudas u otras necesidades.',
+            'Acción: identificar productos de lento movimiento y hacer promociones o liquidarlos.'))
+
+    # Bloque 4: Deudas y solidez
+    if cap < 0:
+        ia_bloques.append(('⚖️', 'Deudas y Solidez Financiera', colors.HexColor('#DC2626'),
+            f'Las deudas totales de la empresa ({fmt(DATA.get("pasivo_total", 0))}) son mayores que '
+            f'todos sus activos ({at_s}). Esto se llama insolvencia técnica. '
+            f'No es necesariamente una crisis inmediata, pero sí una señal de alerta importante: '
+            f'la empresa necesita aumentar ventas, reducir costos o inyectar capital nuevo.',
+            'Acción prioritaria: elaborar un plan de recuperación financiera con metas a 90 días.'))
+    else:
+        ia_bloques.append(('⚖️', 'Deudas y Solidez Financiera', GREEN,
+            f'La empresa tiene activos de {at_s} y un capital propio de {cap_s}. '
+            f'No tiene deudas financieras (préstamos bancarios), lo que es una fortaleza. '
+            f'Tiene capacidad para pedir un crédito si lo necesita para crecer.',
+            'Oportunidad: considerar financiamiento para acelerar el crecimiento.'))
+
+    for emoji, titulo, color_bloque, texto, accion in ia_bloques:
+        bloque_header = Table(
+            [[Paragraph(f'<b>{emoji} {titulo}</b>',
+                ParagraphStyle('bh', fontName='Helvetica-Bold', fontSize=10,
+                               textColor=colors.white, leading=14))]],
+            colWidths=[PW]
+        )
+        bloque_header.setStyle(TableStyle([
+            ('BACKGROUND',     (0,0), (-1,-1), color_bloque),
+            ('TOPPADDING',     (0,0), (-1,-1), 6),
+            ('BOTTOMPADDING',  (0,0), (-1,-1), 6),
+            ('LEFTPADDING',    (0,0), (-1,-1), 10),
+        ]))
+        story.append(bloque_header)
+
+        bloque_body = Table(
+            [[Paragraph(texto,
+                ParagraphStyle('bb', fontName='Helvetica', fontSize=8.5,
+                               textColor=DGRAY, leading=13, spaceAfter=4))]],
+            colWidths=[PW]
+        )
+        bloque_body.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), LGRAY),
+            ('TOPPADDING',    (0,0), (-1,-1), 7),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('LEFTPADDING',   (0,0), (-1,-1), 10),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 10),
+        ]))
+        story.append(bloque_body)
+
+        bloque_accion = Table(
+            [[Paragraph(f'<b>→ {accion}</b>',
+                ParagraphStyle('ba', fontName='Helvetica', fontSize=8,
+                               textColor=color_bloque, leading=11))]],
+            colWidths=[PW]
+        )
+        bloque_accion.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), colors.white),
+            ('LINEBELOW',     (0,0), (-1,-1), 0.5, MGRAY),
+            ('TOPPADDING',    (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('LEFTPADDING',   (0,0), (-1,-1), 10),
+        ]))
+        story.append(bloque_accion)
+        story.append(Spacer(1, 4*mm))
 
     # ─── Build ───────────────────────────────────────────────────────────────
     doc.build(story, onFirstPage=portada, onLaterPages=later_pages)
