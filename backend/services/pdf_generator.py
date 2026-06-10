@@ -370,26 +370,26 @@ def build_pdf(output_path):
         # Nombre de empresa
         canvas_obj.setFont('Helvetica-Bold', 46)
         canvas_obj.setFillColor(NAVY)
-        canvas_obj.drawString(16*mm, H*0.73, DATA['empresa'])
+        canvas_obj.drawString(16*mm, H*0.74, DATA['empresa'])
 
         # Subtítulo
         canvas_obj.setFont('Helvetica', 13)
         canvas_obj.setFillColor(DGRAY)
-        canvas_obj.drawString(16*mm, H*0.67, 'Reporte Ejecutivo Mensual')
+        canvas_obj.drawString(16*mm, H*0.685, 'Reporte Ejecutivo Mensual')
 
         # Línea de acento
         canvas_obj.setFillColor(TEAL)
-        canvas_obj.rect(16*mm, H*0.655, W - 32*mm, 1.5, fill=1, stroke=0)
+        canvas_obj.rect(16*mm, H*0.670, W - 32*mm, 1.5, fill=1, stroke=0)
 
         # Caja gris suave con período dinámico y RFC
         canvas_obj.setFillColor(LGRAY)
-        canvas_obj.roundRect(16*mm, H*0.58, W - 32*mm, 17*mm, 4, fill=1, stroke=0)
+        canvas_obj.roundRect(16*mm, H*0.595, W - 32*mm, 17*mm, 4, fill=1, stroke=0)
         canvas_obj.setFont('Helvetica-Bold', 15)
         canvas_obj.setFillColor(NAVY)
-        canvas_obj.drawString(20*mm, H*0.58 + 10*mm, DATA['periodo'])
+        canvas_obj.drawString(20*mm, H*0.595 + 10*mm, DATA['periodo'])
         canvas_obj.setFont('Helvetica', 9)
         canvas_obj.setFillColor(DGRAY)
-        canvas_obj.drawRightString(W - 20*mm, H*0.58 + 10*mm, f"RFC: {DATA['rfc']}")
+        canvas_obj.drawRightString(W - 20*mm, H*0.595 + 10*mm, f"RFC: {DATA['rfc']}")
 
         # 4 KPI cards blancas con borde y línea de color superior
         _kpis = [
@@ -442,18 +442,25 @@ def build_pdf(output_path):
         canvas_obj.saveState()
         # Header band
         canvas_obj.setFillColor(NAVY)
-        canvas_obj.rect(0, H-12*mm, W, 12*mm, fill=1, stroke=0)
+        canvas_obj.rect(0, H-14*mm, W, 14*mm, fill=1, stroke=0)
         canvas_obj.setFillColor(TEAL)
-        canvas_obj.rect(0, H-12*mm-0.8, W, 0.8, fill=1, stroke=0)
-        canvas_obj.setFont('Helvetica-Bold', 9)
+        canvas_obj.rect(0, H-14*mm-1, W, 1, fill=1, stroke=0)
+
+        # Empresa (izquierda, bold, tamaño reducido)
+        canvas_obj.setFont('Helvetica-Bold', 8)
         canvas_obj.setFillColor(WHITE)
-        canvas_obj.drawString(18*mm, H-8*mm, DATA['empresa'])
-        canvas_obj.setFont('Helvetica', 9)
+        canvas_obj.drawString(18*mm, H-6*mm, DATA['empresa'])
+
+        # Separador punto — posicionado dinámicamente tras el nombre
+        emp_w = canvas_obj.stringWidth(DATA['empresa'], 'Helvetica-Bold', 8)
+        canvas_obj.setFont('Helvetica', 8)
         canvas_obj.setFillColor(colors.HexColor('#8EC8D4'))
-        canvas_obj.drawString(32*mm, H-8*mm, '· Reporte Ejecutivo Mensual')
+        canvas_obj.drawString(18*mm + emp_w + 2*mm, H-6*mm, '· Reporte Ejecutivo Mensual')
+
+        # Período (derecha)
         canvas_obj.setFont('Helvetica', 8)
         canvas_obj.setFillColor(TEAL2)
-        canvas_obj.drawRightString(W-18*mm, H-8*mm, f"{DATA['periodo']}")
+        canvas_obj.drawRightString(W-18*mm, H-6*mm, f"{DATA['periodo']}")
 
         # Footer
         canvas_obj.setFillColor(NAVY)
