@@ -892,20 +892,77 @@ def build_pdf(output_path):
             f'Reducirlo liberaría efectivo que se puede usar para pagar deudas u otras necesidades.',
             'Acción: identificar productos de lento movimiento y hacer promociones o liquidarlos.'))
 
+    # Bloque CxC — top clientes (si hay datos)
+    cxc_data = DATA.get('top_cxc', [])
+    if cxc_data:
+        cxc_rows = ''.join([
+            f'• {c["nombre"]}: {fmt(c["monto"])} ({c.get("dias", "—")} días pendientes)\n'
+            for c in cxc_data[:5]
+        ])
+        ia_bloques.append(('📋', 'Clientes con Mayor Deuda Pendiente', colors.HexColor('#1A56A8'),
+            f'Estos son los clientes que más te deben actualmente:\n\n{cxc_rows}'
+            f'Concentrar los esfuerzos de cobranza en estos clientes primero '
+            f'puede liberar la mayor parte del efectivo atrapado en facturas.',
+            f'Acción: contactar al cliente #1 esta semana y acordar fecha concreta de pago.'))
+
+    # Bloque CxP — top proveedores
+    cxp_data = DATA.get('top_cxp', [])
+    if cxp_data:
+        cxp_rows = ''.join([
+            f'• {p["nombre"]}: {fmt(p["monto"])} ({p.get("dias", "—")} días)\n'
+            for p in cxp_data[:5]
+        ])
+        ia_bloques.append(('🏭', 'Principales Proveedores por Pagar', colors.HexColor('#D97706'),
+            f'Estos son los proveedores a quienes más se les debe:\n\n{cxp_rows}'
+            f'Mantener buena relación y negociar plazos más largos con ellos '
+            f'mejora el flujo de efectivo sin necesidad de conseguir crédito.',
+            f'Acción: negociar con el proveedor principal ampliar plazo de pago a 60-90 días.'))
+
     # Bloque 4: Deudas y solidez
     if cap < 0:
-        ia_bloques.append(('⚖️', 'Deudas y Solidez Financiera', colors.HexColor('#DC2626'),
-            f'Las deudas totales de la empresa ({fmt(DATA.get("pasivo_total", 0))}) son mayores que '
-            f'todos sus activos ({at_s}). Esto se llama insolvencia técnica. '
-            f'No es necesariamente una crisis inmediata, pero sí una señal de alerta importante: '
-            f'la empresa necesita aumentar ventas, reducir costos o inyectar capital nuevo.',
-            'Acción prioritaria: elaborar un plan de recuperación financiera con metas a 90 días.'))
+        ia_bloques.append(('⚖️', 'Deudas, Solidez y Opciones de Financiamiento', colors.HexColor('#DC2626'),
+            f'Las deudas totales ({fmt(DATA.get("pasivo_total", 0))}) superan los activos ({at_s}). '
+            f'Esto se llama insolvencia técnica — no es una crisis inmediata, pero sí una señal importante. '
+            f'La empresa necesita un plan de recuperación: aumentar ventas, reducir costos o inyectar capital.',
+            'Acción prioritaria: elaborar plan de recuperación financiera con metas a 90 días.'))
     else:
-        ia_bloques.append(('⚖️', 'Deudas y Solidez Financiera', GREEN,
-            f'La empresa tiene activos de {at_s} y un capital propio de {cap_s}. '
-            f'No tiene deudas financieras (préstamos bancarios), lo que es una fortaleza. '
-            f'Tiene capacidad para pedir un crédito si lo necesita para crecer.',
+        ia_bloques.append(('⚖️', 'Deudas, Solidez y Opciones de Financiamiento', GREEN,
+            f'La empresa tiene activos de {at_s} y capital propio de {cap_s}. '
+            f'Sin deudas financieras — esto es una fortaleza importante.',
             'Oportunidad: considerar financiamiento para acelerar el crecimiento.'))
+
+    # Bloque 5: Opciones de crédito (siempre)
+    credito_texto = (
+        'Con base en los indicadores del período, estas son las opciones de financiamiento '
+        'más adecuadas para la situación actual:\n\n'
+    )
+    if cap >= 0 and rc >= 1.5:
+        credito_texto += (
+            '✅ Crédito simple bancario (PYME): ideal para capital de trabajo. '
+            'Bancos como BBVA, Banorte y Santander ofrecen líneas desde $500K a tasa preferencial con buen historial.\n\n'
+            '✅ Factoraje financiero: convierte facturas por cobrar en efectivo inmediato. '
+            'Ideal para reducir el DSO sin pedir prestado. Empresas como Konfío, BBVA Factoring.\n\n'
+            '✅ Línea de crédito revolvente: para cubrir baches de flujo. '
+            'Se paga solo cuando se usa — más flexible que un crédito tradicional.'
+        )
+    elif ebitda < 0:
+        credito_texto += (
+            '⚠️ Factoraje financiero: la mejor opción con EBITDA negativo. '
+            'No requiere estados financieros perfectos — solo facturas vigentes de buenos clientes.\n\n'
+            '⚠️ Crédito garantizado con activos: si la empresa tiene inventario o equipo, '
+            'puede usarlo como garantía para obtener liquidez rápida.\n\n'
+            '❌ Crédito bancario tradicional: difícil de obtener con pérdidas operativas. '
+            'Mejor estabilizar la operación primero.'
+        )
+    else:
+        credito_texto += (
+            '✅ Factoraje financiero: convierte facturas pendientes en efectivo inmediato.\n\n'
+            '✅ Crédito PYME con garantía NAFIN: tasas subsidiadas para empresas mexicanas.\n\n'
+            '✅ Línea de crédito revolvente en banco principal.'
+        )
+    ia_bloques.append(('💳', 'Opciones de Financiamiento Recomendadas', colors.HexColor('#1A56A8'),
+        credito_texto,
+        'Acción: solicitar cotización de factoraje esta semana — sin costo y sin comprometer activos.'))
 
     for emoji, titulo, color_bloque, texto, accion in ia_bloques:
         bloque_header = Table(
@@ -1005,6 +1062,8 @@ def build_pdf_mejorado(data_dict: dict) -> io.BytesIO:
         'cobertura':     data_dict.get('cobertura', 0),
         'apalancamiento': data_dict.get('apalancamiento', 0),
         'eficiencia_ef': -37.0,
+        'top_cxc': data_dict.get('top_cxc', []),
+        'top_cxp': data_dict.get('top_cxp', []),
     }
 
     buffer = io.BytesIO()

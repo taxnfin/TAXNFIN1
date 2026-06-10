@@ -472,6 +472,8 @@ const BoardReport = () => {
         deuda_ebitda: met.solvency?.debt_to_ebitda?.value || 0,
         cobertura: met.solvency?.interest_coverage?.value || 0,
         apalancamiento: met.solvency?.financial_leverage?.value || 0,
+        top_cxc: (currentMetrics?.top_cxc || []),
+        top_cxp: (currentMetrics?.top_cxp || []),
       };
       const response = await api.post('/reports/pdf-mejorado', payload, { responseType: 'blob' });
       const blob = new Blob([response.data], { type: 'application/pdf' });
