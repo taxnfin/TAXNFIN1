@@ -87,11 +87,17 @@ def chart_waterfall():
     fig.patch.set_alpha(0)
     ax.set_facecolor('none')
 
+    ing  = DATA['ingresos']
+    cv   = DATA['costo_ventas']
+    ub   = DATA['utilidad_bruta']
+    gop  = DATA['gastos_op']
+    uop  = DATA['utilidad_op']
     labels = ['Ingresos', 'Costo\nVentas', 'Util.\nBruta', 'Gastos\nOp.', 'Util.\nOperativa']
-    values = [2_329_327, -1_765_993, 563_334, -759_924, -196_590]
-    running = [0, 2_329_327, 2_329_327, 563_334, 563_334]
-    bar_vals = [2_329_327, 1_765_993, 563_334, 759_924, 196_590]
-    bar_colors = ['#1A56A8', '#C0392B', '#3B82F6', '#E67E22', '#C0392B']
+    values   = [ing, -cv, ub, -gop, uop]
+    running  = [0, ing, ing, ub, ub]
+    bar_vals = [ing, cv, ub, gop, abs(uop)]
+    bar_colors = ['#1A56A8', '#C0392B', '#3B82F6', '#E67E22',
+                  '#27AE60' if uop >= 0 else '#C0392B']
 
     for i, (bot, val, col) in enumerate(zip(running, bar_vals, bar_colors)):
         if i in [0, 2]:
@@ -101,7 +107,7 @@ def chart_waterfall():
             ax.bar(i, val, bottom=bot - val if values[i] < 0 else bot,
                    color=col, width=0.55, zorder=3, edgecolor='white', linewidth=0.8)
 
-    display_vals = [2_329_327, -1_765_993, 563_334, -759_924, -196_590]
+    display_vals = values
     for i, (v, bv) in enumerate(zip(display_vals, bar_vals)):
         ypos = bv/2 if i in [0, 2] else (running[i] - bv/2 if values[i] < 0 else running[i] + bv/2)
         sign = '' if i in [0, 2] else ('+' if v > 0 else '')
@@ -128,7 +134,7 @@ def chart_margenes():
     ax.set_facecolor('none')
 
     labels = ['Bruto', 'EBITDA', 'Operativo', 'Neto']
-    vals   = [24.2, -7.2, -8.4, -5.0]
+    vals   = [DATA['margen_bruto'], DATA['margen_ebitda'], DATA['margen_op'], DATA['margen_neto']]
     cols   = ['#1A56A8' if v > 0 else '#C0392B' for v in vals]
 
     bars = ax.barh(labels, vals, color=cols, height=0.5, zorder=3)
@@ -159,7 +165,8 @@ def chart_estructura():
     fig.patch.set_alpha(0)
     ax.set_facecolor('none')
 
-    sizes  = [25_246_100, 3_000_000, 9_500_000, 3_000_000, 16_637_979]
+    sizes  = [DATA['activo_circ'], DATA['activo_fijo'], DATA['pasivo_circ'],
+              DATA['pasivo_lp'], DATA['capital']]
     labels = ['Activo\nCirc.', 'Activo\nFijo', 'Pasivo\nCirc.', 'Pasivo\nLP', 'Capital']
     cols   = ['#1A56A8', '#3B82F6', '#C0392B', '#E67E22', '#64748B']
     pcts   = [s/sum(sizes)*100 for s in sizes]
@@ -167,7 +174,7 @@ def chart_estructura():
     wedges, _ = ax.pie(sizes, colors=cols, startangle=90,
                        wedgeprops=dict(width=0.55, edgecolor='white', linewidth=1.5))
 
-    ax.text(0, 0, f"$28.8M\nActivos", ha='center', va='center',
+    ax.text(0, 0, f"{fmt(DATA['activo_total'])}\nActivos", ha='center', va='center',
             fontsize=8, color='#0D2B5E', fontweight='bold', linespacing=1.4)
 
     legend_patches = [mpatches.Patch(color=c, label=f"{l.replace(chr(10),' ')} {p:.0f}%")
@@ -186,9 +193,9 @@ def chart_liquidez():
     ax.set_facecolor('none')
 
     indicadores = ['Razón\nCirculante', 'Prueba\nÁcida', 'Razón\nEfectivo']
-    valores     = [2.66, 1.41, 0.03]
+    valores     = [DATA['razon_circ'], DATA['prueba_acida'], DATA['razon_ef']]
     benchmarks  = [1.5, 1.0, 0.2]
-    cols        = ['#1A56A8', '#1A56A8', '#C0392B']
+    cols        = ['#1A56A8' if v >= b else '#C0392B' for v, b in zip(valores, benchmarks)]
 
     x = range(len(indicadores))
     bars = ax.bar(x, valores, color=cols, width=0.4, zorder=3, edgecolor='white')
@@ -218,24 +225,30 @@ def chart_cce():
     fig.patch.set_alpha(0)
     ax.set_facecolor('none')
 
-    # Timeline bar
-    ax.barh(0, 201, left=0,    color='#1A56A8',  height=0.35, label=f'DIO: 201 días')
-    ax.barh(0, 137, left=201,  color='#3B82F6',  height=0.35, label=f'DSO: 137 días')
-    ax.barh(0, -95, left=0,    color='#64748B',  height=0.35, label=f'DPO: 95 días (resta)')
+    dio_v = DATA['dio']
+    dso_v = DATA['dso']
+    dpo_v = DATA['dpo']
+    cce_v = DATA['ccc']
 
-    ax.text(100,  0.25, 'DIO\n201d', ha='center', va='bottom', fontsize=7.5,
+    ax.barh(0, dio_v,  left=0,     color='#1A56A8', height=0.35, label=f'DIO: {dio_v} días')
+    ax.barh(0, dso_v,  left=dio_v, color='#3B82F6', height=0.35, label=f'DSO: {dso_v} días')
+    ax.barh(0, -dpo_v, left=0,     color='#64748B', height=0.35, label=f'DPO: {dpo_v} días (resta)')
+
+    ax.text(dio_v / 2,          0.25, f'DIO\n{dio_v}d', ha='center', va='bottom', fontsize=7.5,
             color='white', fontweight='bold')
-    ax.text(269,  0.25, 'DSO\n137d', ha='center', va='bottom', fontsize=7.5,
+    ax.text(dio_v + dso_v / 2,  0.25, f'DSO\n{dso_v}d', ha='center', va='bottom', fontsize=7.5,
             color='white', fontweight='bold')
-    ax.text(-47,  0.25, 'DPO\n95d',  ha='center', va='bottom', fontsize=7.5,
+    ax.text(-dpo_v / 2,         0.25, f'DPO\n{dpo_v}d', ha='center', va='bottom', fontsize=7.5,
             color='#64748B', fontweight='bold')
 
-    ax.axvline(0,   color='#CBD5E1', linewidth=1)
-    ax.axvline(244, color='#C0392B', linewidth=1.5, linestyle='--')
-    ax.text(244, -0.3, 'CCE: 244 días', ha='center', fontsize=8,
+    ax.axvline(0,     color='#CBD5E1', linewidth=1)
+    ax.axvline(cce_v, color='#C0392B', linewidth=1.5, linestyle='--')
+    ax.text(cce_v, -0.3, f'CCE: {cce_v} días', ha='center', fontsize=8,
             color='#C0392B', fontweight='bold')
 
-    ax.set_xlim(-120, 380)
+    xlim_min = -(dpo_v + 50)
+    xlim_max = max(dio_v + dso_v, cce_v) + 60
+    ax.set_xlim(xlim_min, xlim_max)
     ax.set_ylim(-0.6, 0.8)
     ax.axis('off')
     ax.legend(loc='upper right', fontsize=7, frameon=False, labelcolor='#334155')
@@ -338,65 +351,76 @@ def build_pdf(output_path):
     # ─── PORTADA ─────────────────────────────────────────────────────────────
     def portada(canvas_obj, doc_obj):
         canvas_obj.saveState()
-        # Fondo degradado simulado
-        canvas_obj.setFillColor(NAVY)
-        canvas_obj.rect(0, 0, W, H, fill=1, stroke=0)
-        # Banda teal
-        canvas_obj.setFillColor(TEAL)
-        canvas_obj.rect(0, H*0.55, W, H*0.45, fill=1, stroke=0)
-        # Acento dorado
-        canvas_obj.setFillColor(TEAL2)
-        canvas_obj.rect(0, H*0.55 - 4, W, 4, fill=1, stroke=0)
-        # Diagonal decorativa
-        canvas_obj.setFillColor(colors.HexColor('#253545'))
-        p = canvas_obj.beginPath()
-        p.moveTo(0, H*0.55)
-        p.lineTo(W*0.6, H*0.55)
-        p.lineTo(0, H*0.35)
-        p.close()
-        canvas_obj.drawPath(p, fill=1, stroke=0)
-
-        # Logo text
-        canvas_obj.setFont('Helvetica-Bold', 48)
+        # Fondo blanco limpio
         canvas_obj.setFillColor(WHITE)
-        canvas_obj.drawString(15*mm, H*0.72, DATA['empresa'])
-        canvas_obj.setFont('Helvetica', 14)
-        canvas_obj.setFillColor(colors.HexColor('#8EC8D4'))
-        canvas_obj.drawString(15*mm, H*0.67, 'Reporte Ejecutivo Mensual')
+        canvas_obj.rect(0, 0, W, H, fill=1, stroke=0)
 
-        # Periodo
-        canvas_obj.setFont('Helvetica-Bold', 36)
-        canvas_obj.setFillColor(colors.HexColor('#64748B'))
-        canvas_obj.drawString(15*mm, H*0.58, 'Enero 2026')
+        # Barra azul vertical izquierda (4mm)
+        canvas_obj.setFillColor(NAVY)
+        canvas_obj.rect(0, 0, 4*mm, H, fill=1, stroke=0)
 
-        # KPIs portada
-        kpis = [
-            ('Ingresos', '$2.33M'),
-            ('Util. Bruta', '$563K'),
-            ('Margen Bruto', '24.2%'),
-            ('EBITDA', '-$167K'),
+        # Nombre de empresa
+        canvas_obj.setFont('Helvetica-Bold', 46)
+        canvas_obj.setFillColor(NAVY)
+        canvas_obj.drawString(16*mm, H*0.73, DATA['empresa'])
+
+        # Subtítulo
+        canvas_obj.setFont('Helvetica', 13)
+        canvas_obj.setFillColor(DGRAY)
+        canvas_obj.drawString(16*mm, H*0.685, 'Reporte Ejecutivo Mensual')
+
+        # Línea de acento
+        canvas_obj.setFillColor(TEAL)
+        canvas_obj.rect(16*mm, H*0.672, W - 32*mm, 1.5, fill=1, stroke=0)
+
+        # Caja gris suave con período dinámico y RFC
+        canvas_obj.setFillColor(LGRAY)
+        canvas_obj.roundRect(16*mm, H*0.61, W - 32*mm, 17*mm, 4, fill=1, stroke=0)
+        canvas_obj.setFont('Helvetica-Bold', 15)
+        canvas_obj.setFillColor(NAVY)
+        canvas_obj.drawString(20*mm, H*0.61 + 10*mm, DATA['periodo'])
+        canvas_obj.setFont('Helvetica', 9)
+        canvas_obj.setFillColor(DGRAY)
+        canvas_obj.drawRightString(W - 20*mm, H*0.61 + 10*mm, f"RFC: {DATA['rfc']}")
+
+        # 4 KPI cards blancas con borde y línea de color superior
+        _kpis = [
+            ('Ingresos',     fmt(DATA['ingresos']),              True),
+            ('Util. Bruta',  fmt(DATA['utilidad_bruta']),        DATA['utilidad_bruta'] >= 0),
+            ('Margen Bruto', f"{DATA['margen_bruto']:.1f}%",     DATA['margen_bruto'] >= 0),
+            ('EBITDA',       fmt(DATA['ebitda']),                DATA['ebitda'] >= 0),
         ]
-        box_w = (W - 30*mm) / 4
-        for i, (lbl, val) in enumerate(kpis):
-            x = 15*mm + i*box_w
-            y = H*0.38
-            canvas_obj.setFillColor(colors.HexColor('#FFFFFF15'))
-            canvas_obj.roundRect(x+2, y, box_w-6, 28*mm, 3, fill=1, stroke=0)
-            canvas_obj.setFont('Helvetica', 8)
-            canvas_obj.setFillColor(MGRAY)
-            canvas_obj.drawCentredString(x + box_w/2, y+20*mm, lbl)
-            canvas_obj.setFont('Helvetica-Bold', 13)
+        _box_w = (W - 32*mm) / 4
+        _box_h = 30*mm
+        _y_kpi = H * 0.41
+        for i, (lbl, val, pos) in enumerate(_kpis):
+            _x = 16*mm + i * _box_w
+            _top_col = GREEN if pos else RED
+            # Card con borde gris
             canvas_obj.setFillColor(WHITE)
-            canvas_obj.drawCentredString(x + box_w/2, y+11*mm, val)
+            canvas_obj.setStrokeColor(MGRAY)
+            canvas_obj.roundRect(_x + 2, _y_kpi, _box_w - 6, _box_h, 4, fill=1, stroke=1)
+            # Línea de color en la parte superior
+            canvas_obj.setFillColor(_top_col)
+            canvas_obj.setStrokeColor(_top_col)
+            canvas_obj.rect(_x + 2, _y_kpi + _box_h - 4, _box_w - 6, 4, fill=1, stroke=0)
+            # Label
+            canvas_obj.setFont('Helvetica', 7.5)
+            canvas_obj.setFillColor(DGRAY)
+            canvas_obj.drawCentredString(_x + _box_w / 2, _y_kpi + 18*mm, lbl)
+            # Valor con color semáforo
+            canvas_obj.setFont('Helvetica-Bold', 13)
+            canvas_obj.setFillColor(_top_col)
+            canvas_obj.drawCentredString(_x + _box_w / 2, _y_kpi + 9*mm, val)
 
-        # Footer portada
-        canvas_obj.setFillColor(colors.HexColor('#161E28'))
+        # Footer azul marino inferior
+        canvas_obj.setFillColor(NAVY)
         canvas_obj.rect(0, 0, W, 20*mm, fill=1, stroke=0)
         canvas_obj.setFont('Helvetica', 8)
         canvas_obj.setFillColor(MGRAY)
-        canvas_obj.drawString(15*mm, 8*mm, f"RFC: {DATA['rfc']}")
-        canvas_obj.drawCentredString(W/2, 8*mm, f"Generado: {DATA['fecha']}")
-        canvas_obj.drawRightString(W-15*mm, 8*mm, "Análisis: TaxnFin · Claude Sonnet")
+        canvas_obj.drawString(16*mm, 8*mm, f"{DATA['empresa']}  ·  {DATA['periodo']}")
+        canvas_obj.drawCentredString(W / 2, 8*mm, f"RFC: {DATA['rfc']}")
+        canvas_obj.drawRightString(W - 16*mm, 8*mm, f"Generado: {DATA['fecha']}")
         canvas_obj.restoreState()
 
     # Página de portada (en blanco en el story, pintada con onFirstPage)
@@ -443,42 +467,81 @@ def build_pdf(output_path):
     story.append(NextPageTemplate('Content'))
     story.append(PageBreak())
 
+    # ─── helpers dinámicos ───────────────────────────────────────────────────
+    def _sem(status):
+        c_map = {'Crítico': ('#C0392B', '⬤ Crítico'),
+                 'Atención': ('#E67E22', '⬤ Atención'),
+                 'Bueno':    ('#27AE60', '⬤ Bueno')}
+        col, label = c_map.get(status, ('#CBD5E1', '—'))
+        return Paragraph(f'<font color="{col}"><b>{label}</b></font>',
+                         ParagraphStyle('s', fontName='Helvetica', fontSize=7.5,
+                                        leading=10, alignment=TA_CENTER))
+
+    # Variables comunes
+    ing   = DATA['ingresos'];    ub    = DATA['utilidad_bruta']
+    mb    = DATA['margen_bruto']; gop  = DATA['gastos_op']
+    ebitda = DATA['ebitda'];     un    = DATA['utilidad_neta']
+    mb_e  = DATA['margen_ebitda']; mb_o = DATA['margen_op']; mb_n = DATA['margen_neto']
+    cap   = DATA['capital'];     at    = DATA['activo_total']
+    rc    = DATA['razon_circ'];  pa    = DATA['prueba_acida']; ref_ = DATA['razon_ef']
+    crun  = DATA['cash_runway']; ct    = DATA['capital_trabajo']
+    dio_v = DATA['dio'];         dso_v = DATA['dso']
+    dpo_v = DATA['dpo'];         cce_v = DATA['ccc']
+    dc    = DATA['deuda_capital']; da  = DATA['deuda_activos']
+    debd  = DATA['deuda_ebitda']; cob  = DATA['cobertura']
+
+    er_pct   = (cap / at * 100) if at else 0
+    gop_pct  = (gop / ing * 100) if ing else 0
+    gop_xcs  = max(0, gop - ub)
+    apal_v   = DATA.get('apalancamiento', (at / cap) if cap else 0)
+
+    ing_s = fmt(ing); ub_s = fmt(ub); ebitda_s = fmt(ebitda); un_s = fmt(un)
+    gop_s = fmt(gop); cap_s = fmt(cap); at_s = fmt(at)
+
     # ─── PAG 2: RESUMEN EJECUTIVO ────────────────────────────────────────────
     story.append(Paragraph('Resumen Ejecutivo', styles['section_header']))
 
-    # Análisis narrativo
+    _ebitda_diag = (
+        f"los <b>gastos operativos de {gop_s} ({gop_pct:.1f}% de ventas)</b> superan "
+        f"el margen bruto en {fmt(gop_xcs)}, llevando el EBITDA a terreno negativo."
+        if ebitda < 0 else
+        f"los gastos operativos de {gop_s} ({gop_pct:.1f}% de ventas) se mantienen bajo control "
+        f"generando EBITDA positivo de {ebitda_s}."
+    )
     resumen_text = (
-        "El período <b>enero 2026</b> refleja una empresa con <b>base de activos sólida y buena liquidez "
-        "estructural</b>, pero con presiones operativas importantes que resultan en márgenes negativos. "
-        "Los ingresos de <b>$2.33M</b> generan una utilidad bruta saludable del 24.2%, sin embargo los "
-        "<b>gastos operativos de $759K (32.6% de ventas)</b> superan ampliamente el margen bruto, "
-        "llevando al EBITDA y a la utilidad operativa a terreno negativo. "
-        "Este patrón sugiere que la estructura de costos fijos no está alineada con el nivel de ingresos "
-        "actual — el punto de equilibrio operativo se estima por encima de los ingresos del período."
+        f"El período <b>{DATA['periodo']}</b> refleja ingresos de <b>{ing_s}</b> con utilidad bruta "
+        f"del <b>{mb:.1f}%</b>. Sin embargo, {_ebitda_diag} "
+        f"La base patrimonial muestra capital contable de <b>{cap_s}</b> y activos de {at_s}."
     )
     story.append(Paragraph(resumen_text, styles['body']))
     story.append(Spacer(1, 4*mm))
 
-    # KPI Cards row
+    # KPI Cards row — valores reales con colores semáforo
+    _ec = '#C0392B' if ebitda < 0 else '#27AE60'
+    _uc = '#C0392B' if un < 0 else '#27AE60'
+    _mec = '#C0392B' if mb_e < 0 else '#27AE60'
+    _mnc = '#C0392B' if mb_n < 0 else '#27AE60'
+    _ebg = colors.HexColor('#FFF0EE') if ebitda < 0 else colors.HexColor('#F0FFF4')
+    _ubg = colors.HexColor('#FFF0EE') if un < 0 else colors.HexColor('#F0FFF4')
     kpi_data = [
         [Paragraph('INGRESOS', styles['kpi_label']),
          Paragraph('UTIL. BRUTA', styles['kpi_label']),
          Paragraph('EBITDA', styles['kpi_label']),
          Paragraph('UTIL. NETA', styles['kpi_label'])],
-        [Paragraph('$2.33M', styles['kpi_value']),
-         Paragraph('$563K', styles['kpi_value']),
-         Paragraph('<font color="#C0392B">-$167K</font>', styles['kpi_value']),
-         Paragraph('<font color="#C0392B">-$117K</font>', styles['kpi_value'])],
+        [Paragraph(ing_s, styles['kpi_value']),
+         Paragraph(ub_s, styles['kpi_value']),
+         Paragraph(f'<font color="{_ec}">{ebitda_s}</font>', styles['kpi_value']),
+         Paragraph(f'<font color="{_uc}">{un_s}</font>', styles['kpi_value'])],
         [Paragraph('100%', styles['kpi_label']),
-         Paragraph('24.2%', styles['kpi_label']),
-         Paragraph('<font color="#C0392B">-7.2%</font>', styles['kpi_label']),
-         Paragraph('<font color="#C0392B">-5.0%</font>', styles['kpi_label'])],
+         Paragraph(f'{mb:.1f}%', styles['kpi_label']),
+         Paragraph(f'<font color="{_mec}">{mb_e:+.1f}%</font>', styles['kpi_label']),
+         Paragraph(f'<font color="{_mnc}">{mb_n:+.1f}%</font>', styles['kpi_label'])],
     ]
     kpi_table = Table(kpi_data, colWidths=[PW/4]*4, rowHeights=[9*mm, 13*mm, 7*mm])
     kpi_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), LGRAY),
-        ('BACKGROUND', (2,0), (2,-1), colors.HexColor('#FFF0EE')),
-        ('BACKGROUND', (3,0), (3,-1), colors.HexColor('#FFF0EE')),
+        ('BACKGROUND', (2,0), (2,-1), _ebg),
+        ('BACKGROUND', (3,0), (3,-1), _ubg),
         ('LINEABOVE',  (0,0), (-1,0), 3, TEAL),
         ('LINEBEFORE', (1,0), (1,-1), 0.5, MGRAY),
         ('LINEBEFORE', (2,0), (2,-1), 0.5, MGRAY),
@@ -492,23 +555,31 @@ def build_pdf(output_path):
     story.append(kpi_table)
     story.append(Spacer(1, 5*mm))
 
-    # Gráfica cascada
     wf_img = chart_waterfall()
     story.append(Image(wf_img, width=PW, height=PW*0.48))
     story.append(Spacer(1, 3*mm))
 
-    # Alertas
-    alerts = [
-        ('⚠', '#C0392B', 'Gastos operativos $759K representan el 32.6% de ventas — superan la utilidad bruta en $196K.'),
-        ('⚠', '#C0392B', 'EBITDA negativo: la operación no genera caja suficiente para cubrir ni sus propias operaciones.'),
-        ('●', '#E67E22', 'Margen bruto del 24.2% es sano — el problema está en la estructura de gastos, no en el negocio.'),
-        ('✓', '#27AE60', 'Capital contable positivo de $16.6M y activos de $28.8M — base patrimonial sólida.'),
-    ]
+    # Alertas dinámicas
+    alerts = []
+    if ebitda < 0:
+        alerts.append(('⚠', '#C0392B',
+            f'Gastos operativos {gop_s} ({gop_pct:.1f}% de ventas) superan la utilidad bruta en {fmt(gop_xcs)}.'))
+        alerts.append(('⚠', '#C0392B',
+            f'EBITDA negativo ({ebitda_s}): la operación no genera caja suficiente.'))
+    else:
+        alerts.append(('✓', '#27AE60',
+            f'EBITDA positivo {ebitda_s} ({mb_e:+.1f}%): generación de caja operativa saludable.'))
+    _mb_col = '#27AE60' if mb >= 30 else '#E67E22'
+    _mb_txt = 'saludable' if mb >= 30 else 'sano pero por debajo del benchmark (30-40%)'
+    alerts.append(('●', _mb_col,
+        f'Margen bruto del {mb:.1f}% — {_mb_txt}. El problema está en gastos operativos.'))
+    alerts.append(('✓', '#27AE60',
+        f'Capital contable positivo de {cap_s} y activos de {at_s} — base patrimonial sólida.'))
+
+    _al_style = ParagraphStyle('al', fontName='Helvetica', fontSize=8,
+                               textColor=DGRAY, leading=11, leftIndent=14, firstLineIndent=-14)
     for icon, col, text in alerts:
-        alert_style = ParagraphStyle('al', fontName='Helvetica', fontSize=8,
-                                     textColor=DGRAY, leading=11, leftIndent=14,
-                                     firstLineIndent=-14)
-        story.append(Paragraph(f'<font color="{col}"><b>{icon}</b></font>  {text}', alert_style))
+        story.append(Paragraph(f'<font color="{col}"><b>{icon}</b></font>  {text}', _al_style))
         story.append(Spacer(1, 2*mm))
 
     story.append(PageBreak())
@@ -516,21 +587,23 @@ def build_pdf(output_path):
     # ─── PAG 3: MÁRGENES + ESTRUCTURA ────────────────────────────────────────
     story.append(Paragraph('Análisis de Márgenes y Estructura de Capital', styles['section_header']))
 
+    _mb_o_txt = 'negativos' if mb_o < 0 else 'positivos'
+    _ebitda_accion = (
+        f"Un ejercicio de <b>reducción del 15-20% en gastos operativos</b> llevaría el EBITDA a positivo. "
+        if ebitda < 0 else
+        f"La estructura de costos está bajo control con EBITDA de {ebitda_s}. "
+    )
+    _dc_txt = f"sin deuda financiera (D/Capital {dc:.2f}x)" if dc == 0 else f"razón D/Capital de {dc:.2f}x"
     text_margenes = (
-        "La dispersión entre el <b>margen bruto (24.2%)</b> y los márgenes operativos y netos "
-        "negativos es la señal diagnóstica más relevante del período. El negocio <b>sí puede generar "
-        "valor bruto</b>, pero la carga de gastos operativos lo consume. Un ejercicio de "
-        "<b>reducción del 15-20% en gastos operativos</b> llevaría el EBITDA a positivo. "
-        "En cuanto a la estructura de capital, la empresa mantiene una <b>razón deuda/capital de 0x "
-        "(sin deuda financiera)</b> y un capital contable que representa el 57.8% del activo total — "
-        "una posición patrimonial conservadora y sana."
+        f"La dispersión entre el <b>margen bruto ({mb:.1f}%)</b> y los márgenes operativos {_mb_o_txt} "
+        f"es la señal diagnóstica más relevante. {_ebitda_accion}"
+        f"La empresa mantiene <b>{_dc_txt}</b> y un capital contable del {er_pct:.1f}% del activo total."
     )
     story.append(Paragraph(text_margenes, styles['body']))
     story.append(Spacer(1, 4*mm))
 
-    # Dos gráficas lado a lado
-    mg_img  = chart_margenes()
-    es_img  = chart_estructura()
+    mg_img = chart_margenes()
+    es_img = chart_estructura()
     two_col = Table(
         [[Image(mg_img, width=PW*0.53, height=PW*0.42),
           Image(es_img, width=PW*0.44, height=PW*0.42)]],
@@ -540,15 +613,15 @@ def build_pdf(output_path):
     story.append(two_col)
     story.append(Spacer(1, 4*mm))
 
-    # Tabla de márgenes detallada
     story.append(Paragraph('Tabla de Indicadores de Rentabilidad', styles['body_bold']))
     story.append(Spacer(1, 2*mm))
 
-    def semaforo(status):
-        c_map = {'Crítico': ('#C0392B','⬤ Crítico'), 'Atención': ('#E67E22','⬤ Atención'), 'Bueno': ('#27AE60','⬤ Bueno')}
-        col, label = c_map.get(status, ('#CBD5E1','—'))
-        return Paragraph(f'<font color="{col}"><b>{label}</b></font>',
-                         ParagraphStyle('s', fontName='Helvetica', fontSize=7.5, leading=10, alignment=TA_CENTER))
+    def _ms(v, lo, hi=None):
+        if v >= lo: return _sem('Bueno')
+        if v >= 0: return _sem('Atención')
+        return _sem('Crítico')
+
+    def _bp(v, mid): return f"{v - mid:+.0f} pp"
 
     marg_data = [
         [Paragraph('<b>Indicador</b>', styles['table_header']),
@@ -556,13 +629,13 @@ def build_pdf(output_path):
          Paragraph('<b>Benchmark</b>', styles['table_header']),
          Paragraph('<b>Brecha</b>', styles['table_header']),
          Paragraph('<b>Estado</b>', styles['table_header'])],
-        ['Margen Bruto',      '24.2%',  '30-40%', '-6 pp',  semaforo('Atención')],
-        ['Margen EBITDA',     '-7.2%',  '10-15%', '-17 pp', semaforo('Crítico')],
-        ['Margen Operativo',  '-8.4%',  '5-10%',  '-14 pp', semaforo('Crítico')],
-        ['Margen Neto',       '-5.0%',  '3-8%',   '-8 pp',  semaforo('Crítico')],
-        ['ROE',               '-0.7%',  '10-15%', '-11 pp', semaforo('Crítico')],
-        ['ROA',               '-0.4%',  '5-10%',  '-5 pp',  semaforo('Crítico')],
-        ['ROIC',              '-1.2%',  '8-12%',  '-9 pp',  semaforo('Crítico')],
+        ['Margen Bruto',     f'{mb:.1f}%',    '30-40%', _bp(mb, 35),      _ms(mb, 30)],
+        ['Margen EBITDA',    f'{mb_e:.1f}%',  '10-15%', _bp(mb_e, 12.5),  _ms(mb_e, 10)],
+        ['Margen Operativo', f'{mb_o:.1f}%',  '5-10%',  _bp(mb_o, 7.5),   _ms(mb_o, 5)],
+        ['Margen Neto',      f'{mb_n:.1f}%',  '3-8%',   _bp(mb_n, 5.5),   _ms(mb_n, 3)],
+        ['ROE',              f'{DATA["roe"]:.1f}%',  '10-15%', _bp(DATA['roe'], 12.5), _ms(DATA['roe'], 10)],
+        ['ROA',              f'{DATA["roa"]:.1f}%',  '5-10%',  _bp(DATA['roa'], 7.5),  _ms(DATA['roa'], 5)],
+        ['ROIC',             f'{DATA["roic"]:.1f}%', '8-12%',  _bp(DATA['roic'], 10),  _ms(DATA['roic'], 8)],
     ]
     marg_table = Table(marg_data, colWidths=[PW*0.3, PW*0.15, PW*0.18, PW*0.15, PW*0.22])
     marg_table.setStyle(TableStyle([
@@ -584,16 +657,24 @@ def build_pdf(output_path):
     # ─── PAG 4: LIQUIDEZ + CCE ────────────────────────────────────────────────
     story.append(Paragraph('Análisis de Liquidez y Ciclo Operativo', styles['section_header']))
 
-    liq_text = (
-        "La empresa presenta una <b>paradoja de liquidez</b>: los indicadores estructurales son buenos "
-        "(razón circulante 2.66x, prueba ácida 1.41x, capital de trabajo $15.8M) pero el "
-        "<b>efectivo es críticamente escaso</b> — razón de efectivo 0.03x y cash runway de apenas "
-        "<b>0.4 meses</b>. Esto significa que aunque el patrimonio circulante es grande, está "
-        "atrapado en <b>inventario (201 días) y cuentas por cobrar (137 días)</b>. "
-        "El Ciclo de Conversión de Efectivo de <b>244 días</b> es extremadamente largo: "
-        "la empresa financia casi 8 meses de operación antes de recuperar su efectivo. "
-        "Este es el <b>riesgo operativo más inmediato</b> — no de insolvencia, sino de iliquidez."
-    )
+    _paradox = rc > 1.5 and ref_ < 0.2
+    ct_s = fmt(ct); crun_s = f"{crun:.1f} mes{'es' if crun != 1 else ''}"
+    if _paradox:
+        liq_text = (
+            f"La empresa presenta una <b>paradoja de liquidez</b>: los indicadores estructurales son buenos "
+            f"(razón circulante {rc:.2f}x, prueba ácida {pa:.2f}x, capital de trabajo {ct_s}) pero el "
+            f"<b>efectivo es críticamente escaso</b> — razón de efectivo {ref_:.2f}x y cash runway de apenas "
+            f"<b>{crun_s}</b>. El activo circulante está atrapado en "
+            f"<b>inventario ({dio_v} días) y cuentas por cobrar ({dso_v} días)</b>. "
+            f"El Ciclo de Conversión de Efectivo de <b>{cce_v} días</b> es extremadamente largo — "
+            f"<b>riesgo operativo inmediato</b> de iliquidez, no de insolvencia."
+        )
+    else:
+        liq_text = (
+            f"Razón circulante <b>{rc:.2f}x</b>, prueba ácida {pa:.2f}x, razón de efectivo {ref_:.2f}x "
+            f"y cash runway de {crun_s}. Capital de trabajo {ct_s}. "
+            f"CCE de {cce_v} días (DIO {dio_v}d + DSO {dso_v}d − DPO {dpo_v}d)."
+        )
     story.append(Paragraph(liq_text, styles['body']))
     story.append(Spacer(1, 4*mm))
 
@@ -605,21 +686,23 @@ def build_pdf(output_path):
     story.append(Image(cce_img, width=PW, height=PW*0.28))
     story.append(Spacer(1, 4*mm))
 
-    # Tabla KPIs liquidez
+    def _rs(v, bench): return _sem('Bueno') if v >= bench else _sem('Crítico')
+    def _ds(v, lo, hi): return _sem('Bueno') if v <= lo else (_sem('Atención') if v <= hi else _sem('Crítico'))
+
     liq_kpi = [
         [Paragraph('<b>Indicador</b>', styles['table_header']),
          Paragraph('<b>Valor</b>', styles['table_header']),
          Paragraph('<b>Benchmark</b>', styles['table_header']),
          Paragraph('<b>Estado</b>', styles['table_header']),
          Paragraph('<b>Diagnóstico</b>', styles['table_header'])],
-        ['Razón Circulante',    '2.66x',  '>1.5x',    semaforo('Bueno'),    'Posición cómoda'],
-        ['Prueba Ácida',        '1.41x',  '>1.0x',    semaforo('Bueno'),    'Sin inventario: OK'],
-        ['Razón de Efectivo',   '0.03x',  '>0.2x',    semaforo('Crítico'),  'Efectivo insuficiente'],
-        ['Cash Runway',         '0.4 mes','3-6 meses', semaforo('Crítico'),  'Riesgo inmediato'],
-        ['DSO (Cobro)',         '137 días','30-60d',   semaforo('Crítico'),  'Cartera muy lenta'],
-        ['DIO (Inventario)',    '201 días','45-90d',   semaforo('Crítico'),  'Exceso de inventario'],
-        ['DPO (Pago)',         '95 días', '30-60d',   semaforo('Atención'), 'Bien negociado'],
-        ['CCE',                '244 días','60-90d',   semaforo('Crítico'),  'Ciclo extremo'],
+        ['Razón Circulante',  f'{rc:.2f}x',    '>1.5x',     _rs(rc, 1.5),   'Posición cómoda' if rc >= 1.5 else 'Insuficiente'],
+        ['Prueba Ácida',      f'{pa:.2f}x',    '>1.0x',     _rs(pa, 1.0),   'Sin inventario: OK' if pa >= 1.0 else 'Por debajo'],
+        ['Razón de Efectivo', f'{ref_:.2f}x',  '>0.2x',     _rs(ref_, 0.2), 'Efectivo insuficiente' if ref_ < 0.2 else 'Adecuado'],
+        ['Cash Runway',       crun_s,          '3-6 meses', _sem('Crítico') if crun < 3 else _sem('Bueno'), 'Riesgo inmediato' if crun < 1 else 'Atención' if crun < 3 else 'Adecuado'],
+        ['DSO (Cobro)',        f'{dso_v} días', '30-60d',    _ds(dso_v, 60, 90),  'Cartera muy lenta' if dso_v > 90 else 'En proceso'],
+        ['DIO (Inventario)',   f'{dio_v} días', '45-90d',    _ds(dio_v, 90, 120), 'Exceso de inventario' if dio_v > 120 else 'Elevado' if dio_v > 90 else 'Bien'],
+        ['DPO (Pago)',         f'{dpo_v} días', '30-60d',    _sem('Bueno') if dpo_v >= 30 else _sem('Atención'), 'Bien negociado' if dpo_v >= 45 else 'Mejorar'],
+        ['CCE',                f'{cce_v} días', '60-90d',    _ds(cce_v, 90, 150), 'Ciclo extremo' if cce_v > 200 else 'Muy largo' if cce_v > 150 else 'Largo'],
     ]
     liq_table = Table(liq_kpi, colWidths=[PW*0.22, PW*0.13, PW*0.16, PW*0.18, PW*0.31])
     liq_table.setStyle(TableStyle([
@@ -641,28 +724,35 @@ def build_pdf(output_path):
     # ─── PAG 5: SOLVENCIA + RECOMENDACIONES ──────────────────────────────────
     story.append(Paragraph('Análisis de Solvencia', styles['section_header']))
 
+    _dc_txt2 = 'sin deuda financiera' if dc == 0 else f'D/Capital {dc:.2f}x'
+    _debd_note = ' — EBITDA negativo distorsiona' if ebitda < 0 else ''
+    _lever_txt = 'tiene espacio para apalancar si mejora la operación' if dc == 0 else 'gestiona la deuda de forma moderada'
     solv_text = (
-        "La posición de solvencia es <b>fuerte en términos patrimoniales</b>: sin deuda financiera "
-        "(D/Capital 0x), razón de capital del 57.8% y cobertura de intereses teórica de 999x. "
-        "El único indicador preocupante es <b>Deuda/EBITDA de 24.71x</b>, pero esto se debe "
-        "al EBITDA negativo del período — no a un endeudamiento excesivo. "
-        "La empresa tiene espacio para apalancar si mejora la operación."
+        f"La posición de solvencia es <b>{'fuerte' if dc == 0 else 'manejable'} en términos patrimoniales</b>: "
+        f"{_dc_txt2}, razón de capital del {er_pct:.1f}% y cobertura de intereses de {min(cob, 999):.0f}x. "
+        + (f"El indicador de <b>Deuda/EBITDA es {debd:.2f}x</b>{_debd_note}. " if ebitda < 0 else "")
+        + f"La empresa {_lever_txt}."
     )
     story.append(Paragraph(solv_text, styles['body']))
     story.append(Spacer(1, 3*mm))
+
+    def _das(v): return _sem('Bueno') if v < 40 else (_sem('Atención') if v < 60 else _sem('Crítico'))
+    def _dbs(v): return (_sem('Crítico') if ebitda < 0 else
+                         _sem('Bueno') if v < 3 else _sem('Atención') if v < 5 else _sem('Crítico'))
+    def _cbs(v): return _sem('Bueno') if v > 3 else (_sem('Atención') if v > 1.5 else _sem('Crítico'))
 
     solv_data = [
         [Paragraph('<b>Indicador</b>', styles['table_header']),
          Paragraph('<b>Valor</b>', styles['table_header']),
          Paragraph('<b>Estado</b>', styles['table_header']),
          Paragraph('<b>Comentario</b>', styles['table_header'])],
-        ['Deuda / Capital',          '0.00x',   semaforo('Bueno'),   'Sin deuda financiera'],
-        ['Deuda / Activos',          '43.5%',   semaforo('Atención'),'Pasivos operativos altos'],
-        ['Deuda / EBITDA',           '24.71x',  semaforo('Crítico'), 'EBITDA negativo distorsiona'],
-        ['Cobertura de Intereses',   '999x',    semaforo('Bueno'),   'Sin carga financiera'],
-        ['Razón de Capital',         '57.8%',   semaforo('Bueno'),   'Base patrimonial sólida'],
-        ['Deuda Neta / EBITDA',      '0.00x',   semaforo('Bueno'),   'Caja > Deuda financiera'],
-        ['Apalancamiento',           '1.73x',   semaforo('Atención'),'Moderado, manejable'],
+        ['Deuda / Capital',        f'{dc:.2f}x',                _sem('Bueno') if dc == 0 else _sem('Atención'), 'Sin deuda financiera' if dc == 0 else 'Apalancamiento moderado'],
+        ['Deuda / Activos',        f'{da:.1f}%',                _das(da),  'Pasivos operativos altos' if da > 40 else 'Nivel adecuado'],
+        ['Deuda / EBITDA',         f'{debd:.2f}x',              _dbs(debd), 'EBITDA negativo distorsiona' if ebitda < 0 else 'Nivel manejable'],
+        ['Cobertura de Intereses', f'{min(cob, 999):.0f}x',     _cbs(cob), 'Sin carga financiera' if cob >= 999 else f'Cobertura {cob:.1f}x'],
+        ['Razón de Capital',       f'{er_pct:.1f}%',            _sem('Bueno') if er_pct > 50 else _sem('Atención'), 'Base patrimonial sólida' if er_pct > 50 else 'Estructura mixta'],
+        ['Deuda Neta / EBITDA',    '0.00x',                     _sem('Bueno'), 'Caja > Deuda financiera'],
+        ['Apalancamiento',         f'{apal_v:.2f}x',            _sem('Bueno') if apal_v < 2 else _sem('Atención') if apal_v < 3 else _sem('Crítico'), 'Moderado, manejable' if apal_v < 2 else 'Elevado'],
     ]
     solv_table = Table(solv_data, colWidths=[PW*0.28, PW*0.14, PW*0.20, PW*0.38])
     solv_table.setStyle(TableStyle([
@@ -680,32 +770,45 @@ def build_pdf(output_path):
     story.append(solv_table)
     story.append(Spacer(1, 6*mm))
 
-    # Recomendaciones estratégicas
+    # Recomendaciones estratégicas — dinámicas y condicionales
     story.append(HRFlowable(width=PW, thickness=1, color=TEAL, spaceAfter=4*mm))
     story.append(Paragraph('Recomendaciones Estratégicas', styles['section_header']))
 
-    recomendaciones = [
-        ('🔴 URGENTE — Reducir gastos operativos',
-         'Los gastos operativos de $760K superan la utilidad bruta en $196K. Realizar un '
-         'análisis línea por línea para identificar al menos $200-250K de reducción (26-33%). '
-         'Punto de equilibrio operativo estimado ~$3.1M en ingresos al nivel actual de estructura.'),
-        ('🔴 URGENTE — Acelerar cobranza (DSO 137→60 días)',
-         'Implementar política de cobro activa: anticipos del 30-50% en pedidos nuevos, '
-         'descuentos por pronto pago (2/10 net 30), y seguimiento semanal de cuentas >60 días. '
-         'Reducir DSO a 60 días liberaría ~$1.8M en efectivo.'),
-        ('🟠 IMPORTANTE — Reducir inventario (DIO 201→90 días)',
-         'Auditar inventario para identificar obsoletos y de lento movimiento. Implementar '
-         'política de inventario just-in-time para productos de alta rotación. '
-         'Meta: DIO<90 días liberaría ~$1.6M adicional en efectivo.'),
-        ('🟡 ESTRATÉGICO — Plan de crecimiento de ingresos',
-         'Con la estructura actual, el punto de equilibrio requiere ~$3.1M en ingresos. '
-         'Definir plan concreto para incrementar ventas 30-35% o reducir estructura de costos. '
-         'Evaluar mezcla de productos por margen de contribución.'),
-        ('🟢 OPORTUNIDAD — Aprovechar posición patrimonial',
-         'La empresa tiene $16.6M en capital contable y 0 deuda financiera. '
-         'Existe capacidad de apalancamiento para financiar capital de trabajo o inversión '
-         'sin comprometer la solvencia — si se estabiliza la operación primero.'),
-    ]
+    recomendaciones = []
+    if ebitda < 0:
+        _peq = (gop / (mb / 100)) if mb > 0 else 0
+        recomendaciones.append((
+            '🔴 URGENTE — Reducir gastos operativos',
+            f"Los gastos operativos de {gop_s} ({gop_pct:.1f}% de ventas) superan la utilidad bruta "
+            f"en {fmt(gop_xcs)}. Realizar análisis línea por línea para identificar reducción del 15-25%."
+            + (f" Punto de equilibrio estimado ~{fmt(_peq)} en ingresos." if _peq > 0 else "")
+        ))
+    if dso_v > 60:
+        _cob_lib = (dso_v - 60) / 365 * ing
+        recomendaciones.append((
+            f'🔴 URGENTE — Acelerar cobranza (DSO {dso_v}→60 días)',
+            f"Implementar política de cobro activa: anticipos 30-50%, descuentos por pronto pago, "
+            f"seguimiento semanal de cuentas >60 días. Reducir a 60d liberaría ~{fmt(_cob_lib)} en efectivo."
+        ))
+    if dio_v > 90:
+        _inv_lib = (dio_v - 90) / 365 * DATA['costo_ventas']
+        recomendaciones.append((
+            f'🟠 IMPORTANTE — Reducir inventario (DIO {dio_v}→90 días)',
+            f"Auditar inventario para identificar obsoletos y de lento movimiento. "
+            f"Meta DIO<90 días liberaría ~{fmt(_inv_lib)} adicional en efectivo."
+        ))
+    recomendaciones.append((
+        '🟡 ESTRATÉGICO — Plan de crecimiento de ingresos',
+        f"Definir plan concreto para incrementar ventas o reducir estructura de costos. "
+        f"Evaluar mezcla de productos por margen de contribución y optimizar el ciclo operativo."
+    ))
+    if cap > 0 and dc == 0:
+        recomendaciones.append((
+            '🟢 OPORTUNIDAD — Aprovechar posición patrimonial',
+            f"La empresa tiene {cap_s} en capital contable y {_dc_txt2}. "
+            f"Existe capacidad de apalancamiento para financiar capital de trabajo "
+            f"si se estabiliza la operación primero."
+        ))
 
     for titulo, cuerpo in recomendaciones:
         rec_data = [[Paragraph(titulo, styles['recom_title'])],
