@@ -1503,53 +1503,95 @@ async def get_sankey_data(
 async def get_top_debtors(
     request: Request,
     current_user: Dict = Depends(get_current_user),
-    limit: int = Query(5, description="Número de clientes/proveedores top")
+    limit: int = Query(5, description="Número de registros top")
 ):
     """Top clientes con mayor CxC pendiente y top proveedores con mayor CxP pendiente"""
     company_id = await get_active_company_id(request, current_user)
 
-    cfdis = await db.cfdis.find(
-        {'company_id': company_id},
-        {'_id': 0, 'tipo_cfdi': 1, 'emisor_nombre': 1, 'receptor_nombre': 1,
-         'total': 1, 'monto_cobrado': 1, 'monto_pagado': 1,
-         'fecha_emision': 1, 'moneda': 1, 'tipo_cambio': 1}
-    ).to_list(10000)
+    # Estrategia 1: leer de contalink_cache (tiene cliente_nombre / proveedor_nombre)
+    cxc_docs = await db.contalink_cache.find_one(
+        {'company_id': company_id, 'tipo': 'cxc'},
+        {'_id': 0, 'data': 1}
+    )
+    cxp_docs = await db.contalink_cache.find_one(
+        {'company_id': company_id, 'tipo': 'cxp'},
+        {'_id': 0, 'data': 1}
+    )
 
-    cxc = {}
-    cxp = {}
+    top_cxc = []
+    top_cxp = []
 
-    for c in cfdis:
-        total = c.get('total', 0) or 0
-        tc = c.get('tipo_cambio', 1) or 1
-        moneda = c.get('moneda', 'MXN') or 'MXN'
-        total_mxn = total * tc if moneda != 'MXN' else total
+    if cxc_docs and cxc_docs.get('data'):
+        cxc_map = {}
+        for f in cxc_docs['data']:
+            nombre = f.get('cliente_nombre') or f.get('nombre') or 'Sin nombre'
+            monto = float(f.get('saldo_pendiente') or f.get('total') or 0)
+            if monto > 0:
+                cxc_map[nombre] = cxc_map.get(nombre, 0) + monto
+        top_cxc = sorted(
+            [{'nombre': k, 'monto': round(v, 2)} for k, v in cxc_map.items()],
+            key=lambda x: x['monto'], reverse=True
+        )[:limit]
 
-        if c.get('tipo_cfdi') == 'ingreso':
-            cobrado = c.get('monto_cobrado', 0) or 0
-            saldo = max(0, total_mxn - cobrado * (tc if moneda != 'MXN' else 1))
-            if saldo > 0.01:
-                nombre = c.get('receptor_nombre') or c.get('emisor_nombre') or 'Sin nombre'
-                cxc[nombre] = cxc.get(nombre, 0) + saldo
-        else:
-            pagado = c.get('monto_pagado', 0) or 0
-            saldo = max(0, total_mxn - pagado * (tc if moneda != 'MXN' else 1))
-            if saldo > 0.01:
-                nombre = c.get('emisor_nombre') or c.get('receptor_nombre') or 'Sin nombre'
-                cxp[nombre] = cxp.get(nombre, 0) + saldo
+    if cxp_docs and cxp_docs.get('data'):
+        cxp_map = {}
+        for f in cxp_docs['data']:
+            nombre = f.get('proveedor_nombre') or f.get('nombre') or 'Sin nombre'
+            monto = float(f.get('saldo_pendiente') or f.get('total') or 0)
+            if monto > 0:
+                cxp_map[nombre] = cxp_map.get(nombre, 0) + monto
+        top_cxp = sorted(
+            [{'nombre': k, 'monto': round(v, 2)} for k, v in cxp_map.items()],
+            key=lambda x: x['monto'], reverse=True
+        )[:limit]
 
-    top_cxc = sorted(
-        [{'nombre': k, 'monto': round(v, 2)} for k, v in cxc.items()],
-        key=lambda x: x['monto'], reverse=True
-    )[:limit]
+    # Estrategia 2 (fallback): si contalink_cache no tiene datos, buscar en cfdis
+    if not top_cxc and not top_cxp:
+        cfdis = await db.cfdis.find(
+            {'company_id': company_id},
+            {'_id': 0, 'tipo_cfdi': 1, 'emisor_nombre': 1, 'receptor_nombre': 1,
+             'cfdi_emisor': 1, 'cfdi_receptor': 1,
+             'total': 1, 'monto_cobrado': 1, 'monto_pagado': 1,
+             'moneda': 1, 'tipo_cambio': 1}
+        ).to_list(10000)
 
-    top_cxp = sorted(
-        [{'nombre': k, 'monto': round(v, 2)} for k, v in cxp.items()],
-        key=lambda x: x['monto'], reverse=True
-    )[:limit]
+        cxc_map = {}
+        cxp_map = {}
+        for c in cfdis:
+            total = float(c.get('total', 0) or 0)
+            tc = float(c.get('tipo_cambio', 1) or 1)
+            moneda = c.get('moneda', 'MXN') or 'MXN'
+            total_mxn = total * tc if moneda != 'MXN' else total
+
+            if c.get('tipo_cfdi') == 'ingreso':
+                cobrado = float(c.get('monto_cobrado', 0) or 0)
+                cobrado_mxn = cobrado * tc if moneda != 'MXN' else cobrado
+                saldo = max(0, total_mxn - cobrado_mxn)
+                if saldo > 0.01:
+                    nombre = (c.get('cfdi_receptor') or c.get('receptor_nombre') or
+                              c.get('cfdi_emisor') or c.get('emisor_nombre') or 'Sin nombre')
+                    cxc_map[nombre] = cxc_map.get(nombre, 0) + saldo
+            else:
+                pagado = float(c.get('monto_pagado', 0) or 0)
+                pagado_mxn = pagado * tc if moneda != 'MXN' else pagado
+                saldo = max(0, total_mxn - pagado_mxn)
+                if saldo > 0.01:
+                    nombre = (c.get('cfdi_emisor') or c.get('emisor_nombre') or
+                              c.get('cfdi_receptor') or c.get('receptor_nombre') or 'Sin nombre')
+                    cxp_map[nombre] = cxp_map.get(nombre, 0) + saldo
+
+        top_cxc = sorted(
+            [{'nombre': k, 'monto': round(v, 2)} for k, v in cxc_map.items()],
+            key=lambda x: x['monto'], reverse=True
+        )[:limit]
+        top_cxp = sorted(
+            [{'nombre': k, 'monto': round(v, 2)} for k, v in cxp_map.items()],
+            key=lambda x: x['monto'], reverse=True
+        )[:limit]
 
     return {
         'top_cxc': top_cxc,
         'top_cxp': top_cxp,
-        'total_cxc': round(sum(cxc.values()), 2),
-        'total_cxp': round(sum(cxp.values()), 2)
+        'total_cxc': round(sum(c['monto'] for c in top_cxc), 2),
+        'total_cxp': round(sum(p['monto'] for p in top_cxp), 2)
     }
