@@ -1212,124 +1212,201 @@ const CashflowProjections = () => {
     toast.info('Generando PDF, por favor espere...');
 
     try {
-      await new Promise(r => setTimeout(r, 1500));
-
       const empresa = companyConfig?.nombre || 'TaxnFin';
-      const fecha = new Date().toLocaleDateString('es-MX', {
+      const rfc     = companyConfig?.rfc || '';
+      const fecha   = new Date().toLocaleDateString('es-MX', {
         day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
       });
 
-      const kpiEl   = document.getElementById('cashflow-kpi-charts');
-      const tableEl = document.getElementById('cashflow-table-model');
-      if (!kpiEl) { toast.error('Contenedor no encontrado'); return; }
+      const fmt = (n) => {
+        if (!n && n !== 0) return '$0';
+        const neg = n < 0;
+        const abs = Math.abs(n);
+        const s = abs >= 1_000_000 ? `$${(abs / 1_000_000).toFixed(2)}M`
+                : abs >= 1_000     ? `$${(abs / 1_000).toFixed(0)}K`
+                :                    `$${abs.toFixed(0)}`;
+        return neg ? `-${s}` : s;
+      };
 
-      // ── PASO 1: Capturar KPIs + Gráficas con ancho exacto del elemento ─
-      const kpiRect = kpiEl.getBoundingClientRect();
-      const canvasKPIs = await html2canvas(kpiEl, {
-        scale: 0.9,
-        useCORS: true,
-        allowTaint: true,
-        foreignObjectRendering: true,
-        backgroundColor: '#f8fafc',
-        x: 0,
-        y: 0,
-        width:        kpiEl.offsetWidth,
-        height:       kpiEl.offsetHeight,
-        windowWidth:  kpiEl.offsetWidth,
-        windowHeight: kpiEl.offsetHeight,
-        scrollX: -kpiRect.left,
-        scrollY: -kpiRect.top,
-        onclone: (doc) => {
-          const el = doc.getElementById('cashflow-kpi-charts');
-          if (el) {
-            el.style.backgroundColor = '#f8fafc';
-            el.style.width = kpiEl.offsetWidth + 'px';
-          }
-          doc.querySelectorAll('iframe').forEach(e => e.remove());
-        },
+      const pdf  = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3', compress: true });
+      const W    = pdf.internal.pageSize.getWidth();
+      const H    = pdf.internal.pageSize.getHeight();
+      const margin = 12;
+
+      // ── HEADER navy ──────────────────────────────────────────────────────
+      pdf.setFillColor(15, 23, 42);
+      pdf.rect(0, 0, W, 30, 'F');
+      pdf.setFontSize(7);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(100, 180, 255);
+      pdf.text('PROYECCIÓN DE FLUJO DE EFECTIVO · 18 SEMANAS ROLLING', margin, 10);
+      pdf.setFontSize(20);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(255, 255, 255);
+      pdf.text(empresa, margin, 22);
+      if (rfc) {
+        pdf.setFontSize(8);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(148, 163, 184);
+        pdf.text(`RFC: ${rfc}`, margin, 28);
+      }
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(148, 163, 184);
+      pdf.text(fecha, W - margin, 14, { align: 'right' });
+      pdf.setTextColor(100, 180, 255);
+      pdf.text('Análisis: TaxnFin CFO Intelligence', W - margin, 22, { align: 'right' });
+
+      // ── KPI CARDS ─────────────────────────────────────────────────────────
+      const rn  = cfoKPIs?.totalFlujoNetoReal        ?? 0;
+      const pn  = cfoKPIs?.acumuladoProyectadoFinal  ?? 0;
+      const ir  = cfoKPIs?.totalIngresosReales        ?? 0;
+      const er  = cfoKPIs?.totalEgresosReales         ?? 0;
+      const ip  = cfoKPIs?.totalIngresosProyectados   ?? 0;
+      const ep  = cfoKPIs?.totalEgresosProyectados    ?? 0;
+      const br  = cfoKPIs?.burnRateReal               ?? 0;
+      const rwy = cfoKPIs?.runway                     ?? 0;
+      const wrk = cfoKPIs?.semanasEnRiesgo?.length    ?? 0;
+
+      const kpiCards = [
+        { label: 'FLUJO NETO REAL ACUMULADO',   text: fmt(rn),  color: rn >= 0  ? [22,163,74] : [220,38,38] },
+        { label: 'FLUJO NETO PROYECTADO TOTAL', text: fmt(pn),  color: pn >= 0  ? [22,163,74] : [220,38,38] },
+        { label: 'INGRESOS REALES',             text: fmt(ir),  color: [22,163,74]  },
+        { label: 'EGRESOS REALES',              text: fmt(er),  color: [220,38,38]  },
+        { label: 'INGRESOS PROYECTADOS',        text: fmt(ip),  color: [22,163,74]  },
+        { label: 'EGRESOS PROYECTADOS',         text: fmt(ep),  color: [220,38,38]  },
+        { label: 'BURN RATE REAL / SEM',        text: fmt(br),  color: [59,130,246] },
+        { label: 'RUNWAY (SEMANAS)',            text: `${rwy} sem`, color: rwy < 8 ? [220,38,38] : [22,163,74] },
+        { label: 'SEMANAS EN RIESGO',           text: `${wrk} visible(s)`, color: wrk > 0 ? [220,38,38] : [22,163,74] },
+      ];
+
+      const cols  = 3;
+      const cardW = (W - margin * 2 - (cols - 1) * 4) / cols;
+      const cardH = 20;
+      let cardY   = 36;
+
+      kpiCards.forEach((card, i) => {
+        if (i > 0 && i % cols === 0) cardY += cardH + 4;
+        const cx = margin + (i % cols) * (cardW + 4);
+
+        pdf.setFillColor(248, 250, 252);
+        pdf.setDrawColor(226, 232, 240);
+        pdf.setLineWidth(0.3);
+        pdf.roundedRect(cx, cardY, cardW, cardH, 2, 2, 'FD');
+
+        pdf.setFontSize(6.5);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(card.label, cx + 4, cardY + 7);
+
+        pdf.setFontSize(13);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(...card.color);
+        pdf.text(card.text, cx + 4, cardY + 16);
       });
 
-      // ── PASO 2: Expandir tabla → capturar con ancho completo ──────────
+      // ── LÍNEA + ANÁLISIS NARRATIVO ────────────────────────────────────────
+      const sepY = cardY + cardH + 8;
+      pdf.setDrawColor(226, 232, 240);
+      pdf.setLineWidth(0.5);
+      pdf.line(margin, sepY, W - margin, sepY);
+
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(15, 23, 42);
+      pdf.text('Análisis del Período', margin, sepY + 7);
+
+      const runwayTexto = rwy >= 52 ? 'más de un año' : `${rwy} semanas (${(rwy / 4.33).toFixed(1)} meses)`;
+      const parrafos = [
+        `La empresa registra un flujo neto real acumulado de ${fmt(rn)} en el período analizado. ` +
+        `El runway operativo estimado es de ${runwayTexto} considerando el ritmo actual de egresos.`,
+        wrk === 0
+          ? 'No se identifican semanas críticas de liquidez en el horizonte de 18 semanas proyectadas.'
+          : `Se identifican ${wrk} semana(s) con riesgo de liquidez dentro del horizonte proyectado. Se recomienda atención inmediata.`,
+        'La tabla en la siguiente página muestra el detalle semanal de ingresos, egresos, flujo neto y saldo final.',
+      ];
+
+      let textY = sepY + 14;
+      parrafos.forEach(p => {
+        const lines = pdf.splitTextToSize(p, W - margin * 2);
+        pdf.setFontSize(8.5);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(51, 65, 85);
+        pdf.text(lines, margin, textY);
+        textY += lines.length * 5 + 4;
+      });
+
+      // Footer pág 1
+      pdf.setFontSize(7);
+      pdf.setTextColor(150, 150, 150);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text('TaxnFin', margin, H - 4);
+      pdf.text(`${empresa} · Proyección de Flujo de Efectivo · 18 Semanas Rolling | ${fecha}`, W / 2, H - 4, { align: 'center' });
+
+      // ── PÁGINAS 2+: TABLA DEL MODELO ─────────────────────────────────────
+      await new Promise(r => setTimeout(r, 500));
+      const tableEl = document.getElementById('cashflow-table-model');
       if (tableEl) {
-        tableEl.style.overflow = 'visible';
-        tableEl.style.width    = tableEl.scrollWidth + 'px';
-      }
-      await new Promise(r => setTimeout(r, 300));
+        const captureW  = Math.max(tableEl.scrollWidth, 2800);
+        const canvasTable = await html2canvas(tableEl, {
+          scale: 0.65,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          width:        captureW,
+          height:       tableEl.scrollHeight,
+          windowWidth:  captureW,
+          windowHeight: tableEl.scrollHeight,
+          onclone: (doc) => {
+            doc.querySelectorAll('iframe').forEach(e => e.remove());
+            const el = doc.getElementById('cashflow-table-model');
+            if (el) { el.style.overflow = 'visible'; el.style.width = 'max-content'; el.style.maxWidth = 'none'; }
+          },
+        });
 
-      const canvasTable = tableEl
-        ? await html2canvas(tableEl, {
-            scale: 0.65,
-            useCORS: true,
-            allowTaint: true,
-            backgroundColor: '#ffffff',
-            width:        tableEl.scrollWidth,
-            height:       tableEl.scrollHeight,
-            windowWidth:  tableEl.scrollWidth,
-            windowHeight: tableEl.scrollHeight,
-            onclone: (doc) => {
-              doc.querySelectorAll('*').forEach(el => { if (el.style) el.style.overflow = 'visible'; });
-              doc.querySelectorAll('iframe').forEach(e => e.remove());
-            },
-          })
-        : null;
-
-      if (tableEl) { tableEl.style.overflow = ''; tableEl.style.width = ''; }
-
-      // ── PASO 3: Construir PDF A3 landscape ────────────────────────────
-      const pdf      = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3', compress: true });
-      const pageW    = pdf.internal.pageSize.getWidth();
-      const pageH    = pdf.internal.pageSize.getHeight();
-      const margin   = 8;
-      const contentW = pageW - margin * 2;
-      const contentH = pageH - margin * 2 - 8;
-
-      // Página 1: KPIs + Gráficas
-      const kpiImgH = Math.min((canvasKPIs.height * contentW) / canvasKPIs.width, contentH);
-      pdf.addImage(canvasKPIs.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, contentW, kpiImgH);
-
-      // Páginas 2+: Tabla paginada
-      if (canvasTable) {
-        const totalTableH = (canvasTable.height * contentW) / canvasTable.width;
+        const tableImgW = W - margin * 2;
+        const contentH  = H - margin * 2 - 8;
+        const totalTableH = (canvasTable.height * tableImgW) / canvasTable.width;
         let yPos = 0;
+
         while (yPos < totalTableH) {
           pdf.addPage();
           const srcY = (yPos / totalTableH) * canvasTable.height;
           const srcH = Math.min((contentH / totalTableH) * canvasTable.height, canvasTable.height - srcY);
 
-          const pc    = document.createElement('canvas');
-          pc.width    = canvasTable.width;
-          pc.height   = srcH;
-          const ctx   = pc.getContext('2d');
+          const pc      = document.createElement('canvas');
+          pc.width      = canvasTable.width;
+          pc.height     = Math.max(srcH, 1);
+          const ctx     = pc.getContext('2d');
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, pc.width, pc.height);
           ctx.drawImage(canvasTable, 0, srcY, canvasTable.width, srcH, 0, 0, canvasTable.width, srcH);
 
-          const ph = (srcH * contentW) / canvasTable.width;
-          pdf.addImage(pc.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, contentW, ph);
+          const ph = (srcH * tableImgW) / canvasTable.width;
+          pdf.addImage(pc.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, tableImgW, ph);
+
+          pdf.setFontSize(7);
+          pdf.setTextColor(150, 150, 150);
+          pdf.text('TaxnFin', margin, H - 4);
+          pdf.text(`${empresa} · Proyección de Flujo de Efectivo · 18 Semanas Rolling | ${fecha}`, W / 2, H - 4, { align: 'center' });
           yPos += contentH;
         }
       }
 
-      // Footer en todas las páginas
+      // Numeración final
       const totalPages = pdf.internal.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         pdf.setPage(i);
         pdf.setFontSize(7);
         pdf.setTextColor(150, 150, 150);
-        pdf.text('TaxnFin', margin, pageH - 3);
-        pdf.text(
-          `${empresa} · Proyección de Flujo de Efectivo · 18 Semanas Rolling | ${fecha}`,
-          pageW / 2, pageH - 3, { align: 'center' }
-        );
-        pdf.text(`${i} / ${totalPages}`, pageW - margin, pageH - 3, { align: 'right' });
+        pdf.text(`${i} / ${totalPages}`, W - margin, H - 4, { align: 'right' });
       }
 
       pdf.save(`TaxnFin_FlujoCaja_${empresa.replace(/\s/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
       toast.success('PDF generado correctamente');
     } catch (error) {
-      // Restaurar tabla si quedó oculta/expandida por error
-      const tableEl = document.getElementById('cashflow-table-model');
-      if (tableEl) { tableEl.style.display = ''; tableEl.style.overflow = ''; tableEl.style.width = ''; }
+      const tEl = document.getElementById('cashflow-table-model');
+      if (tEl) { tEl.style.overflow = ''; tEl.style.width = ''; }
       console.error('PDF error:', error);
       toast.error('Error: ' + (error?.message || 'desconocido'));
     } finally {
