@@ -74,6 +74,7 @@ const CashflowProjections = () => {
   // PDF export state
   const [exportingPdf, setExportingPdf] = useState(false);
   const reportRef = useRef(null);
+  const chartsRef = useRef(null);
   // Ref para el patrón "latest ref": openKpiModal lee de aquí en lugar de closures del render
   const kpiStateRef = useRef({ cfoKPIs: null, KPI_DEFS: null, formatCurrency: null });
   const [newConcept, setNewConcept] = useState({
@@ -1209,95 +1210,59 @@ const CashflowProjections = () => {
       toast.error('No se pudo encontrar el contenido para exportar');
       return;
     }
-    
+
     setExportingPdf(true);
     toast.info('Generando PDF, por favor espere...');
-    
-    try {
-      // ── 1. Capturar el contenido como imagen de alta resolución ──────
-      const el = reportRef.current;
-      const canvas = await html2canvas(el, {
-        scale: 1.5,         // Reducido para menor tamaño de canvas y mejor ajuste en A3
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#FFFFFF',
-        scrollX: 0,
-        scrollY: -window.scrollY,
-        width: el.scrollWidth,
-        windowWidth: el.scrollWidth,
-      });
-      
-      const imgData = canvas.toDataURL('image/png');
 
-      // ── 2. Configuración de página ────────────────────────────────────
-      const MARGIN      = 12;   // mm — margen lateral y superior
-      const FOOTER_H    = 10;   // mm — altura reservada para el footer
-      const HEADER_H    = 0;    // mm — sin header extra (el contenido ya lo tiene)
+    try {
+      const MARGIN   = 12;
+      const FOOTER_H = 10;
+      const TOTAL_PAGES = 2;
 
       const pdf = new jsPDF({
         orientation: 'landscape',
         unit: 'mm',
-        format: 'a3',       // A3 landscape: 420×297 mm — más espacio horizontal
+        format: 'a3',
         compress: true,
       });
 
-      const pageW = pdf.internal.pageSize.getWidth();   // 297 mm
-      const pageH = pdf.internal.pageSize.getHeight();  // 210 mm
-
-      // Área imprimible (excluyendo márgenes y footer)
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
       const printW = pageW - MARGIN * 2;
-      const printH = pageH - MARGIN - FOOTER_H - HEADER_H;
+      const printH = pageH - MARGIN - FOOTER_H;
 
-      // ── 3. Calcular dimensiones proporcionales de la imagen ───────────
-      // La imagen completa tiene este alto en mm si la anclamos al ancho imprimible
-      const fullImgH = (canvas.height / canvas.width) * printW;
+      // ── Helper: capturar un elemento como imagen y añadirlo al PDF ────
+      const addElementPage = async (el, pageIndex) => {
+        if (pageIndex > 0) pdf.addPage();
 
-      // Total de páginas necesarias
-      const totalPages = Math.ceil(fullImgH / printH);
+        const canvas = await html2canvas(el, {
+          scale: 1.5,
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#FFFFFF',
+          scrollX: 0,
+          scrollY: -window.scrollY,
+          width: el.scrollWidth,
+          windowWidth: el.scrollWidth,
+        });
 
-      // Proporción px/mm para saber cuántos px corresponden a printH mm
-      const pxPerMm = canvas.width / printW;
-      const sliceH_px = Math.round(printH * pxPerMm); // px por página
+        const imgH = (canvas.height / canvas.width) * printW;
+        const imgData = canvas.toDataURL('image/png');
+        pdf.addImage(imgData, 'PNG', MARGIN, MARGIN, printW, imgH);
 
-      // ── 4. Crear un canvas temporal para cada "rebanada" de página ────
-      // Esto garantiza que NUNCA se corte texto a mitad — cada página
-      // renderiza exactamente su porción sin overflow.
-      for (let page = 0; page < totalPages; page++) {
-        if (page > 0) pdf.addPage();
-
-        const srcY  = page * sliceH_px;
-        const srcH  = Math.min(sliceH_px, canvas.height - srcY); // última página puede ser más corta
-        const dstH  = (srcH / pxPerMm); // mm que ocupa esta rebanada
-
-        // Canvas temporal con solo el slice de esta página
-        const sliceCanvas = document.createElement('canvas');
-        sliceCanvas.width  = canvas.width;
-        sliceCanvas.height = srcH;
-        const ctx = sliceCanvas.getContext('2d');
-        // Fondo blanco
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-        ctx.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
-
-        const sliceData = sliceCanvas.toDataURL('image/png');
-        pdf.addImage(sliceData, 'PNG', MARGIN, MARGIN + HEADER_H, printW, dstH);
-
-        // ── 5. Footer CEO-grade ──────────────────────────────────────────
-        // Línea divisoria
+        // Footer
         pdf.setDrawColor(180, 180, 180);
         pdf.setLineWidth(0.3);
         pdf.line(MARGIN, pageH - FOOTER_H, pageW - MARGIN, pageH - FOOTER_H);
 
-        // Logo / marca izquierda
         pdf.setFont('helvetica', 'bold');
         pdf.setFontSize(7);
-        pdf.setTextColor(15, 23, 42);   // slate-900
+        pdf.setTextColor(15, 23, 42);
         pdf.text('TaxnFin', MARGIN, pageH - FOOTER_H + 4);
 
-        // Documento centro
         pdf.setFont('helvetica', 'normal');
         pdf.setFontSize(7);
-        pdf.setTextColor(100, 116, 139); // slate-500
+        pdf.setTextColor(100, 116, 139);
         pdf.text(
           `${companyConfig.nombre || 'TaxnFin'} · Proyección de Flujo de Efectivo · 18 Semanas Rolling | ${format(new Date(), "dd 'de' MMMM yyyy, HH:mm", { locale: es })}`,
           pageW / 2,
@@ -1305,19 +1270,32 @@ const CashflowProjections = () => {
           { align: 'center' }
         );
 
-        // Paginación derecha
         pdf.setFont('helvetica', 'bold');
         pdf.setFontSize(7);
         pdf.setTextColor(100, 116, 139);
         pdf.text(
-          `${page + 1} / ${totalPages}`,
+          `${pageIndex + 1} / ${TOTAL_PAGES}`,
           pageW - MARGIN,
           pageH - FOOTER_H + 4,
           { align: 'right' }
         );
+      };
+
+      // ── PÁGINA 1: Header + KPIs + Flujo Acumulado + Tabla ─────────────
+      // Ocultar temporalmente las gráficas para que no aparezcan en pág. 1
+      const chartsEl = chartsRef.current;
+      if (chartsEl) chartsEl.style.display = 'none';
+
+      await addElementPage(reportRef.current, 0);
+
+      if (chartsEl) chartsEl.style.display = '';
+
+      // ── PÁGINA 2: Solo las 4 gráficas ──────────────────────────────────
+      if (chartsEl) {
+        await addElementPage(chartsEl, 1);
       }
 
-      // ── 6. Metadata del documento ────────────────────────────────────
+      // ── Metadata ────────────────────────────────────────────────────────
       pdf.setProperties({
         title:    'Proyección de Flujo de Efectivo — TaxnFin',
         subject:  'Modelo Rolling 18 Semanas',
@@ -1325,14 +1303,15 @@ const CashflowProjections = () => {
         keywords: 'cashflow, proyecciones, flujo de efectivo',
         creator:  'TaxnFin',
       });
-      
-      // Descargar el PDF
+
       const fileName = `TaxnFin_FlujoCaja_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
       pdf.save(fileName);
-      
+
       toast.success('PDF exportado exitosamente');
     } catch (error) {
       console.error('Error exportando PDF:', error);
+      // Restaurar visibilidad si hubo error
+      if (chartsRef.current) chartsRef.current.style.display = '';
       toast.error('Error al exportar PDF: ' + error.message);
     } finally {
       setExportingPdf(false);
@@ -2677,7 +2656,7 @@ const CashflowProjections = () => {
 
           {/* ===== GRÁFICOS COMPARATIVOS ===== */}
           {chartData.length > 0 && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-testid="charts-section">
+            <div ref={chartsRef} className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-testid="charts-section">
               {/* Gráfico 1: Flujo Acumulado Real vs Proyectado */}
               <Card>
                 <CardHeader className="py-3">
