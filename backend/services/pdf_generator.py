@@ -339,7 +339,7 @@ class NumberedCanvas(canvas.Canvas):
         self.setFillColor(MGRAY)
         self.drawString(15*mm, 7*mm, f"{DATA['empresa']} • Reporte Ejecutivo • {DATA['periodo']}")
         self.drawCentredString(W/2, 7*mm, f"RFC: {DATA['rfc']}")
-        self.drawRightString(W - 15*mm, 7*mm, f"Análisis: Claude Sonnet • {DATA['fecha']}")
+        self.drawRightString(W - 15*mm, 7*mm, f"Análisis: IA TaxnFin • {DATA['fecha']}")
 
 # ── Build PDF ────────────────────────────────────────────────────────────────
 def build_pdf(output_path):
@@ -349,7 +349,7 @@ def build_pdf(output_path):
         leftMargin=18*mm, rightMargin=18*mm,
         topMargin=12*mm, bottomMargin=24*mm,
         title=f"Reporte Ejecutivo {DATA['empresa']} {DATA['periodo']}",
-        author="TaxnFin • Claude Sonnet"
+        author="IA TaxnFin"
     )
 
     styles = make_styles()
@@ -471,7 +471,7 @@ def build_pdf(output_path):
         canvas_obj.setFillColor(MGRAY)
         canvas_obj.drawString(18*mm, 7*mm, f"{DATA['empresa']} • Reporte Ejecutivo • {DATA['periodo']}")
         canvas_obj.drawCentredString(W/2, 7*mm, f"RFC: {DATA['rfc']}")
-        canvas_obj.drawRightString(W-18*mm, 7*mm, f"Análisis: TaxnFin · Claude Sonnet • {DATA['fecha']}")
+        canvas_obj.drawRightString(W-18*mm, 7*mm, f"Análisis: IA TaxnFin • {DATA['fecha']}")
         canvas_obj.restoreState()
 
     pt_cover   = PageTemplate(id='Cover',   frames=[cover_frame],   onPage=portada)
