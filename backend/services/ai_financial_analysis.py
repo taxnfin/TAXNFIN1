@@ -43,11 +43,11 @@ def _build_prompt(
     bal = balance_sheet or {}
     met = metrics or {}
 
-    ventas = _fmt(inc.get('ventas_netas') or inc.get('ingresos_totales', 0))
+    ventas = _fmt(inc.get('ventas_netas') or inc.get('ingresos') or inc.get('ingresos_totales', 0))
     utilidad_bruta = _fmt(inc.get('utilidad_bruta', 0))
     utilidad_op = _fmt(inc.get('utilidad_operativa') or inc.get('utilidad_operacional', 0))
     utilidad_neta = _fmt(inc.get('utilidad_neta', 0))
-    ebitda = _fmt(inc.get('ebitda', 0))
+    ebitda = _fmt(inc.get('ebitda') or inc.get('utilidad_operativa', 0))
 
     activo_total = _fmt(bal.get('activo_total') or bal.get('total_activos', 0))
     activo_circ = _fmt(bal.get('activo_circulante') or bal.get('activos_corrientes', 0))
