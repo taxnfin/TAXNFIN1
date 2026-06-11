@@ -1206,112 +1206,82 @@ const CashflowProjections = () => {
   // EXPORTAR A PDF
   // =====================================================================
   const exportToPDF = async () => {
-    if (!reportRef.current) {
-      toast.error('No se pudo encontrar el contenido para exportar');
-      return;
-    }
-
-    console.log('reportRef:', reportRef.current);
-    console.log('chartsRef:', chartsRef.current);
     setExportingPdf(true);
     toast.info('Generando PDF, por favor espere...');
 
     try {
-      const MARGIN   = 12;
-      const FOOTER_H = 10;
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-      // ── 1. Capturar ambos elementos en paralelo ────────────────────────
-      // reportRef: data-html2canvas-ignore en chartsRef excluye las gráficas automáticamente
-      // chartsRef: se captura como root — el atributo ignore no aplica al elemento raíz
-      const reportEl = reportRef.current;
-      const chartsEl = chartsRef.current;
+      const element = document.getElementById('cashflow-report-container');
+      if (!element) {
+        toast.error('No se encontró el contenedor del reporte');
+        return;
+      }
 
-      const captureOpts = (el) => ({
+      const canvas = await html2canvas(element, {
         scale: 1.5,
         useCORS: true,
         logging: false,
-        backgroundColor: '#FFFFFF',
-        scrollX: 0,
-        scrollY: -window.scrollY,
-        width: el.scrollWidth,
-        windowWidth: el.scrollWidth,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
       });
 
-      const captures = chartsEl
-        ? await Promise.all([
-            html2canvas(reportEl, captureOpts(reportEl)),
-            html2canvas(chartsEl, captureOpts(chartsEl)),
-          ])
-        : [await html2canvas(reportEl, captureOpts(reportEl))];
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3', compress: true });
+      const W = pdf.internal.pageSize.getWidth();
+      const H = pdf.internal.pageSize.getHeight() - 10;
 
-      const [canvasReport, canvasCharts] = captures;
+      const imgData   = canvas.toDataURL('image/png');
+      const imgWidth  = W;
+      const imgHeight = (canvas.height * W) / canvas.width;
 
-      // ── 2. Construir PDF ───────────────────────────────────────────────
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'mm',
-        format: 'a3',
-        compress: true,
-      });
+      if (imgHeight <= H) {
+        pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+      } else {
+        let yOffset = 0;
+        let pageNum = 1;
+        while (yOffset < imgHeight) {
+          if (pageNum > 1) pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, -yOffset, imgWidth, imgHeight);
+          yOffset += H;
+          pageNum++;
+        }
+      }
 
-      const pageW  = pdf.internal.pageSize.getWidth();
-      const pageH  = pdf.internal.pageSize.getHeight();
-      const printW = pageW - MARGIN * 2;
-      const TOTAL  = canvasCharts ? 2 : 1;
+      const totalPages = pdf.internal.getNumberOfPages();
+      const empresa    = companyConfig?.nombre || 'TaxnFin';
+      const fecha      = format(new Date(), "dd 'de' MMMM yyyy, HH:mm", { locale: es });
 
-      const addCanvasToPage = (canvas, pageNum) => {
-        const imgH = (canvas.height / canvas.width) * printW;
-        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', MARGIN, MARGIN, printW, imgH);
-
-        // Footer — línea divisoria + texto
+      for (let i = 1; i <= totalPages; i++) {
+        pdf.setPage(i);
         pdf.setDrawColor(180, 180, 180);
         pdf.setLineWidth(0.3);
-        pdf.line(MARGIN, pageH - FOOTER_H, pageW - MARGIN, pageH - FOOTER_H);
+        pdf.line(8, H + 2, W - 8, H + 2);
 
         pdf.setFont('helvetica', 'bold');
         pdf.setFontSize(7);
         pdf.setTextColor(15, 23, 42);
-        pdf.text('TaxnFin', MARGIN, pageH - FOOTER_H + 4);
+        pdf.text('TaxnFin', 8, H + 8);
 
         pdf.setFont('helvetica', 'normal');
         pdf.setFontSize(7);
         pdf.setTextColor(100, 116, 139);
         pdf.text(
-          `${companyConfig.nombre || 'TaxnFin'} · Proyección de Flujo de Efectivo · 18 Semanas Rolling | ${format(new Date(), "dd 'de' MMMM yyyy, HH:mm", { locale: es })}`,
-          pageW / 2,
-          pageH - FOOTER_H + 4,
-          { align: 'center' }
+          `${empresa} · Proyección de Flujo de Efectivo · 18 Semanas Rolling | ${fecha}`,
+          W / 2, H + 8, { align: 'center' }
         );
 
         pdf.setFont('helvetica', 'bold');
         pdf.setFontSize(7);
         pdf.setTextColor(100, 116, 139);
-        pdf.text(`${pageNum} / ${TOTAL}`, pageW - MARGIN, pageH - FOOTER_H + 4, { align: 'right' });
-      };
-
-      // Página 1: KPIs + Flujo Acumulado + Tabla (sin gráficas)
-      addCanvasToPage(canvasReport, 1);
-
-      // Página 2: 4 gráficas
-      if (canvasCharts) {
-        pdf.addPage();
-        addCanvasToPage(canvasCharts, 2);
+        pdf.text(`${i} / ${totalPages}`, W - 8, H + 8, { align: 'right' });
       }
 
-      // ── 3. Metadata y descarga ──────────────────────────────────────────
-      pdf.setProperties({
-        title:    'Proyección de Flujo de Efectivo — TaxnFin',
-        subject:  'Modelo Rolling 18 Semanas',
-        author:   'TaxnFin CFO Intelligence',
-        keywords: 'cashflow, proyecciones, flujo de efectivo',
-        creator:  'TaxnFin',
-      });
-
-      pdf.save(`TaxnFin_FlujoCaja_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`);
-      toast.success('PDF exportado exitosamente');
+      const filename = `TaxnFin_FlujoCaja_${empresa.replace(/\s/g, '_')}_${format(new Date(), 'yyyyMMdd')}.pdf`;
+      pdf.save(filename);
+      toast.success('PDF generado correctamente');
     } catch (error) {
-      console.error('PDF export error:', error, typeof error);
-      toast.error('Error al generar el PDF: ' + (error?.message || JSON.stringify(error) || 'Error desconocido'));
+      console.error('PDF export error:', error);
+      toast.error('Error al generar el PDF: ' + (error?.message || 'Error desconocido'));
     } finally {
       setExportingPdf(false);
     }
@@ -2397,7 +2367,7 @@ const CashflowProjections = () => {
 
         {/* WEEKLY VIEW */}
         <TabsContent value="weekly" className="mt-4 space-y-4">
-          <div ref={reportRef}>
+          <div ref={reportRef} id="cashflow-report-container">
 
           {/* ── PDF Header ──────────────────────────────────────────────── */}
           <div className="bg-[#0F172A] text-white px-6 py-5 mb-4 rounded-lg flex items-center justify-between">
