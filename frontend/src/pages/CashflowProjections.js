@@ -1315,10 +1315,55 @@ const CashflowProjections = () => {
         });
       }
 
+      // ── Análisis narrativo ─────────────────────────────────────────────
+      pdf.setDrawColor(226, 232, 240);
+      pdf.setLineWidth(0.5);
+      pdf.line(margin, 100, W - margin, 100);
+
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(15, 23, 42);
+      pdf.text('Análisis del Período', margin, 108);
+
+      const realNetFlow = cfoKPIs?.totalFlujoNetoReal       ?? 0;
+      const projNetFlow = cfoKPIs?.acumuladoProyectadoFinal ?? 0;
+      const runway      = cfoKPIs?.runway                   ?? 0;
+      const burnRate    = cfoKPIs?.burnRateReal              ?? 0;
+      const riesgo      = cfoKPIs?.semanasEnRiesgo?.length   ?? 0;
+
+      const tendencia    = realNetFlow >= 0 ? 'positiva' : 'negativa';
+      const runwayTexto  = runway >= 52
+        ? 'más de un año'
+        : `${runway} semanas (${(runway / 4.33).toFixed(1)} meses)`;
+      const riesgoTexto  = riesgo === 0
+        ? 'No se identifican semanas críticas en el horizonte de 18 semanas.'
+        : `Se identifican ${riesgo} semana(s) con riesgo de liquidez dentro del horizonte proyectado.`;
+
+      const narrativa = [
+        `La empresa registra un flujo neto real acumulado de ${fmtVal(realNetFlow)} en el período analizado, ` +
+        `con un burn rate promedio de ${fmtVal(Math.abs(burnRate))}/semana. ` +
+        `El saldo proyectado para las próximas semanas es de ${fmtVal(projNetFlow)}, ` +
+        `lo que refleja una tendencia ${tendencia} en la generación de efectivo.`,
+
+        `El runway operativo estimado es de ${runwayTexto}, considerando el ritmo actual de egresos. ` +
+        `${riesgoTexto}`,
+      ];
+
+      let narrativaY = 115;
+      narrativa.forEach(parrafo => {
+        const lines = pdf.splitTextToSize(parrafo, W - margin * 2);
+        pdf.setFontSize(8.5);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(51, 65, 85);
+        pdf.text(lines, margin, narrativaY);
+        narrativaY += lines.length * 5 + 4;
+      });
+
       pdf.setFontSize(8);
-      pdf.setTextColor(100, 116, 139);
       pdf.setFont('helvetica', 'italic');
-      pdf.text('Ver gráficas de tendencia en la plataforma · TaxnFin CFO Intelligence', W / 2, H - 12, { align: 'center' });
+      pdf.setTextColor(148, 163, 184);
+      pdf.text('Las gráficas de tendencia están disponibles en la plataforma · TaxnFin CFO Intelligence',
+        W / 2, Math.max(narrativaY + 6, H - 16), { align: 'center' });
 
       // Footer pág 1
       pdf.setFontSize(7);
@@ -1336,19 +1381,34 @@ const CashflowProjections = () => {
         tableEl.style.width    = tableEl.scrollWidth + 'px';
         await new Promise(r => setTimeout(r, 300));
 
+        const captureW = Math.max(tableEl.scrollWidth, tableEl.offsetWidth, 2800);
         const canvasTable = await html2canvas(tableEl, {
           scale: 0.65,
           useCORS: true,
           allowTaint: true,
           backgroundColor: '#ffffff',
-          width:        tableEl.scrollWidth,
+          width:        captureW,
           height:       tableEl.scrollHeight,
-          windowWidth:  tableEl.scrollWidth,
+          windowWidth:  captureW,
           windowHeight: tableEl.scrollHeight,
           onclone: (doc) => {
             doc.querySelectorAll('iframe').forEach(e => e.remove());
-            const el = doc.getElementById('cashflow-table-model');
-            if (el) { el.style.overflow = 'visible'; el.style.width = 'auto'; }
+            doc.querySelectorAll('[class*="overflow"]').forEach(el => {
+              el.style.overflow = 'visible';
+              el.style.maxWidth = 'none';
+              el.style.width    = 'max-content';
+            });
+            const tableContainer = doc.getElementById('cashflow-table-model');
+            if (tableContainer) {
+              tableContainer.style.overflow  = 'visible';
+              tableContainer.style.width     = 'max-content';
+              tableContainer.style.maxWidth  = 'none';
+              tableContainer.querySelectorAll('table').forEach(t => {
+                t.style.overflow    = 'visible';
+                t.style.width       = 'auto';
+                t.style.tableLayout = 'auto';
+              });
+            }
           },
         });
 
