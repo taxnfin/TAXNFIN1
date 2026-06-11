@@ -1231,6 +1231,7 @@ const CashflowProjections = () => {
         scale: 1.2,
         useCORS: true,
         allowTaint: true,
+        foreignObjectRendering: true,
         backgroundColor: '#f8fafc',
         scrollX: 0,
         scrollY: 0,
