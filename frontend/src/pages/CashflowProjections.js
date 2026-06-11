@@ -75,6 +75,7 @@ const CashflowProjections = () => {
   const [exportingPdf, setExportingPdf] = useState(false);
   const reportRef = useRef(null);
   const chartsRef = useRef(null);
+  const tableModelRef = useRef(null);
   // Ref para el patrón "latest ref": openKpiModal lee de aquí en lugar de closures del render
   const kpiStateRef = useRef({ cfoKPIs: null, KPI_DEFS: null, formatCurrency: null });
   const [newConcept, setNewConcept] = useState({
@@ -1253,9 +1254,9 @@ const CashflowProjections = () => {
         )
       );
 
-      // ── Capturar con html2canvas ───────────────────────────────────────
-      const canvas = await html2canvas(element, {
-        scale: 1.2,
+      // ── Capturar reporte principal (KPIs + gráficas) ──────────────────
+      const canvasMain = await html2canvas(element, {
+        scale: 0.85,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#f8fafc',
@@ -1268,6 +1269,28 @@ const CashflowProjections = () => {
         },
       });
 
+      // ── Capturar tabla completa con ancho real ─────────────────────────
+      const tableEl = tableModelRef.current;
+      const canvasTable = tableEl
+        ? await html2canvas(tableEl, {
+            scale: 0.7,
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: '#ffffff',
+            windowWidth: tableEl.scrollWidth,
+            width: tableEl.scrollWidth,
+            onclone: (clonedDoc) => {
+              const tables = clonedDoc.querySelectorAll('table,[class*="overflow"]');
+              tables.forEach(t => {
+                t.style.overflow = 'visible';
+                t.style.width    = 'auto';
+                t.style.minWidth = 'unset';
+              });
+              clonedDoc.querySelectorAll('iframe').forEach(el => el.remove());
+            },
+          })
+        : null;
+
       // ── Restaurar SVGs originales ──────────────────────────────────────
       for (const { svg, img, url } of svgReplacements) {
         svg.style.display = '';
@@ -1279,27 +1302,28 @@ const CashflowProjections = () => {
       const pdf      = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3', compress: true });
       const pageW    = pdf.internal.pageSize.getWidth();
       const pageH    = pdf.internal.pageSize.getHeight();
-      const margin   = 8;
+      const margin   = 6;
       const contentH = pageH - margin * 2 - 8;
       const imgW     = pageW - margin * 2;
-      const totalImgH = (canvas.height * imgW) / canvas.width;
 
+      // Páginas del reporte principal
+      const totalImgH = (canvasMain.height * imgW) / canvasMain.width;
       let yPos = 0, pageNum = 1;
       while (yPos < totalImgH) {
         if (pageNum > 1) pdf.addPage();
 
-        const srcY = (yPos / totalImgH) * canvas.height;
-        const srcH = Math.min((contentH / totalImgH) * canvas.height, canvas.height - srcY);
+        const srcY = (yPos / totalImgH) * canvasMain.height;
+        const srcH = Math.min((contentH / totalImgH) * canvasMain.height, canvasMain.height - srcY);
 
-        const pageCanvas    = document.createElement('canvas');
-        pageCanvas.width    = canvas.width;
-        pageCanvas.height   = srcH;
-        const ctx           = pageCanvas.getContext('2d');
-        ctx.fillStyle       = '#f8fafc';
+        const pageCanvas  = document.createElement('canvas');
+        pageCanvas.width  = canvasMain.width;
+        pageCanvas.height = srcH;
+        const ctx         = pageCanvas.getContext('2d');
+        ctx.fillStyle     = '#f8fafc';
         ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-        ctx.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+        ctx.drawImage(canvasMain, 0, srcY, canvasMain.width, srcH, 0, 0, canvasMain.width, srcH);
 
-        const pageImgH = (srcH * imgW) / canvas.width;
+        const pageImgH = (srcH * imgW) / canvasMain.width;
         pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, imgW, pageImgH);
 
         pdf.setFontSize(7);
@@ -1314,7 +1338,22 @@ const CashflowProjections = () => {
         pageNum++;
       }
 
-      // Actualizar numeración final
+      // Página dedicada a la tabla completa
+      if (canvasTable) {
+        pdf.addPage();
+        const tableW = imgW;
+        const tableH = Math.min((canvasTable.height * tableW) / canvasTable.width, contentH);
+        pdf.addImage(canvasTable.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, tableW, tableH);
+        pdf.setFontSize(7);
+        pdf.setTextColor(150, 150, 150);
+        pdf.text('TaxnFin', margin, pageH - 3);
+        pdf.text(
+          `${empresa} · Modelo de Flujo de Efectivo · 18 Semanas Rolling | ${fecha}`,
+          pageW / 2, pageH - 3, { align: 'center' }
+        );
+      }
+
+      // Numeración final
       const totalPages = pdf.internal.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         pdf.setPage(i);
@@ -2849,7 +2888,7 @@ const CashflowProjections = () => {
           )}
 
           {/* ===== MAIN CASH FLOW TABLE ===== */}
-          <Card>
+          <Card ref={tableModelRef} data-table-model="true">
             <CardHeader className="bg-[#0F172A] text-white rounded-t-lg">
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-3">
