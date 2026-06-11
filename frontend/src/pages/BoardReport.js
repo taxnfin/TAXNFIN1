@@ -210,7 +210,8 @@ const BoardReport = () => {
 
   const loadAIAnalysis = async (periodo, type, lang = language) => {
     if (!periodo || !type) return;
-    
+    console.log('[AI] iniciando análisis, period:', periodo, 'type:', type, 'company:', localStorage.getItem('selectedCompany'));
+
     setLoadingAnalysis(true);
     try {
       const res = await api.get('/financial-statements/ai-analysis', {
@@ -220,8 +221,10 @@ const BoardReport = () => {
           language: lang
         }
       });
+      console.log('[AI] respuesta:', JSON.stringify(res.data).substring(0, 200));
       setAiAnalysis(res.data?.analysis || null);
     } catch (error) {
+      console.log('[AI] error:', error.response?.status, error.response?.data || error.message);
       console.error('Error loading AI analysis:', error);
       const msg = error.response?.data?.detail || error.message || 'Error al cargar el análisis IA';
       toast.error(msg);
