@@ -69,6 +69,15 @@ async def get_active_company_id(request: Request, current_user: Dict = Depends(g
     """
     company_id = request.headers.get('X-Company-ID') or request.headers.get('x-company-id')
 
+    # Resolve 8-char UUID prefix to full UUID
+    if company_id and len(company_id) == 8:
+        company = await db.companies.find_one(
+            {'id': {'$regex': f'^{company_id}'}},
+            {'_id': 0, 'id': 1}
+        )
+        if company:
+            company_id = company['id']
+
     if company_id:
         user_company_ids = current_user.get('company_ids', [current_user['company_id']])
 
