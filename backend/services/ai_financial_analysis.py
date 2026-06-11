@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import re
 from typing import Dict, List, Optional
 
 import httpx
@@ -184,7 +185,7 @@ async def generate_financial_analysis(
                 },
                 json={
                     'model': MODEL,
-                    'max_tokens': 2048,
+                    'max_tokens': 4000,
                     'messages': [{'role': 'user', 'content': prompt}],
                 },
             )
@@ -192,17 +193,45 @@ async def generate_financial_analysis(
             result = response.json()
             text = result['content'][0]['text'].strip()
 
-            # Strip markdown code block if model wraps the JSON
-            if text.startswith('```'):
-                parts = text.split('```')
-                text = parts[1]
-                if text.startswith('json'):
-                    text = text[4:]
-                text = text.strip()
+            # Limpiar markdown si viene con backticks
+            text = text.strip()
+            if '```' in text:
+                md_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', text)
+                if md_match:
+                    text = md_match.group(1).strip()
+                else:
+                    text = text.split('```')[1]
+                    if text.startswith('json'):
+                        text = text[4:]
+                    text = text.strip()
 
-            parsed = json.loads(text)
+            # Intentar parsear directo
+            try:
+                analysis = json.loads(text)
+            except json.JSONDecodeError:
+                # JSON truncado — extraer campos individualmente con regex
+                analysis = {}
+                fields = [
+                    'executive_summary', 'profitability_analysis', 'returns_analysis',
+                    'liquidity_analysis', 'solvency_analysis', 'income_flow_analysis',
+                    'recommendations', 'trends_analysis'
+                ]
+                for field in fields:
+                    pattern = rf'"{field}"\s*:\s*"((?:[^"\\]|\\.)*?)(?:"|$)'
+                    field_match = re.search(pattern, text, re.DOTALL)
+                    if field_match:
+                        try:
+                            analysis[field] = bytes(field_match.group(1), 'utf-8').decode('unicode_escape')
+                        except Exception:
+                            analysis[field] = field_match.group(1)
+
+                if not analysis:
+                    raise  # Re-raise si no se pudo extraer nada
+
+            analysis['generated_by'] = 'Claude AI'
+            analysis['model'] = MODEL
             logger.info(f"Claude analysis generated for {company_name} / {period}")
-            return parsed
+            return analysis
 
     except httpx.HTTPStatusError as e:
         import traceback
