@@ -1223,19 +1223,28 @@ const CashflowProjections = () => {
       const tableEl = document.getElementById('cashflow-table-model');
       if (!kpiEl) { toast.error('Contenedor no encontrado'); return; }
 
-      // ── PASO 1: Capturar KPIs + Gráficas directamente (sin ocultar nada)
+      // ── PASO 1: Capturar KPIs + Gráficas con ancho exacto del elemento ─
+      const kpiRect = kpiEl.getBoundingClientRect();
       const canvasKPIs = await html2canvas(kpiEl, {
-        scale: 0.85,
+        scale: 0.9,
         useCORS: true,
         allowTaint: true,
         foreignObjectRendering: true,
         backgroundColor: '#f8fafc',
-        windowWidth: 1440,
-        height: kpiEl.scrollHeight,
-        windowHeight: kpiEl.scrollHeight,
+        x: 0,
+        y: 0,
+        width:        kpiEl.offsetWidth,
+        height:       kpiEl.offsetHeight,
+        windowWidth:  kpiEl.offsetWidth,
+        windowHeight: kpiEl.offsetHeight,
+        scrollX: -kpiRect.left,
+        scrollY: -kpiRect.top,
         onclone: (doc) => {
           const el = doc.getElementById('cashflow-kpi-charts');
-          if (el) el.style.backgroundColor = '#f8fafc';
+          if (el) {
+            el.style.backgroundColor = '#f8fafc';
+            el.style.width = kpiEl.offsetWidth + 'px';
+          }
           doc.querySelectorAll('iframe').forEach(e => e.remove());
         },
       });
