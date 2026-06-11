@@ -945,6 +945,52 @@ async def get_available_periods(
     return periods
 
 
+@router.get("/debug-cache-temp")
+async def debug_cache_temp(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Endpoint temporal de diagnóstico - BORRAR después de usar"""
+    company_id = await get_active_company_id(request, current_user)
+
+    all_keys = await db.contalink_cache.find(
+        {'key': {'$regex': str(company_id)}},
+        {'key': 1, 'created_at': 1, '_id': 0}
+    ).to_list(20)
+
+    cxc = await db.contalink_cache.find_one({'key': f'cxc_{company_id}_latest'})
+    cxc_info = None
+    if cxc:
+        data = cxc.get('data', {})
+        if isinstance(data, dict):
+            facturas = data.get('facturas', data.get('proveedores', data.get('clientes', [])))
+            cxc_info = {
+                'data_type': 'dict',
+                'keys': list(data.keys()),
+                'facturas_count': len(facturas),
+                'primera_factura': facturas[0] if facturas else None
+            }
+        elif isinstance(data, list):
+            cxc_info = {'data_type': 'list', 'count': len(data), 'primer_item': data[0] if data else None}
+
+    cxp = await db.contalink_cache.find_one({'key': f'cxp_{company_id}_latest'})
+    cxp_info = None
+    if cxp:
+        data = cxp.get('data', {})
+        if isinstance(data, dict):
+            facturas = data.get('facturas', data.get('proveedores', data.get('clientes', [])))
+            cxp_info = {
+                'data_type': 'dict',
+                'keys': list(data.keys()),
+                'facturas_count': len(facturas),
+                'primer_item': facturas[0] if facturas else None
+            }
+        elif isinstance(data, list):
+            cxp_info = {'data_type': 'list', 'count': len(data), 'primer_item': data[0] if data else None}
+
+    return {'company_id': str(company_id), 'all_keys': all_keys, 'cxc': cxc_info, 'cxp': cxp_info}
+
+
 @router.delete("/{periodo}")
 async def delete_financial_statements(
     request: Request,
@@ -1496,68 +1542,6 @@ async def get_sankey_data(
             "impuestos": impuestos,
             "utilidad_neta": utilidad_neta
         }
-    }
-
-
-@router.get("/debug-cache-temp")
-async def debug_cache_temp(
-    request: Request,
-    current_user: Dict = Depends(get_current_user),
-):
-    """Endpoint temporal de diagnóstico - BORRAR después de usar"""
-    company_id = await get_active_company_id(request, current_user)
-
-    # Ver todas las keys del cache
-    all_keys = await db.contalink_cache.find(
-        {'key': {'$regex': str(company_id)}},
-        {'key': 1, 'created_at': 1, '_id': 0}
-    ).to_list(20)
-
-    # Ver estructura CxC
-    cxc = await db.contalink_cache.find_one({'key': f'cxc_{company_id}_latest'})
-    cxc_info = None
-    if cxc:
-        data = cxc.get('data', {})
-        if isinstance(data, dict):
-            facturas = data.get('facturas', data.get('proveedores', data.get('clientes', [])))
-            cxc_info = {
-                'data_type': 'dict',
-                'keys': list(data.keys()),
-                'facturas_count': len(facturas),
-                'primera_factura': facturas[0] if facturas else None
-            }
-        elif isinstance(data, list):
-            cxc_info = {
-                'data_type': 'list',
-                'count': len(data),
-                'primer_item': data[0] if data else None
-            }
-
-    # Ver estructura CxP
-    cxp = await db.contalink_cache.find_one({'key': f'cxp_{company_id}_latest'})
-    cxp_info = None
-    if cxp:
-        data = cxp.get('data', {})
-        if isinstance(data, dict):
-            facturas = data.get('facturas', data.get('proveedores', data.get('clientes', [])))
-            cxp_info = {
-                'data_type': 'dict',
-                'keys': list(data.keys()),
-                'facturas_count': len(facturas),
-                'primer_item': facturas[0] if facturas else None
-            }
-        elif isinstance(data, list):
-            cxp_info = {
-                'data_type': 'list',
-                'count': len(data),
-                'primer_item': data[0] if data else None
-            }
-
-    return {
-        'company_id': str(company_id),
-        'all_keys': all_keys,
-        'cxc': cxc_info,
-        'cxp': cxp_info
     }
 
 
