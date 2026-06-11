@@ -209,8 +209,11 @@ const BoardReport = () => {
   };
 
   const loadAIAnalysis = async (periodo, type, lang = language) => {
-    if (!periodo || !type) return;
-    console.log('[AI] iniciando análisis, period:', periodo, 'type:', type, 'company:', localStorage.getItem('selectedCompany'));
+    console.log('[AI] click recibido, period:', periodo, 'type:', type, 'loadingAnalysis:', loadingAnalysis, 'company:', localStorage.getItem('selectedCompany'));
+    if (!periodo || !type) {
+      console.log('[AI] abortando: periodo o type vacío');
+      return;
+    }
 
     setLoadingAnalysis(true);
     try {
