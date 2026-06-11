@@ -265,6 +265,40 @@ def chart_cce():
     plt.tight_layout(pad=0.5)
     return fig_to_img(fig)
 
+# ── Chart 6: Tendencias históricas ──────────────────────────────────────────
+def _chart_tendencias(trends):
+    fig, ax = plt.subplots(figsize=(7.5, 3.0))
+    fig.patch.set_alpha(0)
+    ax.set_facecolor('none')
+    periodos  = [t.get('periodo', '') for t in trends]
+    ingresos  = []
+    utilidades = []
+    for t in trends:
+        inc = t.get('income_statement', {})
+        _i = float(inc.get('ingresos') or inc.get('ventas_netas') or inc.get('ingresos_totales') or 0)
+        _u = float(inc.get('utilidad_neta') or 0)
+        ingresos.append(_i)
+        utilidades.append(_u)
+    x = range(len(periodos))
+    ax.plot(list(x), [v / 1e6 for v in ingresos],   color='#1A56A8', linewidth=2,
+            marker='o', markersize=5, label='Ingresos (M)')
+    _un_col = '#27AE60' if (utilidades and utilidades[-1] >= 0) else '#C0392B'
+    ax.plot(list(x), [v / 1e6 for v in utilidades], color=_un_col, linewidth=2,
+            marker='s', markersize=5, linestyle='--', label='Util. Neta (M)')
+    ax.axhline(0, color='#CBD5E1', linewidth=0.8)
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(periodos, fontsize=7, color='#334155', rotation=30, ha='right')
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f'{v:.1f}M'))
+    ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_color('#CBD5E1'); ax.spines['bottom'].set_color('#CBD5E1')
+    ax.tick_params(labelsize=7, colors='#334155')
+    ax.legend(fontsize=7.5, frameon=False, labelcolor='#334155')
+    ax.grid(True, alpha=0.2, color='#CBD5E1', linestyle='--')
+    ax.set_title('Tendencias de Ingresos y Utilidad Neta', fontsize=9, color='#0D2B5E',
+                 fontweight='bold', pad=8, loc='left')
+    plt.tight_layout(pad=0.5)
+    return fig_to_img(fig)
+
 # ── Styles ───────────────────────────────────────────────────────────────────
 def make_styles():
     base = getSampleStyleSheet()
@@ -355,6 +389,7 @@ def build_pdf(output_path):
     styles = make_styles()
     story  = []
     PW = doc.width  # usable width
+    report_type = DATA.get('report_type', 'ejecutivo')
 
     # ─── PORTADA ─────────────────────────────────────────────────────────────
     def portada(canvas_obj, doc_obj):
@@ -513,6 +548,222 @@ def build_pdf(output_path):
     ing_s = fmt(ing); ub_s = fmt(ub); ebitda_s = fmt(ebitda); un_s = fmt(un)
     gop_s = fmt(gop); cap_s = fmt(cap); at_s = fmt(at)
 
+    # ─── Helpers para Reporte CFO (closures sobre story / styles / PW) ───────
+    def _cfo_ai_page():
+        _ai = DATA.get('ai_analysis', {})
+        if not (_ai and _ai.get('executive_summary') and
+                _ai.get('executive_summary') != 'Análisis IA temporalmente no disponible.'):
+            return
+        story.append(Paragraph('Análisis Inteligente', styles['section_header']))
+        story.append(Paragraph(
+            'Análisis financiero generado por Inteligencia Artificial · IA TaxnFin',
+            ParagraphStyle('sub_ai2', fontName='Helvetica', fontSize=8,
+                           textColor=DGRAY, leading=11, spaceAfter=5*mm)
+        ))
+        _secs = [
+            ('Resumen Ejecutivo',              _ai.get('executive_summary', '')),
+            ('Análisis de Rentabilidad',       _ai.get('profitability_analysis', '')),
+            ('Análisis de Retornos',           _ai.get('returns_analysis', '')),
+            ('Análisis de Liquidez',           _ai.get('liquidity_analysis', '')),
+            ('Análisis de Solvencia',          _ai.get('solvency_analysis', '')),
+            ('Flujo del Estado de Resultados', _ai.get('income_flow_analysis', '')),
+            ('Recomendaciones Estratégicas',   _ai.get('recommendations', '')),
+            ('Tendencias Históricas',          _ai.get('trends_analysis', '')),
+        ]
+        for _tit, _txt in _secs:
+            if not _txt:
+                continue
+            _hdr = Table(
+                [[Paragraph(f'<b>{_tit}</b>',
+                    ParagraphStyle('sh2', fontName='Helvetica-Bold', fontSize=9,
+                                   textColor=NAVY, leading=13))]],
+                colWidths=[PW]
+            )
+            _hdr.setStyle(TableStyle([
+                ('LINEBELOW',     (0, 0), (-1, -1), 1.5, TEAL),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                ('TOPPADDING',    (0, 0), (-1, -1), 8),
+            ]))
+            story.append(KeepTogether([
+                _hdr,
+                Spacer(1, 2*mm),
+                Paragraph(_txt, ParagraphStyle('ai2', fontName='Helvetica', fontSize=8.5,
+                                               textColor=DGRAY, leading=13, spaceAfter=4*mm)),
+            ]))
+        story.append(Spacer(1, 5*mm))
+        story.append(Paragraph(
+            f'Generado por IA TaxnFin · {DATA["fecha"]}',
+            ParagraphStyle('fai2', fontName='Helvetica', fontSize=7,
+                           textColor=MGRAY, alignment=TA_RIGHT)
+        ))
+
+    def _cfo_retornos_page():
+        story.append(Paragraph('Análisis de Retornos', styles['section_header']))
+        roe_v = DATA.get('roe', 0); roa_v = DATA.get('roa', 0)
+        roic_v = DATA.get('roic', 0); roce_v = DATA.get('roce', 0)
+        story.append(Paragraph(
+            f'ROE {roe_v:.1f}% · ROA {roa_v:.1f}% · ROIC {roic_v:.1f}% · ROCE {roce_v:.1f}%. '
+            f'Eficiencia de generación de valor sobre capital y activos totales.',
+            styles['body']
+        ))
+        story.append(Spacer(1, 4*mm))
+        def _rrs(v, lo): return _sem('Bueno') if v >= lo else (_sem('Atención') if v >= 0 else _sem('Crítico'))
+        def _rbp(v, m):  return f'{v - m:+.1f} pp'
+        ret_data = [
+            [Paragraph('<b>Indicador</b>',     styles['table_header']),
+             Paragraph('<b>Valor</b>',         styles['table_header']),
+             Paragraph('<b>Benchmark</b>',     styles['table_header']),
+             Paragraph('<b>Brecha</b>',        styles['table_header']),
+             Paragraph('<b>Estado</b>',        styles['table_header']),
+             Paragraph('<b>Interpretación</b>',styles['table_header'])],
+            ['ROE — Retorno sobre Capital',  f'{roe_v:.1f}%',  '>10%', _rbp(roe_v, 12.5), _rrs(roe_v, 10),
+             'Eficiencia alta' if roe_v >= 15 else 'Aceptable' if roe_v >= 10 else 'Bajo benchmark'],
+            ['ROA — Retorno sobre Activos',  f'{roa_v:.1f}%',  '>5%',  _rbp(roa_v, 7.5),  _rrs(roa_v, 5),
+             'Activos bien empleados' if roa_v >= 8 else 'Aceptable' if roa_v >= 5 else 'Activos subutilizados'],
+            ['ROIC — Capital Invertido',     f'{roic_v:.1f}%', '>8%',  _rbp(roic_v, 10),  _rrs(roic_v, 8),
+             'Crea valor' if roic_v >= 10 else 'Neutro' if roic_v >= 8 else 'Destruye valor'],
+            ['ROCE — Capital Empleado',      f'{roce_v:.1f}%', '>8%',  _rbp(roce_v, 9),   _rrs(roce_v, 8),
+             'Eficiente' if roce_v >= 10 else 'Mejorable' if roce_v >= 8 else 'Ineficiente'],
+        ]
+        ret_tbl = Table(ret_data, colWidths=[PW*0.24, PW*0.09, PW*0.10, PW*0.10, PW*0.14, PW*0.33])
+        ret_tbl.setStyle(TableStyle([
+            ('BACKGROUND',     (0, 0), (-1, 0), NAVY),
+            ('FONTNAME',       (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE',       (0, 1), (-1, -1), 8),
+            ('TEXTCOLOR',      (0, 1), (0, -1), DGRAY),
+            ('ALIGN',          (1, 0), (4, -1), 'CENTER'),
+            ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [WHITE, LGRAY]),
+            ('GRID',           (0, 0), (-1, -1), 0.3, MGRAY),
+            ('TOPPADDING',     (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING',  (0, 0), (-1, -1), 5),
+        ]))
+        story.append(ret_tbl)
+        story.append(Spacer(1, 6*mm))
+
+    def _cfo_tendencias_page():
+        _trends = DATA.get('trends', [])
+        story.append(Paragraph('Tendencias Históricas', styles['section_header']))
+        story.append(Paragraph(
+            f'Evolución de ingresos y utilidad neta — últimos {min(len(_trends), 6)} períodos.',
+            styles['body']
+        ))
+        story.append(Spacer(1, 4*mm))
+        if _trends:
+            story.append(Image(_chart_tendencias(_trends[-6:]), width=PW, height=PW * 0.38))
+            story.append(Spacer(1, 4*mm))
+            tr_rows = [[
+                Paragraph('<b>Período</b>',     styles['table_header']),
+                Paragraph('<b>Ingresos</b>',    styles['table_header']),
+                Paragraph('<b>Util. Neta</b>',  styles['table_header']),
+                Paragraph('<b>Margen Neto</b>', styles['table_header']),
+            ]]
+            for _t in _trends[-6:]:
+                _inc = _t.get('income_statement', {})
+                _i   = float(_inc.get('ingresos') or _inc.get('ventas_netas') or _inc.get('ingresos_totales') or 0)
+                _u   = float(_inc.get('utilidad_neta') or 0)
+                _mn  = (_u / _i * 100) if _i else 0
+                _mc  = '#27AE60' if _mn >= 3 else '#C0392B'
+                tr_rows.append([
+                    _t.get('periodo', ''), fmt(_i), fmt(_u),
+                    Paragraph(f'<font color="{_mc}">{_mn:.1f}%</font>',
+                              ParagraphStyle('mntr', fontName='Helvetica', fontSize=8,
+                                             leading=10, alignment=TA_CENTER)),
+                ])
+            tr_tbl = Table(tr_rows, colWidths=[PW * 0.25] * 4)
+            tr_tbl.setStyle(TableStyle([
+                ('BACKGROUND',     (0, 0), (-1, 0), NAVY),
+                ('FONTNAME',       (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE',       (0, 1), (-1, -1), 8),
+                ('TEXTCOLOR',      (0, 1), (0, -1), DGRAY),
+                ('ALIGN',          (1, 0), (-1, -1), 'CENTER'),
+                ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [WHITE, LGRAY]),
+                ('GRID',           (0, 0), (-1, -1), 0.3, MGRAY),
+                ('TOPPADDING',     (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING',  (0, 0), (-1, -1), 4),
+            ]))
+            story.append(tr_tbl)
+        else:
+            story.append(Paragraph('No hay datos históricos disponibles.', styles['body']))
+
+    def _cfo_top_cxc_cxp_page():
+        story.append(Paragraph('Cartera de Clientes y Proveedores', styles['section_header']))
+        story.append(Paragraph(
+            'Concentración de cuentas por cobrar y por pagar — riesgo y oportunidad de caja.',
+            styles['body']
+        ))
+        story.append(Spacer(1, 4*mm))
+        def _fn(n): return n[:35] + '...' if len(n) > 35 else n
+        _tcxc = DATA.get('top_cxc', [])
+        if _tcxc:
+            _tot = sum(c['monto'] for c in _tcxc)
+            _hh = Table([[Paragraph('<b>Clientes con Mayor Deuda Pendiente</b>',
+                ParagraphStyle('bh_c2', fontName='Helvetica-Bold', fontSize=10,
+                               textColor=colors.white, leading=14))]], colWidths=[PW])
+            _hh.setStyle(TableStyle([('BACKGROUND', (0,0),(-1,-1), TEAL),
+                ('TOPPADDING',(0,0),(-1,-1),6),('BOTTOMPADDING',(0,0),(-1,-1),6),
+                ('LEFTPADDING',(0,0),(-1,-1),10)]))
+            story.append(_hh)
+            rows = [[Paragraph('<b>#</b>',styles['table_header']),
+                     Paragraph('<b>Cliente</b>',styles['table_header']),
+                     Paragraph('<b>Monto Pendiente</b>',styles['table_header'])]]
+            for i, c in enumerate(_tcxc):
+                rows.append([str(i+1),
+                    Paragraph(_fn(c['nombre']),
+                        ParagraphStyle('cn2',fontName='Helvetica',fontSize=8,textColor=DGRAY,leading=11)),
+                    Paragraph(f'<b>{fmt(c["monto"])}</b>',
+                        ParagraphStyle('cm2',fontName='Helvetica-Bold',fontSize=8,
+                                       textColor=colors.HexColor('#C0392B'),leading=11,alignment=TA_RIGHT))])
+            tbl = Table(rows, colWidths=[PW*0.08, PW*0.62, PW*0.30])
+            tbl.setStyle(TableStyle([
+                ('BACKGROUND',(0,0),(-1,0),NAVY),('FONTSIZE',(0,1),(-1,-1),8),
+                ('ALIGN',(2,0),(2,-1),'RIGHT'),('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+                ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,LGRAY]),
+                ('GRID',(0,0),(-1,-1),0.3,MGRAY),
+                ('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4),
+                ('LEFTPADDING',(0,0),(-1,-1),6)]))
+            story.append(tbl)
+            story.append(Paragraph(
+                f'<font color="#C0392B"><b>Total CxC:</b></font> <b>{fmt(_tot)}</b>. '
+                f'Priorizar cobro del cliente #1 esta semana.',
+                ParagraphStyle('act2',fontName='Helvetica',fontSize=8,textColor=DGRAY,
+                               leading=11,spaceAfter=6*mm,leftIndent=10)))
+        _tcxp = DATA.get('top_cxp', [])
+        if _tcxp:
+            _totp = sum(p['monto'] for p in _tcxp)
+            _hhp = Table([[Paragraph('<b>Principales Proveedores por Pagar</b>',
+                ParagraphStyle('bh_p2',fontName='Helvetica-Bold',fontSize=10,
+                               textColor=colors.white,leading=14))]], colWidths=[PW])
+            _hhp.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#D97706')),
+                ('TOPPADDING',(0,0),(-1,-1),6),('BOTTOMPADDING',(0,0),(-1,-1),6),
+                ('LEFTPADDING',(0,0),(-1,-1),10)]))
+            story.append(_hhp)
+            rowsp = [[Paragraph('<b>#</b>',styles['table_header']),
+                      Paragraph('<b>Proveedor</b>',styles['table_header']),
+                      Paragraph('<b>Monto por Pagar</b>',styles['table_header'])]]
+            for i, p in enumerate(_tcxp):
+                rowsp.append([str(i+1),
+                    Paragraph(_fn(p['nombre']),
+                        ParagraphStyle('pn2',fontName='Helvetica',fontSize=8,textColor=DGRAY,leading=11)),
+                    Paragraph(f'<b>{fmt(p["monto"])}</b>',
+                        ParagraphStyle('pm2',fontName='Helvetica-Bold',fontSize=8,
+                                       textColor=colors.HexColor('#D97706'),leading=11,alignment=TA_RIGHT))])
+            tblp = Table(rowsp, colWidths=[PW*0.08, PW*0.62, PW*0.30])
+            tblp.setStyle(TableStyle([
+                ('BACKGROUND',(0,0),(-1,0),NAVY),('FONTSIZE',(0,1),(-1,-1),8),
+                ('ALIGN',(2,0),(2,-1),'RIGHT'),('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+                ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,LGRAY]),
+                ('GRID',(0,0),(-1,-1),0.3,MGRAY),
+                ('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4),
+                ('LEFTPADDING',(0,0),(-1,-1),6)]))
+            story.append(tblp)
+            story.append(Paragraph(
+                f'<font color="#D97706"><b>Total CxP:</b></font> <b>{fmt(_totp)}</b>. '
+                f'Negociar extensión de plazo con proveedor #1.',
+                ParagraphStyle('act3',fontName='Helvetica',fontSize=8,textColor=DGRAY,
+                               leading=11,spaceAfter=6*mm,leftIndent=10)))
+
     # ─── PAG 2: RESUMEN EJECUTIVO ────────────────────────────────────────────
     story.append(Paragraph('Resumen Ejecutivo', styles['section_header']))
 
@@ -603,7 +854,12 @@ def build_pdf(output_path):
 
     story.append(PageBreak())
 
-    # ─── PAG 3: MÁRGENES + ESTRUCTURA ────────────────────────────────────────
+    # CFO: Análisis IA completo como pág 3 (antes de márgenes)
+    if report_type == 'cfo':
+        _cfo_ai_page()
+        story.append(PageBreak())
+
+    # ─── PAG 3 / CFO PAG 4: MÁRGENES + ESTRUCTURA ───────────────────────────
     story.append(Paragraph('Análisis de Márgenes y Estructura de Capital', styles['section_header']))
 
     _mb_o_txt = 'negativos' if mb_o < 0 else 'positivos'
@@ -673,7 +929,12 @@ def build_pdf(output_path):
 
     story.append(PageBreak())
 
-    # ─── PAG 4: LIQUIDEZ + CCE ────────────────────────────────────────────────
+    # CFO: Retornos dedicado (pág 5) entre márgenes y liquidez
+    if report_type == 'cfo':
+        _cfo_retornos_page()
+        story.append(PageBreak())
+
+    # ─── PAG 4 / CFO PAG 6: LIQUIDEZ + CCE ──────────────────────────────────
     story.append(Paragraph('Análisis de Liquidez y Ciclo Operativo', styles['section_header']))
 
     _paradox = rc > 1.5 and ref_ < 0.2
@@ -849,6 +1110,15 @@ def build_pdf(output_path):
         story.append(Spacer(1, 3*mm))
 
     story.append(PageBreak())
+
+    # CFO: Tendencias (pág 9) + Top CxC/CxP (pág 10) → build y return
+    if report_type == 'cfo':
+        _cfo_tendencias_page()
+        story.append(PageBreak())
+        _cfo_top_cxc_cxp_page()
+        doc.build(story, onFirstPage=portada, onLaterPages=later_pages)
+        print(f"PDF CFO generado: {output_path}")
+        return
 
     # ─── PAG 6: ANÁLISIS IA EN LENGUAJE SIMPLE ──────────────────────────────
     story.append(Paragraph('¿Qué nos dicen los números?', styles['section_header']))
@@ -1218,6 +1488,68 @@ def build_pdf_mejorado(data_dict: dict) -> io.BytesIO:
         'top_cxc': data_dict.get('top_cxc', []),
         'top_cxp': data_dict.get('top_cxp', []),
         'ai_analysis': data_dict.get('ai_analysis', {}),
+    }
+
+    buffer = io.BytesIO()
+    build_pdf(buffer)
+    buffer.seek(0)
+    return buffer
+
+
+def build_pdf_cfo(data_dict: dict) -> io.BytesIO:
+    """
+    Reporte CFO: portada, KPIs, Análisis IA, márgenes, retornos, eficiencia,
+    liquidez, solvencia, tendencias históricas, top CxC/CxP. ~10 páginas.
+    """
+    import datetime
+    global DATA
+    DATA = {
+        'empresa':         data_dict.get('empresa', 'Mi Empresa'),
+        'periodo':         data_dict.get('periodo', ''),
+        'fecha':           datetime.date.today().strftime('%d/%m/%Y'),
+        'rfc':             data_dict.get('rfc', ''),
+        'ingresos':        data_dict.get('ingresos', 0),
+        'costo_ventas':    data_dict.get('costo_ventas', 0),
+        'utilidad_bruta':  data_dict.get('utilidad_bruta', 0),
+        'gastos_op':       data_dict.get('gastos_op', 0),
+        'utilidad_op':     -(data_dict.get('gastos_op', 0) - data_dict.get('utilidad_bruta', 0)),
+        'ebitda':          data_dict.get('ebitda', 0),
+        'utilidad_neta':   data_dict.get('utilidad_neta', 0),
+        'activo_total':    data_dict.get('activo_total', 0),
+        'activo_circ':     data_dict.get('activo_circ', 0),
+        'activo_fijo':     data_dict.get('activo_fijo', 0),
+        'pasivo_total':    data_dict.get('pasivo_total', 0),
+        'pasivo_circ':     data_dict.get('pasivo_circ', 0),
+        'pasivo_lp':       data_dict.get('pasivo_lp', 0),
+        'capital':         data_dict.get('capital', 0),
+        'capital_trabajo': data_dict.get('capital_trabajo', 0),
+        'margen_bruto':    data_dict.get('margen_bruto', 0),
+        'margen_ebitda':   data_dict.get('margen_ebitda', 0),
+        'margen_op':       data_dict.get('margen_op', 0),
+        'margen_neto':     data_dict.get('margen_neto', 0),
+        'roic':            data_dict.get('roic', 0),
+        'roe':             data_dict.get('roe', 0),
+        'roa':             data_dict.get('roa', 0),
+        'roce':            data_dict.get('roce', 0),
+        'razon_circ':      data_dict.get('razon_circ', 0),
+        'prueba_acida':    data_dict.get('prueba_acida', 0),
+        'razon_ef':        data_dict.get('razon_ef', 0),
+        'cash_runway':     data_dict.get('cash_runway', 0),
+        'dso':             data_dict.get('dso', 0),
+        'dpo':             data_dict.get('dpo', 0),
+        'dio':             data_dict.get('dio', 0),
+        'ccc':             data_dict.get('ccc', 0),
+        'deuda_capital':   data_dict.get('deuda_capital', 0),
+        'deuda_activos':   data_dict.get('deuda_activos', 0),
+        'deuda_ebitda':    data_dict.get('deuda_ebitda', 0),
+        'cobertura':       data_dict.get('cobertura', 0),
+        'apalancamiento':  data_dict.get('apalancamiento', 0),
+        'eficiencia_ef':   -37.0,
+        'top_cxc':         data_dict.get('top_cxc', []),
+        'top_cxp':         data_dict.get('top_cxp', []),
+        'ai_analysis':     data_dict.get('ai_analysis', {}),
+        'trends':          data_dict.get('trends', []),
+        'report_type':     'cfo',
     }
 
     buffer = io.BytesIO()

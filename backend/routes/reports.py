@@ -763,6 +763,9 @@ class PDFMejoradoRequest(BaseModel):
     apalancamiento: float = 0
     top_cxc: list = []
     top_cxp: list = []
+    ai_analysis: dict = {}
+    trends: list = []
+    report_type: str = 'ejecutivo'
 
 
 @router.post("/reports/pdf-mejorado")
@@ -772,16 +775,20 @@ async def generate_pdf_mejorado(
     current_user: Dict = Depends(get_current_user),
 ):
     """
-    Genera el Reporte Ejecutivo Mejorado con gráficas y análisis profundo.
-    Devuelve un PDF binario para descarga directa.
+    Genera el Reporte Ejecutivo o CFO con gráficas y análisis profundo.
+    Usa report_type='ejecutivo' (default) o 'cfo'. Devuelve PDF binario.
     """
     try:
-        from services.pdf_generator import build_pdf_mejorado
-
-        pdf_buffer = build_pdf_mejorado(data.dict())
-
-        empresa_safe = data.empresa.replace(" ", "_").replace("/", "-")
-        filename = f"Reporte_Ejecutivo_{empresa_safe}_{data.periodo}.pdf"
+        if data.report_type == 'cfo':
+            from services.pdf_generator import build_pdf_cfo
+            pdf_buffer = build_pdf_cfo(data.dict())
+            empresa_safe = data.empresa.replace(" ", "_").replace("/", "-")
+            filename = f"Reporte_CFO_{empresa_safe}_{data.periodo}.pdf"
+        else:
+            from services.pdf_generator import build_pdf_mejorado
+            pdf_buffer = build_pdf_mejorado(data.dict())
+            empresa_safe = data.empresa.replace(" ", "_").replace("/", "-")
+            filename = f"Reporte_Ejecutivo_{empresa_safe}_{data.periodo}.pdf"
 
         return StreamingResponse(
             pdf_buffer,

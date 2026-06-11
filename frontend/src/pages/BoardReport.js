@@ -498,6 +498,82 @@ const BoardReport = () => {
     }
   };
 
+  const downloadReporteCFO = async () => {
+    if (!currentMetrics || !currentMetrics.income_statement) {
+      toast.error('No hay datos financieros para el período seleccionado');
+      return;
+    }
+    setGeneratingMejorado(true);
+    toast.info('Generando Reporte CFO con análisis IA y tendencias...');
+    try {
+      const inc = currentMetrics.income_statement || {};
+      const bal = currentMetrics.balance_sheet || {};
+      const met = currentMetrics.metrics || {};
+      const debtorsRes = await api.get('/financial-statements/top-debtors').catch(() => ({ data: { top_cxc: [], top_cxp: [] } }));
+      const payload = {
+        empresa: company?.nombre || 'Mi Empresa',
+        rfc: getDisplayRfc(company?.rfc),
+        periodo: selectedPeriod,
+        report_type: 'cfo',
+        ingresos: inc.ingresos || inc.ventas_netas || 0,
+        costo_ventas: inc.costo_ventas || 0,
+        utilidad_bruta: inc.utilidad_bruta || 0,
+        gastos_op: (inc.gastos_venta || 0) + (inc.gastos_administracion || 0) + (inc.gastos_generales || 0),
+        ebitda: inc.ebitda || inc.utilidad_operativa || 0,
+        utilidad_neta: inc.utilidad_neta || 0,
+        activo_total: bal.activo_total || 0,
+        activo_circ: bal.activo_circulante || 0,
+        activo_fijo: bal.activo_fijo || 0,
+        pasivo_total: bal.pasivo_total || 0,
+        pasivo_circ: bal.pasivo_circulante || 0,
+        pasivo_lp: bal.pasivo_largo_plazo || 0,
+        capital: bal.capital_contable || 0,
+        margen_bruto: met.margins?.gross_margin?.value || 0,
+        margen_ebitda: met.margins?.ebitda_margin?.value || 0,
+        margen_op: met.margins?.operating_margin?.value || 0,
+        margen_neto: met.margins?.net_margin?.value || 0,
+        roic: met.returns?.roic?.value || 0,
+        roe: met.returns?.roe?.value || 0,
+        roa: met.returns?.roa?.value || 0,
+        roce: met.returns?.roce?.value || 0,
+        razon_circ: met.liquidity?.current_ratio?.value || 0,
+        prueba_acida: met.liquidity?.quick_ratio?.value || 0,
+        razon_ef: met.liquidity?.cash_ratio?.value || 0,
+        capital_trabajo: met.liquidity?.working_capital?.value || 0,
+        cash_runway: met.liquidity?.cash_runway?.value || 0,
+        dso: met.efficiency?.dso?.value || 0,
+        dpo: met.efficiency?.dpo?.value || 0,
+        dio: met.efficiency?.dio?.value || 0,
+        ccc: met.efficiency?.cash_conversion_cycle?.value || 0,
+        deuda_capital: met.solvency?.debt_to_equity?.value || 0,
+        deuda_activos: met.solvency?.debt_to_assets?.value || 0,
+        deuda_ebitda: met.solvency?.debt_to_ebitda?.value || 0,
+        cobertura: met.solvency?.interest_coverage?.value || 0,
+        apalancamiento: met.solvency?.financial_leverage?.value || 0,
+        top_cxc: debtorsRes.data?.top_cxc || [],
+        top_cxp: debtorsRes.data?.top_cxp || [],
+        ai_analysis: aiAnalysis || {},
+        trends: trendsData || [],
+      };
+      const response = await api.post('/reports/pdf-mejorado', payload, { responseType: 'blob' });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Reporte_CFO_${company?.nombre || 'Empresa'}_${selectedPeriod}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast.success('Reporte CFO descargado correctamente');
+    } catch (error) {
+      console.error('Error generando Reporte CFO:', error);
+      toast.error('Error al generar el Reporte CFO');
+    } finally {
+      setGeneratingMejorado(false);
+    }
+  };
+
   // Datos para ResumenEjecutivoIA
   const resumenFinancialData = currentMetrics ? (() => {
     const inc = currentMetrics.income_statement || {};
@@ -2092,7 +2168,8 @@ tr:last-child td{border-bottom:none}
                     <div style={{padding:'8px'}}>
                       {[
                         { icon:'📋', label:'Reporte Ejecutivo', sub:'Análisis completo con IA · 5 páginas', action: () => { setExportMenuOpen(false); downloadPDFMejorado(); } },
-                        { icon:'📊', label:'Dashboard KPIs',    sub:'Vista compacta de indicadores · 1 página', action: () => { setExportMenuOpen(false); downloadKPIsPDF(); } },
+                        { icon:'📊', label:'Reporte CFO', sub:'Análisis completo con IA · 10 páginas', action: () => { setExportMenuOpen(false); downloadReporteCFO(); } },
+                        { icon:'📈', label:'Dashboard KPIs',    sub:'Vista compacta de indicadores · 1 página', action: () => { setExportMenuOpen(false); downloadKPIsPDF(); } },
                         { icon:'🗂️', label:'Board Pack',        sub:'Resumen ejecutivo para consejo · 1 página', action: () => { setExportMenuOpen(false); downloadBoardPack(); } },
                       ].map((item, idx) => (
                         <div
