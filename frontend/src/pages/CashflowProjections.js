@@ -1219,12 +1219,10 @@ const CashflowProjections = () => {
       });
 
       const fmt = (n) => {
-        if (!n && n !== 0) return '$0';
+        if (!n && n !== 0) return '$0K';
         const neg = n < 0;
         const abs = Math.abs(n);
-        const s = abs >= 1_000_000 ? `$${(abs / 1_000_000).toFixed(2)}M`
-                : abs >= 1_000     ? `$${(abs / 1_000).toFixed(0)}K`
-                :                    `$${abs.toFixed(0)}`;
+        const s = abs >= 1000 ? `$${(abs / 1000).toFixed(0)}K` : `$${abs.toFixed(0)}`;
         return neg ? `-${s}` : s;
       };
 
