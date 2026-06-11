@@ -1217,14 +1217,14 @@ const CashflowProjections = () => {
       // ── 1. Capturar el contenido como imagen de alta resolución ──────
       const el = reportRef.current;
       const canvas = await html2canvas(el, {
-        scale: 2,           // Retina quality
+        scale: 1.5,         // Reducido para menor tamaño de canvas y mejor ajuste en A3
         useCORS: true,
         logging: false,
         backgroundColor: '#FFFFFF',
         scrollX: 0,
-        scrollY: -window.scrollY, // Capture from top
-        width: el.scrollWidth,            // Captura el ancho total sin recortar columnas
-        windowWidth: el.scrollWidth,      // Idem para cómputo de estilos
+        scrollY: -window.scrollY,
+        width: el.scrollWidth,
+        windowWidth: el.scrollWidth,
       });
       
       const imgData = canvas.toDataURL('image/png');
@@ -1237,7 +1237,7 @@ const CashflowProjections = () => {
       const pdf = new jsPDF({
         orientation: 'landscape',
         unit: 'mm',
-        format: 'a4',
+        format: 'a3',       // A3 landscape: 420×297 mm — más espacio horizontal
         compress: true,
       });
 
@@ -2892,13 +2892,13 @@ const CashflowProjections = () => {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto [&_td]:py-1.5 [&_td]:px-2 [&_th]:py-2 [&_th]:px-2">
+              <div className="overflow-x-auto [&_td]:py-1 [&_td]:px-2 [&_th]:py-1.5 [&_th]:px-2">
                 <Table className="text-xs">
                   <TableHeader>
                     <TableRow className="bg-gray-100">
                       <TableHead className="sticky left-0 bg-gray-100 min-w-[200px] font-bold">CONCEPTO</TableHead>
                       {weeklyTotals.map((week, idx) => columnVisible[idx] ? (
-                        <TableHead key={idx} className={`text-center min-w-[72px] ${
+                        <TableHead key={idx} className={`text-center min-w-[65px] ${
                           week.dataType === 'real' ? 'bg-yellow-50' :
                           week.dataType === 'actual' ? 'bg-blue-50' : 'bg-gray-50'
                         }`}>
