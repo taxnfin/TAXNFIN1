@@ -1111,6 +1111,58 @@ def build_pdf(output_path):
     for b in ia_bloques[2:]:
         _render_ia_bloque(*b)
 
+    # ─── PAG 7: ANÁLISIS INTELIGENTE IA ────────────────────────────────────
+    ai = DATA.get('ai_analysis', {})
+    if ai and ai.get('executive_summary') and ai.get('executive_summary') != 'Análisis IA temporalmente no disponible.':
+        story.append(PageBreak())
+        story.append(Paragraph('Análisis Inteligente', styles['section_header']))
+        story.append(Paragraph(
+            'Análisis financiero generado por Inteligencia Artificial · IA TaxnFin',
+            ParagraphStyle('sub_ai', fontName='Helvetica', fontSize=8,
+                           textColor=DGRAY, leading=11, spaceAfter=5*mm)
+        ))
+
+        secciones_ai = [
+            ('Resumen Ejecutivo',              ai.get('executive_summary', '')),
+            ('Análisis de Rentabilidad',       ai.get('profitability_analysis', '')),
+            ('Análisis de Retornos',           ai.get('returns_analysis', '')),
+            ('Análisis de Liquidez',           ai.get('liquidity_analysis', '')),
+            ('Análisis de Solvencia',          ai.get('solvency_analysis', '')),
+            ('Flujo del Estado de Resultados', ai.get('income_flow_analysis', '')),
+            ('Recomendaciones Estratégicas',   ai.get('recommendations', '')),
+            ('Tendencias Históricas',          ai.get('trends_analysis', '')),
+        ]
+
+        for titulo_ai, texto_ai in secciones_ai:
+            if not texto_ai:
+                continue
+            sec_hdr = Table(
+                [[Paragraph(f'<b>{titulo_ai}</b>',
+                    ParagraphStyle('sh_ai', fontName='Helvetica-Bold', fontSize=9,
+                                   textColor=NAVY, leading=13))]],
+                colWidths=[PW]
+            )
+            sec_hdr.setStyle(TableStyle([
+                ('LINEBELOW',     (0, 0), (-1, -1), 1.5, TEAL),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                ('TOPPADDING',    (0, 0), (-1, -1), 8),
+            ]))
+            story.append(KeepTogether([
+                sec_hdr,
+                Spacer(1, 2*mm),
+                Paragraph(texto_ai,
+                    ParagraphStyle('ai_txt', fontName='Helvetica', fontSize=8.5,
+                                   textColor=DGRAY, leading=13, spaceAfter=4*mm,
+                                   firstLineIndent=0)),
+            ]))
+
+        story.append(Spacer(1, 5*mm))
+        story.append(Paragraph(
+            f'Generado por IA TaxnFin · {DATA["fecha"]}',
+            ParagraphStyle('footer_ai', fontName='Helvetica', fontSize=7,
+                           textColor=MGRAY, alignment=TA_RIGHT)
+        ))
+
     # ─── Build ───────────────────────────────────────────────────────────────
     doc.build(story, onFirstPage=portada, onLaterPages=later_pages)
     print(f"PDF generado: {output_path}")
@@ -1165,6 +1217,7 @@ def build_pdf_mejorado(data_dict: dict) -> io.BytesIO:
         'eficiencia_ef': -37.0,
         'top_cxc': data_dict.get('top_cxc', []),
         'top_cxp': data_dict.get('top_cxp', []),
+        'ai_analysis': data_dict.get('ai_analysis', {}),
     }
 
     buffer = io.BytesIO()
