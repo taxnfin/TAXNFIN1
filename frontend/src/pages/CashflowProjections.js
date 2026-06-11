@@ -76,6 +76,7 @@ const CashflowProjections = () => {
   const reportRef = useRef(null);
   const chartsRef = useRef(null);
   const tableModelRef = useRef(null);
+  const kpiChartsRef = useRef(null);
   // Ref para el patrón "latest ref": openKpiModal lee de aquí en lugar de closures del render
   const kpiStateRef = useRef({ cfoKPIs: null, KPI_DEFS: null, formatCurrency: null });
   const [newConcept, setNewConcept] = useState({
@@ -1218,28 +1219,26 @@ const CashflowProjections = () => {
         day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
       });
 
-      const element = document.getElementById('cashflow-report-container');
+      const kpiEl   = document.getElementById('cashflow-kpi-charts');
       const tableEl = document.getElementById('cashflow-table-model');
-      if (!element) { toast.error('Contenedor no encontrado'); return; }
+      if (!kpiEl) { toast.error('Contenedor no encontrado'); return; }
 
-      // ── PASO 1: Ocultar tabla → capturar KPIs + Gráficas ──────────────
-      if (tableEl) tableEl.style.display = 'none';
-      await new Promise(r => setTimeout(r, 300));
-
-      const canvasKPIs = await html2canvas(element, {
-        scale: 0.9,
+      // ── PASO 1: Capturar KPIs + Gráficas directamente (sin ocultar nada)
+      const canvasKPIs = await html2canvas(kpiEl, {
+        scale: 0.85,
         useCORS: true,
         allowTaint: true,
         foreignObjectRendering: true,
         backgroundColor: '#f8fafc',
         windowWidth: 1440,
-        height: element.scrollHeight,
-        windowHeight: element.scrollHeight,
-        onclone: (doc) => { doc.querySelectorAll('iframe').forEach(e => e.remove()); },
+        height: kpiEl.scrollHeight,
+        windowHeight: kpiEl.scrollHeight,
+        onclone: (doc) => {
+          const el = doc.getElementById('cashflow-kpi-charts');
+          if (el) el.style.backgroundColor = '#f8fafc';
+          doc.querySelectorAll('iframe').forEach(e => e.remove());
+        },
       });
-
-      if (tableEl) tableEl.style.display = '';
-      await new Promise(r => setTimeout(r, 300));
 
       // ── PASO 2: Expandir tabla → capturar con ancho completo ──────────
       if (tableEl) {
@@ -2410,6 +2409,7 @@ const CashflowProjections = () => {
         {/* WEEKLY VIEW */}
         <TabsContent value="weekly" className="mt-4 space-y-4">
           <div ref={reportRef} id="cashflow-report-container">
+          <div ref={kpiChartsRef} id="cashflow-kpi-charts">
 
           {/* ── PDF Header ──────────────────────────────────────────────── */}
           <div className="bg-[#0F172A] text-white px-6 py-5 mb-4 rounded-lg flex items-center justify-between">
@@ -2837,6 +2837,8 @@ const CashflowProjections = () => {
               </Card>
             </div>
           )}
+
+          </div>{/* end cashflow-kpi-charts */}
 
           {/* ===== MAIN CASH FLOW TABLE ===== */}
           <Card ref={tableModelRef} id="cashflow-table-model" data-table-model="true">
