@@ -1347,7 +1347,9 @@ const CashflowProjections = () => {
       await new Promise(r => setTimeout(r, 500));
       const tableEl = document.getElementById('cashflow-table-model');
       if (tableEl) {
-        const captureW  = Math.max(tableEl.scrollWidth, 2800);
+        // Medir sidebar ANTES del capture para compensar su ancho en el crop
+        const sidebarW = document.querySelector('aside[data-testid="sidebar"]')?.offsetWidth ?? 0;
+        const captureW = Math.max(tableEl.scrollWidth, 2800);
         const canvasTable = await html2canvas(tableEl, {
           scale: 0.65,
           useCORS: true,
@@ -1355,10 +1357,13 @@ const CashflowProjections = () => {
           backgroundColor: '#ffffff',
           width:        captureW,
           height:       tableEl.scrollHeight,
-          windowWidth:  captureW,
+          windowWidth:  captureW + sidebarW,
           windowHeight: tableEl.scrollHeight,
+          scrollX: -sidebarW,
           onclone: (doc) => {
             doc.querySelectorAll('iframe').forEach(e => e.remove());
+            // Eliminar sidebar del clone para que no aparezca negro en el PDF
+            doc.querySelector('aside[data-testid="sidebar"]')?.remove();
             const el = doc.getElementById('cashflow-table-model');
             if (el) { el.style.overflow = 'visible'; el.style.width = 'max-content'; el.style.maxWidth = 'none'; }
           },
