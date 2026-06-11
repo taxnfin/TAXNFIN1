@@ -856,6 +856,92 @@ async def upload_balance_sheet(
         raise HTTPException(status_code=500, detail=f"Error procesando archivo: {str(e)}")
 
 
+async def get_financial_metrics_data(company_id: str, periodo: str) -> Dict:
+    """
+    Función auxiliar compartida por /metrics y /ai-analysis.
+    Obtiene estados financieros con preferencia por fuente contalink y devuelve
+    el dict completo de datos (no un subconjunto de claves fijas).
+    Soporta periodos YYYY-MM, Q{n}-YYYY y YYYY.
+    """
+    # Determinar meses a consultar según formato del período
+    months: List[str] = []
+    if len(periodo) == 7 and periodo[4] == '-':  # YYYY-MM
+        months = [periodo]
+    elif periodo.startswith('Q'):  # Q{n}-YYYY
+        try:
+            parts = periodo.split('-')
+            quarter = int(parts[0][1])
+            year = parts[1]
+            qmap = {1: ['01', '02', '03'], 2: ['04', '05', '06'],
+                    3: ['07', '08', '09'], 4: ['10', '11', '12']}
+            months = [f"{year}-{m}" for m in qmap.get(quarter, [])]
+        except Exception:
+            months = [periodo]
+    elif len(periodo) == 4 and periodo.isdigit():  # YYYY
+        months = [f"{periodo}-{str(m).zfill(2)}" for m in range(1, 13)]
+    else:
+        months = [periodo]
+
+    aggregated_income: Dict = {}
+    latest_balance = None
+    found_months: List[str] = []
+
+    for m in months:
+        # Preferir contalink sobre otras fuentes
+        income_stmt = await db.financial_statements.find_one(
+            {'company_id': company_id, 'tipo': 'estado_resultados', 'periodo': m, 'fuente': 'contalink'},
+            {'_id': 0}
+        )
+        if not income_stmt:
+            income_stmt = await db.financial_statements.find_one(
+                {'company_id': company_id, 'tipo': 'estado_resultados', 'periodo': m},
+                {'_id': 0}
+            )
+
+        if income_stmt:
+            found_months.append(m)
+            for key, val in income_stmt.get('datos', {}).items():
+                if isinstance(val, (int, float)):
+                    aggregated_income[key] = aggregated_income.get(key, 0) + val
+
+        balance_stmt = await db.financial_statements.find_one(
+            {'company_id': company_id, 'tipo': 'balance_general', 'periodo': m, 'fuente': 'contalink'},
+            {'_id': 0}
+        )
+        if not balance_stmt:
+            balance_stmt = await db.financial_statements.find_one(
+                {'company_id': company_id, 'tipo': 'balance_general', 'periodo': m},
+                {'_id': 0}
+            )
+
+        if balance_stmt:
+            latest_balance = balance_stmt.get('datos', {})
+
+    if not found_months and latest_balance is None:
+        raise HTTPException(status_code=404, detail=f"No hay estados financieros para {periodo}")
+
+    # Calcular EBITDA si la fuente no lo trae
+    if aggregated_income and 'ebitda' not in aggregated_income:
+        aggregated_income['ebitda'] = (
+            aggregated_income.get('utilidad_operativa', 0) +
+            aggregated_income.get('depreciacion', 0) +
+            aggregated_income.get('amortizacion', 0)
+        )
+
+    balance_data = latest_balance or {}
+    metrics = calculate_financial_metrics(aggregated_income, balance_data)
+
+    return {
+        "periodo": periodo,
+        "periods_found": found_months,
+        "has_income_statement": len(found_months) > 0,
+        "has_balance_sheet": latest_balance is not None,
+        "metrics": metrics,
+        "income_statement": aggregated_income,
+        "balance_sheet": balance_data,
+    }
+
+
 @router.get("/metrics/{periodo}")
 async def get_financial_metrics(
     request: Request,
@@ -864,52 +950,7 @@ async def get_financial_metrics(
 ):
     """Get calculated financial metrics for a specific period"""
     company_id = await get_active_company_id(request, current_user)
-    
-    # Get income statement for period - preferir Contalink sobre Alegra si ambos existen
-    income_stmt = await db.financial_statements.find_one({
-        'company_id': company_id,
-        'tipo': 'estado_resultados',
-        'periodo': periodo,
-        'fuente': 'contalink'
-    }, {'_id': 0})
-    if not income_stmt:
-        income_stmt = await db.financial_statements.find_one({
-            'company_id': company_id,
-            'tipo': 'estado_resultados',
-            'periodo': periodo
-        }, {'_id': 0})
-    
-    # Get balance sheet for period - preferir Contalink sobre Alegra si ambos existen
-    balance_sheet = await db.financial_statements.find_one({
-        'company_id': company_id,
-        'tipo': 'balance_general',
-        'periodo': periodo,
-        'fuente': 'contalink'
-    }, {'_id': 0})
-    if not balance_sheet:
-        balance_sheet = await db.financial_statements.find_one({
-            'company_id': company_id,
-            'tipo': 'balance_general',
-            'periodo': periodo
-        }, {'_id': 0})
-    
-    if not income_stmt and not balance_sheet:
-        raise HTTPException(status_code=404, detail=f"No hay estados financieros para {periodo}")
-    
-    # Calculate metrics
-    income_data = income_stmt.get('datos', {}) if income_stmt else {}
-    balance_data = balance_sheet.get('datos', {}) if balance_sheet else {}
-    
-    metrics = calculate_financial_metrics(income_data, balance_data)
-    
-    return {
-        "periodo": periodo,
-        "has_income_statement": income_stmt is not None,
-        "has_balance_sheet": balance_sheet is not None,
-        "metrics": metrics,
-        "income_statement": income_data,
-        "balance_sheet": balance_data
-    }
+    return await get_financial_metrics_data(company_id, periodo)
 
 
 @router.get("/periods")
@@ -1186,76 +1227,21 @@ async def get_ai_financial_analysis(
     company = await db.companies.find_one({'id': company_id}, {'_id': 0})
     company_name = company.get('nombre', 'Empresa') if company else 'Empresa'
     
-    # Get aggregated data for the period
-    # Determine which months to aggregate
-    months_to_aggregate = []
-    
-    if period_type == "monthly":
-        months_to_aggregate = [period_value]
-    elif period_type == "quarterly":
-        if period_value.startswith("Q"):
-            parts = period_value.split("-")
-            quarter = int(parts[0][1])
-            year = parts[1]
-            quarter_months = {
-                1: ["01", "02", "03"],
-                2: ["04", "05", "06"],
-                3: ["07", "08", "09"],
-                4: ["10", "11", "12"]
-            }
-            months_to_aggregate = [f"{year}-{m}" for m in quarter_months.get(quarter, [])]
-    elif period_type == "annual":
-        year = period_value
-        months_to_aggregate = [f"{year}-{str(m).zfill(2)}" for m in range(1, 13)]
-    
-    # Fetch and aggregate data
-    aggregated_income = {
-        'ingresos': 0, 'costo_ventas': 0, 'utilidad_bruta': 0,
-        'gastos_venta': 0, 'gastos_administracion': 0, 'gastos_generales': 0,
-        'utilidad_operativa': 0, 'otros_ingresos': 0, 'gastos_financieros': 0,
-        'otros_gastos': 0, 'utilidad_antes_impuestos': 0, 'impuestos': 0,
-        'utilidad_neta': 0, 'depreciacion': 0, 'amortizacion': 0, 'intereses': 0, 'ebitda': 0
-    }
-    
-    latest_balance = None
-    periods_found = []
-    
-    for periodo in months_to_aggregate:
-        income_stmt = await db.financial_statements.find_one({
-            'company_id': company_id,
-            'tipo': 'estado_resultados',
-            'periodo': periodo
-        })
-        
-        if income_stmt:
-            periods_found.append(periodo)
-            data = income_stmt.get('datos', {})
-            for key in aggregated_income:
-                if key in data:
-                    aggregated_income[key] += data.get(key, 0)
-        
-        balance_sheet = await db.financial_statements.find_one({
-            'company_id': company_id,
-            'tipo': 'balance_general',
-            'periodo': periodo
-        })
-        
-        if balance_sheet:
-            latest_balance = balance_sheet.get('datos', {})
-    
+    # Usar la misma lógica que /metrics (preferencia Contalink, dict completo de datos)
+    try:
+        metrics_data = await get_financial_metrics_data(company_id, period_value)
+        aggregated_income = metrics_data.get('income_statement', {})
+        balance_data = metrics_data.get('balance_sheet', {})
+        metrics = metrics_data.get('metrics', {})
+        periods_found = metrics_data.get('periods_found', [])
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error obteniendo métricas para análisis IA: {e}")
+        raise HTTPException(status_code=404, detail="No hay datos financieros para el período solicitado")
+
     if not periods_found:
         raise HTTPException(status_code=404, detail="No hay datos financieros para el período solicitado")
-    
-    # Calculate EBITDA
-    aggregated_income['ebitda'] = (
-        aggregated_income['utilidad_operativa'] + 
-        aggregated_income['depreciacion'] + 
-        aggregated_income['amortizacion']
-    )
-    
-    # Calculate metrics
-    balance_data = latest_balance or {}
-    metrics = calculate_financial_metrics(aggregated_income, balance_data)
     
     # Get trends data for AI analysis
     trends_data = []
