@@ -205,11 +205,14 @@ async def generate_financial_analysis(
             return parsed
 
     except httpx.HTTPStatusError as e:
-        logger.error(f"Claude API HTTP error {e.response.status_code}: {e.response.text[:200]}")
+        import traceback
+        logger.error(f"Claude API HTTP error {e.response.status_code}: {e.response.text[:500]}\n{traceback.format_exc()}")
     except json.JSONDecodeError as e:
-        logger.error(f"Claude returned invalid JSON: {e}")
+        import traceback
+        logger.error(f"Claude returned invalid JSON: {e}\n{traceback.format_exc()}")
     except Exception as e:
-        logger.error(f"Claude API error: {e}")
+        import traceback
+        logger.error(f"Claude API error: {type(e).__name__}: {e}\n{traceback.format_exc()}")
 
     return get_default_analysis(language)
 
