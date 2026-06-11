@@ -1215,13 +1215,16 @@ const CashflowProjections = () => {
     
     try {
       // ── 1. Capturar el contenido como imagen de alta resolución ──────
-      const canvas = await html2canvas(reportRef.current, {
+      const el = reportRef.current;
+      const canvas = await html2canvas(el, {
         scale: 2,           // Retina quality
         useCORS: true,
         logging: false,
         backgroundColor: '#FFFFFF',
         scrollX: 0,
         scrollY: -window.scrollY, // Capture from top
+        width: el.scrollWidth,            // Captura el ancho total sin recortar columnas
+        windowWidth: el.scrollWidth,      // Idem para cómputo de estilos
       });
       
       const imgData = canvas.toDataURL('image/png');
@@ -1296,7 +1299,7 @@ const CashflowProjections = () => {
         pdf.setFontSize(7);
         pdf.setTextColor(100, 116, 139); // slate-500
         pdf.text(
-          `Proyección de Flujo de Efectivo — 18 Semanas Rolling | Generado: ${format(new Date(), "dd 'de' MMMM yyyy, HH:mm", { locale: es })}`,
+          `${companyConfig.nombre || 'TaxnFin'} · Proyección de Flujo de Efectivo · 18 Semanas Rolling | ${format(new Date(), "dd 'de' MMMM yyyy, HH:mm", { locale: es })}`,
           pageW / 2,
           pageH - FOOTER_H + 4,
           { align: 'center' }
@@ -2417,7 +2420,26 @@ const CashflowProjections = () => {
         {/* WEEKLY VIEW */}
         <TabsContent value="weekly" className="mt-4 space-y-4">
           <div ref={reportRef}>
-          
+
+          {/* ── PDF Header ──────────────────────────────────────────────── */}
+          <div className="bg-[#0F172A] text-white px-6 py-5 mb-4 rounded-lg flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-blue-400 uppercase tracking-widest mb-1">
+                Proyección de Flujo de Efectivo · 18 Semanas Rolling
+              </p>
+              <h1 className="text-2xl font-bold">{companyConfig.nombre || 'Mi Empresa'}</h1>
+              {companyConfig.rfc && (
+                <p className="text-sm text-slate-400 mt-0.5">RFC: {companyConfig.rfc}</p>
+              )}
+            </div>
+            <div className="text-right text-sm text-slate-400">
+              <p className="text-base font-semibold text-slate-300">
+                {format(new Date(), "MMMM yyyy", { locale: es })}
+              </p>
+              <p className="mt-1">Análisis: TaxnFin CFO Intelligence</p>
+            </div>
+          </div>
+
           {/* ===== CFO KPIs DASHBOARD ===== */}
           {cfoKPIs && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-4" data-testid="cfo-kpis-section">
@@ -2430,7 +2452,7 @@ const CashflowProjections = () => {
                 }}
                 data-testid="kpi-burn-rate"
               >
-                <div className="p-6 pt-4">
+                <div className="p-4 pt-3">
                   <div className="flex items-center justify-between text-sm text-gray-500 mb-1">
                     <div className="flex items-center gap-2"><Activity size={14} />Net Burn Rate</div>
                     <span className="text-xs text-blue-400">Ver análisis →</span>
@@ -2458,7 +2480,7 @@ const CashflowProjections = () => {
                 onClick={() => openKpiModal('cashGap')}
                 data-testid="kpi-cash-gap"
               >
-                <div className="p-6 pt-4">
+                <div className="p-4 pt-3">
                   <div className="flex items-center justify-between text-sm text-gray-500 mb-1">
                     <div className="flex items-center gap-2"><AlertTriangle size={14} />Cash Gap Analysis</div>
                     <span className="text-xs text-blue-400">Ver análisis →</span>
@@ -2492,7 +2514,7 @@ const CashflowProjections = () => {
                 onClick={() => openKpiModal('volatilidad')}
                 data-testid="kpi-volatilidad"
               >
-                <div className="p-6 pt-4">
+                <div className="p-4 pt-3">
                   <div className="flex items-center justify-between text-sm text-gray-500 mb-1">
                     <div className="flex items-center gap-2"><BarChart3 size={14} />Volatilidad del Flujo</div>
                     <span className="text-xs text-blue-400">Ver análisis →</span>
@@ -2521,7 +2543,7 @@ const CashflowProjections = () => {
                 onClick={() => openKpiModal('operativos')}
                 data-testid="kpi-operativos"
               >
-                <div className="p-6 pt-4">
+                <div className="p-4 pt-3">
                   <div className="flex items-center justify-between text-sm text-gray-500 mb-1">
                     <div className="flex items-center gap-2"><Target size={14} />Indicadores Operativos</div>
                     <span className="text-xs text-blue-400">Ver análisis →</span>
@@ -2564,7 +2586,7 @@ const CashflowProjections = () => {
                     className={`rounded-lg border bg-white shadow-sm border-l-4 ${borderColor} hover:shadow-md transition-shadow`}
                     data-testid="kpi-runway"
                   >
-                    <div className="p-6 pt-4">
+                    <div className="p-4 pt-3">
                       <div className="flex items-center justify-between text-sm text-gray-500 mb-1">
                         <div className="flex items-center gap-2"><Calendar size={14} />Runway</div>
                       </div>
@@ -2870,13 +2892,13 @@ const CashflowProjections = () => {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
+              <div className="overflow-x-auto [&_td]:py-1.5 [&_td]:px-2 [&_th]:py-2 [&_th]:px-2">
+                <Table className="text-xs">
                   <TableHeader>
                     <TableRow className="bg-gray-100">
                       <TableHead className="sticky left-0 bg-gray-100 min-w-[200px] font-bold">CONCEPTO</TableHead>
                       {weeklyTotals.map((week, idx) => columnVisible[idx] ? (
-                        <TableHead key={idx} className={`text-center min-w-[90px] ${
+                        <TableHead key={idx} className={`text-center min-w-[72px] ${
                           week.dataType === 'real' ? 'bg-yellow-50' :
                           week.dataType === 'actual' ? 'bg-blue-50' : 'bg-gray-50'
                         }`}>
@@ -2952,17 +2974,17 @@ const CashflowProjections = () => {
                         });
                       });
 
-                      return Array.from(allIngresoCategories).map(categoryName => {
+                      return Array.from(allIngresoCategories).map((categoryName, catIdx) => {
                         const categoryKey = `ing-${categoryName}`;
                         const isExpanded = expandedRows[categoryKey];
                         const weekTotals = weeklyTotals.map(w => w.ingresos.byCategory[categoryName]?.total || 0);
                         const categoryTotal = weekTotals.reduce((sum, t) => sum + t, 0);
-                        
+
                         if (categoryTotal === 0) return null;
-                        
+
                         return (
                           <React.Fragment key={categoryKey}>
-                            <TableRow className="hover:bg-green-50/50">
+                            <TableRow className={`${catIdx % 2 === 1 ? 'bg-slate-50' : 'bg-white'} hover:bg-green-50/50`}>
                               <TableCell className="sticky left-0 bg-white pl-8">
                                 <button 
                                   onClick={() => toggleRow(categoryKey)}
@@ -3066,17 +3088,17 @@ const CashflowProjections = () => {
                         });
                       });
 
-                      return Array.from(allEgresoCategories).map(categoryName => {
+                      return Array.from(allEgresoCategories).map((categoryName, catIdx) => {
                         const categoryKey = `egr-${categoryName}`;
                         const isExpanded = expandedRows[categoryKey];
                         const weekTotals = weeklyTotals.map(w => w.egresos.byCategory[categoryName]?.total || 0);
                         const categoryTotal = weekTotals.reduce((sum, t) => sum + t, 0);
-                        
+
                         if (categoryTotal === 0) return null;
-                        
+
                         return (
                           <React.Fragment key={categoryKey}>
-                            <TableRow className="hover:bg-red-50/50">
+                            <TableRow className={`${catIdx % 2 === 1 ? 'bg-slate-50' : 'bg-white'} hover:bg-red-50/50`}>
                               <TableCell className="sticky left-0 bg-white pl-8">
                                 <button 
                                   onClick={() => toggleRow(categoryKey)}
