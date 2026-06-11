@@ -1260,9 +1260,14 @@ async def get_ai_financial_analysis(
         }, {'_id': 0, 'datos': 1, 'periodo': 1})
         
         if p_income:
+            datos = p_income.get('datos', {})
+            if 'ventas_netas' in datos and 'ingresos' not in datos:
+                datos['ingresos'] = datos['ventas_netas']
+            if 'ingresos_totales' in datos and 'ingresos' not in datos:
+                datos['ingresos'] = datos['ingresos_totales']
             trends_data.append({
                 'periodo': p,
-                'income_statement': p_income.get('datos', {})
+                'income_statement': datos
             })
     
     # Generate AI analysis with trends

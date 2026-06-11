@@ -68,7 +68,7 @@ def _build_prompt(
         for t in trends_data[-4:]:
             p = t.get('periodo', '')
             s = t.get('income_statement', {})
-            v = _fmt(s.get('ventas_netas') or s.get('ingresos_totales', 0))
+            v = _fmt(s.get('ingresos') or s.get('ventas_netas') or s.get('ingresos_totales', 0))
             u = _fmt(s.get('utilidad_neta', 0))
             lines.append(f'  - {p}: Ventas {v}, Utilidad neta {u}')
         trends_block = 'TENDENCIA HISTÓRICA:\n' + '\n'.join(lines) + '\n\n'
