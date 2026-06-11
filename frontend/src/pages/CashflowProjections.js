@@ -1205,96 +1205,34 @@ const CashflowProjections = () => {
   // =====================================================================
   // EXPORTAR A PDF
   // =====================================================================
-  const exportToPDF = async () => {
-    setExportingPdf(true);
-    toast.info('Generando PDF, por favor espere...');
+  const exportToPDF = () => {
+    const empresa = companyConfig?.nombre || 'TaxnFin';
+    const fecha = new Date().toLocaleDateString('es-MX', {
+      day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
 
-    try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      const element = document.getElementById('cashflow-report-container');
-      if (!element) {
-        toast.error('No se encontró el contenedor del reporte');
-        return;
+    const style = document.createElement('style');
+    style.id = 'print-style-temp';
+    style.innerHTML = `
+      @media print {
+        @page { size: A3 landscape; margin: 10mm; }
+        body * { visibility: hidden; }
+        #cashflow-report-container, #cashflow-report-container * { visibility: visible; }
+        #cashflow-report-container { position: absolute; left: 0; top: 0; width: 100%; }
+        .no-print { display: none !important; }
       }
+    `;
+    document.head.appendChild(style);
 
-      const canvas = await html2canvas(element, {
-        scale: 1.5,
-        useCORS: true,
-        logging: false,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        windowWidth: element.scrollWidth,
-        windowHeight: element.scrollHeight,
-        x: 0,
-        y: 0,
-        scrollX: 0,
-        scrollY: 0,
-        ignoreElements: (el) =>
-          el.tagName === 'IFRAME' ||
-          (el.id && el.id.includes('rrweb')) ||
-          (el.className && typeof el.className === 'string' && el.className.includes('ph-')),
-      });
+    const originalTitle = document.title;
+    document.title = `TaxnFin_FlujoCaja_${empresa}_${new Date().toISOString().slice(0, 10)}`;
 
-      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3', compress: true });
-      const W = pdf.internal.pageSize.getWidth();
-      const H = pdf.internal.pageSize.getHeight() - 10;
+    window.print();
 
-      const imgData   = canvas.toDataURL('image/png');
-      const imgWidth  = W;
-      const imgHeight = (canvas.height * W) / canvas.width;
-
-      if (imgHeight <= H) {
-        pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-      } else {
-        let yOffset = 0;
-        let pageNum = 1;
-        while (yOffset < imgHeight) {
-          if (pageNum > 1) pdf.addPage();
-          pdf.addImage(imgData, 'PNG', 0, -yOffset, imgWidth, imgHeight);
-          yOffset += H;
-          pageNum++;
-        }
-      }
-
-      const totalPages = pdf.internal.getNumberOfPages();
-      const empresa    = companyConfig?.nombre || 'TaxnFin';
-      const fecha      = format(new Date(), "dd 'de' MMMM yyyy, HH:mm", { locale: es });
-
-      for (let i = 1; i <= totalPages; i++) {
-        pdf.setPage(i);
-        pdf.setDrawColor(180, 180, 180);
-        pdf.setLineWidth(0.3);
-        pdf.line(8, H + 2, W - 8, H + 2);
-
-        pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(7);
-        pdf.setTextColor(15, 23, 42);
-        pdf.text('TaxnFin', 8, H + 8);
-
-        pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(7);
-        pdf.setTextColor(100, 116, 139);
-        pdf.text(
-          `${empresa} · Proyección de Flujo de Efectivo · 18 Semanas Rolling | ${fecha}`,
-          W / 2, H + 8, { align: 'center' }
-        );
-
-        pdf.setFont('helvetica', 'bold');
-        pdf.setFontSize(7);
-        pdf.setTextColor(100, 116, 139);
-        pdf.text(`${i} / ${totalPages}`, W - 8, H + 8, { align: 'right' });
-      }
-
-      const filename = `TaxnFin_FlujoCaja_${empresa.replace(/\s/g, '_')}_${format(new Date(), 'yyyyMMdd')}.pdf`;
-      pdf.save(filename);
-      toast.success('PDF generado correctamente');
-    } catch (error) {
-      console.error('PDF export error:', error);
-      toast.error('Error al generar el PDF: ' + (error?.message || 'Error desconocido'));
-    } finally {
-      setExportingPdf(false);
-    }
+    setTimeout(() => {
+      document.head.removeChild(style);
+      document.title = originalTitle;
+    }, 1000);
   };
 
   // =====================================================================
@@ -2240,15 +2178,14 @@ const CashflowProjections = () => {
             Exportar Excel
           </Button>
           
-          <Button 
-            variant="outline" 
-            className="gap-2 border-red-200 text-red-700 hover:bg-red-50"
+          <Button
+            variant="outline"
+            className="no-print gap-2 border-red-200 text-red-700 hover:bg-red-50"
             onClick={exportToPDF}
-            disabled={exportingPdf}
             data-testid="export-pdf-btn"
           >
             <FileDown size={16} />
-            {exportingPdf ? (t.exporting || 'Generando...') : t.exportPdf}
+            {t.exportPdf}
           </Button>
           
           <Dialog open={conceptDialogOpen} onOpenChange={setConceptDialogOpen}>
