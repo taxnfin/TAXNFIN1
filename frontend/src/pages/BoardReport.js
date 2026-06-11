@@ -553,7 +553,7 @@ const BoardReport = () => {
         top_cxc: debtorsRes.data?.top_cxc || [],
         top_cxp: debtorsRes.data?.top_cxp || [],
         ai_analysis: aiAnalysis || {},
-        trends: trendsData || [],
+        trends: (trendsData || []).filter(t => t.periodo <= selectedPeriod),
       };
       const response = await api.post('/reports/pdf-mejorado', payload, { responseType: 'blob' });
       const blob = new Blob([response.data], { type: 'application/pdf' });

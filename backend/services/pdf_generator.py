@@ -72,6 +72,31 @@ def fmt(n, decimals=0, prefix='$'):
 
 def pct(n): return f"{n:+.1f}%"
 
+def _fmt_k(n):
+    """Siempre formatea en K, nunca en M"""
+    if not n and n != 0:
+        return '$0K'
+    neg = n < 0
+    abs_n = abs(n)
+    if abs_n >= 1_000:
+        s = f"${abs_n/1_000:.0f}K"
+    else:
+        s = f"${abs_n:,.0f}"
+    return f"-{s}" if neg else s
+
+def _fmt_periodo(p):
+    """Convierte '2026-05' a 'May 2026' → 'May 2026'"""
+    meses = {
+        '01': 'Ene', '02': 'Feb', '03': 'Mar', '04': 'Abr',
+        '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Ago',
+        '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dic'
+    }
+    try:
+        parts = p.split('-')
+        return f"{meses.get(parts[1], parts[1])} {parts[0]}"
+    except Exception:
+        return p
+
 # ── Matplotlib helpers ───────────────────────────────────────────────────────
 def fig_to_img(fig, dpi=150):
     buf = io.BytesIO()
@@ -111,7 +136,7 @@ def chart_waterfall():
     for i, (v, bv) in enumerate(zip(display_vals, bar_vals)):
         ypos = bv/2 if i in [0, 2] else (running[i] - bv/2 if values[i] < 0 else running[i] + bv/2)
         sign = '' if i in [0, 2] else ('+' if v > 0 else '')
-        ax.text(i, ypos, f"{sign}${abs(v)/1e6:.2f}M", ha='center', va='center',
+        ax.text(i, ypos, f"{sign}{_fmt_k(abs(v))}", ha='center', va='center',
                 fontsize=7.5, color='white', fontweight='bold', zorder=5)
 
     ax.set_xticks(range(len(labels)))
@@ -178,14 +203,14 @@ def chart_estructura():
     wedges, _ = ax.pie(sizes, colors=cols, startangle=90,
                        wedgeprops=dict(width=0.55, edgecolor='white', linewidth=1.5))
 
-    center_lines = f"{fmt(DATA['activo_total'])}\nActivos"
+    center_lines = f"{_fmt_k(DATA['activo_total'])}\nActivos"
     if DATA['capital'] < 0:
         center_lines += "\n⚠ Cap. neg."
     ax.text(0, 0, center_lines, ha='center', va='center',
             fontsize=7, color='#0D2B5E', fontweight='bold', linespacing=1.4)
 
     total_pos = sum(sizes) or 1
-    legend_patches = [mpatches.Patch(color=c, label=f"{l.replace(chr(10),' ')} {fmt(v)}")
+    legend_patches = [mpatches.Patch(color=c, label=f"{l.replace(chr(10),' ')} {_fmt_k(v)}")
                       for c, l, v in zip(cols, labels, raw)]
     ax.legend(handles=legend_patches, loc='lower center', bbox_to_anchor=(0.5, -0.22),
               ncol=2, fontsize=6.5, frameon=False, labelcolor='#334155')
@@ -270,7 +295,7 @@ def _chart_tendencias(trends):
     fig, ax = plt.subplots(figsize=(7.5, 3.0))
     fig.patch.set_alpha(0)
     ax.set_facecolor('none')
-    periodos  = [t.get('periodo', '') for t in trends]
+    periodos  = [_fmt_periodo(t.get('periodo', '')) for t in trends]
     ingresos  = []
     utilidades = []
     for t in trends:
@@ -421,17 +446,17 @@ def build_pdf(output_path):
         canvas_obj.roundRect(16*mm, H*0.595, W - 32*mm, 17*mm, 4, fill=1, stroke=0)
         canvas_obj.setFont('Helvetica-Bold', 15)
         canvas_obj.setFillColor(NAVY)
-        canvas_obj.drawString(20*mm, H*0.595 + 10*mm, DATA['periodo'])
+        canvas_obj.drawString(20*mm, H*0.595 + 10*mm, _fmt_periodo(DATA['periodo']))
         canvas_obj.setFont('Helvetica', 9)
         canvas_obj.setFillColor(DGRAY)
         canvas_obj.drawRightString(W - 20*mm, H*0.595 + 10*mm, f"RFC: {DATA['rfc']}")
 
         # 4 KPI cards blancas con borde y línea de color superior
         _kpis = [
-            ('Ingresos',     fmt(DATA['ingresos']),              True),
-            ('Util. Bruta',  fmt(DATA['utilidad_bruta']),        DATA['utilidad_bruta'] >= 0),
+            ('Ingresos',     _fmt_k(DATA['ingresos']),           True),
+            ('Util. Bruta',  _fmt_k(DATA['utilidad_bruta']),     DATA['utilidad_bruta'] >= 0),
             ('Margen Bruto', f"{DATA['margen_bruto']:.1f}%",     DATA['margen_bruto'] >= 0),
-            ('EBITDA',       fmt(DATA['ebitda']),                DATA['ebitda'] >= 0),
+            ('EBITDA',       _fmt_k(DATA['ebitda']),             DATA['ebitda'] >= 0),
         ]
         _box_w = (W - 32*mm) / 4
         _box_h = 30*mm
@@ -461,7 +486,7 @@ def build_pdf(output_path):
         canvas_obj.rect(0, 0, W, 20*mm, fill=1, stroke=0)
         canvas_obj.setFont('Helvetica', 8)
         canvas_obj.setFillColor(MGRAY)
-        canvas_obj.drawString(16*mm, 8*mm, f"{DATA['empresa']}  ·  {DATA['periodo']}")
+        canvas_obj.drawString(16*mm, 8*mm, f"{DATA['empresa']}  ·  {_fmt_periodo(DATA['periodo'])}")
         canvas_obj.drawCentredString(W / 2, 8*mm, f"RFC: {DATA['rfc']}")
         canvas_obj.drawRightString(W - 16*mm, 8*mm, f"Generado: {DATA['fecha']}")
         canvas_obj.restoreState()
@@ -495,7 +520,7 @@ def build_pdf(output_path):
         # Período (derecha)
         canvas_obj.setFont('Helvetica', 8)
         canvas_obj.setFillColor(TEAL2)
-        canvas_obj.drawRightString(W-18*mm, H-6*mm, f"{DATA['periodo']}")
+        canvas_obj.drawRightString(W-18*mm, H-6*mm, f"{_fmt_periodo(DATA['periodo'])}")
 
         # Footer
         canvas_obj.setFillColor(NAVY)
@@ -504,7 +529,7 @@ def build_pdf(output_path):
         canvas_obj.rect(0, 18*mm, W, 0.8*mm, fill=1, stroke=0)
         canvas_obj.setFont('Helvetica', 7)
         canvas_obj.setFillColor(MGRAY)
-        canvas_obj.drawString(18*mm, 7*mm, f"{DATA['empresa']} • Reporte Ejecutivo • {DATA['periodo']}")
+        canvas_obj.drawString(18*mm, 7*mm, f"{DATA['empresa']} • Reporte Ejecutivo • {_fmt_periodo(DATA['periodo'])}")
         canvas_obj.drawCentredString(W/2, 7*mm, f"RFC: {DATA['rfc']}")
         canvas_obj.drawRightString(W-18*mm, 7*mm, f"Análisis: IA TaxnFin • {DATA['fecha']}")
         canvas_obj.restoreState()
@@ -665,7 +690,7 @@ def build_pdf(output_path):
                 _mn  = (_u / _i * 100) if _i else 0
                 _mc  = '#27AE60' if _mn >= 3 else '#C0392B'
                 tr_rows.append([
-                    _t.get('periodo', ''), fmt(_i), fmt(_u),
+                    _fmt_periodo(_t.get('periodo', '')), _fmt_k(_i), _fmt_k(_u),
                     Paragraph(f'<font color="{_mc}">{_mn:.1f}%</font>',
                               ParagraphStyle('mntr', fontName='Helvetica', fontSize=8,
                                              leading=10, alignment=TA_CENTER)),
@@ -693,6 +718,11 @@ def build_pdf(output_path):
             'Concentración de cuentas por cobrar y por pagar — riesgo y oportunidad de caja.',
             styles['body']
         ))
+        story.append(Paragraph(
+            f'Saldos pendientes al {DATA["fecha"]} — acumulado histórico, no filtrado por período.',
+            ParagraphStyle('nota_hist', fontName='Helvetica-Oblique', fontSize=7.5,
+                           textColor=MGRAY, leading=11, spaceAfter=2*mm)
+        ))
         story.append(Spacer(1, 4*mm))
         def _fn(n): return n[:35] + '...' if len(n) > 35 else n
         _tcxc = DATA.get('top_cxc', [])
@@ -712,7 +742,7 @@ def build_pdf(output_path):
                 rows.append([str(i+1),
                     Paragraph(_fn(c['nombre']),
                         ParagraphStyle('cn2',fontName='Helvetica',fontSize=8,textColor=DGRAY,leading=11)),
-                    Paragraph(f'<b>{fmt(c["monto"])}</b>',
+                    Paragraph(f'<b>{_fmt_k(c["monto"])}</b>',
                         ParagraphStyle('cm2',fontName='Helvetica-Bold',fontSize=8,
                                        textColor=colors.HexColor('#C0392B'),leading=11,alignment=TA_RIGHT))])
             tbl = Table(rows, colWidths=[PW*0.08, PW*0.62, PW*0.30])
@@ -725,7 +755,7 @@ def build_pdf(output_path):
                 ('LEFTPADDING',(0,0),(-1,-1),6)]))
             story.append(tbl)
             story.append(Paragraph(
-                f'<font color="#C0392B"><b>Total CxC:</b></font> <b>{fmt(_tot)}</b>. '
+                f'<font color="#C0392B"><b>Total CxC:</b></font> <b>{_fmt_k(_tot)}</b>. '
                 f'Priorizar cobro del cliente #1 esta semana.',
                 ParagraphStyle('act2',fontName='Helvetica',fontSize=8,textColor=DGRAY,
                                leading=11,spaceAfter=6*mm,leftIndent=10)))
@@ -746,7 +776,7 @@ def build_pdf(output_path):
                 rowsp.append([str(i+1),
                     Paragraph(_fn(p['nombre']),
                         ParagraphStyle('pn2',fontName='Helvetica',fontSize=8,textColor=DGRAY,leading=11)),
-                    Paragraph(f'<b>{fmt(p["monto"])}</b>',
+                    Paragraph(f'<b>{_fmt_k(p["monto"])}</b>',
                         ParagraphStyle('pm2',fontName='Helvetica-Bold',fontSize=8,
                                        textColor=colors.HexColor('#D97706'),leading=11,alignment=TA_RIGHT))])
             tblp = Table(rowsp, colWidths=[PW*0.08, PW*0.62, PW*0.30])
@@ -759,7 +789,7 @@ def build_pdf(output_path):
                 ('LEFTPADDING',(0,0),(-1,-1),6)]))
             story.append(tblp)
             story.append(Paragraph(
-                f'<font color="#D97706"><b>Total CxP:</b></font> <b>{fmt(_totp)}</b>. '
+                f'<font color="#D97706"><b>Total CxP:</b></font> <b>{_fmt_k(_totp)}</b>. '
                 f'Negociar extensión de plazo con proveedor #1.',
                 ParagraphStyle('act3',fontName='Helvetica',fontSize=8,textColor=DGRAY,
                                leading=11,spaceAfter=6*mm,leftIndent=10)))
