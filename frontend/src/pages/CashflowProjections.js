@@ -1224,6 +1224,16 @@ const CashflowProjections = () => {
         logging: false,
         allowTaint: true,
         backgroundColor: '#ffffff',
+        windowWidth: element.scrollWidth,
+        windowHeight: element.scrollHeight,
+        x: 0,
+        y: 0,
+        scrollX: 0,
+        scrollY: 0,
+        ignoreElements: (el) =>
+          el.tagName === 'IFRAME' ||
+          (el.id && el.id.includes('rrweb')) ||
+          (el.className && typeof el.className === 'string' && el.className.includes('ph-')),
       });
 
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3', compress: true });
