@@ -1217,8 +1217,34 @@ const CashflowProjections = () => {
     try {
       const MARGIN   = 12;
       const FOOTER_H = 10;
-      const TOTAL_PAGES = 2;
 
+      // ── 1. Capturar ambos elementos en paralelo ────────────────────────
+      // reportRef: data-html2canvas-ignore en chartsRef excluye las gráficas automáticamente
+      // chartsRef: se captura como root — el atributo ignore no aplica al elemento raíz
+      const reportEl = reportRef.current;
+      const chartsEl = chartsRef.current;
+
+      const captureOpts = (el) => ({
+        scale: 1.5,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#FFFFFF',
+        scrollX: 0,
+        scrollY: -window.scrollY,
+        width: el.scrollWidth,
+        windowWidth: el.scrollWidth,
+      });
+
+      const captures = chartsEl
+        ? await Promise.all([
+            html2canvas(reportEl, captureOpts(reportEl)),
+            html2canvas(chartsEl, captureOpts(chartsEl)),
+          ])
+        : [await html2canvas(reportEl, captureOpts(reportEl))];
+
+      const [canvasReport, canvasCharts] = captures;
+
+      // ── 2. Construir PDF ───────────────────────────────────────────────
       const pdf = new jsPDF({
         orientation: 'landscape',
         unit: 'mm',
@@ -1226,31 +1252,16 @@ const CashflowProjections = () => {
         compress: true,
       });
 
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
+      const pageW  = pdf.internal.pageSize.getWidth();
+      const pageH  = pdf.internal.pageSize.getHeight();
       const printW = pageW - MARGIN * 2;
-      const printH = pageH - MARGIN - FOOTER_H;
+      const TOTAL  = canvasCharts ? 2 : 1;
 
-      // ── Helper: capturar un elemento como imagen y añadirlo al PDF ────
-      const addElementPage = async (el, pageIndex) => {
-        if (pageIndex > 0) pdf.addPage();
-
-        const canvas = await html2canvas(el, {
-          scale: 1.5,
-          useCORS: true,
-          logging: false,
-          backgroundColor: '#FFFFFF',
-          scrollX: 0,
-          scrollY: -window.scrollY,
-          width: el.scrollWidth,
-          windowWidth: el.scrollWidth,
-        });
-
+      const addCanvasToPage = (canvas, pageNum) => {
         const imgH = (canvas.height / canvas.width) * printW;
-        const imgData = canvas.toDataURL('image/png');
-        pdf.addImage(imgData, 'PNG', MARGIN, MARGIN, printW, imgH);
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', MARGIN, MARGIN, printW, imgH);
 
-        // Footer
+        // Footer — línea divisoria + texto
         pdf.setDrawColor(180, 180, 180);
         pdf.setLineWidth(0.3);
         pdf.line(MARGIN, pageH - FOOTER_H, pageW - MARGIN, pageH - FOOTER_H);
@@ -1273,29 +1284,19 @@ const CashflowProjections = () => {
         pdf.setFont('helvetica', 'bold');
         pdf.setFontSize(7);
         pdf.setTextColor(100, 116, 139);
-        pdf.text(
-          `${pageIndex + 1} / ${TOTAL_PAGES}`,
-          pageW - MARGIN,
-          pageH - FOOTER_H + 4,
-          { align: 'right' }
-        );
+        pdf.text(`${pageNum} / ${TOTAL}`, pageW - MARGIN, pageH - FOOTER_H + 4, { align: 'right' });
       };
 
-      // ── PÁGINA 1: Header + KPIs + Flujo Acumulado + Tabla ─────────────
-      // Ocultar temporalmente las gráficas para que no aparezcan en pág. 1
-      const chartsEl = chartsRef.current;
-      if (chartsEl) chartsEl.style.display = 'none';
+      // Página 1: KPIs + Flujo Acumulado + Tabla (sin gráficas)
+      addCanvasToPage(canvasReport, 1);
 
-      await addElementPage(reportRef.current, 0);
-
-      if (chartsEl) chartsEl.style.display = '';
-
-      // ── PÁGINA 2: Solo las 4 gráficas ──────────────────────────────────
-      if (chartsEl) {
-        await addElementPage(chartsEl, 1);
+      // Página 2: 4 gráficas
+      if (canvasCharts) {
+        pdf.addPage();
+        addCanvasToPage(canvasCharts, 2);
       }
 
-      // ── Metadata ────────────────────────────────────────────────────────
+      // ── 3. Metadata y descarga ──────────────────────────────────────────
       pdf.setProperties({
         title:    'Proyección de Flujo de Efectivo — TaxnFin',
         subject:  'Modelo Rolling 18 Semanas',
@@ -1304,14 +1305,10 @@ const CashflowProjections = () => {
         creator:  'TaxnFin',
       });
 
-      const fileName = `TaxnFin_FlujoCaja_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
-      pdf.save(fileName);
-
+      pdf.save(`TaxnFin_FlujoCaja_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`);
       toast.success('PDF exportado exitosamente');
     } catch (error) {
       console.error('Error exportando PDF:', error);
-      // Restaurar visibilidad si hubo error
-      if (chartsRef.current) chartsRef.current.style.display = '';
       toast.error('Error al exportar PDF: ' + error.message);
     } finally {
       setExportingPdf(false);
@@ -2656,7 +2653,7 @@ const CashflowProjections = () => {
 
           {/* ===== GRÁFICOS COMPARATIVOS ===== */}
           {chartData.length > 0 && (
-            <div ref={chartsRef} className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-testid="charts-section">
+            <div ref={chartsRef} data-html2canvas-ignore="true" className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-testid="charts-section">
               {/* Gráfico 1: Flujo Acumulado Real vs Proyectado */}
               <Card>
                 <CardHeader className="py-3">
