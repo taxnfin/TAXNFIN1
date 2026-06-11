@@ -1224,8 +1224,7 @@ const CashflowProjections = () => {
         return;
       }
 
-      const originalOverflow = element.style.overflow;
-      element.style.overflow = 'visible';
+      const fullHeight = element.scrollHeight;
 
       const canvas = await html2canvas(element, {
         scale: 1.2,
@@ -1233,13 +1232,15 @@ const CashflowProjections = () => {
         allowTaint: true,
         foreignObjectRendering: true,
         backgroundColor: '#f8fafc',
-        scrollX: 0,
-        scrollY: 0,
-        windowWidth: 1920,
-        windowHeight: element.scrollHeight,
-        width: element.scrollWidth,
-        height: element.scrollHeight,
+        windowWidth: 1440,
+        windowHeight: fullHeight,
+        height: fullHeight,
         onclone: (clonedDoc) => {
+          const el = clonedDoc.getElementById('cashflow-report-container');
+          if (el) {
+            el.style.height = fullHeight + 'px';
+            el.style.overflow = 'visible';
+          }
           clonedDoc.querySelectorAll('iframe').forEach(el => el.remove());
           clonedDoc.querySelectorAll('[class*="rrweb"],[id*="rrweb"],[class*="ph-"],[id*="ph-"]').forEach(el => el.remove());
         },
@@ -2639,7 +2640,7 @@ const CashflowProjections = () => {
 
           {/* ===== GRÁFICOS COMPARATIVOS ===== */}
           {chartData.length > 0 && (
-            <div ref={chartsRef} data-html2canvas-ignore="true" className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-testid="charts-section">
+            <div ref={chartsRef} className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-testid="charts-section">
               {/* Gráfico 1: Flujo Acumulado Real vs Proyectado */}
               <Card>
                 <CardHeader className="py-3">
