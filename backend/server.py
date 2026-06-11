@@ -56,6 +56,7 @@ from routes.contalink_cxc_cxp import router as contalink_cxc_cxp_router
 from routes.cashflow_sync_service import router as cashflow_sync_router
 from routes.contalink_financial import router as contalink_financial_router
 from routes.contalink_payments_upload import router as contalink_payments_upload_router
+from routes.cashflow_kpi import router as cashflow_kpi_router
 
 # ===== REGISTER ROUTERS =====
 api_router.include_router(auth_router)
@@ -95,6 +96,7 @@ api_router.include_router(contalink_cxc_cxp_router)
 api_router.include_router(cashflow_sync_router)
 api_router.include_router(contalink_financial_router)
 api_router.include_router(contalink_payments_upload_router)
+api_router.include_router(cashflow_kpi_router)
 
 # ===== MIDDLEWARE =====
 app.add_middleware(

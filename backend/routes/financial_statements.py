@@ -863,7 +863,6 @@ async def get_financial_metrics_data(company_id: str, periodo: str) -> Dict:
     el dict completo de datos (no un subconjunto de claves fijas).
     Soporta periodos YYYY-MM, Q{n}-YYYY y YYYY.
     """
-    logger.info(f"[metrics_data] company={company_id} periodo={periodo} source checking...")
     # Determinar meses a consultar según formato del período
     months: List[str] = []
     if len(periodo) == 7 and periodo[4] == '-':  # YYYY-MM
@@ -941,12 +940,6 @@ async def get_financial_metrics_data(company_id: str, periodo: str) -> Dict:
         "income_statement": aggregated_income,
         "balance_sheet": balance_data,
     }
-    logger.info(
-        f"[metrics_data] found_months={found_months} "
-        f"ingresos={aggregated_income.get('ingresos', 0)} "
-        f"ventas_netas={aggregated_income.get('ventas_netas', 0)} "
-        f"income_keys={list(aggregated_income.keys())[:8]}"
-    )
     return result
 
 
@@ -1242,8 +1235,6 @@ async def get_ai_financial_analysis(
         balance_data = metrics_data.get('balance_sheet', {})
         metrics = metrics_data.get('metrics', {})
         periods_found = metrics_data.get('periods_found', [])
-        logger.info(f"[ai-analysis] income_statement keys: {list(aggregated_income.keys())}")
-        logger.info(f"[ai-analysis] ingresos={aggregated_income.get('ingresos', 0)} ventas_netas={aggregated_income.get('ventas_netas', 0)}")
     except HTTPException:
         raise
     except Exception as e:

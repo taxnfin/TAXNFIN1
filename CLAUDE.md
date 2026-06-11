@@ -29,7 +29,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   ├── server.py              # FastAPI app initialization, all router registration
   ├── core/                  # config.py, auth.py, database.py (db singleton)
   ├── models/                # Pydantic models (enums, company, user, transaction, cfdi, bank, etc.)
-  ├── routes/                # ~35 API endpoint modules (all registered in server.py)
+  ├── routes/                # ~40 API endpoint modules (all registered in server.py)
   ├── services/              # Business logic (cashflow, cfdi_parser, fx, audit, pdf, alegra, contalink, etc.)
   ├── modules/               # SAT/CFDI specialist modules (cfdi_sat.py, sat_fiel.py)
   ├── requirements.txt
@@ -37,7 +37,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 /frontend/
   ├── src/
-  │   ├── pages/            # Page components (~23 pages)
+  │   ├── pages/            # Page components (~27 pages)
   │   ├── components/       # Reusable UI components
   │   ├── api/              # Axios client
   │   ├── hooks/            # React hooks
@@ -110,7 +110,7 @@ pytest --cov=. tests/
 cd frontend
 npm install
 npm start        # http://localhost:3000
-npm run build
+npm run build    # DISABLE_ESLINT_PLUGIN=true craco build (uses craco, not react-scripts)
 ```
 
 ### Linting
@@ -270,6 +270,8 @@ AUTH0_CLIENT_ID=your-client-id
 AUTH0_CLIENT_SECRET=your-client-secret
 AUTH0_AUDIENCE=https://api.taxnfin.com/cashflow
 OPENAI_API_KEY=your-openai-key
+ANTHROPIC_API_KEY=your-anthropic-key
+SAT_ENCRYPTION_KEY=your-sat-encryption-key
 TWILIO_ACCOUNT_SID=your-twilio-sid
 TWILIO_AUTH_TOKEN=your-token
 STRIPE_SECRET_KEY=your-stripe-key
