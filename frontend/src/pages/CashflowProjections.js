@@ -1210,9 +1210,8 @@ const CashflowProjections = () => {
     setExportingPdf(true);
     toast.info('Generando PDF, por favor espere...');
 
-    const svgReplacements = [];
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(r => setTimeout(r, 1500));
 
       const empresa = companyConfig?.nombre || 'TaxnFin';
       const fecha = new Date().toLocaleDateString('es-MX', {
@@ -1220,112 +1219,93 @@ const CashflowProjections = () => {
       });
 
       const element = document.getElementById('cashflow-report-container');
-      if (!element) {
-        toast.error('Contenedor no encontrado');
-        return;
-      }
+      const tableEl = document.getElementById('cashflow-table-model');
+      if (!element) { toast.error('Contenedor no encontrado'); return; }
 
-      // ── Convertir SVGs de Recharts a imágenes PNG ──────────────────────
-      const svgs = element.querySelectorAll('svg');
-      for (const svg of svgs) {
-        const rect = svg.getBoundingClientRect();
-        const w = rect.width || svg.clientWidth || 300;
-        const h = rect.height || svg.clientHeight || 200;
+      // ── PASO 1: Ocultar tabla → capturar KPIs + Gráficas ──────────────
+      if (tableEl) tableEl.style.display = 'none';
+      await new Promise(r => setTimeout(r, 300));
 
-        const svgData = new XMLSerializer().serializeToString(svg);
-        const blob    = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-        const url     = URL.createObjectURL(blob);
-
-        const img       = document.createElement('img');
-        img.src         = url;
-        img.width       = w;
-        img.height      = h;
-        img.style.cssText = svg.style.cssText;
-
-        svg.parentNode.insertBefore(img, svg);
-        svg.style.display = 'none';
-        svgReplacements.push({ svg, img, url });
-      }
-
-      // Esperar que todas las imágenes carguen
-      await Promise.all(
-        svgReplacements.map(({ img }) =>
-          new Promise(resolve => { img.onload = resolve; img.onerror = resolve; })
-        )
-      );
-
-      // ── Capturar reporte principal (KPIs + gráficas) ──────────────────
-      const canvasMain = await html2canvas(element, {
-        scale: 0.85,
+      const canvasKPIs = await html2canvas(element, {
+        scale: 0.9,
         useCORS: true,
         allowTaint: true,
+        foreignObjectRendering: true,
         backgroundColor: '#f8fafc',
         windowWidth: 1440,
         height: element.scrollHeight,
         windowHeight: element.scrollHeight,
-        onclone: (clonedDoc) => {
-          clonedDoc.querySelectorAll('iframe').forEach(el => el.remove());
-          clonedDoc.querySelectorAll('[class*="rrweb"],[id*="rrweb"],[class*="ph-"],[id*="ph-"]').forEach(el => el.remove());
-        },
+        onclone: (doc) => { doc.querySelectorAll('iframe').forEach(e => e.remove()); },
       });
 
-      // ── Capturar tabla completa con ancho real ─────────────────────────
-      const tableEl = tableModelRef.current;
+      if (tableEl) tableEl.style.display = '';
+      await new Promise(r => setTimeout(r, 300));
+
+      // ── PASO 2: Expandir tabla → capturar con ancho completo ──────────
+      if (tableEl) {
+        tableEl.style.overflow = 'visible';
+        tableEl.style.width    = tableEl.scrollWidth + 'px';
+      }
+      await new Promise(r => setTimeout(r, 300));
+
       const canvasTable = tableEl
         ? await html2canvas(tableEl, {
-            scale: 0.7,
+            scale: 0.65,
             useCORS: true,
             allowTaint: true,
             backgroundColor: '#ffffff',
-            windowWidth: tableEl.scrollWidth,
-            width: tableEl.scrollWidth,
-            onclone: (clonedDoc) => {
-              const tables = clonedDoc.querySelectorAll('table,[class*="overflow"]');
-              tables.forEach(t => {
-                t.style.overflow = 'visible';
-                t.style.width    = 'auto';
-                t.style.minWidth = 'unset';
-              });
-              clonedDoc.querySelectorAll('iframe').forEach(el => el.remove());
+            width:        tableEl.scrollWidth,
+            height:       tableEl.scrollHeight,
+            windowWidth:  tableEl.scrollWidth,
+            windowHeight: tableEl.scrollHeight,
+            onclone: (doc) => {
+              doc.querySelectorAll('*').forEach(el => { if (el.style) el.style.overflow = 'visible'; });
+              doc.querySelectorAll('iframe').forEach(e => e.remove());
             },
           })
         : null;
 
-      // ── Restaurar SVGs originales ──────────────────────────────────────
-      for (const { svg, img, url } of svgReplacements) {
-        svg.style.display = '';
-        img.remove();
-        URL.revokeObjectURL(url);
-      }
+      if (tableEl) { tableEl.style.overflow = ''; tableEl.style.width = ''; }
 
-      // ── Generar PDF A3 landscape ───────────────────────────────────────
+      // ── PASO 3: Construir PDF A3 landscape ────────────────────────────
       const pdf      = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3', compress: true });
       const pageW    = pdf.internal.pageSize.getWidth();
       const pageH    = pdf.internal.pageSize.getHeight();
-      const margin   = 6;
+      const margin   = 8;
+      const contentW = pageW - margin * 2;
       const contentH = pageH - margin * 2 - 8;
-      const imgW     = pageW - margin * 2;
 
-      // Páginas del reporte principal
-      const totalImgH = (canvasMain.height * imgW) / canvasMain.width;
-      let yPos = 0, pageNum = 1;
-      while (yPos < totalImgH) {
-        if (pageNum > 1) pdf.addPage();
+      // Página 1: KPIs + Gráficas
+      const kpiImgH = Math.min((canvasKPIs.height * contentW) / canvasKPIs.width, contentH);
+      pdf.addImage(canvasKPIs.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, contentW, kpiImgH);
 
-        const srcY = (yPos / totalImgH) * canvasMain.height;
-        const srcH = Math.min((contentH / totalImgH) * canvasMain.height, canvasMain.height - srcY);
+      // Páginas 2+: Tabla paginada
+      if (canvasTable) {
+        const totalTableH = (canvasTable.height * contentW) / canvasTable.width;
+        let yPos = 0;
+        while (yPos < totalTableH) {
+          pdf.addPage();
+          const srcY = (yPos / totalTableH) * canvasTable.height;
+          const srcH = Math.min((contentH / totalTableH) * canvasTable.height, canvasTable.height - srcY);
 
-        const pageCanvas  = document.createElement('canvas');
-        pageCanvas.width  = canvasMain.width;
-        pageCanvas.height = srcH;
-        const ctx         = pageCanvas.getContext('2d');
-        ctx.fillStyle     = '#f8fafc';
-        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-        ctx.drawImage(canvasMain, 0, srcY, canvasMain.width, srcH, 0, 0, canvasMain.width, srcH);
+          const pc    = document.createElement('canvas');
+          pc.width    = canvasTable.width;
+          pc.height   = srcH;
+          const ctx   = pc.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, pc.width, pc.height);
+          ctx.drawImage(canvasTable, 0, srcY, canvasTable.width, srcH, 0, 0, canvasTable.width, srcH);
 
-        const pageImgH = (srcH * imgW) / canvasMain.width;
-        pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, imgW, pageImgH);
+          const ph = (srcH * contentW) / canvasTable.width;
+          pdf.addImage(pc.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, contentW, ph);
+          yPos += contentH;
+        }
+      }
 
+      // Footer en todas las páginas
+      const totalPages = pdf.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        pdf.setPage(i);
         pdf.setFontSize(7);
         pdf.setTextColor(150, 150, 150);
         pdf.text('TaxnFin', margin, pageH - 3);
@@ -1333,44 +1313,15 @@ const CashflowProjections = () => {
           `${empresa} · Proyección de Flujo de Efectivo · 18 Semanas Rolling | ${fecha}`,
           pageW / 2, pageH - 3, { align: 'center' }
         );
-
-        yPos += contentH;
-        pageNum++;
-      }
-
-      // Página dedicada a la tabla completa
-      if (canvasTable) {
-        pdf.addPage();
-        const tableW = imgW;
-        const tableH = Math.min((canvasTable.height * tableW) / canvasTable.width, contentH);
-        pdf.addImage(canvasTable.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, tableW, tableH);
-        pdf.setFontSize(7);
-        pdf.setTextColor(150, 150, 150);
-        pdf.text('TaxnFin', margin, pageH - 3);
-        pdf.text(
-          `${empresa} · Modelo de Flujo de Efectivo · 18 Semanas Rolling | ${fecha}`,
-          pageW / 2, pageH - 3, { align: 'center' }
-        );
-      }
-
-      // Numeración final
-      const totalPages = pdf.internal.getNumberOfPages();
-      for (let i = 1; i <= totalPages; i++) {
-        pdf.setPage(i);
-        pdf.setFontSize(7);
-        pdf.setTextColor(150, 150, 150);
         pdf.text(`${i} / ${totalPages}`, pageW - margin, pageH - 3, { align: 'right' });
       }
 
       pdf.save(`TaxnFin_FlujoCaja_${empresa.replace(/\s/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
       toast.success('PDF generado correctamente');
     } catch (error) {
-      // Restaurar SVGs si hubo error
-      for (const { svg, img, url } of svgReplacements) {
-        svg.style.display = '';
-        try { img.remove(); } catch (_) {}
-        try { URL.revokeObjectURL(url); } catch (_) {}
-      }
+      // Restaurar tabla si quedó oculta/expandida por error
+      const tableEl = document.getElementById('cashflow-table-model');
+      if (tableEl) { tableEl.style.display = ''; tableEl.style.overflow = ''; tableEl.style.width = ''; }
       console.error('PDF error:', error);
       toast.error('Error: ' + (error?.message || 'desconocido'));
     } finally {
@@ -2888,7 +2839,7 @@ const CashflowProjections = () => {
           )}
 
           {/* ===== MAIN CASH FLOW TABLE ===== */}
-          <Card ref={tableModelRef} data-table-model="true">
+          <Card ref={tableModelRef} id="cashflow-table-model" data-table-model="true">
             <CardHeader className="bg-[#0F172A] text-white rounded-t-lg">
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-3">
