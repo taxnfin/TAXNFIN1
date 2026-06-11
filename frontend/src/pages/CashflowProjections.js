@@ -1211,6 +1211,8 @@ const CashflowProjections = () => {
       return;
     }
 
+    console.log('reportRef:', reportRef.current);
+    console.log('chartsRef:', chartsRef.current);
     setExportingPdf(true);
     toast.info('Generando PDF, por favor espere...');
 
@@ -1308,8 +1310,8 @@ const CashflowProjections = () => {
       pdf.save(`TaxnFin_FlujoCaja_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`);
       toast.success('PDF exportado exitosamente');
     } catch (error) {
-      console.error('Error exportando PDF:', error);
-      toast.error('Error al exportar PDF: ' + error.message);
+      console.error('PDF export error:', error, typeof error);
+      toast.error('Error al generar el PDF: ' + (error?.message || JSON.stringify(error) || 'Error desconocido'));
     } finally {
       setExportingPdf(false);
     }
