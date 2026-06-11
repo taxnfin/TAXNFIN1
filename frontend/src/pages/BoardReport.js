@@ -223,7 +223,8 @@ const BoardReport = () => {
       setAiAnalysis(res.data?.analysis || null);
     } catch (error) {
       console.error('Error loading AI analysis:', error);
-      // Don't clear analysis on error, keep the previous one
+      const msg = error.response?.data?.detail || error.message || 'Error al cargar el análisis IA';
+      toast.error(msg);
     } finally {
       setLoadingAnalysis(false);
     }
