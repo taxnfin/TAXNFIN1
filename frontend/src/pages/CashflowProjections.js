@@ -1209,9 +1209,9 @@ const CashflowProjections = () => {
     setExportingPdf(true);
     toast.info('Generando PDF, por favor espere...');
 
+    const svgReplacements = [];
     try {
-      window.scrollTo(0, 0);
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       const empresa = companyConfig?.nombre || 'TaxnFin';
       const fecha = new Date().toLocaleDateString('es-MX', {
@@ -1224,64 +1224,84 @@ const CashflowProjections = () => {
         return;
       }
 
-      const fullHeight = element.scrollHeight;
+      // ── Convertir SVGs de Recharts a imágenes PNG ──────────────────────
+      const svgs = element.querySelectorAll('svg');
+      for (const svg of svgs) {
+        const rect = svg.getBoundingClientRect();
+        const w = rect.width || svg.clientWidth || 300;
+        const h = rect.height || svg.clientHeight || 200;
 
+        const svgData = new XMLSerializer().serializeToString(svg);
+        const blob    = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+        const url     = URL.createObjectURL(blob);
+
+        const img       = document.createElement('img');
+        img.src         = url;
+        img.width       = w;
+        img.height      = h;
+        img.style.cssText = svg.style.cssText;
+
+        svg.parentNode.insertBefore(img, svg);
+        svg.style.display = 'none';
+        svgReplacements.push({ svg, img, url });
+      }
+
+      // Esperar que todas las imágenes carguen
+      await Promise.all(
+        svgReplacements.map(({ img }) =>
+          new Promise(resolve => { img.onload = resolve; img.onerror = resolve; })
+        )
+      );
+
+      // ── Capturar con html2canvas ───────────────────────────────────────
       const canvas = await html2canvas(element, {
         scale: 1.2,
         useCORS: true,
         allowTaint: true,
-        foreignObjectRendering: true,
         backgroundColor: '#f8fafc',
         windowWidth: 1440,
-        windowHeight: fullHeight,
-        height: fullHeight,
+        height: element.scrollHeight,
+        windowHeight: element.scrollHeight,
         onclone: (clonedDoc) => {
-          const el = clonedDoc.getElementById('cashflow-report-container');
-          if (el) {
-            el.style.height = fullHeight + 'px';
-            el.style.overflow = 'visible';
-          }
           clonedDoc.querySelectorAll('iframe').forEach(el => el.remove());
           clonedDoc.querySelectorAll('[class*="rrweb"],[id*="rrweb"],[class*="ph-"],[id*="ph-"]').forEach(el => el.remove());
         },
       });
 
-      element.style.overflow = originalOverflow;
+      // ── Restaurar SVGs originales ──────────────────────────────────────
+      for (const { svg, img, url } of svgReplacements) {
+        svg.style.display = '';
+        img.remove();
+        URL.revokeObjectURL(url);
+      }
 
-      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3', compress: true });
+      // ── Generar PDF A3 landscape ───────────────────────────────────────
+      const pdf      = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3', compress: true });
       const pageW    = pdf.internal.pageSize.getWidth();
       const pageH    = pdf.internal.pageSize.getHeight();
       const margin   = 8;
       const contentH = pageH - margin * 2 - 8;
+      const imgW     = pageW - margin * 2;
+      const totalImgH = (canvas.height * imgW) / canvas.width;
 
-      const imgW       = pageW - margin * 2;
-      const totalImgH  = (canvas.height * imgW) / canvas.width;
-
-      let yPos    = 0;
-      let pageNum = 1;
-
+      let yPos = 0, pageNum = 1;
       while (yPos < totalImgH) {
         if (pageNum > 1) pdf.addPage();
 
         const srcY = (yPos / totalImgH) * canvas.height;
         const srcH = Math.min((contentH / totalImgH) * canvas.height, canvas.height - srcY);
 
-        const pageCanvas       = document.createElement('canvas');
-        pageCanvas.width       = canvas.width;
-        pageCanvas.height      = srcH;
-        const ctx              = pageCanvas.getContext('2d');
+        const pageCanvas    = document.createElement('canvas');
+        pageCanvas.width    = canvas.width;
+        pageCanvas.height   = srcH;
+        const ctx           = pageCanvas.getContext('2d');
+        ctx.fillStyle       = '#f8fafc';
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
         ctx.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
 
         const pageImgH = (srcH * imgW) / canvas.width;
         pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, imgW, pageImgH);
 
-        yPos += contentH;
-        pageNum++;
-      }
-
-      const totalPages = pdf.internal.getNumberOfPages();
-      for (let i = 1; i <= totalPages; i++) {
-        pdf.setPage(i);
         pdf.setFontSize(7);
         pdf.setTextColor(150, 150, 150);
         pdf.text('TaxnFin', margin, pageH - 3);
@@ -1289,12 +1309,29 @@ const CashflowProjections = () => {
           `${empresa} · Proyección de Flujo de Efectivo · 18 Semanas Rolling | ${fecha}`,
           pageW / 2, pageH - 3, { align: 'center' }
         );
+
+        yPos += contentH;
+        pageNum++;
+      }
+
+      // Actualizar numeración final
+      const totalPages = pdf.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        pdf.setPage(i);
+        pdf.setFontSize(7);
+        pdf.setTextColor(150, 150, 150);
         pdf.text(`${i} / ${totalPages}`, pageW - margin, pageH - 3, { align: 'right' });
       }
 
       pdf.save(`TaxnFin_FlujoCaja_${empresa.replace(/\s/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
       toast.success('PDF generado correctamente');
     } catch (error) {
+      // Restaurar SVGs si hubo error
+      for (const { svg, img, url } of svgReplacements) {
+        svg.style.display = '';
+        try { img.remove(); } catch (_) {}
+        try { URL.revokeObjectURL(url); } catch (_) {}
+      }
       console.error('PDF error:', error);
       toast.error('Error: ' + (error?.message || 'desconocido'));
     } finally {
