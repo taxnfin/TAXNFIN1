@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Brain, Zap, Bell, Sparkles, GitBranch, Download, FileText, Cpu, TrendingUp, CheckCircle } from 'lucide-react';
+import { Brain, Zap, Bell, Sparkles, GitBranch, FileText, Cpu, TrendingUp, CheckCircle } from 'lucide-react';
 
 const ESCENARIOS_RAPIDOS = [
   {
@@ -128,25 +128,6 @@ const AdvancedFeatures = () => {
     }
   };
 
-  const exportData = async (formato) => {
-    try {
-      const today = new Date();
-      const startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-      const url = `/export/${formato}?fecha_inicio=${startDate.toISOString()}&fecha_fin=${today.toISOString()}`;
-      
-      const res = await api.get(url, { responseType: 'blob' });
-      const blob = new Blob([res.data]);
-      const link = document.createElement('a');
-      link.href = window.URL.createObjectURL(blob);
-      link.download = `export_${formato}_${today.getTime()}.${formato === 'xml-fiscal' ? 'xml' : formato === 'alegra' ? 'json' : 'csv'}`;
-      link.click();
-      
-      toast.success(`Exportación ${formato} completada`);
-    } catch (error) {
-      toast.error('Error en exportación');
-    }
-  };
-
   const runGeneticOptimization = async () => {
     setLoading(true);
     try {
@@ -217,12 +198,18 @@ const AdvancedFeatures = () => {
 
   return (
     <div className="p-8 space-y-6" data-testid="advanced-features-page">
-      <div>
-        <h1 className="text-4xl font-bold text-[#0F172A] mb-2 flex items-center gap-3" style={{fontFamily: 'Manrope'}}>
-          <Sparkles className="text-[#10B981]" size={36} />
-          Funcionalidades Avanzadas
-        </h1>
-        <p className="text-[#64748B]">IA, Automatización y Análisis Predictivo</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-4xl font-bold text-[#0F172A] mb-2 flex items-center gap-3" style={{fontFamily: 'Manrope'}}>
+            <Sparkles className="text-[#10B981]" size={36} />
+            IA Ejecutiva
+          </h1>
+          <p className="text-[#64748B]">Inteligencia artificial aplicada a tus finanzas</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-2 mt-1">
+          <FileText size={16} />
+          Exportar PDF
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -703,60 +690,6 @@ const AdvancedFeatures = () => {
           </CardContent>
         </Card>
       )}
-
-      <Card className="border-[#3B82F6]">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Download size={24} />
-            Exportaciones Contables
-          </CardTitle>
-          <CardDescription>Formatos listos para sistemas contables</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Button onClick={() => exportData('coi')} variant="outline" className="gap-2" data-testid="export-coi">
-              <FileText size={16} />
-              COI
-            </Button>
-            <Button onClick={() => exportData('xml-fiscal')} variant="outline" className="gap-2">
-              <FileText size={16} />
-              XML Fiscal
-            </Button>
-            <Button onClick={() => exportData('alegra')} variant="outline" className="gap-2" data-testid="export-alegra">
-              <FileText size={16} />
-              Alegra
-            </Button>
-            <Button onClick={() => api.get('/export/cashflow?formato=excel', {responseType: 'blob'}).then(res => {
-              const blob = new Blob([res.data]);
-              const link = document.createElement('a');
-              link.href = window.URL.createObjectURL(blob);
-              link.download = `cashflow_${Date.now()}.csv`;
-              link.click();
-              toast.success('Cashflow exportado');
-            })} variant="outline" className="gap-2">
-              <FileText size={16} />
-              Cashflow
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-[#3B82F6]">
-        <CardHeader>
-          <CardTitle>Integraciones Bancarias</CardTitle>
-          <CardDescription>Conexión directa vía API con bancos mexicanos — en desarrollo</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-            {['BBVA', 'Santander', 'Banorte', 'Bajío', 'Amex'].map(bank => (
-              <div key={bank} className="p-3 bg-[#F8FAFC] border border-gray-200 rounded text-center">
-                <p className="font-semibold text-[#64748B] mb-2">{bank}</p>
-                <Badge variant="secondary" className="text-xs text-gray-500">Próximamente</Badge>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
 
       {appliedResult && (
         <Card className="border-[#10B981] bg-green-50" data-testid="applied-result">

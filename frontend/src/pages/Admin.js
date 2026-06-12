@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import api from '@/api/axios';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Download, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -101,6 +104,73 @@ const Admin = () => {
               <p className="text-[#64748B]">Frontend</p>
               <p className="font-semibold">React + Tailwind CSS</p>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-[#3B82F6]">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Download size={24} />
+            Exportaciones Contables
+          </CardTitle>
+          <CardDescription>Formatos listos para sistemas contables</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Button onClick={() => api.get('/export/coi', { responseType: 'blob' }).then(res => {
+              const link = document.createElement('a');
+              link.href = window.URL.createObjectURL(new Blob([res.data]));
+              link.download = `coi_${Date.now()}.csv`;
+              link.click();
+              toast.success('COI exportado');
+            })} variant="outline" className="gap-2" data-testid="export-coi">
+              <FileText size={16} />COI
+            </Button>
+            <Button onClick={() => api.get('/export/xml-fiscal', { responseType: 'blob' }).then(res => {
+              const link = document.createElement('a');
+              link.href = window.URL.createObjectURL(new Blob([res.data]));
+              link.download = `balanza_sat_${Date.now()}.xml`;
+              link.click();
+              toast.success('XML Fiscal exportado');
+            })} variant="outline" className="gap-2">
+              <FileText size={16} />XML Fiscal
+            </Button>
+            <Button onClick={() => api.get('/export/alegra', { responseType: 'blob' }).then(res => {
+              const link = document.createElement('a');
+              link.href = window.URL.createObjectURL(new Blob([res.data]));
+              link.download = `alegra_${Date.now()}.json`;
+              link.click();
+              toast.success('Alegra exportado');
+            })} variant="outline" className="gap-2" data-testid="export-alegra">
+              <FileText size={16} />Alegra
+            </Button>
+            <Button onClick={() => api.get('/export/cashflow?formato=excel', { responseType: 'blob' }).then(res => {
+              const link = document.createElement('a');
+              link.href = window.URL.createObjectURL(new Blob([res.data]));
+              link.download = `cashflow_${Date.now()}.csv`;
+              link.click();
+              toast.success('Cashflow exportado');
+            })} variant="outline" className="gap-2">
+              <FileText size={16} />Cashflow
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-[#3B82F6]">
+        <CardHeader>
+          <CardTitle>Integraciones Bancarias</CardTitle>
+          <CardDescription>Conexión directa vía API con bancos mexicanos — en desarrollo</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+            {['BBVA', 'Santander', 'Banorte', 'Bajío', 'Amex'].map(bank => (
+              <div key={bank} className="p-3 bg-[#F8FAFC] border border-gray-200 rounded text-center">
+                <p className="font-semibold text-[#64748B] mb-2">{bank}</p>
+                <Badge variant="secondary" className="text-xs text-gray-500">Próximamente</Badge>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
