@@ -1,11 +1,14 @@
 """Scenarios and genetic optimization routes"""
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
+import logging
 
 from core.database import db
-from core.auth import get_current_user
+from core.auth import get_current_user, get_active_company_id
+
+logger = logging.getLogger(__name__)
 from services.audit import audit_log
 from models.enums import UserRole
 from scenario_service import ScenarioAnalysisService
@@ -198,25 +201,31 @@ class OptimizationConfig(BaseModel):
 @router.post("/optimize/genetic")
 async def run_genetic_optimization(
     config: OptimizationConfig,
+    request: Request,
     current_user: Dict = Depends(get_current_user)
 ):
     """
     Ejecuta optimización genética del cashflow
     Encuentra automáticamente la mejor combinación de modificaciones
     """
-    
+
     if current_user['role'] not in [UserRole.ADMIN, UserRole.CFO]:
         raise HTTPException(status_code=403, detail="Permisos insuficientes")
-    
+
+    company_id = await get_active_company_id(request, current_user)
+
+    count = await db.transactions.count_documents({'company_id': company_id, 'es_proyeccion': True})
+    logger.info(f"[CFO] company={company_id} transacciones_proyectadas={count}")
+
     optimizer = GeneticOptimizer(db)
-    
+
     result = await optimizer.optimize_cashflow(
-        company_id=current_user['company_id'],
+        company_id=company_id,
         objetivos=config.objetivos,
         restricciones=config.restricciones,
         parametros=config.parametros
     )
-    
+
     return result
 
 @router.get("/optimize/history")

@@ -19,6 +19,7 @@ class GeneticOptimizer:
     
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
+        self._projectable_txns: List[Dict] = []
         self._setup_genetic_algorithm()
     
     def _setup_genetic_algorithm(self):
@@ -36,7 +37,60 @@ class GeneticOptimizer:
         creator.create("Individual", list, fitness=creator.FitnessMulti)
         
         self.toolbox = base.Toolbox()
-    
+
+    async def _get_projectable_transactions(self, company_id: str) -> List[Dict]:
+        """Returns transactions usable as optimization genes.
+        Primary source: transactions with es_proyeccion=True.
+        Fallback: manual_projections converted to virtual transaction dicts.
+        """
+        transactions = await self.db.transactions.find(
+            {'company_id': company_id, 'es_proyeccion': True}
+        ).to_list(1000)
+
+        if len(transactions) >= 5:
+            return transactions
+
+        projections = await self.db.manual_projections.find(
+            {'company_id': company_id, 'activo': True}
+        ).to_list(500)
+
+        if not projections:
+            return transactions
+
+        weeks = await self.db.cashflow_weeks.find(
+            {'company_id': company_id}
+        ).sort('fecha_inicio', 1).to_list(13)
+
+        now = datetime.now(timezone.utc)
+
+        for proj in projections:
+            fecha = now + timedelta(weeks=4)
+
+            semana = proj.get('semana')
+            if semana and weeks:
+                week_idx = max(0, min(semana - 1, len(weeks) - 1))
+                w = weeks[week_idx]
+                fecha_str = w['fecha_inicio'] if isinstance(w['fecha_inicio'], str) else w['fecha_inicio'].isoformat()
+                try:
+                    fecha = datetime.fromisoformat(fecha_str)
+                    if fecha.tzinfo is None:
+                        fecha = fecha.replace(tzinfo=timezone.utc)
+                except Exception:
+                    pass
+
+            transactions.append({
+                'id': proj['id'],
+                'company_id': company_id,
+                'tipo_transaccion': proj['tipo'],
+                'monto': proj['monto'],
+                'fecha_transaccion': fecha.isoformat(),
+                'es_proyeccion': True,
+                '_is_virtual': True,
+            })
+
+        logger.info(f"[CFO] _get_projectable_transactions company={company_id} real={len([t for t in transactions if not t.get('_is_virtual')])} virtual={len([t for t in transactions if t.get('_is_virtual')])}")
+        return transactions
+
     async def optimize_cashflow(
         self,
         company_id: str,
@@ -66,15 +120,14 @@ class GeneticOptimizer:
         prob_crossover = parametros.get('prob_crossover', 0.7)
         prob_mutacion = parametros.get('prob_mutacion', 0.2)
         
-        # Obtener datos de la empresa
-        transactions = await self.db.transactions.find(
-            {'company_id': company_id, 'es_proyeccion': True}
-        ).to_list(1000)
-        
+        # Obtener transacciones proyectadas (real o virtual desde manual_projections)
+        transactions = await self._get_projectable_transactions(company_id)
+        self._projectable_txns = transactions
+
         if len(transactions) < 5:
             return {
                 'status': 'insufficient_data',
-                'message': 'Se necesitan al menos 5 transacciones proyectadas para optimizar'
+                'message': 'Se necesitan al menos 5 transacciones proyectadas para optimizar. Agrega proyecciones manuales en el Cash Flow.'
             }
         
         # Obtener baseline actual
@@ -303,11 +356,9 @@ class GeneticOptimizer:
         objetivos: Dict[str, Any]
     ) -> List[Tuple[float, float, float]]:
         """Evalúa fitness de toda la población"""
-        
-        transactions = await self.db.transactions.find(
-            {'company_id': company_id, 'es_proyeccion': True}
-        ).to_list(1000)
-        
+
+        transactions = self._projectable_txns
+
         fitnesses = []
         for individual in population:
             fitness = await self._evaluate_individual(
@@ -318,7 +369,7 @@ class GeneticOptimizer:
                 objetivos
             )
             fitnesses.append(fitness)
-        
+
         return fitnesses
     
     async def _evaluate_individual(
@@ -402,13 +453,16 @@ class GeneticOptimizer:
     ) -> Dict[str, Any]:
         """Evalúa un escenario aplicando modificaciones"""
         
-        # Obtener todas las transacciones
+        # Obtener todas las transacciones reales
         transactions = await self.db.transactions.find(
             {'company_id': company_id}
         ).to_list(1000)
-        
-        # Clonar y aplicar modificaciones
+
+        # Incluir transacciones virtuales (de manual_projections) para que el simulador las considere
         simulated_txns = copy.deepcopy(transactions)
+        for vt in self._projectable_txns:
+            if vt.get('_is_virtual'):
+                simulated_txns.append(copy.deepcopy(vt))
         
         for mod in modificaciones:
             for txn in simulated_txns:
