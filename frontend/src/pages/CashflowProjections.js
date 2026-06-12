@@ -368,6 +368,9 @@ const CashflowProjections = () => {
     // Fiscal year anchor for LABELS: S1 = week of Dec 29, 2025 (ISO week 1/2026).
     // Weeks before this date display as S{isoWeek}/{shortYear} (e.g. S52/25).
     // startWeek remains dynamic so historical data before the anchor stays visible.
+    // TODO 2027: Hacer esta fecha dinámica igual que el backend.
+    // Backend usa: date(año, 1, 1) - weekday(días hasta lunes anterior)
+    // En 2027 el backend calculará 27 dic 2026 pero aquí seguirá siendo 29 dic 2025 → desfase.
     const FISCAL_YEAR_START = new Date(2025, 11, 29);
 
     // Find earliest payment date to anchor the historical display window
