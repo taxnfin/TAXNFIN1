@@ -103,6 +103,8 @@ class GeneticOptimizer:
             {'company_id': company_id, 'key': {'$regex': 'cxc_|cxp_'}}
         ).to_list(50)
 
+        logger.info(f"[CFO] contalink_cache keys encontradas: {[doc.get('key', '') for doc in cache_docs]}")
+
         for doc in cache_docs:
             key = doc.get('key', '')
             is_cxc = 'cxc_' in key
@@ -415,8 +417,11 @@ class GeneticOptimizer:
                 elif accion == 2:  # Retrasar
                     dias = random.randint(1, restricciones.get('max_retraso_dias', 30))
                     individual.append([idx, accion, dias])
-                else:  # Ajustar monto
-                    factor = random.uniform(0.7, 1.3)  # -30% a +30%
+                else:  # Ajustar monto — solo subir ingresos, solo bajar egresos
+                    if transactions[idx].get('tipo_transaccion') == 'ingreso':
+                        factor = random.uniform(1.0, 1.5)
+                    else:
+                        factor = random.uniform(0.5, 1.0)
                     individual.append([idx, accion, factor])
             
             return creator.Individual(individual)
@@ -440,8 +445,13 @@ class GeneticOptimizer:
                 gene[2] = -random.randint(1, restricciones.get('max_adelanto_dias', 15))
             elif gene[1] == 2:  # Retrasar
                 gene[2] = random.randint(1, restricciones.get('max_retraso_dias', 30))
-            else:  # Ajustar monto
-                gene[2] = random.uniform(0.7, 1.3)
+            else:  # Ajustar monto — mantener dirección correcta por tipo
+                txn_idx = gene[0]
+                tipo = transactions[txn_idx].get('tipo_transaccion') if txn_idx < len(transactions) else 'egreso'
+                if tipo == 'ingreso':
+                    gene[2] = random.uniform(1.0, 1.5)
+                else:
+                    gene[2] = random.uniform(0.5, 1.0)
             
             return individual,
         
