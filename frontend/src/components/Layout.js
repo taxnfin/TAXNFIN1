@@ -51,7 +51,8 @@ const DARK = {
   activeBar: '#00C9A7',
   accent:    '#00C9A7',
   accentTxt: '#00C9A7',
-  hover:     'rgba(255,255,255,0.05)',
+  hover:     'rgba(255,255,255,0.07)',
+  hoverText: '#CBD5E1',
   main:      '#0A1628',
 };
 
@@ -68,7 +69,8 @@ const LIGHT = {
   activeBar: '#009E83',
   accent:    '#009E83',
   accentTxt: '#007A65',
-  hover:     'rgba(0,0,0,0.04)',
+  hover:     'rgba(0,0,0,0.06)',
+  hoverText: '#1A2332',
   main:      '#F5F7FA',
 };
 
@@ -287,7 +289,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
           </div>
 
           {/* Company selector */}
-          <div style={{ fontSize: 9, fontWeight: 700, color: t.text3, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: t.accent, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 5 }}>
             Empresa activa
           </div>
           <DropdownMenu>
@@ -296,10 +298,10 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
                 data-testid="company-selector"
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 7,
-                  background: t.sidebar2, border: `1px solid ${t.border}`,
-                  borderRadius: 8, padding: '6px 9px', cursor: 'pointer',
-                  color: t.text1, fontSize: 12, fontWeight: 500,
-                  transition: 'border-color 0.15s',
+                  background: t.sidebar2, border: `1px solid ${t.border2}`,
+                  borderRadius: 8, padding: '7px 10px', cursor: 'pointer',
+                  color: t.text1, fontSize: 13, fontWeight: 600,
+                  transition: 'border-color 0.15s, background 0.15s',
                 }}
               >
                 <Building size={14} color={t.accent} style={{ flexShrink: 0 }} />
@@ -333,8 +335,15 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
 
         {/* Nav */}
         <nav style={S.nav}>
-          {nav.map(({ section, items }) => (
-            <div key={section} style={{ marginBottom: 4 }}>
+          {nav.map(({ section, items }, sectionIdx) => (
+            <div key={section} style={{
+              marginBottom: 4,
+              ...(sectionIdx > 0 && section ? {
+                borderTop: `1px solid ${t.border}`,
+                marginTop: 10,
+                paddingTop: 6,
+              } : {}),
+            }}>
               {section && <div style={S.sectionLabel}>{section}</div>}
 
               {items.map((item) => {
@@ -350,8 +359,8 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
                       to={item.href}
                       data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
                       style={S.navItem(active)}
-                      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = t.hover; }}
-                      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                      onMouseEnter={(e) => { if (!active) { e.currentTarget.style.background = t.hover; e.currentTarget.style.color = t.hoverText; } }}
+                      onMouseLeave={(e) => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = t.text2; } }}
                     >
                       {active && <div style={S.activeBar} />}
                       <Icon size={15} style={{ flexShrink: 0 }} />
@@ -371,8 +380,8 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
                     <div
                       style={S.navItem(active)}
                       onClick={() => toggleGroup(item.name)}
-                      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = t.hover; }}
-                      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = active ? t.active : 'transparent'; }}
+                      onMouseEnter={(e) => { if (!active) { e.currentTarget.style.background = t.hover; e.currentTarget.style.color = t.hoverText; } }}
+                      onMouseLeave={(e) => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = t.text2; } }}
                     >
                       {active && <div style={S.activeBar} />}
                       <Icon size={15} style={{ flexShrink: 0 }} />
@@ -400,8 +409,8 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
                             key={s.name}
                             to={s.href}
                             style={S.subItem(subActive)}
-                            onMouseEnter={(e) => { if (!subActive) e.currentTarget.style.background = t.hover; }}
-                            onMouseLeave={(e) => { if (!subActive) e.currentTarget.style.background = subActive ? t.active : 'transparent'; }}
+                            onMouseEnter={(e) => { if (!subActive) { e.currentTarget.style.background = t.hover; e.currentTarget.style.color = t.hoverText; } }}
+                            onMouseLeave={(e) => { if (!subActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = t.text3; } }}
                           >
                             <span style={{ width: 4, height: 4, borderRadius: '50%', background: subActive ? t.accentTxt : t.text3, flexShrink: 0 }} />
                             <span style={{ flex: 1, color: 'inherit' }}>{s.name}</span>
