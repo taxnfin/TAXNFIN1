@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import api from '../api/axios';
 import {
   Building2, Users, FileText, Link2, Plus, Trash2, RefreshCw,
-  CheckCircle2, XCircle, Clock, Zap, ArrowRight, Shield, Globe
+  CheckCircle2, XCircle, Clock, Zap, Pencil
 } from 'lucide-react';
 import AccountMappingPanel from './AccountMappingPanel';
 
@@ -28,6 +28,10 @@ const AdminDashboard = () => {
   const [credentials, setCredentials] = useState({});
   const [label, setLabel] = useState('');
   const [syncing, setSyncing] = useState(null);
+  const [renameDialog, setRenameDialog] = useState(false);
+  const [renamingCompany, setRenamingCompany] = useState(null);
+  const [renameNombre, setRenameNombre] = useState('');
+  const [renaming, setRenaming] = useState(false);
 
   useEffect(() => {
     fetchAll();
@@ -44,6 +48,28 @@ const AdminDashboard = () => {
       setIntegrations(connectedRes.data);
       setAvailableIntegrations(availableRes.data);
     } catch {}
+  };
+
+  const openRename = (company) => {
+    setRenamingCompany(company);
+    setRenameNombre(company.nombre);
+    setRenameDialog(true);
+  };
+
+  const handleRename = async () => {
+    if (!renameNombre.trim()) return;
+    setRenaming(true);
+    try {
+      await api.put(`/companies/${renamingCompany.id}/nombre`, { nombre: renameNombre.trim() });
+      toast.success('Nombre actualizado correctamente');
+      setRenameDialog(false);
+      setRenamingCompany(null);
+      fetchAll();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al renombrar');
+    } finally {
+      setRenaming(false);
+    }
   };
 
   const openConnect = (type) => {
@@ -175,7 +201,19 @@ const AdminDashboard = () => {
               <tbody>
                 {companies.map(c => (
                   <tr key={c.id} className="border-b last:border-b-0 hover:bg-gray-50">
-                    <td className="py-3 pr-4 font-medium text-gray-900">{c.nombre}</td>
+                    <td className="py-3 pr-4">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900">{c.nombre}</span>
+                        <button
+                          onClick={() => openRename(c)}
+                          className="text-gray-400 hover:text-gray-700 transition-colors"
+                          title="Renombrar empresa"
+                          data-testid={`rename-btn-${c.id}`}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
                     <td className="py-3 pr-4 font-mono text-xs text-gray-600">{c.rfc}</td>
                     <td className="py-3 pr-4">{c.users_count}</td>
                     <td className="py-3 pr-4">{c.cfdis_count.toLocaleString()}</td>
@@ -293,6 +331,33 @@ const AdminDashboard = () => {
 
       {/* Account Mapping Section */}
       <AccountMappingPanel />
+
+      {/* Rename Company Dialog */}
+      <Dialog open={renameDialog} onOpenChange={setRenameDialog}>
+        <DialogContent className="sm:max-w-sm" data-testid="rename-dialog">
+          <DialogHeader>
+            <DialogTitle>Renombrar empresa</DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            <Label className="text-xs font-medium">Nuevo nombre</Label>
+            <Input
+              value={renameNombre}
+              onChange={e => setRenameNombre(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleRename()}
+              placeholder="Nombre de la empresa"
+              className="mt-1"
+              data-testid="input-nombre"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameDialog(false)} disabled={renaming}>Cancelar</Button>
+            <Button onClick={handleRename} disabled={renaming || !renameNombre.trim()} data-testid="confirm-rename-btn">
+              {renaming ? 'Guardando...' : 'Guardar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Connect Dialog */}
       <Dialog open={connectDialog} onOpenChange={setConnectDialog}>

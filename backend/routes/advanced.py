@@ -236,3 +236,127 @@ async def sync_bank_transactions(
     return result
 
 # ===== DRILL-DOWN ENDPOINT: Week Transactions Detail =====
+
+# ===== PDF EXPORT =====
+
+@router.get("/ai/export-pdf")
+async def export_ia_ejecutiva_pdf(
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import inch
+    from io import BytesIO
+    from fastapi.responses import StreamingResponse
+    import datetime
+
+    company_id = await get_active_company_id(request, current_user)
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0})
+    nombre_empresa = (company or {}).get('nombre', 'Mi Empresa')
+    rfc_empresa = (company or {}).get('rfc', '')
+
+    service = PredictiveAnalysisService(db)
+    analysis = await service.analyze_cashflow_trends(company_id=company_id, weeks_history=13)
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter,
+                            rightMargin=0.75*inch, leftMargin=0.75*inch,
+                            topMargin=0.75*inch, bottomMargin=0.75*inch)
+
+    GREEN = colors.HexColor('#10B981')
+    NAVY = colors.HexColor('#0F172A')
+    GRAY = colors.HexColor('#64748B')
+    RED = colors.HexColor('#EF4444')
+
+    story = []
+
+    # Header
+    header_data = [[
+        Paragraph(f'<font color="#10B981"><b>TaxnFin</b></font> <font color="#0F172A">| IA Ejecutiva</font>',
+                  ParagraphStyle('h', fontName='Helvetica-Bold', fontSize=18)),
+        Paragraph(f'<b>{nombre_empresa}</b><br/><font color="#64748B">RFC: {rfc_empresa}<br/>{datetime.date.today().strftime("%d de %B de %Y")}</font>',
+                  ParagraphStyle('r', fontName='Helvetica', fontSize=10, alignment=2))
+    ]]
+    ht = Table(header_data, colWidths=[3.5*inch, 3.5*inch])
+    ht.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('LINEBELOW', (0,0), (-1,0), 2, GREEN),
+        ('BOTTOMPADDING', (0,0), (-1,0), 12),
+    ]))
+    story.append(ht)
+    story.append(Spacer(1, 0.3*inch))
+
+    # KPIs
+    if analysis.get('status') == 'success':
+        a = analysis['analisis']
+        story.append(Paragraph('Análisis Predictivo de Flujo de Efectivo',
+                               ParagraphStyle('s', fontName='Helvetica-Bold', fontSize=13, textColor=GREEN)))
+        story.append(Spacer(1, 0.15*inch))
+
+        kpi_data = [
+            ['Ingreso Promedio Semanal', 'Egreso Promedio Semanal', 'Flujo Neto Promedio'],
+            [f"${a['ingresos_promedio_semanal']:,.0f}",
+             f"${a['egresos_promedio_semanal']:,.0f}",
+             f"${a['flujo_neto_promedio']:,.0f}"]
+        ]
+        kt = Table(kpi_data, colWidths=[2.33*inch]*3)
+        kt.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F0FDF4')),
+            ('TEXTCOLOR', (0,0), (-1,0), GRAY),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica'),
+            ('FONTSIZE', (0,0), (-1,0), 9),
+            ('FONTNAME', (0,1), (-1,1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,1), (-1,1), 14),
+            ('TEXTCOLOR', (0,1), (0,1), GREEN),
+            ('TEXTCOLOR', (1,1), (1,1), RED),
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E2E8F0')),
+            ('TOPPADDING', (0,0), (-1,-1), 8),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ]))
+        story.append(kt)
+        story.append(Spacer(1, 0.25*inch))
+
+        # Predicciones
+        story.append(Paragraph('Predicciones próximas 8 semanas',
+                               ParagraphStyle('p2', fontName='Helvetica-Bold', fontSize=11, textColor=NAVY)))
+        story.append(Spacer(1, 0.1*inch))
+        pred_data = [['Semana', 'Ingreso Predicho', 'Egreso Predicho', 'Flujo Neto', 'Confianza']]
+        for p in analysis.get('predictions', []):
+            pred_data.append([
+                f"S+{p['semana_futura']}",
+                f"${p['ingresos_predichos']:,.0f}",
+                f"${p['egresos_predichos']:,.0f}",
+                f"${p['flujo_neto_predicho']:,.0f}",
+                p['confianza']
+            ])
+        pt = Table(pred_data, colWidths=[0.6*inch, 1.4*inch, 1.4*inch, 1.4*inch, 0.9*inch])
+        pt.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), NAVY),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,-1), 8),
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#F8FAFC')]),
+            ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor('#E2E8F0')),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ]))
+        story.append(pt)
+
+    story.append(Spacer(1, 0.3*inch))
+    story.append(HRFlowable(width='100%', thickness=1, color=GREEN))
+    story.append(Spacer(1, 0.1*inch))
+    story.append(Paragraph(
+        f'<font color="#64748B">Generado por TaxnFin IA Ejecutiva · cashflow.taxnfin.com · {datetime.date.today().strftime("%d/%m/%Y")}</font>',
+        ParagraphStyle('f', fontName='Helvetica', fontSize=8, alignment=1)
+    ))
+
+    doc.build(story)
+    buffer.seek(0)
+    filename = f"IA_Ejecutiva_{nombre_empresa.replace(' ','_')}_{datetime.date.today()}.pdf"
+    return StreamingResponse(buffer, media_type='application/pdf',
+                             headers={'Content-Disposition': f'attachment; filename="{filename}"'})

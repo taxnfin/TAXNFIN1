@@ -179,6 +179,22 @@ const AdvancedFeatures = () => {
     }
   };
 
+  const exportPDF = async () => {
+    try {
+      toast.info('Generando PDF...');
+      const res = await api.get('/ai/export-pdf', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `IA_Ejecutiva_${new Date().toISOString().split('T')[0]}.pdf`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+      toast.success('PDF descargado correctamente');
+    } catch (error) {
+      toast.error('Error generando PDF');
+    }
+  };
+
   const applyOptimization = async (optimizationId) => {
     try {
       const res = await api.post(`/optimize/apply/${optimizationId}`);
@@ -216,7 +232,7 @@ const AdvancedFeatures = () => {
           </h1>
           <p className="text-[#64748B]">Inteligencia artificial aplicada a tus finanzas</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-2 mt-1">
+        <Button variant="outline" size="sm" onClick={exportPDF} className="gap-2 mt-1">
           <FileText size={16} />
           Exportar PDF
         </Button>
@@ -659,11 +675,7 @@ const AdvancedFeatures = () => {
 
               <div className="mt-4 flex gap-2">
                 <Button
-                  onClick={() => {
-                    console.log('CLICK optimization_id:', optimizationResult?.optimization_id);
-                    console.log('KEYS:', Object.keys(optimizationResult || {}));
-                    applyOptimization(optimizationResult.optimization_id);
-                  }}
+                  onClick={() => applyOptimization(optimizationResult.optimization_id)}
                   className="bg-[#10B981] flex-1"
                   data-testid="apply-optimization-btn"
                 >

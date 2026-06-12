@@ -182,6 +182,33 @@ async def delete_company_logo(
 
 
 # ── NEW: Add existing company to user's access ─────────────────────────────────
+@router.put("/{company_id}/nombre")
+async def update_company_nombre(
+    company_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Rename a company — user must have access to it"""
+    user_company_ids = list(set(
+        current_user.get('company_ids', []) +
+        [current_user.get('company_id', '')]
+    ))
+    if current_user.get('role') != 'admin' and company_id not in user_company_ids:
+        raise HTTPException(status_code=403, detail="Sin acceso a esta empresa")
+
+    body = await request.json()
+    nuevo_nombre = (body.get('nombre') or '').strip()
+    if not nuevo_nombre:
+        raise HTTPException(status_code=400, detail="El nombre no puede estar vacío")
+
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0, 'id': 1})
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+
+    await db.companies.update_one({'id': company_id}, {'$set': {'nombre': nuevo_nombre}})
+    return {'status': 'success', 'nombre': nuevo_nombre}
+
+
 @router.post("/{company_id}/add-access")
 async def add_company_access(
     company_id: str,
