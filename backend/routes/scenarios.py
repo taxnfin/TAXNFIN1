@@ -263,14 +263,31 @@ async def apply_optimization(
 
     company_id = await get_active_company_id(request, current_user)
 
-    # Obtener optimización
+    logger.info(f"[APPLY] optimization_id={optimization_id} company_id={company_id}")
+
+    # Obtener optimización — el documento se guarda con campo 'id' (no 'optimization_id')
     optimization = await db.optimizations.find_one(
         {'id': optimization_id, 'company_id': company_id},
         {'_id': 0}
     )
-    
+    logger.info(f"[APPLY] find_one(id+company_id): {optimization is not None}")
+
     if not optimization:
-        raise HTTPException(status_code=404, detail="Optimización no encontrada")
+        # Diagnóstico: buscar solo por id (sin company_id) para ver si el doc existe
+        opt_any = await db.optimizations.find_one({'id': optimization_id})
+        if opt_any:
+            opt_any.pop('_id', None)
+            logger.warning(f"[APPLY] doc existe pero company_id no coincide. "
+                           f"doc.company_id={opt_any.get('company_id')} request.company_id={company_id} "
+                           f"campos={list(opt_any.keys())}")
+        else:
+            # Diagnóstico: ¿existe alguna optimización para esta empresa?
+            recientes = await db.optimizations.find(
+                {'company_id': company_id}, {'_id': 0, 'id': 1, 'created_at': 1}
+            ).sort('created_at', -1).to_list(5)
+            logger.warning(f"[APPLY] doc NO existe. Optimizaciones recientes company={company_id}: "
+                           f"{[r.get('id') for r in recientes]}")
+        raise HTTPException(status_code=404, detail=f"Optimización no encontrada. ID={optimization_id}")
     
     # Obtener mejor solución
     mejor_solucion = optimization.get('mejor_solucion')
