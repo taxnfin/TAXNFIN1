@@ -53,6 +53,7 @@ const AdvancedFeatures = () => {
   const [scenarioDialog, setScenarioDialog] = useState(false);
   const [optimizationDialog, setOptimizationDialog] = useState(false);
   const [optimizationResult, setOptimizationResult] = useState(null);
+  const [appliedResult, setAppliedResult] = useState(null);
   const [optimizationConfig, setOptimizationConfig] = useState({
     generaciones: 20,
     poblacion: 30,
@@ -197,20 +198,18 @@ const AdvancedFeatures = () => {
   };
 
   const applyOptimization = async (optimizationId) => {
-    console.log('[APPLY] optimization_id:', optimizationId);
-    console.log('[APPLY] optimizationResult completo:', JSON.stringify(optimizationResult, null, 2));
     try {
       const res = await api.post(`/optimize/apply/${optimizationId}`);
       const applied = res.data.modificaciones_aplicadas || 0;
       const mejora = res.data.mejora_esperada || 0;
+      setAppliedResult(res.data);
+      setOptimizationResult(null);
       if (applied > 0) {
-        toast.success(`${applied} modificaciones aplicadas. Mejora esperada: $${mejora.toLocaleString()}`);
+        toast.success(`${applied} modificaciones aplicadas. Mejora esperada: $${mejora.toLocaleString('es-MX', { maximumFractionDigits: 0 })}`);
       } else {
         toast.info(res.data.message || 'No se aplicaron modificaciones');
       }
-      setOptimizationResult(null);
     } catch (error) {
-      console.error('[APPLY] error:', error.response?.status, error.response?.data);
       const detail = error.response?.data?.detail || 'Error aplicando optimización';
       toast.error(detail);
     }
@@ -758,6 +757,47 @@ const AdvancedFeatures = () => {
           </div>
         </CardContent>
       </Card>
+
+      {appliedResult && (
+        <Card className="border-[#10B981] bg-green-50" data-testid="applied-result">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-[#10B981]">
+              <CheckCircle size={20} />
+              Recomendaciones del CFO Virtual aplicadas
+            </CardTitle>
+            <CardDescription>
+              {appliedResult.modificaciones_aplicadas} modificaciones · Mejora esperada:{' '}
+              ${(appliedResult.mejora_esperada || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {(appliedResult.recomendaciones || []).map((rec, idx) => (
+                <div key={idx} className="p-3 bg-white border border-green-200 rounded text-sm">
+                  <span className="font-semibold text-[#10B981]">
+                    {rec.tipo === 'retrasar_pago' ? '⏳' :
+                     rec.tipo === 'adelantar_cobro' ? '⚡' :
+                     rec.tipo === 'ajustar_monto' ? '✂️' : '🔧'}{' '}
+                    {rec.tipo?.replace(/_/g, ' ')}
+                  </span>
+                  <span className="text-gray-600 ml-2">
+                    {rec.transaction_id
+                      ?.replace(/^cache_(ingreso|egreso)_/i, '')
+                      .replace(/_\d{4}-\d{2}-\d{2}$/, '')}
+                  </span>
+                  <p className="text-gray-500 mt-1">{rec.recomendacion}</p>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setAppliedResult(null)}
+              className="mt-3 text-xs text-gray-400 hover:text-gray-600"
+            >
+              Cerrar
+            </button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

@@ -307,6 +307,7 @@ async def apply_optimization(
     # Aplicar modificaciones a las transacciones reales
     from datetime import datetime, timezone
     aplicadas = 0
+    recomendaciones_guardadas = []
     try:
         for mod in modificaciones:
             txn_id = mod.get('transaction_id')
@@ -316,7 +317,7 @@ async def apply_optimization(
             # IDs del cache de Contalink \u2014 no existen en db.transactions
             # Guardarlos como recomendaciones pendientes en db.optimization_applied
             if txn_id.startswith('cache_ingreso_') or txn_id.startswith('cache_egreso_'):
-                await db.optimization_applied.insert_one({
+                rec = {
                     'company_id': company_id,
                     'optimization_id': optimization_id,
                     'transaction_id': txn_id,
@@ -325,7 +326,9 @@ async def apply_optimization(
                     'applied_at': datetime.now(timezone.utc).isoformat(),
                     'user_id': current_user['id'],
                     'status': 'recomendacion_pendiente',
-                })
+                }
+                await db.optimization_applied.insert_one(rec)
+                recomendaciones_guardadas.append({k: v for k, v in rec.items() if k not in ('_id', 'company_id', 'user_id')})
                 aplicadas += 1
                 logger.info(f"[APPLY] recomendacion guardada: {txn_id}")
                 continue
@@ -366,5 +369,6 @@ async def apply_optimization(
         'optimization_id': optimization_id,
         'modificaciones_aplicadas': aplicadas,
         'mejora_esperada': mejor_solucion.get('mejora_flujo_neto', 0),
+        'recomendaciones': recomendaciones_guardadas,
         'message': f'{aplicadas} modificaciones aplicadas correctamente'
     }
