@@ -258,6 +258,12 @@ async def export_ia_ejecutiva_pdf(
     nombre_empresa = (company or {}).get('nombre', 'Mi Empresa')
     rfc_empresa = (company or {}).get('rfc', '')
 
+    # Fix 1 — fecha en español sin depender de locale del SO
+    MESES = {1:'enero',2:'febrero',3:'marzo',4:'abril',5:'mayo',6:'junio',
+             7:'julio',8:'agosto',9:'septiembre',10:'octubre',11:'noviembre',12:'diciembre'}
+    hoy = datetime.date.today()
+    fecha_str = f"{hoy.day} de {MESES[hoy.month]} de {hoy.year}"
+
     # Obtener análisis
     service = PredictiveAnalysisService(db)
     analysis = await service.analyze_cashflow_trends(company_id=company_id, weeks_history=13)
@@ -280,7 +286,7 @@ async def export_ia_ejecutiva_pdf(
     header_data = [
         [Paragraph('<font color="#10B981"><b>TaxnFin</b></font> <font color="#0F172A">| IA Ejecutiva</font>',
                    ParagraphStyle('h', fontName='Helvetica-Bold', fontSize=18)),
-         Paragraph(f'<b>{nombre_empresa}</b><br/><font color="#64748B">RFC: {rfc_empresa}<br/>{datetime.date.today().strftime("%d de %B de %Y")}</font>',
+         Paragraph(f'<b>{nombre_empresa}</b><br/><font color="#64748B">RFC: {rfc_empresa}<br/>{fecha_str}</font>',
                    ParagraphStyle('r', fontName='Helvetica', fontSize=10, alignment=2))]
     ]
     header_table = Table(header_data, colWidths=[3.5*inch, 3.5*inch])
@@ -350,18 +356,75 @@ async def export_ia_ejecutiva_pdf(
         ]))
         story.append(pred_table)
 
+        # Fix 2 — Insights IA
+        ai_insights = await service.generate_ai_insights(company_id=company_id, analysis_data=analysis)
+        if ai_insights and 'no disponible' not in ai_insights.lower():
+            story.append(Spacer(1, 0.2*inch))
+            story.append(Paragraph('Insights IA — Recomendaciones Ejecutivas',
+                                   ParagraphStyle('ia', fontName='Helvetica-Bold', fontSize=11, textColor=NAVY)))
+            story.append(Spacer(1, 0.1*inch))
+            story.append(Paragraph(ai_insights,
+                                   ParagraphStyle('iat', fontName='Helvetica', fontSize=9,
+                                                  textColor=NAVY, leading=14)))
+
+    # Fix 3 — Recomendaciones CFO Virtual
+    recomendaciones = await db.optimization_applied.find(
+        {'company_id': company_id}
+    ).sort('applied_at', -1).limit(10).to_list(10)
+
+    if recomendaciones:
+        story.append(Spacer(1, 0.3*inch))
+        story.append(Paragraph('CFO Virtual — Recomendaciones Aplicadas',
+                               ParagraphStyle('cfo', fontName='Helvetica-Bold', fontSize=13,
+                                              textColor=PINK)))
+        story.append(Spacer(1, 0.1*inch))
+
+        TIPOS = {
+            'retrasar_pago': '⏳ Retrasar pago',
+            'adelantar_cobro': '⚡ Adelantar cobro',
+            'adelantar_pago': '\U0001f4c5 Adelantar pago',
+            'retrasar_cobro': '\U0001f504 Retrasar cobro',
+            'ajustar_monto': '✂️ Ajustar monto',
+        }
+
+        rec_data = [['Acción', 'Cliente / Proveedor', 'Recomendación']]
+        for rec in recomendaciones:
+            nombre = (rec.get('transaction_id', '')
+                      .replace('cache_ingreso_', '').replace('cache_egreso_', '')
+                      .rsplit('_', 1)[0])
+            rec_data.append([
+                TIPOS.get(rec.get('tipo', ''), rec.get('tipo', '')),
+                nombre[:30],
+                rec.get('recomendacion', '')[:60]
+            ])
+
+        rt = Table(rec_data, colWidths=[1.3*inch, 1.8*inch, 3.6*inch])
+        rt.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#EC4899')),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,-1), 8),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#FDF2F8')]),
+            ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor('#E2E8F0')),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('WORDWRAP', (0,0), (-1,-1), True),
+        ]))
+        story.append(rt)
+
     story.append(Spacer(1, 0.3*inch))
 
     # ── Footer ──
     story.append(HRFlowable(width='100%', thickness=1, color=GREEN))
     story.append(Spacer(1, 0.1*inch))
     story.append(Paragraph(
-        f'<font color="#64748B">Generado por TaxnFin IA Ejecutiva · cashflow.taxnfin.com · {datetime.date.today().strftime("%d/%m/%Y")}</font>',
+        f'<font color="#64748B">Generado por TaxnFin IA Ejecutiva · cashflow.taxnfin.com · {hoy.strftime("%d/%m/%Y")}</font>',
         ParagraphStyle('f', fontName='Helvetica', fontSize=8, alignment=1)
     ))
 
     doc.build(story)
     buffer.seek(0)
-    filename = f"IA_Ejecutiva_{nombre_empresa.replace(' ','_')}_{datetime.date.today()}.pdf"
+    filename = f"IA_Ejecutiva_{nombre_empresa.replace(' ','_')}_{hoy}.pdf"
     return StreamingResponse(buffer, media_type='application/pdf',
                              headers={'Content-Disposition': f'attachment; filename="{filename}"'})
