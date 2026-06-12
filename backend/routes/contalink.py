@@ -297,25 +297,34 @@ async def sync_contalink_invoices(
 
                 tipo_cfdi = {"I": "ingreso", "E": "egreso", "N": "nomina", "P": "pago"}.get(document_type, "ingreso")
 
+                taxes = inv.get("taxes") or inv.get("impuestos_detalle") or {}
+                if isinstance(taxes, list):
+                    taxes = {t.get("tipo", ""): t.get("importe", 0) for t in taxes}
+
                 doc = {
                     "company_id": company_id,
                     "uuid": uuid_val,
                     "tipo_cfdi": tipo_cfdi,
                     "emisor_rfc": inv.get("emisor_rfc") or inv.get("rfc_emisor", ""),
-                    "emisor_nombre": inv.get("emisor_nombre") or inv.get("nombre_emisor", ""),
+                    "emisor_nombre": inv.get("emisor_nombre") or inv.get("nombre_emisor") or inv.get("emisor", {}).get("nombre", ""),
                     "receptor_rfc": inv.get("receptor_rfc") or inv.get("rfc_receptor", creds["rfc"]),
-                    "receptor_nombre": inv.get("receptor_nombre") or inv.get("nombre_receptor", ""),
-                    "fecha_emision": inv.get("fecha") or inv.get("fecha_emision", ""),
-                    "fecha_timbrado": inv.get("fecha_timbrado") or inv.get("fecha", ""),
+                    "receptor_nombre": inv.get("receptor_nombre") or inv.get("nombre_receptor") or inv.get("receptor", {}).get("nombre", ""),
+                    "fecha_emision": inv.get("fecha_emision") or inv.get("fecha", ""),
+                    "fecha_timbrado": inv.get("fecha_timbrado") or inv.get("timbrado_at") or inv.get("stamp_date") or inv.get("fecha_emision") or inv.get("fecha", ""),
                     "total": float(inv.get("total") or inv.get("monto", 0)),
-                    "subtotal": float(inv.get("subtotal") or 0),
+                    "subtotal": float(inv.get("subtotal") or inv.get("sub_total") or 0),
+                    "descuento": float(inv.get("descuento") or inv.get("discount") or 0),
+                    "impuestos": float(inv.get("iva") or inv.get("impuesto_iva") or (taxes.get("iva") or taxes.get("IVA") or 0) or inv.get("impuestos", 0)),
+                    "isr_retenido": float(inv.get("isr_retenido") or inv.get("retencion_isr") or (taxes.get("isr") or taxes.get("ISR") or 0)),
+                    "iva_retenido": float(inv.get("iva_retenido") or inv.get("retencion_iva") or (taxes.get("iva_ret") or 0)),
                     "moneda": inv.get("moneda", "MXN"),
                     "tipo_cambio": float(inv.get("tipo_cambio") or 1),
                     "estatus": inv.get("estatus") or inv.get("status", "vigente"),
                     "estado_cancelacion": "cancelado" if inv.get("cancelado") else "vigente",
-                    "metodo_pago": inv.get("metodo_pago", "PUE"),
-                    "forma_pago": inv.get("forma_pago", "03"),
-                    "fuente": "contalink",
+                    "metodo_pago": inv.get("metodo_pago") or inv.get("payment_method") or "",
+                    "forma_pago": inv.get("forma_pago") or inv.get("payment_form") or "",
+                    "uso_cfdi": inv.get("uso_cfdi") or inv.get("uso") or "",
+                    "source": "contalink",
                     "contalink_id": str(inv.get("id") or ""),
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }

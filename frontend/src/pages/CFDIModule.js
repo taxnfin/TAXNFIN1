@@ -1816,6 +1816,34 @@ const CFDIModule = () => {
           
           {cfdiDetail && (
             <div className="space-y-6">
+              {/* Badge de origen */}
+              {(() => {
+                const src = cfdiDetail.source || cfdiDetail.fuente;
+                const badges = {
+                  contalink: 'bg-blue-100 text-blue-800 border-blue-200',
+                  alegra:    'bg-orange-100 text-orange-800 border-orange-200',
+                  sat:       'bg-green-100 text-green-800 border-green-200',
+                  xml:       'bg-green-100 text-green-800 border-green-200',
+                };
+                const label = src
+                  ? { contalink: 'Contalink', alegra: 'Alegra', sat: 'SAT', xml: 'SAT / XML' }[src] || src
+                  : 'Sin fuente';
+                const cls = badges[src] || 'bg-gray-100 text-gray-600 border-gray-200';
+                return (
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cls}`}>
+                      Origen: {label}
+                    </span>
+                    {cfdiDetail.contalink_id && (
+                      <span className="text-xs text-[#94A3B8]">ID: {cfdiDetail.contalink_id}</span>
+                    )}
+                    {cfdiDetail.folio_alegra && (
+                      <span className="text-xs text-purple-600 font-medium">Folio: {cfdiDetail.folio_alegra}</span>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Header Info */}
               <div className="grid grid-cols-2 gap-4">
                 {/* Emisor */}
@@ -1824,26 +1852,34 @@ const CFDIModule = () => {
                   <div className="space-y-2">
                     <div>
                       <Label className="text-xs text-[#94A3B8]">RFC (EMISOR)</Label>
-                      <div className="font-mono font-semibold text-[#0F172A]">{cfdiDetail.emisor_rfc}</div>
+                      <div className="font-mono font-semibold text-[#0F172A]">
+                        {cfdiDetail.emisor_rfc || cfdiDetail.rfc_emisor || cfdiDetail.rfcEmisor || 'N/A'}
+                      </div>
                     </div>
                     <div>
                       <Label className="text-xs text-[#94A3B8]">RAZÓN SOCIAL (EMISOR)</Label>
-                      <div className="font-medium text-[#0F172A]">{cfdiDetail.emisor_nombre || 'N/A'}</div>
+                      <div className="font-medium text-[#0F172A]">
+                        {cfdiDetail.emisor_nombre || cfdiDetail.nombre_emisor || cfdiDetail.emisor?.nombre || 'N/A'}
+                      </div>
                     </div>
                   </div>
                 </div>
-                
+
                 {/* Receptor */}
                 <div className="p-4 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0]">
                   <h3 className="text-sm font-semibold text-[#64748B] mb-3 uppercase">Receptor</h3>
                   <div className="space-y-2">
                     <div>
                       <Label className="text-xs text-[#94A3B8]">RFC (RECEPTOR)</Label>
-                      <div className="font-mono font-semibold text-[#0F172A]">{cfdiDetail.receptor_rfc}</div>
+                      <div className="font-mono font-semibold text-[#0F172A]">
+                        {cfdiDetail.receptor_rfc || cfdiDetail.rfc_receptor || cfdiDetail.rfcReceptor || 'N/A'}
+                      </div>
                     </div>
                     <div>
                       <Label className="text-xs text-[#94A3B8]">RAZÓN SOCIAL (RECEPTOR)</Label>
-                      <div className="font-medium text-[#0F172A]">{cfdiDetail.receptor_nombre || 'N/A'}</div>
+                      <div className="font-medium text-[#0F172A]">
+                        {cfdiDetail.receptor_nombre || cfdiDetail.nombre_receptor || cfdiDetail.receptor?.nombre || 'N/A'}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1867,14 +1903,19 @@ const CFDIModule = () => {
                 <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
                   <Label className="text-xs text-[#94A3B8]">MÉTODO DE PAGO</Label>
                   <div className="font-medium text-[#0F172A]">
-                    {cfdiDetail.metodo_pago === 'PPD' ? 'PPD (Pago en parcialidades)' : 
-                     cfdiDetail.metodo_pago === 'PUE' ? 'PUE (Pago en una exhibición)' : 
-                     cfdiDetail.metodo_pago || 'N/A'}
+                    {(() => {
+                      const mp = cfdiDetail.metodo_pago || cfdiDetail.metodoPago || cfdiDetail.payment_method;
+                      if (mp === 'PPD') return 'PPD (Pago en parcialidades)';
+                      if (mp === 'PUE') return 'PUE (Pago en una exhibición)';
+                      return mp || 'N/A';
+                    })()}
                   </div>
                 </div>
                 <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
                   <Label className="text-xs text-[#94A3B8]">FORMA DE PAGO</Label>
-                  <div className="font-medium text-[#0F172A]">{cfdiDetail.forma_pago || 'N/A'}</div>
+                  <div className="font-medium text-[#0F172A]">
+                    {cfdiDetail.forma_pago || cfdiDetail.formaPago || cfdiDetail.payment_form || 'N/A'}
+                  </div>
                 </div>
               </div>
 
@@ -1887,7 +1928,11 @@ const CFDIModule = () => {
                 <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
                   <Label className="text-xs text-[#94A3B8]">FECHA TIMBRADO</Label>
                   <div className="font-mono text-[#0F172A]">
-                    {cfdiDetail.fecha_timbrado ? format(new Date(cfdiDetail.fecha_timbrado), 'dd/MM/yyyy HH:mm') : 'N/A'}
+                    {(() => {
+                      const ts = cfdiDetail.fecha_timbrado || cfdiDetail.timbrado_at || cfdiDetail.stamp_date || cfdiDetail.fecha_emision;
+                      if (!ts) return 'N/A';
+                      try { return format(new Date(ts), 'dd/MM/yyyy HH:mm'); } catch { return 'N/A'; }
+                    })()}
                   </div>
                 </div>
                 <div className="p-3 bg-white rounded-lg border border-[#E2E8F0]">
@@ -1918,19 +1963,19 @@ const CFDIModule = () => {
                     <TableRow>
                       <TableCell>Subtotal</TableCell>
                       <TableCell className="text-right font-mono">
-                        ${(cfdiDetail.subtotal || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                        ${(cfdiDetail.subtotal || cfdiDetail.sub_total || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
                       </TableCell>
                     </TableRow>
                     <TableRow>
                       <TableCell>Descuento</TableCell>
                       <TableCell className="text-right font-mono text-[#94A3B8]">
-                        ${(cfdiDetail.descuento || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                        ${(cfdiDetail.descuento || cfdiDetail.discount || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
                       </TableCell>
                     </TableRow>
                     <TableRow className="bg-[#F8FAFC]">
                       <TableCell className="font-semibold">IVA (16%)</TableCell>
                       <TableCell className="text-right font-mono">
-                        ${((cfdiDetail.impuestos || 0)).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                        ${(cfdiDetail.impuestos || cfdiDetail.iva || cfdiDetail.impuesto_iva || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
                       </TableCell>
                     </TableRow>
                     <TableRow>
