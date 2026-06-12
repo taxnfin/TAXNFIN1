@@ -1344,29 +1344,51 @@ const AgingModule = () => {
                         </TableCell>
                         <TableCell className="text-center bg-blue-50">
                           {(() => {
-                            const key = `${getPartyName(cfdi, tipo)}_${tipo}`;
+                            const nombre = getPartyName(cfdi, tipo);
+                            const key = `${nombre}_${tipo}`;
                             const semanaActual = proyecciones[key] || '';
+                            const proyDoc = proyDocs.find(p => p.nombre === nombre && p.tipo === tipo);
+                            const isCapped = (proyDoc?.rolled_count || 0) >= 8;
+                            const isRolled = proyDoc?.auto_rolled === true && !isCapped;
                             return (
-                              <select
-                                value={semanaActual}
-                                onChange={e => handleAsignarSemana(
-                                  getPartyName(cfdi, tipo), tipo,
-                                  e.target.value || null,
-                                  cfdi.pendiente || cfdi.total || 0
+                              <div className="flex flex-col items-center gap-1">
+                                <select
+                                  value={semanaActual}
+                                  onChange={e => handleAsignarSemana(
+                                    nombre, tipo,
+                                    e.target.value || null,
+                                    cfdi.pendiente || cfdi.total || 0
+                                  )}
+                                  className={`text-xs px-2 py-1 rounded border cursor-pointer ${
+                                    semanaActual
+                                      ? 'bg-blue-100 text-blue-800 border-blue-300 font-semibold'
+                                      : 'bg-gray-50 text-gray-400 border-gray-200'
+                                  }`}
+                                >
+                                  <option value="">— Sin asignar</option>
+                                  {semanasModelo.map(s => (
+                                    <option key={s.label} value={s.label}>
+                                      {s.label} · {s.dateLabel}
+                                    </option>
+                                  ))}
+                                </select>
+                                {isCapped && (
+                                  <span
+                                    title={`Sin cobrarse ${proyDoc.rolled_count} semanas desde ${proyDoc.rolled_from}`}
+                                    className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-semibold cursor-help"
+                                  >
+                                    ⚠ Vencida +8 sem
+                                  </span>
                                 )}
-                                className={`text-xs px-2 py-1 rounded border cursor-pointer ${
-                                  semanaActual
-                                    ? 'bg-blue-100 text-blue-800 border-blue-300 font-semibold'
-                                    : 'bg-gray-50 text-gray-400 border-gray-200'
-                                }`}
-                              >
-                                <option value="">— Sin asignar</option>
-                                {semanasModelo.map(s => (
-                                  <option key={s.label} value={s.label}>
-                                    {s.label} · {s.dateLabel}
-                                  </option>
-                                ))}
-                              </select>
+                                {isRolled && (
+                                  <span
+                                    title={`Movido automáticamente de ${proyDoc.rolled_from}`}
+                                    className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-semibold cursor-help"
+                                  >
+                                    ⟳ Rolado
+                                  </span>
+                                )}
+                              </div>
                             );
                           })()}
                         </TableCell>

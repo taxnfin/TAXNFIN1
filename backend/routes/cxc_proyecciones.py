@@ -18,6 +18,82 @@ from core.auth import get_current_user, get_active_company_id
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cxc-proyecciones", tags=["CxC/CxP Proyecciones"])
 
+MAX_ROLLS = 8
+
+
+def _compute_week_info(week_start_day: int = 1):
+    """Returns (model_start, current_week_num) matching semanas-modelo logic."""
+    today = date.today()
+    year_start = date(today.year, 1, 1)
+    if week_start_day == 0:
+        model_offset = (year_start.weekday() + 1) % 7
+        curr_offset  = (today.weekday() + 1) % 7
+    else:
+        model_offset = year_start.weekday()
+        curr_offset  = today.weekday()
+    model_start = year_start - timedelta(days=model_offset)
+    current_week_start = today - timedelta(days=curr_offset)
+    current_week_num = (current_week_start - model_start).days // 7 + 1
+    return model_start, current_week_num
+
+
+async def _apply_rolling(company_id: str, docs: List[Dict], current_week_num: int) -> List[Dict]:
+    """
+    Roll past-due projections to the next upcoming week.
+    Writes updates to MongoDB. Returns docs with updated fields.
+    Stops rolling at MAX_ROLLS weeks past the original assignment.
+    """
+    now = datetime.now(timezone.utc)
+    updated = []
+    for doc in docs:
+        semana = doc.get("semana")
+        if not semana or not semana.startswith("S"):
+            updated.append(doc)
+            continue
+        try:
+            doc_week_num = int(semana[1:])
+        except ValueError:
+            updated.append(doc)
+            continue
+
+        if doc_week_num >= current_week_num:
+            updated.append(doc)
+            continue
+
+        # Past due — compute roll
+        rolled_from  = doc.get("rolled_from", semana)
+        rolled_count = doc.get("rolled_count", 0)
+        new_count    = rolled_count + 1
+
+        if new_count > MAX_ROLLS:
+            if doc.get("rolled_count") != MAX_ROLLS:
+                await db.cxc_proyecciones.update_one(
+                    {"company_id": company_id, "nombre": doc["nombre"], "tipo": doc["tipo"]},
+                    {"$set": {"rolled_count": MAX_ROLLS, "auto_rolled": True,
+                               "rolled_from": rolled_from, "updated_at": now}},
+                )
+                doc["rolled_count"] = MAX_ROLLS
+                doc["auto_rolled"]  = True
+                doc["rolled_from"]  = rolled_from
+            updated.append(doc)
+            continue
+
+        new_semana = f"S{current_week_num + 1}"
+        await db.cxc_proyecciones.update_one(
+            {"company_id": company_id, "nombre": doc["nombre"], "tipo": doc["tipo"]},
+            {"$set": {"semana": new_semana, "auto_rolled": True, "rolled_from": rolled_from,
+                       "rolled_count": new_count, "updated_at": now}},
+        )
+        logger.info(
+            f"[ROLLING] {doc['nombre']} ({doc['tipo']}) {semana}→{new_semana} "
+            f"roll#{new_count} company={company_id}"
+        )
+        doc = {**doc, "semana": new_semana, "auto_rolled": True,
+               "rolled_from": rolled_from, "rolled_count": new_count}
+        updated.append(doc)
+
+    return updated
+
 
 class ProyeccionItem(BaseModel):
     nombre:   str
@@ -37,11 +113,16 @@ async def get_proyecciones(
     request: Request,
     current_user: Dict = Depends(get_current_user),
 ):
-    """Devuelve todas las asignaciones de semana para CxC y CxP."""
+    """Devuelve todas las asignaciones de semana para CxC y CxP, aplicando rolling automático."""
     company_id = await get_active_company_id(request, current_user)
+    company = await db.companies.find_one({"id": company_id}, {"_id": 0})
+    week_start_day = int(company.get("inicio_semana", 1)) if company else 1
+    _, current_week_num = _compute_week_info(week_start_day)
+
     docs = await db.cxc_proyecciones.find(
         {"company_id": company_id}, {"_id": 0}
     ).to_list(1000)
+    docs = await _apply_rolling(company_id, docs, current_week_num)
     return docs
 
 
@@ -111,10 +192,14 @@ async def get_proyecciones_por_semana(
     }
     """
     company_id = await get_active_company_id(request, current_user)
+    company = await db.companies.find_one({"id": company_id}, {"_id": 0})
+    week_start_day = int(company.get("inicio_semana", 1)) if company else 1
+    _, current_week_num = _compute_week_info(week_start_day)
 
     docs = await db.cxc_proyecciones.find(
         {"company_id": company_id, "semana": {"$ne": None}}, {"_id": 0}
     ).to_list(1000)
+    docs = await _apply_rolling(company_id, docs, current_week_num)
 
     cat_docs = await db.cxc_categorias.find(
         {"company_id": company_id}, {"_id": 0}
@@ -255,6 +340,11 @@ async def sincronizar_montos_con_aging(
     docs = await db.cxc_proyecciones.find(
         {"company_id": company_id, "tipo": tipo, "semana": {"$ne": None}}, {"_id": 0}
     ).to_list(2000)
+
+    company = await db.companies.find_one({"id": company_id}, {"_id": 0})
+    week_start_day = int(company.get("inicio_semana", 1)) if company else 1
+    _, current_week_num = _compute_week_info(week_start_day)
+    docs = await _apply_rolling(company_id, docs, current_week_num)
 
     now = datetime.now(timezone.utc)
     eliminados = actualizados = sin_cambio = 0
