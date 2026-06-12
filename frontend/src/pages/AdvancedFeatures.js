@@ -772,22 +772,60 @@ const AdvancedFeatures = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {(appliedResult.recomendaciones || []).map((rec, idx) => (
-                <div key={idx} className="p-3 bg-white border border-green-200 rounded text-sm">
-                  <span className="font-semibold text-[#10B981]">
-                    {rec.tipo === 'retrasar_pago' ? '⏳' :
-                     rec.tipo === 'adelantar_cobro' ? '⚡' :
-                     rec.tipo === 'ajustar_monto' ? '✂️' : '🔧'}{' '}
-                    {rec.tipo?.replace(/_/g, ' ')}
-                  </span>
-                  <span className="text-gray-600 ml-2">
-                    {rec.transaction_id
-                      ?.replace(/^cache_(ingreso|egreso)_/i, '')
-                      .replace(/_\d{4}-\d{2}-\d{2}$/, '')}
-                  </span>
-                  <p className="text-gray-500 mt-1">{rec.recomendacion}</p>
-                </div>
-              ))}
+              {(appliedResult.recomendaciones || []).map((rec, idx) => {
+                const traducirRecomendacion = (rec) => {
+                  const nombre = (rec.transaction_id || '')
+                    .replace(/^cache_(ingreso|egreso)_/i, '')
+                    .replace(/_\d{4}-\d{2}-\d{2}$/, '')
+                    .trim();
+                  switch (rec.tipo) {
+                    case 'retrasar_pago': {
+                      const dias = rec.recomendacion?.match(/(\d+)\s*días/)?.[1] || '';
+                      return `Negocia con ${nombre} para pagar ${dias} días después — mejora tu liquidez sin afectar la relación comercial`;
+                    }
+                    case 'adelantar_cobro': {
+                      const dias = rec.recomendacion?.match(/(\d+)\s*días/)?.[1] || '';
+                      return `Contacta a ${nombre} para cobrar ${dias} días antes — prioriza este cliente en tu gestión de cobranza`;
+                    }
+                    case 'adelantar_pago': {
+                      const dias = rec.recomendacion?.match(/(\d+)\s*días/)?.[1] || '';
+                      return `Paga a ${nombre} ${dias} días antes — verifica si ofrece descuento por pronto pago`;
+                    }
+                    case 'retrasar_cobro': {
+                      const dias = rec.recomendacion?.match(/(\d+)\s*días/)?.[1] || '';
+                      return `Ajusta el cobro a ${nombre} en ${dias} días — coordina con tu área comercial`;
+                    }
+                    case 'ajustar_monto': {
+                      const pct = rec.recomendacion?.match(/([\d.]+)%/)?.[1];
+                      const pctNum = pct ? parseFloat(pct) : null;
+                      if (pctNum && pctNum < 100) {
+                        return `Negocia una reducción del ${(100 - pctNum).toFixed(0)}% con ${nombre} — busca descuento o servicio alternativo más económico`;
+                      } else if (pctNum && pctNum > 100) {
+                        return `Gestiona cobrar un ${(pctNum - 100).toFixed(0)}% adicional a ${nombre} — revisa si hay conceptos pendientes`;
+                      }
+                      return `Ajusta el monto con ${nombre}`;
+                    }
+                    default:
+                      return rec.recomendacion || rec.tipo;
+                  }
+                };
+                return (
+                  <div key={idx} className="p-3 bg-white border border-green-200 rounded text-sm">
+                    <span className="font-semibold text-[#10B981]">
+                      {rec.tipo === 'retrasar_pago' ? '⏳' :
+                       rec.tipo === 'adelantar_cobro' ? '⚡' :
+                       rec.tipo === 'ajustar_monto' ? '✂️' : '🔧'}{' '}
+                      {rec.tipo?.replace(/_/g, ' ')}
+                    </span>
+                    <span className="text-gray-600 ml-2">
+                      {(rec.transaction_id || '')
+                        .replace(/^cache_(ingreso|egreso)_/i, '')
+                        .replace(/_\d{4}-\d{2}-\d{2}$/, '')}
+                    </span>
+                    <p className="text-gray-600 mt-1">{traducirRecomendacion(rec)}</p>
+                  </div>
+                );
+              })}
             </div>
             <button
               onClick={() => setAppliedResult(null)}
