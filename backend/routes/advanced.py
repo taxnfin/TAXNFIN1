@@ -9,6 +9,7 @@ from core.database import db
 from core.auth import get_current_user
 from services.audit import audit_log
 from models.enums import UserRole
+from advanced_services import PredictiveAnalysisService, AutoReconciliationService, AlertService
 
 logger = logging.getLogger(__name__)
 

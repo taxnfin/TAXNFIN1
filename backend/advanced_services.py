@@ -8,6 +8,11 @@ from sklearn.preprocessing import StandardScaler
 import logging
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+try:
+    import resend
+except ImportError:
+    resend = None
+
 logger = logging.getLogger(__name__)
 
 class PredictiveAnalysisService:
@@ -306,8 +311,10 @@ class AlertService:
         self.twilio_phone = os.environ.get('TWILIO_PHONE_NUMBER', '')
         self.sender_email = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
         
-        if self.resend_api_key:
+        if resend is not None and self.resend_api_key:
             resend.api_key = self.resend_api_key
+        elif resend is None:
+            logger.warning("resend no instalado — alertas por email deshabilitadas")
     
     async def check_and_send_alerts(self, company_id: str) -> List[Dict[str, Any]]:
         """Verifica condiciones y envía alertas si es necesario"""
@@ -410,7 +417,7 @@ class AlertService:
         alert_type = 'CRÍTICO' if data['saldo_proyectado'] < 0 else 'ADVERTENCIA'
         
         for user in users:
-            if self.resend_api_key and user.get('email'):
+            if resend is not None and self.resend_api_key and user.get('email'):
                 try:
                     html_content = f"""
                     <h2 style="color: #EF4444;">⚠️ Alerta de Liquidez - {alert_type}</h2>
