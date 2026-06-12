@@ -212,6 +212,32 @@ async def update_company_nombre(
     return {'status': 'success', 'nombre': nuevo_nombre}
 
 
+@router.put("/{company_id}/rfc")
+async def update_company_rfc(
+    company_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Update company RFC — user must have access"""
+    user_company_ids = list(set(
+        current_user.get('company_ids', []) + [current_user.get('company_id', '')]
+    ))
+    if company_id not in user_company_ids and current_user.get('role') != 'admin':
+        raise HTTPException(status_code=403, detail="Sin acceso a esta empresa")
+
+    body = await request.json()
+    nuevo_rfc = (body.get('rfc') or '').strip().upper()
+    if not nuevo_rfc:
+        raise HTTPException(status_code=400, detail="RFC requerido")
+
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0, 'id': 1})
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+
+    await db.companies.update_one({'id': company_id}, {'$set': {'rfc': nuevo_rfc}})
+    return {'status': 'success', 'rfc': nuevo_rfc}
+
+
 @router.post("/{company_id}/add-access")
 async def add_company_access(
     company_id: str,

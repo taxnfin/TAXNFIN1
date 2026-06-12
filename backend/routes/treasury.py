@@ -151,9 +151,13 @@ def _get_fecha_efectiva(item: dict, today_date) -> str:
     if fv:
         return str(fv)[:10]
     dias = int(item.get('dias_vencido', 0) or 0)
-    if dias > 0:
+    if dias > 30:
         return today_date.isoformat()
-    return (today_date + timedelta(days=14)).isoformat()
+    elif dias > 0:
+        return (today_date + timedelta(days=7)).isoformat()
+    else:
+        dias_restantes = abs(dias) if dias < 0 else 14
+        return (today_date + timedelta(days=min(dias_restantes, 90))).isoformat()
 
 
 async def calculate_alerts(company_id: str, threshold: float, weeks_ahead: int) -> List[dict]:
@@ -485,7 +489,13 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
             nombre = (item.get('nombre') or item.get('razon_social') or
                       item.get('cliente') or item.get('proveedor') or 'Sin nombre')
             dias_vencido = int(item.get('dias_vencido', 0) or 0)
-            fecha_estimada = today_date if dias_vencido > 0 else (today_date + timedelta(days=14))
+            if dias_vencido > 30:
+                fecha_estimada = today_date
+            elif dias_vencido > 0:
+                fecha_estimada = today_date + timedelta(days=7)
+            else:
+                dias_restantes = abs(dias_vencido) if dias_vencido < 0 else 14
+                fecha_estimada = today_date + timedelta(days=min(dias_restantes, 90))
             fecha_str = fecha_estimada.isoformat()
             for week_offset in range(weeks_ahead):
                 week_start = today + timedelta(weeks=week_offset)

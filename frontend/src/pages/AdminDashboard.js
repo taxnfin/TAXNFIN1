@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import api from '../api/axios';
 import {
   Building2, Users, FileText, Link2, Plus, Trash2, RefreshCw,
-  CheckCircle2, XCircle, Clock, Zap, Pencil, PauseCircle, PlayCircle
+  CheckCircle2, XCircle, Clock, Zap, Pencil, PauseCircle, PlayCircle, Hash
 } from 'lucide-react';
 import AccountMappingPanel from './AccountMappingPanel';
 
@@ -39,6 +39,10 @@ const AdminDashboard = () => {
   const [holdingCompany, setHoldingCompany] = useState(null);
   const [holdReason, setHoldReason] = useState('');
   const [holdLoading, setHoldLoading] = useState(false);
+  const [rfcDialog, setRfcDialog] = useState(false);
+  const [rfcingCompany, setRfcingCompany] = useState(null);
+  const [rfcValue, setRfcValue] = useState('');
+  const [rfcing, setRfcing] = useState(false);
 
   useEffect(() => {
     fetchAll();
@@ -106,6 +110,28 @@ const AdminDashboard = () => {
     setRenamingCompany(company);
     setRenameNombre(company.nombre);
     setRenameDialog(true);
+  };
+
+  const openRfc = (company) => {
+    setRfcingCompany(company);
+    setRfcValue(company.rfc || '');
+    setRfcDialog(true);
+  };
+
+  const handleRfc = async () => {
+    if (!rfcValue.trim()) return;
+    setRfcing(true);
+    try {
+      await api.put(`/companies/${rfcingCompany.id}/rfc`, { rfc: rfcValue.trim() });
+      toast.success('RFC actualizado correctamente');
+      setRfcDialog(false);
+      setRfcingCompany(null);
+      fetchAll();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al actualizar RFC');
+    } finally {
+      setRfcing(false);
+    }
   };
 
   const handleRename = async () => {
@@ -268,6 +294,14 @@ const AdminDashboard = () => {
                           data-testid={`rename-btn-${c.id}`}
                         >
                           <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => openRfc(c)}
+                          className="text-gray-400 hover:text-blue-600 transition-colors"
+                          title="Editar RFC"
+                          data-testid={`rfc-btn-${c.id}`}
+                        >
+                          <Hash className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => openHold(c)}
@@ -521,6 +555,33 @@ const AdminDashboard = () => {
             <Button variant="outline" onClick={() => setRenameDialog(false)} disabled={renaming}>Cancelar</Button>
             <Button onClick={handleRename} disabled={renaming || !renameNombre.trim()} data-testid="confirm-rename-btn">
               {renaming ? 'Guardando...' : 'Guardar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* RFC Dialog */}
+      <Dialog open={rfcDialog} onOpenChange={setRfcDialog}>
+        <DialogContent className="sm:max-w-sm" data-testid="rfc-dialog">
+          <DialogHeader>
+            <DialogTitle>Editar RFC</DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            <Label className="text-xs font-medium">RFC</Label>
+            <Input
+              value={rfcValue}
+              onChange={e => setRfcValue(e.target.value.toUpperCase())}
+              onKeyDown={e => e.key === 'Enter' && handleRfc()}
+              placeholder="Ej: ABC123456789"
+              className="mt-1 font-mono uppercase"
+              data-testid="input-rfc"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRfcDialog(false)} disabled={rfcing}>Cancelar</Button>
+            <Button onClick={handleRfc} disabled={rfcing || !rfcValue.trim()} data-testid="confirm-rfc-btn">
+              {rfcing ? 'Guardando...' : 'Guardar'}
             </Button>
           </DialogFooter>
         </DialogContent>
