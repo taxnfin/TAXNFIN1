@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -96,6 +98,11 @@ const PaymentsModule = () => {
   const [pendingCfdis, setPendingCfdis] = useState([]);
   const [selectedParty, setSelectedParty] = useState('');
   const [selectedCfdis, setSelectedCfdis] = useState([]); // Multiple selection
+  const [partyDropdownOpen, setPartyDropdownOpen] = useState(false);
+  const [partySearch, setPartySearch] = useState('');
+  const [showNewPartyForm, setShowNewPartyForm] = useState(false);
+  const [newPartyForm, setNewPartyForm] = useState({ nombre: '', rfc: '', email: '', telefono: '' });
+  const [savingNewParty, setSavingNewParty] = useState(false);
   const [useCustomAmount, setUseCustomAmount] = useState(false);
   
   const [formData, setFormData] = useState({
@@ -509,6 +516,36 @@ const PaymentsModule = () => {
     setSelectedCfdis([]);
     setPendingCfdis([]);
     setUseCustomAmount(false);
+    setPartySearch('');
+    setShowNewPartyForm(false);
+    setNewPartyForm({ nombre: '', rfc: '', email: '', telefono: '' });
+  };
+
+  const handleCreateNewParty = async () => {
+    if (!newPartyForm.nombre.trim()) {
+      toast.error('El nombre es requerido');
+      return;
+    }
+    setSavingNewParty(true);
+    try {
+      const endpoint = formData.tipo === 'cobro' ? '/customers' : '/vendors';
+      const res = await api.post(endpoint, { ...newPartyForm });
+      const newParty = res.data;
+      const sortFn = (a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' });
+      if (formData.tipo === 'cobro') {
+        setCustomers(prev => [...prev, newParty].sort(sortFn));
+      } else {
+        setVendors(prev => [...prev, newParty].sort(sortFn));
+      }
+      handlePartyChange(newParty.id);
+      setShowNewPartyForm(false);
+      setNewPartyForm({ nombre: '', rfc: '', email: '', telefono: '' });
+      toast.success(`${formData.tipo === 'cobro' ? 'Cliente' : 'Proveedor'} creado y seleccionado`);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al crear');
+    } finally {
+      setSavingNewParty(false);
+    }
   };
 
   const handleComplete = async (paymentId) => {
@@ -1119,27 +1156,133 @@ const PaymentsModule = () => {
                     <><Building2 size={16} className="text-orange-500" /> Seleccionar Proveedor</>
                   )}
                 </Label>
-                <Select value={selectedParty} onValueChange={handlePartyChange}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={formData.tipo === 'cobro' ? 'Seleccionar cliente...' : 'Seleccionar proveedor...'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {currentParties.length === 0 ? (
-                      <SelectItem value="none" disabled>
-                        No hay {formData.tipo === 'cobro' ? 'clientes' : 'proveedores'} registrados
-                      </SelectItem>
-                    ) : (
-                      currentParties.map(party => (
-                        <SelectItem key={party.id} value={party.id}>
-                          <div className="flex flex-col">
-                            <span className="font-medium">{party.nombre}</span>
-                            {party.rfc && <span className="text-xs text-gray-500">{party.rfc}</span>}
-                          </div>
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <Popover open={partyDropdownOpen} onOpenChange={setPartyDropdownOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={partyDropdownOpen}
+                      className="w-full justify-between font-normal h-10 px-3"
+                      data-testid="party-combobox-trigger"
+                    >
+                      <span className="truncate text-sm">
+                        {selectedParty
+                          ? currentParties.find(p => p.id === selectedParty)?.nombre
+                          : (formData.tipo === 'cobro' ? 'Seleccionar cliente...' : 'Seleccionar proveedor...')}
+                      </span>
+                      <ChevronDown size={16} className="ml-2 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="p-0 w-[var(--radix-popover-trigger-width)]" align="start">
+                    <Command shouldFilter={false}>
+                      <CommandInput
+                        placeholder={`Buscar ${formData.tipo === 'cobro' ? 'cliente' : 'proveedor'}...`}
+                        value={partySearch}
+                        onValueChange={setPartySearch}
+                        data-testid="party-search-input"
+                      />
+                      <CommandList>
+                        <CommandEmpty>No se encontraron resultados.</CommandEmpty>
+                        <CommandGroup>
+                          {currentParties
+                            .filter(p => {
+                              if (!partySearch) return true;
+                              const q = partySearch.toLowerCase();
+                              return p.nombre.toLowerCase().includes(q) || (p.rfc && p.rfc.toLowerCase().includes(q));
+                            })
+                            .map(party => (
+                              <CommandItem
+                                key={party.id}
+                                value={party.id}
+                                onSelect={() => {
+                                  handlePartyChange(party.id);
+                                  setPartyDropdownOpen(false);
+                                  setPartySearch('');
+                                  setShowNewPartyForm(false);
+                                }}
+                              >
+                                <div className="flex flex-col flex-1 min-w-0">
+                                  <span className="font-medium truncate">{party.nombre}</span>
+                                  {party.rfc && <span className="text-xs text-gray-500">{party.rfc}</span>}
+                                </div>
+                                {selectedParty === party.id && <Check size={14} className="ml-2 shrink-0 text-green-600" />}
+                              </CommandItem>
+                            ))}
+                        </CommandGroup>
+                        <CommandSeparator />
+                        <CommandGroup>
+                          <CommandItem
+                            value="__new__"
+                            onSelect={() => {
+                              setPartyDropdownOpen(false);
+                              setPartySearch('');
+                              setShowNewPartyForm(true);
+                            }}
+                            className="text-blue-600 font-medium"
+                            data-testid="party-add-new"
+                          >
+                            <Plus size={15} className="mr-2 shrink-0" />
+                            Agregar nuevo {formData.tipo === 'cobro' ? 'cliente' : 'proveedor'}
+                          </CommandItem>
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+
+                {/* Formulario inline para nuevo cliente/proveedor */}
+                {showNewPartyForm && (
+                  <div className="mt-1 p-3 border border-blue-200 rounded-lg bg-blue-50/60 space-y-2" data-testid="new-party-form">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-semibold text-blue-700">
+                        Nuevo {formData.tipo === 'cobro' ? 'cliente' : 'proveedor'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { setShowNewPartyForm(false); setNewPartyForm({ nombre: '', rfc: '', email: '', telefono: '' }); }}
+                        className="text-gray-400 hover:text-gray-600 text-lg leading-none"
+                      >✕</button>
+                    </div>
+                    <Input
+                      placeholder="Nombre *"
+                      value={newPartyForm.nombre}
+                      onChange={e => setNewPartyForm(p => ({ ...p, nombre: e.target.value }))}
+                      data-testid="new-party-nombre"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        placeholder="RFC (opcional)"
+                        value={newPartyForm.rfc}
+                        onChange={e => setNewPartyForm(p => ({ ...p, rfc: e.target.value.toUpperCase() }))}
+                        data-testid="new-party-rfc"
+                      />
+                      <Input
+                        placeholder="Email (opcional)"
+                        type="email"
+                        value={newPartyForm.email}
+                        onChange={e => setNewPartyForm(p => ({ ...p, email: e.target.value }))}
+                        data-testid="new-party-email"
+                      />
+                    </div>
+                    <Input
+                      placeholder="Teléfono (opcional)"
+                      value={newPartyForm.telefono}
+                      onChange={e => setNewPartyForm(p => ({ ...p, telefono: e.target.value }))}
+                      data-testid="new-party-telefono"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="w-full"
+                      disabled={savingNewParty || !newPartyForm.nombre.trim()}
+                      onClick={handleCreateNewParty}
+                      data-testid="new-party-save"
+                    >
+                      {savingNewParty ? 'Guardando...' : 'Guardar y seleccionar'}
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {/* Facturas Pendientes - Multiple Selection */}
