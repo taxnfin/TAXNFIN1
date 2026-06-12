@@ -3,6 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from typing import Dict, List, Optional
 from datetime import datetime, timezone
 import base64
+import logging
+
+logger = logging.getLogger(__name__)
 
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
@@ -231,3 +234,40 @@ async def add_company_access(
         )
 
     return {"success": True, "company_ids": user_company_ids}
+
+
+@router.delete("/{company_id}")
+async def delete_company(
+    company_id: str,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Delete a company and all its data — super-admin only"""
+    if current_user.get('role') != 'admin' or current_user.get('email') != 'kvillafuerte@taxnfin.com':
+        raise HTTPException(status_code=403, detail="Solo el administrador puede eliminar empresas")
+
+    if company_id == current_user.get('company_id'):
+        raise HTTPException(status_code=400, detail="No puedes eliminar tu empresa principal")
+
+    colecciones = [
+        'transactions', 'cashflow_weeks', 'bank_accounts', 'bank_transactions',
+        'reconciliations', 'cfdis', 'contalink_cache', 'manual_projections',
+        'categories', 'subcategories', 'customers', 'vendors', 'scenarios',
+        'optimizations', 'optimization_applied', 'alerts', 'audit_logs', 'cfdis_cache'
+    ]
+
+    deleted_summary = {}
+    for col in colecciones:
+        result = await db[col].delete_many({'company_id': company_id})
+        if result.deleted_count > 0:
+            deleted_summary[col] = result.deleted_count
+
+    await db.companies.delete_one({'id': company_id})
+
+    await db.users.update_many(
+        {'company_ids': company_id},
+        {'$pull': {'company_ids': company_id}}
+    )
+
+    logger.info(f"[DELETE COMPANY] {company_id} eliminada por {current_user['email']}. Summary: {deleted_summary}")
+
+    return {'status': 'success', 'deleted': deleted_summary}

@@ -32,6 +32,9 @@ const AdminDashboard = () => {
   const [renamingCompany, setRenamingCompany] = useState(null);
   const [renameNombre, setRenameNombre] = useState('');
   const [renaming, setRenaming] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [deletingCompany, setDeletingCompany] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchAll();
@@ -48,6 +51,26 @@ const AdminDashboard = () => {
       setIntegrations(connectedRes.data);
       setAvailableIntegrations(availableRes.data);
     } catch {}
+  };
+
+  const openDelete = (company) => {
+    setDeletingCompany(company);
+    setDeleteDialog(true);
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await api.delete(`/companies/${deletingCompany.id}`);
+      toast.success('Empresa eliminada correctamente');
+      setDeleteDialog(false);
+      setDeletingCompany(null);
+      fetchAll();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al eliminar la empresa');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const openRename = (company) => {
@@ -212,6 +235,14 @@ const AdminDashboard = () => {
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
+                        <button
+                          onClick={() => openDelete(c)}
+                          className="text-gray-300 hover:text-red-500 transition-colors"
+                          title="Eliminar empresa"
+                          data-testid={`delete-btn-${c.id}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </td>
                     <td className="py-3 pr-4 font-mono text-xs text-gray-600">{c.rfc}</td>
@@ -331,6 +362,36 @@ const AdminDashboard = () => {
 
       {/* Account Mapping Section */}
       <AccountMappingPanel />
+
+      {/* Delete Company Dialog */}
+      <Dialog open={deleteDialog} onOpenChange={setDeleteDialog}>
+        <DialogContent className="sm:max-w-md" data-testid="delete-dialog">
+          <DialogHeader>
+            <DialogTitle>⚠️ Eliminar empresa</DialogTitle>
+          </DialogHeader>
+          <div className="py-3">
+            <p className="text-sm text-gray-700">
+              ¿Estás seguro de que deseas eliminar <strong>{deletingCompany?.nombre}</strong>?
+            </p>
+            <p className="mt-2 text-sm text-red-600 font-medium">
+              Esta acción borrará TODOS sus datos (CFDIs, transacciones, cashflow) y no se puede deshacer.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialog(false)} disabled={deleting}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 text-white"
+              data-testid="confirm-delete-btn"
+            >
+              {deleting ? 'Eliminando...' : 'Sí, eliminar todo'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Rename Company Dialog */}
       <Dialog open={renameDialog} onOpenChange={setRenameDialog}>
