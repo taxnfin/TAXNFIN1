@@ -13,6 +13,37 @@ import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { Brain, Zap, Bell, Sparkles, GitBranch, Download, FileText, Cpu, TrendingUp, CheckCircle } from 'lucide-react';
 
+const ESCENARIOS_RAPIDOS = [
+  {
+    icono: '⚡',
+    label: 'Adelantar cobro',
+    nombre: 'Adelantar cobro a cliente',
+    descripcion: '¿Qué pasa si cobro antes a mis clientes más importantes?',
+    tipo: 'adelantar_pago',
+  },
+  {
+    icono: '🔄',
+    label: 'Retrasar pago',
+    nombre: 'Retrasar pago a proveedor',
+    descripcion: '¿Qué pasa si negocio más días de crédito con mis proveedores?',
+    tipo: 'retrasar_cobro',
+  },
+  {
+    icono: '📈',
+    label: 'Venta extra',
+    nombre: 'Ingreso extraordinario',
+    descripcion: '¿Qué pasa si cierro una venta adicional este mes?',
+    tipo: 'agregar_transaccion',
+  },
+  {
+    icono: '✂️',
+    label: 'Reducir gasto',
+    nombre: 'Reducir gasto operativo',
+    descripcion: '¿Qué pasa si reduzco un gasto fijo este mes?',
+    tipo: 'ajustar_monto',
+  },
+];
+
 const AdvancedFeatures = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -139,6 +170,11 @@ const AdvancedFeatures = () => {
       });
 
       const data = res.data;
+      if (data.status === 'no_improvement') {
+        setOptimizationResult({ _no_improvement: true });
+        setOptimizationDialog(false);
+        return;
+      }
       const hasSolutions = data?.top_5_soluciones?.length > 0 && data?.generaciones > 0;
       if (!hasSolutions) {
         setOptimizationResult({ _insufficient_data: true });
@@ -253,6 +289,22 @@ const AdvancedFeatures = () => {
                   <DialogTitle>Nuevo Escenario</DialogTitle>
                   <DialogDescription>Simula cambios y ve el impacto en tu flujo</DialogDescription>
                 </DialogHeader>
+                <div>
+                  <p className="text-xs font-semibold text-[#64748B] mb-2">Elige un escenario rápido:</p>
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    {ESCENARIOS_RAPIDOS.map((e) => (
+                      <Button
+                        key={e.label}
+                        variant="outline"
+                        size="sm"
+                        className="justify-start gap-2 text-xs h-9"
+                        onClick={() => setScenarioForm({ ...scenarioForm, nombre: e.nombre, descripcion: e.descripcion, tipo: e.tipo })}
+                      >
+                        <span>{e.icono}</span>{e.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
                 <div className="space-y-4">
                   <div>
                     <Label>Nombre del Escenario</Label>
@@ -459,6 +511,22 @@ const AdvancedFeatures = () => {
                 <p className="text-sm text-[#64748B]">Total</p>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {optimizationResult?._no_improvement && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="pt-5 pb-4 flex items-start gap-3">
+            <span className="text-2xl">📊</span>
+            <div>
+              <p className="font-semibold text-amber-800 mb-1">Sin mejoras detectadas</p>
+              <p className="text-sm text-amber-700 mb-3">El algoritmo corrió correctamente pero ninguna combinación mejoró tu flujo actual. Prueba con el preset 🔬 Profundo o agrega más proyecciones de cobros futuros.</p>
+              <Button size="sm" variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-100" onClick={() => { setOptimizationResult(null); setOptimizationDialog(true); }}>
+                Reintentar con más generaciones
+              </Button>
+            </div>
+            <button onClick={() => setOptimizationResult(null)} className="ml-auto text-amber-400 hover:text-amber-600 text-lg leading-none">✕</button>
           </CardContent>
         </Card>
       )}

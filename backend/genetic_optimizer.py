@@ -331,6 +331,13 @@ class GeneticOptimizer:
                 'semanas_criticas_resueltas': max(0, len([w for w in baseline['weekly_flow'] if w['saldo_acumulado'] < 0]) - len([w for w in result['weekly_flow'] if w['saldo_acumulado'] < 0]))
             })
         
+        # Si ninguna solución mejora el baseline, reportarlo sin guardar en DB
+        if best_solutions[0]['mejora_flujo_neto'] <= 0:
+            return {
+                'status': 'no_improvement',
+                'message': 'No se encontraron mejoras con los datos actuales'
+            }
+
         # Guardar optimización en base de datos
         # Convert numpy types to Python types for MongoDB
         def convert_numpy_types(obj):
