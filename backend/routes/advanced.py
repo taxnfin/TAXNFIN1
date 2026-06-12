@@ -301,7 +301,8 @@ async def export_ia_ejecutiva_pdf(
     # ── Análisis Predictivo ──
     if analysis.get('status') == 'success':
         a = analysis['analisis']
-        story.append(Paragraph('\U0001f4ca Análisis Predictivo de Flujo',
+        # Fix 2 — sin emoji
+        story.append(Paragraph('Analisis Predictivo de Flujo de Efectivo',
                                ParagraphStyle('s', fontName='Helvetica-Bold', fontSize=13, textColor=GREEN)))
         story.append(Spacer(1, 0.15*inch))
 
@@ -331,7 +332,7 @@ async def export_ia_ejecutiva_pdf(
         story.append(Spacer(1, 0.2*inch))
 
         # Predicciones
-        story.append(Paragraph('Predicciones próximas 8 semanas:',
+        story.append(Paragraph('Predicciones proximas 8 semanas:',
                                ParagraphStyle('p', fontName='Helvetica-Bold', fontSize=10, textColor=NAVY)))
         pred_data = [['Semana', 'Ingreso Predicho', 'Egreso Predicho', 'Flujo Neto', 'Confianza']]
         for p in analysis.get('predictions', []):
@@ -356,38 +357,45 @@ async def export_ia_ejecutiva_pdf(
         ]))
         story.append(pred_table)
 
-        # Fix 2 — Insights IA
+        # Insights IA — Fix 4: limpiar markdown antes de agregar al PDF
         ai_insights = await service.generate_ai_insights(company_id=company_id, analysis_data=analysis)
         if ai_insights and 'no disponible' not in ai_insights.lower():
+            import re
+            ai_clean = re.sub(r'\*\*(.+?)\*\*', r'\1', ai_insights)
+            ai_clean = re.sub(r'^#{1,3}\s*', '', ai_clean, flags=re.MULTILINE)
+            ai_clean = re.sub(r'^>\s*', '', ai_clean, flags=re.MULTILINE)
+            ai_clean = ai_clean.strip()
             story.append(Spacer(1, 0.2*inch))
-            story.append(Paragraph('Insights IA — Recomendaciones Ejecutivas',
+            story.append(Paragraph('Insights IA - Recomendaciones Ejecutivas',
                                    ParagraphStyle('ia', fontName='Helvetica-Bold', fontSize=11, textColor=NAVY)))
             story.append(Spacer(1, 0.1*inch))
-            story.append(Paragraph(ai_insights,
+            story.append(Paragraph(ai_clean,
                                    ParagraphStyle('iat', fontName='Helvetica', fontSize=9,
                                                   textColor=NAVY, leading=14)))
 
-    # Fix 3 — Recomendaciones CFO Virtual
+    # Recomendaciones CFO Virtual
     recomendaciones = await db.optimization_applied.find(
         {'company_id': company_id}
     ).sort('applied_at', -1).limit(10).to_list(10)
 
     if recomendaciones:
         story.append(Spacer(1, 0.3*inch))
-        story.append(Paragraph('CFO Virtual — Recomendaciones Aplicadas',
+        # Fix 5 — sin emoji
+        story.append(Paragraph('CFO Virtual - Recomendaciones Aplicadas',
                                ParagraphStyle('cfo', fontName='Helvetica-Bold', fontSize=13,
                                               textColor=PINK)))
         story.append(Spacer(1, 0.1*inch))
 
+        # Fix 1 — sin emojis en TIPOS
         TIPOS = {
-            'retrasar_pago': '⏳ Retrasar pago',
-            'adelantar_cobro': '⚡ Adelantar cobro',
-            'adelantar_pago': '\U0001f4c5 Adelantar pago',
-            'retrasar_cobro': '\U0001f504 Retrasar cobro',
-            'ajustar_monto': '✂️ Ajustar monto',
+            'retrasar_pago':   '[RETRASAR PAGO]',
+            'adelantar_cobro': '[ADELANTAR COBRO]',
+            'adelantar_pago':  '[ADELANTAR PAGO]',
+            'retrasar_cobro':  '[RETRASAR COBRO]',
+            'ajustar_monto':   '[AJUSTAR MONTO]',
         }
 
-        rec_data = [['Acción', 'Cliente / Proveedor', 'Recomendación']]
+        rec_data = [['Accion', 'Cliente / Proveedor', 'Recomendacion']]
         for rec in recomendaciones:
             nombre = (rec.get('transaction_id', '')
                       .replace('cache_ingreso_', '').replace('cache_egreso_', '')
@@ -409,8 +417,16 @@ async def export_ia_ejecutiva_pdf(
             ('VALIGN', (0,0), (-1,-1), 'TOP'),
             ('TOPPADDING', (0,0), (-1,-1), 5),
             ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-            ('WORDWRAP', (0,0), (-1,-1), True),
         ]))
+        # Fix 3 — color por tipo en columna Accion
+        for i, rec in enumerate(recomendaciones, start=1):
+            tipo = rec.get('tipo', '')
+            if tipo in ('adelantar_cobro', 'adelantar_pago'):
+                rt.setStyle(TableStyle([('TEXTCOLOR', (0,i), (0,i), GREEN)]))
+            elif tipo in ('retrasar_pago', 'retrasar_cobro'):
+                rt.setStyle(TableStyle([('TEXTCOLOR', (0,i), (0,i), colors.HexColor('#F59E0B'))]))
+            elif tipo == 'ajustar_monto':
+                rt.setStyle(TableStyle([('TEXTCOLOR', (0,i), (0,i), RED)]))
         story.append(rt)
 
     story.append(Spacer(1, 0.3*inch))
