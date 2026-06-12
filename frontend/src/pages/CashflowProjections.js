@@ -31,7 +31,8 @@ const DIAS_SEMANA = [
 ];
 
 const CashflowProjections = () => {
-  const [language, setLanguage] = useState('es');
+  const [language, setLanguage] = useState(localStorage.getItem('taxnfin_language') || 'es');
+  const handleLanguageChange = (lang) => { setLanguage(lang); localStorage.setItem('taxnfin_language', lang); };
   const [loading, setLoading] = useState(true);
   const [weeklyData, setWeeklyData] = useState([]);
   const [cxcCxpData, setCxcCxpData] = useState({ cxc: [], cxp: [] });
@@ -2186,7 +2187,7 @@ const CashflowProjections = () => {
         </div>
         <div className="flex gap-2">
           {/* Language Selector */}
-          <Select value={language} onValueChange={setLanguage}>
+          <Select value={language} onValueChange={handleLanguageChange}>
             <SelectTrigger className="w-36" data-testid="language-selector">
               <Globe className="w-4 h-4 mr-2" />
               <SelectValue />

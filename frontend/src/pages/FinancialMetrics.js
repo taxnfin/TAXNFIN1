@@ -26,7 +26,8 @@ import MetricEncyclopedia from './MetricEncyclopedia';
 import KpiAlertConfig from './KpiAlertConfig';
 
 const FinancialMetrics = () => {
-  const [language, setLanguage] = useState('es');
+  const [language, setLanguage] = useState(localStorage.getItem('taxnfin_language') || 'es');
+  const handleLanguageChange = (lang) => { setLanguage(lang); localStorage.setItem('taxnfin_language', lang); };
   const [periods, setPeriods] = useState([]);
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [metrics, setMetrics] = useState(null);
@@ -326,7 +327,7 @@ const FinancialMetrics = () => {
         </div>
         <div className="flex items-center gap-3">
           {/* Language Selector */}
-          <Select value={language} onValueChange={setLanguage}>
+          <Select value={language} onValueChange={handleLanguageChange}>
             <SelectTrigger className="w-36" data-testid="language-selector">
               <Globe className="w-4 h-4 mr-2" />
               <SelectValue />

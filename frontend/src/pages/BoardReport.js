@@ -59,7 +59,8 @@ const SankeyLink = ({ sourceX, targetX, sourceY, targetY, sourceControlX, target
 };
 
 const BoardReport = () => {
-  const [language, setLanguage] = useState('es');
+  const [language, setLanguage] = useState(localStorage.getItem('taxnfin_language') || 'es');
+  const handleLanguageChange = (lang) => { setLanguage(lang); localStorage.setItem('taxnfin_language', lang); };
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [periodType, setPeriodType] = useState('monthly'); // monthly, quarterly, annual
   const [availablePeriods, setAvailablePeriods] = useState({
@@ -2081,7 +2082,7 @@ tr:last-child td{border-bottom:none}
             </div>
             <div className="flex flex-wrap items-center gap-3">
               {/* Language Selector */}
-              <Select value={language} onValueChange={setLanguage}>
+              <Select value={language} onValueChange={handleLanguageChange}>
                 <SelectTrigger className="w-36 bg-white/10 border-white/20 text-white" data-testid="language-selector">
                   <Globe className="w-4 h-4 mr-2" />
                   <SelectValue />

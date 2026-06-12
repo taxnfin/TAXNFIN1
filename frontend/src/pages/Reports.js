@@ -96,7 +96,8 @@ const SankeyLink = ({ sourceX, targetX, sourceY, targetY, sourceControlX, target
 };
 
 const Reports = () => {
-  const [language, setLanguage] = useState('es');
+  const [language, setLanguage] = useState(localStorage.getItem('taxnfin_language') || 'es');
+  const handleLanguageChange = (lang) => { setLanguage(lang); localStorage.setItem('taxnfin_language', lang); };
   const [activeTab, setActiveTab] = useState('cashflow');
   const [payments, setPayments] = useState([]);
   const [cfdis, setCfdis] = useState([]);
@@ -713,7 +714,7 @@ const Reports = () => {
         </div>
         <div className="flex gap-2 items-center">
           {/* Language Selector */}
-          <Select value={language} onValueChange={setLanguage}>
+          <Select value={language} onValueChange={handleLanguageChange}>
             <SelectTrigger className="w-36" data-testid="language-selector">
               <Globe className="w-4 h-4 mr-2" />
               <SelectValue />

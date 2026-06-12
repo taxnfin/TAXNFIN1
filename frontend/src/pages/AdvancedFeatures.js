@@ -529,25 +529,16 @@ const AdvancedFeatures = () => {
       <Card className="border-[#3B82F6]">
         <CardHeader>
           <CardTitle>Integraciones Bancarias</CardTitle>
-          <CardDescription>APIs disponibles</CardDescription>
+          <CardDescription>Conexión directa vía API con bancos mexicanos — en desarrollo</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-            <div className="p-3 bg-[#EFF6FF] rounded text-center">
-              <p className="font-semibold text-[#1E40AF]">BBVA</p>
-            </div>
-            <div className="p-3 bg-[#EFF6FF] rounded text-center">
-              <p className="font-semibold text-[#1E40AF]">Santander</p>
-            </div>
-            <div className="p-3 bg-[#EFF6FF] rounded text-center">
-              <p className="font-semibold text-[#1E40AF]">Banorte</p>
-            </div>
-            <div className="p-3 bg-[#F0FDF4] rounded text-center">
-              <p className="font-semibold text-[#166534]">Bajío ✅</p>
-            </div>
-            <div className="p-3 bg-[#F0FDF4] rounded text-center">
-              <p className="font-semibold text-[#166534]">Amex ✅</p>
-            </div>
+            {['BBVA', 'Santander', 'Banorte', 'Bajío', 'Amex'].map(bank => (
+              <div key={bank} className="p-3 bg-[#F8FAFC] border border-gray-200 rounded text-center">
+                <p className="font-semibold text-[#64748B] mb-2">{bank}</p>
+                <Badge variant="secondary" className="text-xs text-gray-500">Próximamente</Badge>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
