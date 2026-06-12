@@ -100,7 +100,7 @@ class GeneticOptimizer:
         n_cxp = 0
 
         cache_docs = await self.db.contalink_cache.find(
-            {'company_id': company_id, 'key': {'$regex': 'cxc_|cxp_'}}
+            {'key': {'$in': [f'cxc_{company_id}_latest', f'cxp_{company_id}_latest']}}
         ).to_list(50)
 
         logger.info(f"[CFO] contalink_cache keys encontradas: {[doc.get('key', '') for doc in cache_docs]}")
