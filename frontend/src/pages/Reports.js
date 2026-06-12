@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import api from '@/api/axios';
+import PageHeader from '@/components/PageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -708,8 +709,7 @@ const Reports = () => {
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{fontFamily: 'Manrope'}}>{t.reports}</h1>
-          <p className="text-[#64748B]">{t.financialAnalysisAndCashflow}</p>
+          <PageHeader title={t.reports} subtitle={t.financialAnalysisAndCashflow} />
         </div>
         <div className="flex gap-2 items-center">
           {/* Language Selector */}

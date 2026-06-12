@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import PageHeader from '../components/PageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -149,8 +150,7 @@ export default function TreasuryDecisions() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#1E293B]">Decisiones de Tesorería</h1>
-          <p className="text-[#64748B]">Análisis inteligente y recomendaciones accionables</p>
+          <PageHeader title="Decisiones de Tesorería" subtitle="Análisis inteligente y recomendaciones accionables" />
         </div>
         <Button onClick={handleRefresh} disabled={refreshing} variant="outline">
           {refreshing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
