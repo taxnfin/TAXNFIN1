@@ -197,6 +197,8 @@ const AdvancedFeatures = () => {
   };
 
   const applyOptimization = async (optimizationId) => {
+    console.log('[APPLY] optimization_id:', optimizationId);
+    console.log('[APPLY] optimizationResult completo:', JSON.stringify(optimizationResult, null, 2));
     try {
       const res = await api.post(`/optimize/apply/${optimizationId}`);
       const applied = res.data.modificaciones_aplicadas || 0;
@@ -208,6 +210,7 @@ const AdvancedFeatures = () => {
       }
       setOptimizationResult(null);
     } catch (error) {
+      console.error('[APPLY] error:', error.response?.status, error.response?.data);
       const detail = error.response?.data?.detail || 'Error aplicando optimización';
       toast.error(detail);
     }
