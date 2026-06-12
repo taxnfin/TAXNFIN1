@@ -91,7 +91,7 @@ export default function TreasuryDecisions() {
   const loadData = useCallback(async () => {
     try {
       // Usar /treasury/dashboard — calcula todo correctamente en el backend
-      const dashRes = await api.get('/treasury/dashboard?weeks_ahead=8');
+      const dashRes = await api.get('/treasury/dashboard?weeks_ahead=16');
       const dash = dashRes.data || {};
 
       const cash_position = dash.cash_position || {
@@ -360,7 +360,7 @@ export default function TreasuryDecisions() {
 
                   {/* Weekly Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    {calendar.weeks.slice(0, 8).map((week, idx) => (
+                    {calendar.weeks.slice(0, 16).map((week, idx) => (
                       <Card key={idx} className={`${week.total > 0 ? 'border-orange-200' : 'border-gray-100'}`}>
                         <CardHeader className="pb-2">
                           <div className="flex items-center justify-between">

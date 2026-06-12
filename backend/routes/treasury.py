@@ -50,7 +50,7 @@ def get_week_label(week_offset: int) -> str:
 async def get_treasury_dashboard(
     request: Request,
     current_user: Dict = Depends(get_current_user),
-    weeks_ahead: int = Query(8, description="Number of weeks to analyze")
+    weeks_ahead: int = Query(16, description="Number of weeks to analyze")
 ):
     """
     Get complete treasury dashboard with:
@@ -164,30 +164,34 @@ async def calculate_alerts(company_id: str, threshold: float, weeks_ahead: int) 
     # Fallback: usar cache de Contalink CxC/CxP para proyecciones semanales
     if not pending_collections:
         cxc_cache = await db.contalink_cache.find_one({"key": f"cxc_{company_id}_latest"})
-        if cxc_cache and cxc_cache.get("data"):
-            facturas = cxc_cache["data"] if isinstance(cxc_cache["data"], list) else []
+        if cxc_cache:
+            raw = cxc_cache.get('data', {})
+            facturas = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
             pending_collections = [
                 {
                     'tipo': 'cobro',
-                    'monto': f.get('saldo_pendiente', f.get('total', 0)),
+                    'monto': float(f.get('saldo_pendiente') or f.get('saldo') or f.get('total') or 0),
                     'fecha_vencimiento': f.get('fecha_vence') or f.get('fecha_vencimiento') or f.get('fecha'),
-                    'beneficiario': f.get('cliente') or f.get('razon_social', ''),
+                    'beneficiario': f.get('cliente') or f.get('nombre') or f.get('razon_social', ''),
                 }
-                for f in facturas if f.get('saldo_pendiente', f.get('total', 0)) > 0
+                for f in facturas
+                if float(f.get('saldo_pendiente') or f.get('saldo') or f.get('total') or 0) > 0
             ]
 
     if not pending_payments:
         cxp_cache = await db.contalink_cache.find_one({"key": f"cxp_{company_id}_latest"})
-        if cxp_cache and cxp_cache.get("data"):
-            facturas = cxp_cache["data"] if isinstance(cxp_cache["data"], list) else []
+        if cxp_cache:
+            raw = cxp_cache.get('data', {})
+            facturas = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
             pending_payments = [
                 {
                     'tipo': 'pago',
-                    'monto': f.get('saldo_pendiente', f.get('total', 0)),
+                    'monto': float(f.get('saldo_pendiente') or f.get('saldo') or f.get('total') or 0),
                     'fecha_vencimiento': f.get('fecha_vence') or f.get('fecha_vencimiento') or f.get('fecha'),
-                    'beneficiario': f.get('proveedor') or f.get('razon_social', ''),
+                    'beneficiario': f.get('proveedor') or f.get('nombre') or f.get('razon_social', ''),
                 }
-                for f in facturas if f.get('saldo_pendiente', f.get('total', 0)) > 0
+                for f in facturas
+                if float(f.get('saldo_pendiente') or f.get('saldo') or f.get('total') or 0) > 0
             ]
     
     # Get current balance
@@ -694,7 +698,7 @@ async def calculate_working_capital_intelligence(company_id: str) -> dict:
 async def get_alerts(
     request: Request,
     current_user: Dict = Depends(get_current_user),
-    weeks_ahead: int = Query(8)
+    weeks_ahead: int = Query(16)
 ):
     """Get only alerts"""
     company_id = await get_active_company_id(request, current_user)
@@ -708,7 +712,7 @@ async def get_alerts(
 async def get_recommendations(
     request: Request,
     current_user: Dict = Depends(get_current_user),
-    weeks_ahead: int = Query(8)
+    weeks_ahead: int = Query(16)
 ):
     """Get only recommendations"""
     company_id = await get_active_company_id(request, current_user)
@@ -719,7 +723,7 @@ async def get_recommendations(
 async def get_calendar(
     request: Request,
     current_user: Dict = Depends(get_current_user),
-    weeks_ahead: int = Query(8)
+    weeks_ahead: int = Query(16)
 ):
     """Get treasury calendar"""
     company_id = await get_active_company_id(request, current_user)
