@@ -615,19 +615,31 @@ const AdvancedFeatures = () => {
                 <p className="text-sm font-semibold text-[#BE185D]">Modificaciones Sugeridas:</p>
                 <div className="max-h-48 overflow-y-auto space-y-2">
                   {optimizationResult.mejor_solucion?.modificaciones?.slice(0, 5).map((mod, idx) => {
+                    const limpiarConcepto = (raw) => {
+                      if (!raw) return 'transacción';
+                      return raw
+                        .replace(/^cache_(ingreso|egreso)_/i, '')
+                        .replace(/_\d{4}-\d{2}-\d{2}$/, '')
+                        .trim() || 'transacción';
+                    };
                     const traducirModificacion = (mod) => {
                       const monto = mod.monto_original
                         ? `$${parseFloat(mod.monto_original).toLocaleString('es-MX', { maximumFractionDigits: 0 })}`
                         : '';
-                      const concepto = mod.concepto || mod.transaction_id || 'transacción';
+                      const rawId = mod.concepto || mod.transaction_id || '';
+                      const concepto = limpiarConcepto(rawId);
+                      const esIngreso = rawId.toLowerCase().startsWith('cache_ingreso');
                       switch (mod.tipo) {
                         case 'retrasar_pago':
                           return `⏳ Retrasa el pago de ${concepto} ${monto} — pídele ${mod.dias || mod.nuevo_valor || ''} días más de plazo a tu proveedor`;
                         case 'adelantar_cobro':
                           return `⚡ Adelanta el cobro de ${concepto} ${monto} — cobra antes a este cliente`;
                         case 'ajustar_monto': {
+                          if (esIngreso) {
+                            return `⚡ Adelanta el cobro de ${concepto} ${monto}`;
+                          }
                           const pct = mod.nuevo_valor ? Math.round((1 - mod.nuevo_valor) * 100) : '';
-                          return `✂️ Reduce ${concepto} ${monto} un ${pct}% — negocia este gasto a la baja`;
+                          return `✂️ Reduce ${concepto} ${monto}${pct ? ` un ${pct}%` : ''} — negocia este gasto a la baja`;
                         }
                         case 'adelantar_pago':
                           return `📅 Adelanta el pago de ${concepto} — aprovecha descuento por pronto pago`;

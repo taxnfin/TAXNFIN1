@@ -582,6 +582,8 @@ class GeneticOptimizer:
                     'tipo': 'ajustar_monto',
                     'transaction_id': txn['id'],
                     'nuevo_monto': nuevo_monto,
+                    'monto_original': txn['monto'],
+                    'nuevo_valor': valor,
                     'razon': f'Optimización genética: ajustar a {valor:.2%} del original'
                 })
         

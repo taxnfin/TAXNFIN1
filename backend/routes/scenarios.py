@@ -253,16 +253,19 @@ async def get_optimization_history(current_user: Dict = Depends(get_current_user
 @router.post("/optimize/apply/{optimization_id}")
 async def apply_optimization(
     optimization_id: str,
+    request: Request,
     current_user: Dict = Depends(get_current_user)
 ):
     """Aplica la mejor solución de una optimización genética"""
-    
+
     if current_user['role'] not in [UserRole.ADMIN, UserRole.CFO]:
         raise HTTPException(status_code=403, detail="Permisos insuficientes")
-    
+
+    company_id = await get_active_company_id(request, current_user)
+
     # Obtener optimización
     optimization = await db.optimizations.find_one(
-        {'id': optimization_id, 'company_id': current_user['company_id']},
+        {'id': optimization_id, 'company_id': company_id},
         {'_id': 0}
     )
     
@@ -299,15 +302,15 @@ async def apply_optimization(
         
         if update_data:
             result = await db.transactions.update_one(
-                {'id': txn_id, 'company_id': current_user['company_id']},
+                {'id': txn_id, 'company_id': company_id},
                 {'$set': update_data}
             )
             if result.modified_count > 0:
                 aplicadas += 1
-    
+
     # Registrar en auditor\u00eda
     await audit_log(
-        current_user['company_id'],
+        company_id,
         'Optimization',
         optimization_id,
         'APPLY',
