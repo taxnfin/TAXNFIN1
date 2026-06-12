@@ -181,15 +181,13 @@ const AdvancedFeatures = () => {
 
   const exportPDF = async () => {
     try {
-      toast.info('Generando PDF...');
       const res = await api.get('/ai/export-pdf', { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
       link.download = `IA_Ejecutiva_${new Date().toISOString().split('T')[0]}.pdf`;
       link.click();
-      window.URL.revokeObjectURL(url);
-      toast.success('PDF descargado correctamente');
+      toast.success('PDF generado correctamente');
     } catch (error) {
       toast.error('Error generando PDF');
     }
