@@ -27,9 +27,21 @@ import {
 const CURRENCIES = ['MXN', 'USD', 'EUR', 'GBP', 'CAD'];
 
 const RECONCILIATION_STATUS = {
-  pendiente: { label: 'Pendiente', icon: Clock, color: 'bg-yellow-100 text-yellow-800' },
-  conciliado: { label: 'Conciliado', icon: CheckCircle2, color: 'bg-green-100 text-green-800' },
-  no_conciliable: { label: 'No Conciliable', icon: XCircle, color: 'bg-gray-100 text-gray-600' },
+  conciliado:     { label: 'Conciliado',      icon: CheckCircle2, color: 'bg-green-100 text-green-800' },
+  parcial:        { label: 'Parcial',          icon: Clock,        color: 'bg-orange-100 text-orange-800' },
+  pendiente:      { label: 'Pend. Conciliar',  icon: Clock,        color: 'bg-yellow-100 text-yellow-800' },
+  cancelado:      { label: 'Cancelado',        icon: XCircle,      color: 'bg-red-100 text-red-800' },
+  no_conciliable: { label: 'No Conciliable',   icon: XCircle,      color: 'bg-gray-100 text-gray-600' },
+};
+
+const getCFDIEstatus = (cfdi) => {
+  if (cfdi.estatus === 'cancelado' || cfdi.status === 'canceled' || cfdi.estado_cancelacion === 'cancelado')
+    return 'cancelado';
+  const total = cfdi.total || 0;
+  const aplicado = cfdi.tipo_cfdi === 'ingreso' ? (cfdi.monto_cobrado || 0) : (cfdi.monto_pagado || 0);
+  if (aplicado <= 0) return 'pendiente';
+  if (aplicado >= total * 0.99) return 'conciliado';
+  return 'parcial';
 };
 
 const CFDIModule = () => {
@@ -241,7 +253,7 @@ const CFDIModule = () => {
       // Build query params for filtered deletion
       const params = new URLSearchParams();
       if (filterCategory !== 'all') params.append('category_id', filterCategory);
-      if (filterReconciliation !== 'all') params.append('estado_conciliacion', filterReconciliation);
+      // filterReconciliation is computed client-side (monto_cobrado/monto_pagado), not a stored field
       if (filterDateFrom) params.append('fecha_desde', filterDateFrom);
       if (filterDateTo) params.append('fecha_hasta', filterDateTo);
       if (filterEmisor) params.append('emisor', filterEmisor);
@@ -569,7 +581,7 @@ const CFDIModule = () => {
     if (filterSubcategory !== 'all' && cfdi.subcategory_id !== filterSubcategory) return false;
     
     // Reconciliation filter
-    if (filterReconciliation !== 'all' && (cfdi.estado_conciliacion || 'pendiente') !== filterReconciliation) return false;
+    if (filterReconciliation !== 'all' && getCFDIEstatus(cfdi) !== filterReconciliation) return false;
     
     // Date from filter
     if (filterDateFrom) {
@@ -933,9 +945,10 @@ const CFDIModule = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="pendiente">Pendiente</SelectItem>
                   <SelectItem value="conciliado">Conciliado</SelectItem>
-                  <SelectItem value="no_conciliable">No Conciliable</SelectItem>
+                  <SelectItem value="pendiente">Pend. Conciliar</SelectItem>
+                  <SelectItem value="parcial">Parcial</SelectItem>
+                  <SelectItem value="cancelado">Cancelado</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1088,8 +1101,9 @@ const CFDIModule = () => {
                   } else {
                     displayTotal = convertAmount(cfdi.total || 0, moneda);
                   }
-                  const reconciliationStatus = cfdi.estado_conciliacion || 'pendiente';
-                  const ReconciliationIcon = RECONCILIATION_STATUS[reconciliationStatus]?.icon || Clock;
+                  const estatusKey = getCFDIEstatus(cfdi);
+                  const estatusInfo = RECONCILIATION_STATUS[estatusKey] || RECONCILIATION_STATUS.pendiente;
+                  const ReconciliationIcon = estatusInfo.icon;
                   
                   return (
                     <TableRow key={cfdi.id} data-testid={`cfdi-row-${cfdi.id}`}>
@@ -1174,32 +1188,11 @@ const CFDIModule = () => {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Select 
-                          value={reconciliationStatus} 
-                          onValueChange={(value) => handleReconciliationChange(cfdi.id, value)}
-                        >
-                          <SelectTrigger className={`w-36 h-8 text-xs ${RECONCILIATION_STATUS[reconciliationStatus]?.color}`}>
-                            <ReconciliationIcon size={14} className="mr-1" />
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="pendiente">
-                              <span className="flex items-center gap-1">
-                                <Clock size={14} /> Pendiente
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="conciliado">
-                              <span className="flex items-center gap-1">
-                                <CheckCircle2 size={14} /> Conciliado
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="no_conciliable">
-                              <span className="flex items-center gap-1">
-                                <XCircle size={14} /> No Conciliable
-                              </span>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${estatusInfo.color}`}
+                              data-testid={`cfdi-status-${cfdi.id}`}>
+                          <ReconciliationIcon size={12} />
+                          {estatusInfo.label}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-center gap-1">
@@ -2025,6 +2018,36 @@ const CFDIModule = () => {
                   </TableBody>
                 </Table>
               </div>
+
+              {/* Conciliation Status */}
+              {(() => {
+                const total    = cfdiDetail.total || 0;
+                const aplicado = cfdiDetail.tipo_cfdi === 'ingreso'
+                  ? (cfdiDetail.monto_cobrado || 0)
+                  : (cfdiDetail.monto_pagado  || 0);
+                const pendiente  = total - aplicado;
+                const estatusKey = getCFDIEstatus(cfdiDetail);
+                const fmt = (n) => `$${n.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`;
+                const termino = cfdiDetail.tipo_cfdi === 'ingreso' ? 'Cobrado' : 'Pagado';
+
+                if (estatusKey === 'cancelado') return null;
+                if (estatusKey === 'conciliado') return (
+                  <div className="flex items-center gap-2 px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm font-medium">
+                    ✅ Conciliado — {termino}: {fmt(aplicado)}
+                  </div>
+                );
+                if (estatusKey === 'parcial') return (
+                  <div className="flex items-center flex-wrap gap-x-4 gap-y-1 px-4 py-3 bg-orange-50 border border-orange-200 rounded-lg text-orange-800 text-sm font-medium">
+                    <span>⚠️ Parcial — {termino}: {fmt(aplicado)} de {fmt(total)} total</span>
+                    <span className="ml-auto text-xs font-semibold">Pendiente: {fmt(pendiente)}</span>
+                  </div>
+                );
+                return (
+                  <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm font-medium">
+                    🔴 Pendiente de conciliar — {fmt(total)} sin aplicar
+                  </div>
+                );
+              })()}
 
               {/* Category Info */}
               {(cfdiDetail.category_id || cfdiDetail.customer_id || cfdiDetail.vendor_id) && (
