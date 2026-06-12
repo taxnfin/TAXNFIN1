@@ -608,7 +608,67 @@ const CashflowProjections = () => {
       // Add to section total
       section.total += montoMXN;
     });
-    
+
+    // =====================================================================
+    // PASO 1.5: Proyecciones manuales de Cobranza y Pagos (es_real === false)
+    // Registradas en PaymentsModule con toggle "Proyección" y estatus 'pendiente'.
+    // Usan fecha_vencimiento (no fecha_pago) y solo aplican a semanas futuras/actual.
+    // =====================================================================
+    payments.forEach(payment => {
+      if (payment.es_real !== false) return;
+      if (payment.estatus !== 'pendiente' && payment.estatus !== 'proyectado') return;
+      if (!payment.fecha_vencimiento) return;
+
+      const vencDate = new Date(payment.fecha_vencimiento);
+      if (isNaN(vencDate.getTime())) return;
+
+      const weekIdx = weeks.findIndex(w => vencDate >= w.weekStart && vencDate < w.weekEnd);
+      if (weekIdx === -1) return;
+
+      const week = weeks[weekIdx];
+      if (week.isPast) return; // Solo semanas actual y futuras
+
+      const category = categoryMap[payment.category_id];
+      const categoryName = category?.nombre || 'Sin categoría';
+      const subcategoryInfo = subcategoryMap[payment.subcategory_id];
+      const subcategoryName = subcategoryInfo?.nombre || null;
+
+      const montoMXN = convertToMXN(Math.abs(payment.monto_mxn ?? payment.monto), 'MXN', effectiveRates);
+      if (montoMXN <= 0) return;
+
+      const section = payment.tipo === 'cobro' ? week.ingresos : week.egresos;
+
+      if (!section.byCategory[categoryName]) {
+        section.byCategory[categoryName] = { total: 0, bySubcategory: {}, items: [] };
+      }
+      section.byCategory[categoryName].total += montoMXN;
+      section.byCategory[categoryName].items.push({
+        id: payment.id,
+        monto: montoMXN,
+        concepto: payment.concepto,
+        beneficiario: payment.beneficiario,
+        uuid: payment.cfdi_uuid,
+        bankAccountId: payment.bank_account_id,
+        source: 'payment_proyeccion'
+      });
+
+      const subKey = subcategoryName || 'General';
+      if (!section.byCategory[categoryName].bySubcategory[subKey]) {
+        section.byCategory[categoryName].bySubcategory[subKey] = { total: 0, items: [] };
+      }
+      section.byCategory[categoryName].bySubcategory[subKey].total += montoMXN;
+      section.byCategory[categoryName].bySubcategory[subKey].items.push({
+        id: payment.id,
+        monto: montoMXN,
+        concepto: payment.concepto,
+        beneficiario: payment.beneficiario,
+        bankAccountId: payment.bank_account_id,
+        source: 'payment_proyeccion'
+      });
+
+      section.total += montoMXN;
+    });
+
     // =====================================================================
     // PASO 2: Procesar CFDIs (PROYECCIONES para semanas futuras)
     // Si hay datos de CxC/CxP del Aging (porSemana), estos son la fuente
