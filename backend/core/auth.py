@@ -78,22 +78,38 @@ async def get_active_company_id(request: Request, current_user: Dict = Depends(g
         if company:
             company_id = company['id']
 
+    PLATFORM_ADMIN_EMAIL = 'kvillafuerte@taxnfin.com'
+
     if company_id:
         user_company_ids = current_user.get('company_ids', [current_user['company_id']])
 
         # Admin can access any company
         if current_user['role'] == 'admin':
-            company = await db.companies.find_one({'id': company_id}, {'_id': 0, 'id': 1})
+            company = await db.companies.find_one({'id': company_id}, {'_id': 0, 'id': 1, 'on_hold': 1})
             if company:
+                # Platform admin bypasses hold — regular admins still blocked
+                if company.get('on_hold') and current_user.get('email') != PLATFORM_ADMIN_EMAIL:
+                    raise HTTPException(status_code=402, detail="Cuenta suspendida por falta de pago")
                 return company_id
 
         # Regular user — must be in their company_ids list
         elif company_id in user_company_ids:
+            company = await db.companies.find_one({'id': company_id}, {'_id': 0, 'on_hold': 1})
+            if company and company.get('on_hold'):
+                raise HTTPException(status_code=402, detail="Cuenta suspendida por falta de pago")
             return company_id
 
         # Backwards compat — check old company_id field
         elif company_id == current_user.get('company_id'):
+            company = await db.companies.find_one({'id': company_id}, {'_id': 0, 'on_hold': 1})
+            if company and company.get('on_hold'):
+                raise HTTPException(status_code=402, detail="Cuenta suspendida por falta de pago")
             return company_id
 
-    # Fallback to primary company
-    return current_user['company_id']
+    # Fallback to primary company — check hold on fallback
+    fallback_id = current_user['company_id']
+    if current_user.get('email') != PLATFORM_ADMIN_EMAIL:
+        fb_company = await db.companies.find_one({'id': fallback_id}, {'_id': 0, 'on_hold': 1})
+        if fb_company and fb_company.get('on_hold'):
+            raise HTTPException(status_code=402, detail="Cuenta suspendida por falta de pago")
+    return fallback_id

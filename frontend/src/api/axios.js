@@ -42,6 +42,9 @@ api.interceptors.response.use(
       localStorage.removeItem('selectedCompany');
       window.location.href = '/login';
     }
+    if (error.response?.status === 402) {
+      window.location.href = '/account-suspended';
+    }
     return Promise.reject(error);
   }
 );

@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import api from '../api/axios';
 import {
   Building2, Users, FileText, Link2, Plus, Trash2, RefreshCw,
-  CheckCircle2, XCircle, Clock, Zap, Pencil
+  CheckCircle2, XCircle, Clock, Zap, Pencil, PauseCircle, PlayCircle
 } from 'lucide-react';
 import AccountMappingPanel from './AccountMappingPanel';
 
@@ -35,6 +35,10 @@ const AdminDashboard = () => {
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [deletingCompany, setDeletingCompany] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [holdDialog, setHoldDialog] = useState(false);
+  const [holdingCompany, setHoldingCompany] = useState(null);
+  const [holdReason, setHoldReason] = useState('');
+  const [holdLoading, setHoldLoading] = useState(false);
 
   useEffect(() => {
     fetchAll();
@@ -51,6 +55,31 @@ const AdminDashboard = () => {
       setIntegrations(connectedRes.data);
       setAvailableIntegrations(availableRes.data);
     } catch {}
+  };
+
+  const openHold = (company) => {
+    setHoldingCompany(company);
+    setHoldReason('');
+    setHoldDialog(true);
+  };
+
+  const handleToggleHold = async (onHold) => {
+    if (onHold && !holdReason.trim()) return;
+    setHoldLoading(true);
+    try {
+      await api.put(`/companies/${holdingCompany.id}/hold`, {
+        on_hold: onHold,
+        hold_reason: onHold ? holdReason.trim() : '',
+      });
+      toast.success(onHold ? 'Empresa suspendida' : 'Empresa reactivada');
+      setHoldDialog(false);
+      setHoldingCompany(null);
+      fetchAll();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al cambiar estado');
+    } finally {
+      setHoldLoading(false);
+    }
   };
 
   const openDelete = (company) => {
@@ -227,6 +256,11 @@ const AdminDashboard = () => {
                     <td className="py-3 pr-4">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-gray-900">{c.nombre}</span>
+                        {c.on_hold && (
+                          <span className="text-[10px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                            EN HOLD
+                          </span>
+                        )}
                         <button
                           onClick={() => openRename(c)}
                           className="text-gray-400 hover:text-gray-700 transition-colors"
@@ -234,6 +268,16 @@ const AdminDashboard = () => {
                           data-testid={`rename-btn-${c.id}`}
                         >
                           <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => openHold(c)}
+                          className={c.on_hold ? 'text-green-500 hover:text-green-700 transition-colors' : 'text-gray-300 hover:text-amber-500 transition-colors'}
+                          title={c.on_hold ? 'Reactivar empresa' : 'Poner en hold'}
+                          data-testid={`hold-btn-${c.id}`}
+                        >
+                          {c.on_hold
+                            ? <PlayCircle className="w-3.5 h-3.5" />
+                            : <PauseCircle className="w-3.5 h-3.5" />}
                         </button>
                         <button
                           onClick={() => openDelete(c)}
@@ -362,6 +406,68 @@ const AdminDashboard = () => {
 
       {/* Account Mapping Section */}
       <AccountMappingPanel />
+
+      {/* Hold / Reactivate Company Dialog */}
+      <Dialog open={holdDialog} onOpenChange={setHoldDialog}>
+        <DialogContent className="sm:max-w-md" data-testid="hold-dialog">
+          <DialogHeader>
+            <DialogTitle>
+              {holdingCompany?.on_hold ? '✅ Reactivar empresa' : '⏸ Poner empresa en hold'}
+            </DialogTitle>
+          </DialogHeader>
+          {holdingCompany?.on_hold ? (
+            <div className="py-3">
+              <p className="text-sm text-gray-700">
+                ¿Reactivar <strong>{holdingCompany?.nombre}</strong>? Sus usuarios recuperarán acceso inmediatamente.
+              </p>
+              {holdingCompany?.hold_reason && (
+                <p className="mt-2 text-xs text-gray-500">Motivo de suspensión: {holdingCompany.hold_reason}</p>
+              )}
+            </div>
+          ) : (
+            <div className="py-3 space-y-3">
+              <p className="text-sm text-gray-700">
+                La empresa <strong>{holdingCompany?.nombre}</strong> quedará suspendida. Todos sus usuarios verán la página de cuenta suspendida.
+              </p>
+              <div>
+                <Label className="text-xs font-medium">Motivo de suspensión <span className="text-red-500">*</span></Label>
+                <Input
+                  value={holdReason}
+                  onChange={e => setHoldReason(e.target.value)}
+                  placeholder="Ej: Pago vencido 30 días"
+                  className="mt-1"
+                  data-testid="input-hold-reason"
+                  autoFocus
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHoldDialog(false)} disabled={holdLoading}>
+              Cancelar
+            </Button>
+            {holdingCompany?.on_hold ? (
+              <Button
+                onClick={() => handleToggleHold(false)}
+                disabled={holdLoading}
+                className="bg-green-600 hover:bg-green-700 text-white"
+                data-testid="confirm-reactivate-btn"
+              >
+                {holdLoading ? 'Reactivando...' : 'Sí, reactivar'}
+              </Button>
+            ) : (
+              <Button
+                onClick={() => handleToggleHold(true)}
+                disabled={holdLoading || !holdReason.trim()}
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+                data-testid="confirm-hold-btn"
+              >
+                {holdLoading ? 'Suspendiendo...' : 'Poner en hold'}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Company Dialog */}
       <Dialog open={deleteDialog} onOpenChange={setDeleteDialog}>

@@ -236,6 +236,36 @@ async def add_company_access(
     return {"success": True, "company_ids": user_company_ids}
 
 
+@router.put("/{company_id}/hold")
+async def toggle_company_hold(
+    company_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Suspend or reactivate a company — super-admin only"""
+    if current_user.get('role') != 'admin' or current_user.get('email') != 'kvillafuerte@taxnfin.com':
+        raise HTTPException(status_code=403, detail="Solo el administrador puede suspender empresas")
+
+    body = await request.json()
+    on_hold = bool(body.get('on_hold', True))
+    hold_reason = (body.get('hold_reason') or '').strip()
+
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0, 'id': 1})
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+
+    update = {
+        'on_hold': on_hold,
+        'hold_reason': hold_reason if on_hold else None,
+        'hold_since': datetime.now(timezone.utc).isoformat() if on_hold else None,
+    }
+    await db.companies.update_one({'id': company_id}, {'$set': update})
+
+    logger.info(f"[HOLD] company={company_id} on_hold={on_hold} reason='{hold_reason}' by {current_user['email']}")
+    action = "suspendida" if on_hold else "reactivada"
+    return {'status': 'success', 'on_hold': on_hold, 'message': f"Empresa {action} correctamente"}
+
+
 @router.delete("/{company_id}")
 async def delete_company(
     company_id: str,

@@ -327,6 +327,9 @@ async def admin_get_all_companies(current_user: Dict = Depends(get_current_user)
             'integrations': integrations,
             'latest_period': latest_fs.get('periodo') if latest_fs else None,
             'created_at': company.get('created_at', ''),
+            'on_hold': company.get('on_hold', False),
+            'hold_reason': company.get('hold_reason', None),
+            'hold_since': company.get('hold_since', None),
         })
     
     return result

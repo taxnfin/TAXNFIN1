@@ -15,6 +15,9 @@ class Company(BaseModel):
     activo: bool = True
     inicio_semana: int = 1  # 0=Domingo, 1=Lunes, 2=Martes, etc. Default: Lunes
     logo_url: Optional[str] = None  # URL or base64 of company logo
+    on_hold: bool = False
+    hold_reason: Optional[str] = None
+    hold_since: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

@@ -22,6 +22,7 @@ import FinancialMetrics from './pages/FinancialMetrics';
 import BoardReport from './pages/BoardReport';
 import Integrations from './pages/Integrations';
 import ContalinkFinancialImport from './components/ContalinkFinancialImport';
+import AccountSuspended from './pages/AccountSuspended';
 import Layout from './components/Layout';
 import { Toaster } from './components/ui/sonner';
 import api from './api/axios';
@@ -112,6 +113,7 @@ function App() {
         <Routes>
           <Route path="/login" element={user ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/account-suspended" element={<AccountSuspended />} />
           <Route
             path="/"
             element={
