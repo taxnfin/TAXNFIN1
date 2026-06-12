@@ -115,7 +115,7 @@ const AdvancedFeatures = () => {
     setLoading(true);
     try {
       toast.info('Ejecutando optimización genética... (esto puede tomar 30-60 segundos)');
-      
+
       const res = await api.post('/optimize/genetic', {
         objetivos: {
           maximizar_liquidez: true,
@@ -133,12 +133,24 @@ const AdvancedFeatures = () => {
           prob_mutacion: 0.2
         }
       });
-      
-      setOptimizationResult(res.data);
-      toast.success('¡Optimización completada! Encontradas mejores soluciones');
+
+      const data = res.data;
+      const hasSolutions = data?.top_5_soluciones?.length > 0 && data?.generaciones > 0;
+      if (!hasSolutions) {
+        setOptimizationResult({ _insufficient_data: true });
+      } else {
+        setOptimizationResult(data);
+        toast.success('¡Optimización completada! Encontradas mejores soluciones');
+      }
       setOptimizationDialog(false);
     } catch (error) {
-      toast.error('Error en optimización genética');
+      const isDataError = error.response?.status === 400 || error.response?.status === 422;
+      if (isDataError) {
+        setOptimizationResult({ _insufficient_data: true });
+        setOptimizationDialog(false);
+      } else {
+        toast.error('Error en optimización genética');
+      }
     } finally {
       setLoading(false);
     }
@@ -402,7 +414,20 @@ const AdvancedFeatures = () => {
         </Card>
       )}
 
-      {optimizationResult && (
+      {optimizationResult?._insufficient_data && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="pt-5 pb-4 flex items-start gap-3">
+            <span className="text-2xl">⚠️</span>
+            <div>
+              <p className="font-semibold text-amber-800 mb-1">Sin datos suficientes para optimizar</p>
+              <p className="text-sm text-amber-700">Necesitas al menos 4 semanas de historial en el Cash Flow para usar esta función.</p>
+            </div>
+            <button onClick={() => setOptimizationResult(null)} className="ml-auto text-amber-400 hover:text-amber-600 text-lg leading-none">✕</button>
+          </CardContent>
+        </Card>
+      )}
+
+      {optimizationResult && !optimizationResult._insufficient_data && (
         <Card className="border-[#EC4899] bg-gradient-to-br from-pink-50 to-white" data-testid="optimization-result">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-[#EC4899]">
