@@ -1,12 +1,12 @@
 """Advanced features: AI predictive, auto-reconciliation, alerts, bank API routes"""
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Request
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 import logging
 
 from core.database import db
-from core.auth import get_current_user
+from core.auth import get_current_user, get_active_company_id
 from services.audit import audit_log
 from models.enums import UserRole
 from advanced_services import PredictiveAnalysisService, AutoReconciliationService, AlertService
@@ -16,29 +16,31 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/ai/predictive-analysis")
-async def get_predictive_analysis(current_user: Dict = Depends(get_current_user)):
+async def get_predictive_analysis(
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
     """An\u00e1lisis predictivo de cashflow con ML + LLM"""
-    
+
+    company_id = await get_active_company_id(request, current_user)
     service = PredictiveAnalysisService(db)
-    
-    # An\u00e1lisis cuantitativo (ML)
+
     analysis = await service.analyze_cashflow_trends(
-        company_id=current_user['company_id'],
+        company_id=company_id,
         weeks_history=13
     )
-    
+
     if analysis['status'] == 'insufficient_data':
         return analysis
-    
-    # Insights cualitativos (LLM)
+
     ai_insights = await service.generate_ai_insights(
-        company_id=current_user['company_id'],
+        company_id=company_id,
         analysis_data=analysis
     )
-    
+
     return {
         'status': 'success',
-        'company_id': current_user['company_id'],
+        'company_id': company_id,
         'analisis_cuantitativo': analysis['analisis'],
         'predicciones_8_semanas': analysis['predictions'],
         'insights_ia': ai_insights
@@ -49,13 +51,15 @@ async def get_predictive_analysis(current_user: Dict = Depends(get_current_user)
 @router.get("/reconciliation/auto-match/{bank_transaction_id}")
 async def find_reconciliation_matches(
     bank_transaction_id: str,
+    request: Request,
     current_user: Dict = Depends(get_current_user)
 ):
     """Encuentra coincidencias autom\u00e1ticas para un movimiento bancario"""
-    
+
+    company_id = await get_active_company_id(request, current_user)
     service = AutoReconciliationService(db)
-    matches = await service.find_matches(bank_transaction_id, current_user['company_id'])
-    
+    matches = await service.find_matches(bank_transaction_id, company_id)
+
     return {
         'status': 'success',
         'bank_transaction_id': bank_transaction_id,
@@ -65,32 +69,38 @@ async def find_reconciliation_matches(
 
 @router.post("/reconciliation/auto-reconcile-batch")
 async def auto_reconcile_batch(
+    request: Request,
     min_score: float = Query(85, ge=60, le=100),
     current_user: Dict = Depends(get_current_user)
 ):
     """Concilia autom\u00e1ticamente movimientos con alta confianza"""
-    
+
+    company_id = await get_active_company_id(request, current_user)
     service = AutoReconciliationService(db)
     result = await service.auto_reconcile_batch(
-        company_id=current_user['company_id'],
+        company_id=company_id,
         user_id=current_user['id'],
         min_score=min_score
     )
-    
+
     return result
 
 # ===== SISTEMA DE ALERTAS =====
 
 @router.post("/alerts/check-and-send")
-async def check_and_send_alerts(current_user: Dict = Depends(get_current_user)):
+async def check_and_send_alerts(
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
     """Verifica condiciones y env\u00eda alertas autom\u00e1ticas"""
-    
+
     if current_user['role'] not in [UserRole.ADMIN, UserRole.CFO]:
         raise HTTPException(status_code=403, detail="Permisos insuficientes")
-    
+
+    company_id = await get_active_company_id(request, current_user)
     service = AlertService(db)
-    alerts = await service.check_and_send_alerts(current_user['company_id'])
-    
+    alerts = await service.check_and_send_alerts(company_id)
+
     return {
         'status': 'success',
         'alerts_sent': len(alerts),

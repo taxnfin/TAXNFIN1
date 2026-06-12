@@ -24,28 +24,34 @@ class ScenarioCreate(BaseModel):
 @router.post("/scenarios/create")
 async def create_scenario(
     scenario_data: ScenarioCreate,
+    request: Request,
     current_user: Dict = Depends(get_current_user)
 ):
     """Crea un nuevo escenario de simulación 'qué pasaría si'"""
-    
+
+    company_id = await get_active_company_id(request, current_user)
     service = ScenarioAnalysisService(db)
     result = await service.create_scenario(
-        company_id=current_user['company_id'],
+        company_id=company_id,
         nombre=scenario_data.nombre,
         descripcion=scenario_data.descripcion,
         modificaciones=scenario_data.modificaciones,
         user_id=current_user['id']
     )
-    
+
     return result
 
 @router.get("/scenarios")
-async def list_scenarios(current_user: Dict = Depends(get_current_user)):
+async def list_scenarios(
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
     """Lista todos los escenarios de la empresa"""
-    
+
+    company_id = await get_active_company_id(request, current_user)
     service = ScenarioAnalysisService(db)
-    scenarios = await service.list_scenarios(current_user['company_id'])
-    
+    scenarios = await service.list_scenarios(company_id)
+
     return {
         'status': 'success',
         'scenarios': scenarios
@@ -54,31 +60,35 @@ async def list_scenarios(current_user: Dict = Depends(get_current_user)):
 @router.get("/scenarios/{scenario_id}")
 async def get_scenario_detail(
     scenario_id: str,
+    request: Request,
     current_user: Dict = Depends(get_current_user)
 ):
     """Obtiene detalle completo de un escenario"""
-    
+
+    company_id = await get_active_company_id(request, current_user)
     service = ScenarioAnalysisService(db)
-    scenario = await service.get_scenario_detail(scenario_id, current_user['company_id'])
-    
+    scenario = await service.get_scenario_detail(scenario_id, company_id)
+
     if not scenario:
         raise HTTPException(status_code=404, detail="Escenario no encontrado")
-    
+
     return scenario
 
 @router.post("/scenarios/compare")
 async def compare_scenarios(
     scenario_ids: List[str],
+    request: Request,
     current_user: Dict = Depends(get_current_user)
 ):
     """Compara múltiples escenarios lado a lado"""
-    
+
+    company_id = await get_active_company_id(request, current_user)
     service = ScenarioAnalysisService(db)
     comparison = await service.compare_multiple_scenarios(
-        company_id=current_user['company_id'],
+        company_id=company_id,
         scenario_ids=scenario_ids
     )
-    
+
     return comparison
 
 # ===== EXPORTACI\u00d3N CONTABLE =====

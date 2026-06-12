@@ -20,6 +20,8 @@ class GeneticOptimizer:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self._projectable_txns: List[Dict] = []
+        self._cached_weeks: List[Dict] = []
+        self._cached_transactions: List[Dict] = []
         self._setup_genetic_algorithm()
     
     def _setup_genetic_algorithm(self):
@@ -115,8 +117,8 @@ class GeneticOptimizer:
         if parametros is None:
             parametros = {}
         
-        generaciones = parametros.get('generaciones', 50)
-        poblacion_size = parametros.get('poblacion', 100)
+        generaciones = parametros.get('generaciones', 20)
+        poblacion_size = parametros.get('poblacion', 30)
         prob_crossover = parametros.get('prob_crossover', 0.7)
         prob_mutacion = parametros.get('prob_mutacion', 0.2)
         
@@ -130,6 +132,14 @@ class GeneticOptimizer:
                 'message': 'Se necesitan al menos 5 transacciones proyectadas para optimizar. Agrega proyecciones manuales en el Cash Flow.'
             }
         
+        # Cargar semanas y transacciones una sola vez — reutilizadas en todas las evaluaciones
+        self._cached_weeks = await self.db.cashflow_weeks.find(
+            {'company_id': company_id}
+        ).sort('fecha_inicio', 1).to_list(13)
+        self._cached_transactions = await self.db.transactions.find(
+            {'company_id': company_id}
+        ).to_list(2000)
+
         # Obtener baseline actual
         baseline = await self._calculate_baseline(company_id)
         
@@ -453,13 +463,13 @@ class GeneticOptimizer:
     ) -> Dict[str, Any]:
         """Evalúa un escenario aplicando modificaciones"""
         
-        # Obtener todas las transacciones reales
-        transactions = await self.db.transactions.find(
-            {'company_id': company_id}
-        ).to_list(1000)
+        # Usar caché — evita queries repetidas en el loop evolutivo
+        base_txns = self._cached_transactions if self._cached_transactions else (
+            await self.db.transactions.find({'company_id': company_id}).to_list(2000)
+        )
 
         # Incluir transacciones virtuales (de manual_projections) para que el simulador las considere
-        simulated_txns = copy.deepcopy(transactions)
+        simulated_txns = copy.deepcopy(base_txns)
         for vt in self._projectable_txns:
             if vt.get('_is_virtual'):
                 simulated_txns.append(copy.deepcopy(vt))
@@ -474,9 +484,9 @@ class GeneticOptimizer:
                     break
         
         # Recalcular flujo
-        weeks = await self.db.cashflow_weeks.find(
-            {'company_id': company_id}
-        ).sort('fecha_inicio', 1).to_list(13)
+        weeks = self._cached_weeks if self._cached_weeks else (
+            await self.db.cashflow_weeks.find({'company_id': company_id}).sort('fecha_inicio', 1).to_list(13)
+        )
         
         weekly_flow = []
         for week in weeks:
@@ -534,36 +544,54 @@ class GeneticOptimizer:
         return costo
     
     async def _calculate_baseline(self, company_id: str) -> Dict[str, Any]:
-        """Calcula el estado actual del cashflow como baseline"""
-        
-        weeks = await self.db.cashflow_weeks.find(
+        """Calcula el estado actual del cashflow como baseline (usa caché + rango de fechas)"""
+
+        weeks = self._cached_weeks or await self.db.cashflow_weeks.find(
             {'company_id': company_id}
         ).sort('fecha_inicio', 1).to_list(13)
-        
-        transactions = await self.db.transactions.find(
+
+        transactions = self._cached_transactions or await self.db.transactions.find(
             {'company_id': company_id}
-        ).to_list(1000)
-        
+        ).to_list(2000)
+
         weekly_flow = []
         for week in weeks:
-            week_txns = [t for t in transactions if t['cashflow_week_id'] == week['id']]
-            
+            fecha_inicio = datetime.fromisoformat(week['fecha_inicio']) if isinstance(week['fecha_inicio'], str) else week['fecha_inicio']
+            fecha_fin = datetime.fromisoformat(week['fecha_fin']) if isinstance(week['fecha_fin'], str) else week['fecha_fin']
+            if fecha_inicio.tzinfo is None:
+                fecha_inicio = fecha_inicio.replace(tzinfo=timezone.utc)
+            if fecha_fin.tzinfo is None:
+                fecha_fin = fecha_fin.replace(tzinfo=timezone.utc)
+
+            week_txns = []
+            for t in transactions:
+                if not t.get('fecha_transaccion'):
+                    continue
+                try:
+                    fecha_txn = datetime.fromisoformat(t['fecha_transaccion']) if isinstance(t['fecha_transaccion'], str) else t['fecha_transaccion']
+                    if fecha_txn.tzinfo is None:
+                        fecha_txn = fecha_txn.replace(tzinfo=timezone.utc)
+                    if fecha_inicio <= fecha_txn <= fecha_fin:
+                        week_txns.append(t)
+                except Exception:
+                    continue
+
             ingresos = sum(t['monto'] for t in week_txns if t['tipo_transaccion'] == 'ingreso')
             egresos = sum(t['monto'] for t in week_txns if t['tipo_transaccion'] == 'egreso')
             flujo_neto = ingresos - egresos
-            
+
             weekly_flow.append({
                 'semana': week['numero_semana'],
                 'ingresos': ingresos,
                 'egresos': egresos,
                 'flujo_neto': flujo_neto
             })
-        
+
         saldo_acumulado = 0
         for week_data in weekly_flow:
             saldo_acumulado += week_data['flujo_neto']
             week_data['saldo_acumulado'] = saldo_acumulado
-        
+
         return {
             'weekly_flow': weekly_flow,
             'flujo_neto_total': sum(w['flujo_neto'] for w in weekly_flow)

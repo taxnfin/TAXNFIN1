@@ -109,25 +109,70 @@ class ScenarioAnalysisService:
         }
     
     async def _create_baseline_snapshot(self, company_id: str) -> Dict[str, Any]:
-        """Crea snapshot del estado actual del cashflow"""
-        
+        """Crea snapshot del estado actual del cashflow (rango de fechas + fallback a CFDIs)"""
+
         weeks = await self.db.cashflow_weeks.find(
             {'company_id': company_id}
         ).sort('fecha_inicio', 1).to_list(13)
-        
+
         transactions = await self.db.transactions.find(
             {'company_id': company_id}
-        ).to_list(1000)
-        
-        # Calcular flujo por semana
+        ).to_list(2000)
+
+        # Fallback a CFDIs si hay menos de 10 transacciones
+        if len(transactions) < 10:
+            cfdis = await self.db.cfdis.find(
+                {'company_id': company_id}, {'_id': 0}
+            ).sort('fecha', -1).to_list(2000)
+            for c in cfdis:
+                monto = float(c.get('total', c.get('monto', 0)) or 0)
+                if monto <= 0:
+                    continue
+                tipo = c.get('tipo_cfdi', c.get('tipo', ''))
+                tipo_txn = 'ingreso' if tipo in ('I', 'ingreso') else 'egreso'
+                fecha = c.get('fecha_pago') or c.get('fecha') or c.get('fecha_emision') or ''
+                transactions.append({
+                    'id': c.get('id', ''),
+                    'company_id': company_id,
+                    'tipo_transaccion': tipo_txn,
+                    'monto': monto,
+                    'fecha_transaccion': fecha,
+                    'es_real': True,
+                })
+            seen, deduped = set(), []
+            for t in transactions:
+                if t['id'] not in seen:
+                    seen.add(t['id'])
+                    deduped.append(t)
+            transactions = deduped
+
+        # Calcular flujo por semana usando rango de fechas
         weekly_flow = []
         for week in weeks:
-            week_txns = [t for t in transactions if t['cashflow_week_id'] == week['id']]
-            
+            fecha_inicio = datetime.fromisoformat(week['fecha_inicio']) if isinstance(week['fecha_inicio'], str) else week['fecha_inicio']
+            fecha_fin = datetime.fromisoformat(week['fecha_fin']) if isinstance(week['fecha_fin'], str) else week['fecha_fin']
+            if fecha_inicio.tzinfo is None:
+                fecha_inicio = fecha_inicio.replace(tzinfo=timezone.utc)
+            if fecha_fin.tzinfo is None:
+                fecha_fin = fecha_fin.replace(tzinfo=timezone.utc)
+
+            week_txns = []
+            for t in transactions:
+                if not t.get('fecha_transaccion'):
+                    continue
+                try:
+                    fecha_txn = datetime.fromisoformat(t['fecha_transaccion']) if isinstance(t['fecha_transaccion'], str) else t['fecha_transaccion']
+                    if fecha_txn.tzinfo is None:
+                        fecha_txn = fecha_txn.replace(tzinfo=timezone.utc)
+                    if fecha_inicio <= fecha_txn <= fecha_fin:
+                        week_txns.append(t)
+                except Exception:
+                    continue
+
             ingresos = sum(t['monto'] for t in week_txns if t['tipo_transaccion'] == 'ingreso')
             egresos = sum(t['monto'] for t in week_txns if t['tipo_transaccion'] == 'egreso')
             flujo_neto = ingresos - egresos
-            
+
             weekly_flow.append({
                 'semana': week['numero_semana'],
                 'fecha_inicio': week['fecha_inicio'],
@@ -135,13 +180,13 @@ class ScenarioAnalysisService:
                 'egresos': egresos,
                 'flujo_neto': flujo_neto
             })
-        
+
         # Calcular saldo acumulado
         saldo_acumulado = 0
         for week_data in weekly_flow:
             saldo_acumulado += week_data['flujo_neto']
             week_data['saldo_acumulado'] = saldo_acumulado
-        
+
         return {
             'weekly_flow': weekly_flow,
             'total_ingresos': sum(w['ingresos'] for w in weekly_flow),
