@@ -561,6 +561,14 @@ const AdvancedFeatures = () => {
       )}
 
       {optimizationResult && !optimizationResult._insufficient_data && (
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+          💡 Tu CFO Virtual analizó <strong>{optimizationResult.n_cxc || 0} facturas por cobrar</strong> y <strong>{optimizationResult.n_cxp || 0} pagos pendientes</strong>.{' '}
+          Encontró que reorganizando fechas de cobro y pago puedes mejorar tu liquidez en{' '}
+          <strong>${(optimizationResult.mejora_vs_baseline?.flujo_neto || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}</strong> pesos{' '}
+          en las próximas semanas, sin cambiar ningún contrato.
+        </div>
+      )}
+      {optimizationResult && !optimizationResult._insufficient_data && (
         <Card className="border-[#EC4899] bg-gradient-to-br from-pink-50 to-white" data-testid="optimization-result">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-[#EC4899]">
@@ -606,11 +614,35 @@ const AdvancedFeatures = () => {
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-[#BE185D]">Modificaciones Sugeridas:</p>
                 <div className="max-h-48 overflow-y-auto space-y-2">
-                  {optimizationResult.mejor_solucion?.modificaciones?.slice(0, 5).map((mod, idx) => (
-                    <div key={idx} className="p-2 bg-white rounded text-xs">
-                      <span className="font-semibold">{mod.tipo.replace(/_/g, ' ')}</span>: {mod.razon}
-                    </div>
-                  ))}
+                  {optimizationResult.mejor_solucion?.modificaciones?.slice(0, 5).map((mod, idx) => {
+                    const traducirModificacion = (mod) => {
+                      const monto = mod.monto_original
+                        ? `$${parseFloat(mod.monto_original).toLocaleString('es-MX', { maximumFractionDigits: 0 })}`
+                        : '';
+                      const concepto = mod.concepto || mod.transaction_id || 'transacción';
+                      switch (mod.tipo) {
+                        case 'retrasar_pago':
+                          return `⏳ Retrasa el pago de ${concepto} ${monto} — pídele ${mod.dias || mod.nuevo_valor || ''} días más de plazo a tu proveedor`;
+                        case 'adelantar_cobro':
+                          return `⚡ Adelanta el cobro de ${concepto} ${monto} — cobra antes a este cliente`;
+                        case 'ajustar_monto': {
+                          const pct = mod.nuevo_valor ? Math.round((1 - mod.nuevo_valor) * 100) : '';
+                          return `✂️ Reduce ${concepto} ${monto} un ${pct}% — negocia este gasto a la baja`;
+                        }
+                        case 'adelantar_pago':
+                          return `📅 Adelanta el pago de ${concepto} — aprovecha descuento por pronto pago`;
+                        case 'retrasar_cobro':
+                          return `🔄 Ajusta el cobro de ${concepto} ${monto}`;
+                        default:
+                          return `🔧 ${mod.tipo?.replace(/_/g, ' ')}: ${concepto} ${monto}`;
+                      }
+                    };
+                    return (
+                      <div key={idx} className="p-2 bg-white rounded text-xs">
+                        {traducirModificacion(mod)}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

@@ -238,6 +238,8 @@ class GeneticOptimizer:
         # Obtener transacciones proyectadas (real o virtual desde manual_projections)
         transactions = await self._get_projectable_transactions(company_id)
         self._projectable_txns = transactions
+        n_cxc = sum(1 for t in transactions if t.get('_source') == 'contalink_cache' and t.get('tipo_transaccion') == 'ingreso')
+        n_cxp = sum(1 for t in transactions if t.get('_source') == 'contalink_cache' and t.get('tipo_transaccion') == 'egreso')
 
         if len(transactions) < 5:
             return {
@@ -393,7 +395,9 @@ class GeneticOptimizer:
             'mejora_vs_baseline': {
                 'flujo_neto': float(best_solutions[0]['mejora_flujo_neto']),
                 'semanas_criticas_resueltas': int(best_solutions[0]['semanas_criticas_resueltas'])
-            }
+            },
+            'n_cxc': n_cxc,
+            'n_cxp': n_cxp,
         }
     
     def _configure_genetic_operators(
