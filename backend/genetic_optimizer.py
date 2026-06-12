@@ -109,33 +109,43 @@ class GeneticOptimizer:
             key = doc.get('key', '')
             is_cxc = 'cxc_' in key
             tipo_txn = 'ingreso' if is_cxc else 'egreso'
-            items = doc.get('data', [])
-            if not isinstance(items, list):
-                continue
+
+            # Fix 1 — data es dict con lista 'facturas' adentro, no lista directa
+            raw = doc.get('data', {})
+            if isinstance(raw, dict):
+                items = next((v for v in raw.values() if isinstance(v, list)), [])
+            else:
+                items = raw if isinstance(raw, list) else []
 
             for item in items:
-                saldo = float(item.get('saldo', 0) or 0)
-                if saldo <= 0:
+                # Fix 2 — campo correcto para monto
+                monto = float(item.get('saldo_pendiente') or item.get('saldo') or item.get('total') or 0)
+                if monto <= 0:
                     continue
+
+                # Fix 3 — fecha desde dias_vencido cuando fecha_vencimiento está vacío
                 fecha_venc = item.get('fecha_vencimiento', '')
                 if not fecha_venc:
-                    continue
-                try:
-                    fv = datetime.fromisoformat(fecha_venc) if isinstance(fecha_venc, str) else fecha_venc
-                    if fv.tzinfo is None:
-                        fv = fv.replace(tzinfo=timezone.utc)
-                    if fv <= now:
-                        continue
-                except Exception:
-                    continue
+                    dias_vencido = int(item.get('dias_vencido', 0) or 0)
+                    if dias_vencido <= 0:
+                        fecha_estimada = now + timedelta(days=14)
+                    else:
+                        fecha_estimada = now
+                else:
+                    try:
+                        fecha_estimada = datetime.fromisoformat(fecha_venc.replace('Z', '+00:00'))
+                        if fecha_estimada.tzinfo is None:
+                            fecha_estimada = fecha_estimada.replace(tzinfo=timezone.utc)
+                    except Exception:
+                        fecha_estimada = now + timedelta(days=14)
 
                 nombre = str(item.get('nombre', ''))[:20]
                 all_txns.append({
-                    'id': f"cache_{tipo_txn}_{nombre}_{fecha_venc}",
+                    'id': f"cache_{tipo_txn}_{nombre}_{fecha_estimada.date()}",
                     'company_id': company_id,
                     'tipo_transaccion': tipo_txn,
-                    'monto': saldo,
-                    'fecha_transaccion': fv.isoformat(),
+                    'monto': monto,
+                    'fecha_transaccion': fecha_estimada.isoformat(),
                     'es_proyeccion': True,
                     '_is_virtual': True,
                     '_source': 'contalink_cache',
