@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '@/api/axios';
+import PageHeader from '@/components/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -1457,10 +1458,7 @@ const AgingModule = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-[#0F172A]" style={{fontFamily: 'Manrope'}}>
-            Aging de Cartera
-          </h1>
-          <p className="text-[#64748B]">Análisis de antigüedad de Cuentas por Cobrar y por Pagar</p>
+          <PageHeader title="Aging de Cartera" subtitle="Análisis de antigüedad de Cuentas por Cobrar y por Pagar" />
         </div>
         <div className="flex items-center gap-4">
           <div className="text-sm text-gray-500 bg-white border rounded px-3 py-1.5">

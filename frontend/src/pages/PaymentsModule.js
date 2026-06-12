@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '@/api/axios';
+import PageHeader from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -873,8 +874,7 @@ const PaymentsModule = () => {
     <div className="p-8 space-y-6" data-testid="payments-page">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{fontFamily: 'Manrope'}}>Cobranza y Pagos</h1>
-          <p className="text-[#64748B]">Gestión de cobros y pagos (reales y proyectados)</p>
+          <PageHeader title="Cobranza y Pagos" subtitle="Gestión de cobros y pagos (reales y proyectados)" />
         </div>
         <div className="flex gap-2 items-center">
 

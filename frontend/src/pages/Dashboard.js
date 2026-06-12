@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '@/api/axios';
+import PageHeader from '@/components/PageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -513,8 +514,7 @@ const Dashboard = () => {
       <div className="flex flex-col gap-4">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-[#0F172A]" style={{fontFamily: 'Manrope'}}>Dashboard Ejecutivo</h1>
-            <p className="text-[#64748B] text-sm">Flujo de efectivo • 13 semanas rolling</p>
+            <PageHeader title="Dashboard Ejecutivo" subtitle="Flujo de efectivo · 13 semanas rolling" />
           </div>
           <div className="flex items-center gap-2 self-start md:self-auto">
             <Button 
