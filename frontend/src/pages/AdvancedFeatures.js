@@ -310,6 +310,19 @@ const AdvancedFeatures = () => {
                     El algoritmo evaluará miles de combinaciones para encontrar la solución óptima
                   </DialogDescription>
                 </DialogHeader>
+                <div className="flex gap-2 pt-1">
+                  <span className="text-xs text-gray-500 self-center">Ejemplos:</span>
+                  {[
+                    { label: '⚡ Rápido',    cfg: { generaciones: 10, poblacion: 20, max_retraso_dias: 15, max_adelanto_dias: 7  } },
+                    { label: '⚖️ Estándar',  cfg: { generaciones: 20, poblacion: 30, max_retraso_dias: 30, max_adelanto_dias: 15 } },
+                    { label: '🔬 Profundo',  cfg: { generaciones: 50, poblacion: 80, max_retraso_dias: 45, max_adelanto_dias: 30 } },
+                  ].map(({ label, cfg }) => (
+                    <Button key={label} variant="outline" size="sm" className="text-xs h-7 px-2"
+                      onClick={() => setOptimizationConfig(cfg)}>
+                      {label}
+                    </Button>
+                  ))}
+                </div>
                 <div className="space-y-4">
                   <div>
                     <Label>Generaciones</Label>
@@ -466,6 +479,19 @@ const AdvancedFeatures = () => {
         </Card>
       )}
 
+      {optimizationResult && !optimizationResult._insufficient_data &&
+        (optimizationResult.mejora_vs_baseline?.flujo_neto ?? 0) <= 0 && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="pt-5 pb-4">
+            <p className="font-semibold text-amber-800">⚠️ Sin mejoras encontradas</p>
+            <p className="text-sm text-amber-700 mt-1">
+              El algoritmo no encontró combinaciones que mejoren tu flujo actual.
+              Agrega más proyecciones de cobros y pagos futuros en el Cash Flow para obtener mejores resultados.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {optimizationResult && !optimizationResult._insufficient_data && (
         <Card className="border-[#EC4899] bg-gradient-to-br from-pink-50 to-white" data-testid="optimization-result">
           <CardHeader>
@@ -487,20 +513,27 @@ const AdvancedFeatures = () => {
                 <CheckCircle className="text-[#10B981]" size={32} />
               </div>
               
-              <div className="grid grid-cols-2 gap-4 mb-3">
-                <div>
-                  <p className="text-xs text-[#BE185D]">Mejora en Flujo Neto</p>
-                  <p className="text-2xl font-bold mono text-[#10B981]">
-                    +${optimizationResult.mejora_vs_baseline?.flujo_neto.toLocaleString('es-MX')}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-[#BE185D]">Crisis Evitadas</p>
-                  <p className="text-2xl font-bold mono text-[#10B981]">
-                    {optimizationResult.mejora_vs_baseline?.semanas_criticas_resueltas} semanas
-                  </p>
-                </div>
-              </div>
+              {(() => {
+                const mejora = optimizationResult.mejora_vs_baseline?.flujo_neto ?? 0;
+                const mejoraColor = mejora >= 0 ? '#10B981' : '#EF4444';
+                const mejoraTexto = mejora >= 0
+                  ? `+$${mejora.toLocaleString('es-MX')}`
+                  : `-$${Math.abs(mejora).toLocaleString('es-MX')}`;
+                return (
+                  <div className="grid grid-cols-2 gap-4 mb-3">
+                    <div>
+                      <p className="text-xs text-[#BE185D]">Mejora en Flujo Neto</p>
+                      <p className="text-2xl font-bold mono" style={{ color: mejoraColor }}>{mejoraTexto}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#BE185D]">Crisis Evitadas</p>
+                      <p className="text-2xl font-bold mono text-[#10B981]">
+                        {optimizationResult.mejora_vs_baseline?.semanas_criticas_resueltas ?? 0} semanas
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-[#BE185D]">Modificaciones Sugeridas:</p>

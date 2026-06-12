@@ -328,7 +328,7 @@ class GeneticOptimizer:
                 'modificaciones': decoded,
                 'resultado': result,
                 'mejora_flujo_neto': result['flujo_neto_total'] - baseline['flujo_neto_total'],
-                'semanas_criticas_resueltas': len([w for w in baseline['weekly_flow'] if w['saldo_acumulado'] < 0]) - len([w for w in result['weekly_flow'] if w['saldo_acumulado'] < 0])
+                'semanas_criticas_resueltas': max(0, len([w for w in baseline['weekly_flow'] if w['saldo_acumulado'] < 0]) - len([w for w in result['weekly_flow'] if w['saldo_acumulado'] < 0]))
             })
         
         # Guardar optimización en base de datos
