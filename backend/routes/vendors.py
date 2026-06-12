@@ -1,12 +1,15 @@
 """Vendor routes"""
 from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import Dict, List
-from datetime import datetime
+from datetime import datetime, timezone
+import uuid, logging
 
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
 from models.vendor import Vendor, VendorCreate
 from services.audit import audit_log
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/vendors")
 
@@ -53,6 +56,60 @@ async def update_vendor(vendor_id: str, vendor_data: VendorCreate, request: Requ
     if isinstance(updated.get('created_at'), str):
         updated['created_at'] = datetime.fromisoformat(updated['created_at'])
     return updated
+
+
+@router.post("/import-from-cfdis")
+async def import_vendors_from_cfdis(request: Request, current_user: Dict = Depends(get_current_user)):
+    """
+    Importa proveedores desde CFDIs de tipo 'egreso'.
+    Fuente: emisor_nombre + emisor_rfc de db.cfdis.
+    Upsert por RFC (si existe) o por nombre (sin RFC).
+    """
+    company_id = await get_active_company_id(request, current_user)
+    now = datetime.now(timezone.utc)
+
+    cfdis = await db.cfdis.find(
+        {"company_id": company_id, "tipo_cfdi": "egreso"},
+        {"emisor_nombre": 1, "emisor_rfc": 1, "_id": 0},
+    ).to_list(5000)
+
+    seen: set = set()
+    importados = existentes = 0
+
+    for cfdi in cfdis:
+        nombre = (cfdi.get("emisor_nombre") or "").strip()
+        rfc    = (cfdi.get("emisor_rfc") or "").strip().upper() or None
+        if not nombre:
+            continue
+        key = rfc or nombre
+        if key in seen:
+            continue
+        seen.add(key)
+
+        query = {"company_id": company_id, "rfc": rfc} if rfc else {"company_id": company_id, "nombre": nombre}
+        existing = await db.vendors.find_one(query, {"_id": 0})
+        if existing:
+            existentes += 1
+            continue
+
+        doc = {
+            "id":         str(uuid.uuid4()),
+            "company_id": company_id,
+            "nombre":     nombre,
+            "rfc":        rfc,
+            "email":      None,
+            "telefono":   None,
+            "direccion":  None,
+            "plazo_pago": None,
+            "activo":     True,
+            "created_at": now.isoformat(),
+            "origen":     "cfdi_import",
+        }
+        await db.vendors.insert_one(doc)
+        importados += 1
+
+    logger.info(f"[IMPORT VENDORS] company={company_id} importados={importados} existentes={existentes}")
+    return {"importados": importados, "existentes": existentes, "total": importados + existentes}
 
 
 @router.delete("/{vendor_id}")

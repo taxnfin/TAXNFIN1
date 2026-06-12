@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Plus, Download, Upload, FileSpreadsheet, Pencil, Trash2, AlertTriangle, Image, X } from 'lucide-react';
+import { Plus, Download, Upload, FileSpreadsheet, Pencil, Trash2, AlertTriangle, Image, X, Search, RefreshCw } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 // Lista de bancos en México
@@ -76,6 +76,9 @@ const Catalogs = () => {
   const [editingVendor, setEditingVendor] = useState(null);
   const [customerForm, setCustomerForm] = useState({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_cobranza: '' });
   const [editingCustomer, setEditingCustomer] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [searchVendors, setSearchVendors] = useState('');
+  const [searchCustomers, setSearchCustomers] = useState('');
 
   useEffect(() => {
     loadData();
@@ -389,6 +392,42 @@ const Catalogs = () => {
       setCustomerForm({ nombre: '', rfc: '', email: '', telefono: '', direccion: '', plazo_cobranza: '' });
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error creando cliente');
+    }
+  };
+
+  const handleImportVendorsFromCfdis = async () => {
+    setImporting(true);
+    try {
+      const res = await api.post('/vendors/import-from-cfdis');
+      const { importados, existentes } = res.data;
+      if (importados > 0) {
+        toast.success(`${importados} proveedor${importados !== 1 ? 'es' : ''} importado${importados !== 1 ? 's' : ''} desde CFDIs. ${existentes} ya existían.`);
+      } else {
+        toast.info(`No hay proveedores nuevos. ${existentes} ya estaban en el catálogo.`);
+      }
+      await loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error importando proveedores desde CFDIs');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleImportCustomersFromCfdis = async () => {
+    setImporting(true);
+    try {
+      const res = await api.post('/customers/import-from-cfdis');
+      const { importados, existentes } = res.data;
+      if (importados > 0) {
+        toast.success(`${importados} cliente${importados !== 1 ? 's' : ''} importado${importados !== 1 ? 's' : ''} desde CFDIs. ${existentes} ya existían.`);
+      } else {
+        toast.info(`No hay clientes nuevos. ${existentes} ya estaban en el catálogo.`);
+      }
+      await loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error importando clientes desde CFDIs');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -970,14 +1009,24 @@ const Catalogs = () => {
                 </CardTitle>
                 <CardDescription>{vendors.length} proveedores registrados</CardDescription>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                  onClick={handleImportVendorsFromCfdis}
+                  disabled={importing}
+                  data-testid="import-vendors-cfdis-button"
+                >
+                  <RefreshCw size={16} className={importing ? 'animate-spin' : ''} />
+                  Importar desde CFDIs
+                </Button>
                 <Button variant="outline" className="gap-2" onClick={downloadVendorsTemplate} data-testid="download-vendors-template">
                   <Download size={16} />
                   Plantilla
                 </Button>
                 <Button variant="outline" className="gap-2" onClick={() => document.getElementById('vendors-import').click()} data-testid="import-vendors-button">
                   <Upload size={16} />
-                  Importar
+                  Importar Excel
                 </Button>
                 <input
                   id="vendors-import"
@@ -1046,6 +1095,9 @@ const Catalogs = () => {
                   <FileSpreadsheet size={48} className="mx-auto text-[#94A3B8] mb-4" />
                   <p className="text-[#64748B] mb-4">No hay proveedores registrados</p>
                   <div className="flex gap-2 justify-center">
+                    <Button variant="outline" className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50" onClick={handleImportVendorsFromCfdis} disabled={importing}>
+                      <RefreshCw size={16} className={importing ? 'animate-spin' : ''} /> Importar desde CFDIs
+                    </Button>
                     <Button variant="outline" className="gap-2" onClick={downloadVendorsTemplate}>
                       <Download size={16} /> Descargar Plantilla
                     </Button>
@@ -1055,51 +1107,65 @@ const Catalogs = () => {
                   </div>
                 </div>
               ) : (
-                <Table className="data-table">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead>RFC</TableHead>
-                      <TableHead>Plazo Pago</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Teléfono</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {vendors.map((vendor) => (
-                      <TableRow key={vendor.id}>
-                        <TableCell className="font-medium">{vendor.nombre}</TableCell>
-                        <TableCell className="mono">{vendor.rfc || '-'}</TableCell>
-                        <TableCell>{vendor.plazo_pago ?? 0} días</TableCell>
-                        <TableCell>{vendor.email || '-'}</TableCell>
-                        <TableCell>{vendor.telefono || '-'}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => handleEditVendor(vendor)}
-                              className="h-8 w-8 p-0 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
-                              data-testid={`edit-vendor-${vendor.id}`}
-                            >
-                              <Pencil size={14} />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => setDeleteConfirm({ open: true, type: 'vendor', item: vendor })}
-                              className="h-8 w-8 p-0 text-red-600 hover:text-red-800 hover:bg-red-50"
-                              data-testid={`delete-vendor-${vendor.id}`}
-                            >
-                              <Trash2 size={14} />
-                            </Button>
-                          </div>
-                        </TableCell>
+                <>
+                  <div className="relative mb-3">
+                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      placeholder="Buscar por nombre o RFC..."
+                      value={searchVendors}
+                      onChange={e => setSearchVendors(e.target.value)}
+                      className="pl-9 h-9 text-sm"
+                    />
+                  </div>
+                  <Table className="data-table">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nombre</TableHead>
+                        <TableHead>RFC</TableHead>
+                        <TableHead>Plazo Pago</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Teléfono</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {vendors
+                        .filter(v => {
+                          const q = searchVendors.toLowerCase();
+                          return !q || v.nombre.toLowerCase().includes(q) || (v.rfc || '').toLowerCase().includes(q);
+                        })
+                        .map((vendor) => (
+                          <TableRow key={vendor.id}>
+                            <TableCell className="font-medium">{vendor.nombre}</TableCell>
+                            <TableCell className="mono">{vendor.rfc || '-'}</TableCell>
+                            <TableCell>{vendor.plazo_pago ?? 0} días</TableCell>
+                            <TableCell>{vendor.email || '-'}</TableCell>
+                            <TableCell>{vendor.telefono || '-'}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  variant="ghost" size="sm"
+                                  onClick={() => handleEditVendor(vendor)}
+                                  className="h-8 w-8 p-0 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                                  data-testid={`edit-vendor-${vendor.id}`}
+                                >
+                                  <Pencil size={14} />
+                                </Button>
+                                <Button
+                                  variant="ghost" size="sm"
+                                  onClick={() => setDeleteConfirm({ open: true, type: 'vendor', item: vendor })}
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-800 hover:bg-red-50"
+                                  data-testid={`delete-vendor-${vendor.id}`}
+                                >
+                                  <Trash2 size={14} />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </>
               )}
             </CardContent>
           </Card>
@@ -1197,14 +1263,24 @@ const Catalogs = () => {
                 </CardTitle>
                 <CardDescription>{customers.length} clientes registrados</CardDescription>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                  onClick={handleImportCustomersFromCfdis}
+                  disabled={importing}
+                  data-testid="import-customers-cfdis-button"
+                >
+                  <RefreshCw size={16} className={importing ? 'animate-spin' : ''} />
+                  Importar desde CFDIs
+                </Button>
                 <Button variant="outline" className="gap-2" onClick={downloadCustomersTemplate} data-testid="download-customers-template">
                   <Download size={16} />
                   Plantilla
                 </Button>
                 <Button variant="outline" className="gap-2" onClick={() => document.getElementById('customers-import').click()} data-testid="import-customers-button">
                   <Upload size={16} />
-                  Importar
+                  Importar Excel
                 </Button>
                 <input
                   id="customers-import"
@@ -1273,6 +1349,9 @@ const Catalogs = () => {
                   <FileSpreadsheet size={48} className="mx-auto text-[#94A3B8] mb-4" />
                   <p className="text-[#64748B] mb-4">No hay clientes registrados</p>
                   <div className="flex gap-2 justify-center">
+                    <Button variant="outline" className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50" onClick={handleImportCustomersFromCfdis} disabled={importing}>
+                      <RefreshCw size={16} className={importing ? 'animate-spin' : ''} /> Importar desde CFDIs
+                    </Button>
                     <Button variant="outline" className="gap-2" onClick={downloadCustomersTemplate}>
                       <Download size={16} /> Descargar Plantilla
                     </Button>
@@ -1282,51 +1361,65 @@ const Catalogs = () => {
                   </div>
                 </div>
               ) : (
-                <Table className="data-table">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead>RFC</TableHead>
-                      <TableHead>Plazo Cobranza</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Teléfono</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {customers.map((customer) => (
-                      <TableRow key={customer.id}>
-                        <TableCell className="font-medium">{customer.nombre}</TableCell>
-                        <TableCell className="mono">{customer.rfc || '-'}</TableCell>
-                        <TableCell>{customer.plazo_cobranza ?? 0} días</TableCell>
-                        <TableCell>{customer.email || '-'}</TableCell>
-                        <TableCell>{customer.telefono || '-'}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => handleEditCustomer(customer)}
-                              className="h-8 w-8 p-0 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
-                              data-testid={`edit-customer-${customer.id}`}
-                            >
-                              <Pencil size={14} />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => setDeleteConfirm({ open: true, type: 'customer', item: customer })}
-                              className="h-8 w-8 p-0 text-red-600 hover:text-red-800 hover:bg-red-50"
-                              data-testid={`delete-customer-${customer.id}`}
-                            >
-                              <Trash2 size={14} />
-                            </Button>
-                          </div>
-                        </TableCell>
+                <>
+                  <div className="relative mb-3">
+                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      placeholder="Buscar por nombre o RFC..."
+                      value={searchCustomers}
+                      onChange={e => setSearchCustomers(e.target.value)}
+                      className="pl-9 h-9 text-sm"
+                    />
+                  </div>
+                  <Table className="data-table">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nombre</TableHead>
+                        <TableHead>RFC</TableHead>
+                        <TableHead>Plazo Cobranza</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Teléfono</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {customers
+                        .filter(c => {
+                          const q = searchCustomers.toLowerCase();
+                          return !q || c.nombre.toLowerCase().includes(q) || (c.rfc || '').toLowerCase().includes(q);
+                        })
+                        .map((customer) => (
+                          <TableRow key={customer.id}>
+                            <TableCell className="font-medium">{customer.nombre}</TableCell>
+                            <TableCell className="mono">{customer.rfc || '-'}</TableCell>
+                            <TableCell>{customer.plazo_cobranza ?? 0} días</TableCell>
+                            <TableCell>{customer.email || '-'}</TableCell>
+                            <TableCell>{customer.telefono || '-'}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  variant="ghost" size="sm"
+                                  onClick={() => handleEditCustomer(customer)}
+                                  className="h-8 w-8 p-0 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                                  data-testid={`edit-customer-${customer.id}`}
+                                >
+                                  <Pencil size={14} />
+                                </Button>
+                                <Button
+                                  variant="ghost" size="sm"
+                                  onClick={() => setDeleteConfirm({ open: true, type: 'customer', item: customer })}
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-800 hover:bg-red-50"
+                                  data-testid={`delete-customer-${customer.id}`}
+                                >
+                                  <Trash2 size={14} />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </>
               )}
             </CardContent>
           </Card>

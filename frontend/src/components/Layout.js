@@ -27,6 +27,7 @@ import {
   Building,
   Sun,
   Moon,
+  BookUser,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import {
@@ -97,6 +98,11 @@ const buildNav = (isAdmin) => [
           { name: 'Importar estado de cuenta', href: '/bank-statements?import=true' },
           { name: 'Tipos de cambio',          href: '/fx-rates' },
         ],
+      },
+      {
+        name: 'Catálogo',
+        href: '/catalogs',
+        icon: BookUser,
       },
       {
         name: 'SAT y Fiscal',
