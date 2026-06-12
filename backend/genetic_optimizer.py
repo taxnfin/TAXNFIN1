@@ -42,56 +42,157 @@ class GeneticOptimizer:
 
     async def _get_projectable_transactions(self, company_id: str) -> List[Dict]:
         """Returns transactions usable as optimization genes.
-        Primary source: transactions with es_proyeccion=True.
-        Fallback: manual_projections converted to virtual transaction dicts.
+        Sources (in priority order):
+          1. db.transactions  es_proyeccion=True
+          2. db.manual_projections  activo=True
+          3. db.contalink_cache  key contains cxc_ or cxp_ (future items only)
+          4. db.cfdis with future fecha (last resort if total < 5)
         """
-        transactions = await self.db.transactions.find(
+        now = datetime.now(timezone.utc)
+        all_txns: List[Dict] = []
+
+        # ── Source 1: projected transactions ──────────────────────────────────
+        txn_list = await self.db.transactions.find(
             {'company_id': company_id, 'es_proyeccion': True}
         ).to_list(1000)
+        n_txns = len(txn_list)
+        all_txns.extend(txn_list)
 
-        if len(transactions) >= 5:
-            return transactions
-
+        # ── Source 2: manual_projections ──────────────────────────────────────
         projections = await self.db.manual_projections.find(
             {'company_id': company_id, 'activo': True}
         ).to_list(500)
+        n_manual = 0
 
-        if not projections:
-            return transactions
+        if projections:
+            weeks = await self.db.cashflow_weeks.find(
+                {'company_id': company_id}
+            ).sort('fecha_inicio', 1).to_list(13)
 
-        weeks = await self.db.cashflow_weeks.find(
-            {'company_id': company_id}
-        ).sort('fecha_inicio', 1).to_list(13)
+            for proj in projections:
+                fecha = now + timedelta(weeks=4)
+                semana = proj.get('semana')
+                if semana and weeks:
+                    week_idx = max(0, min(semana - 1, len(weeks) - 1))
+                    w = weeks[week_idx]
+                    fecha_str = w['fecha_inicio'] if isinstance(w['fecha_inicio'], str) else w['fecha_inicio'].isoformat()
+                    try:
+                        fecha = datetime.fromisoformat(fecha_str)
+                        if fecha.tzinfo is None:
+                            fecha = fecha.replace(tzinfo=timezone.utc)
+                    except Exception:
+                        pass
 
-        now = datetime.now(timezone.utc)
+                all_txns.append({
+                    'id': proj['id'],
+                    'company_id': company_id,
+                    'tipo_transaccion': proj['tipo'],
+                    'monto': proj['monto'],
+                    'fecha_transaccion': fecha.isoformat(),
+                    'es_proyeccion': True,
+                    '_is_virtual': True,
+                    '_source': 'manual_projection',
+                })
+                n_manual += 1
 
-        for proj in projections:
-            fecha = now + timedelta(weeks=4)
+        # ── Source 3: contalink_cache CxC / CxP ───────────────────────────────
+        n_cxc = 0
+        n_cxp = 0
 
-            semana = proj.get('semana')
-            if semana and weeks:
-                week_idx = max(0, min(semana - 1, len(weeks) - 1))
-                w = weeks[week_idx]
-                fecha_str = w['fecha_inicio'] if isinstance(w['fecha_inicio'], str) else w['fecha_inicio'].isoformat()
+        cache_docs = await self.db.contalink_cache.find(
+            {'company_id': company_id, 'key': {'$regex': 'cxc_|cxp_'}}
+        ).to_list(50)
+
+        for doc in cache_docs:
+            key = doc.get('key', '')
+            is_cxc = 'cxc_' in key
+            tipo_txn = 'ingreso' if is_cxc else 'egreso'
+            items = doc.get('data', [])
+            if not isinstance(items, list):
+                continue
+
+            for item in items:
+                saldo = float(item.get('saldo', 0) or 0)
+                if saldo <= 0:
+                    continue
+                fecha_venc = item.get('fecha_vencimiento', '')
+                if not fecha_venc:
+                    continue
                 try:
-                    fecha = datetime.fromisoformat(fecha_str)
-                    if fecha.tzinfo is None:
-                        fecha = fecha.replace(tzinfo=timezone.utc)
+                    fv = datetime.fromisoformat(fecha_venc) if isinstance(fecha_venc, str) else fecha_venc
+                    if fv.tzinfo is None:
+                        fv = fv.replace(tzinfo=timezone.utc)
+                    if fv <= now:
+                        continue
                 except Exception:
-                    pass
+                    continue
 
-            transactions.append({
-                'id': proj['id'],
-                'company_id': company_id,
-                'tipo_transaccion': proj['tipo'],
-                'monto': proj['monto'],
-                'fecha_transaccion': fecha.isoformat(),
-                'es_proyeccion': True,
-                '_is_virtual': True,
-            })
+                nombre = str(item.get('nombre', ''))[:20]
+                all_txns.append({
+                    'id': f"cache_{tipo_txn}_{nombre}_{fecha_venc}",
+                    'company_id': company_id,
+                    'tipo_transaccion': tipo_txn,
+                    'monto': saldo,
+                    'fecha_transaccion': fv.isoformat(),
+                    'es_proyeccion': True,
+                    '_is_virtual': True,
+                    '_source': 'contalink_cache',
+                })
+                if is_cxc:
+                    n_cxc += 1
+                else:
+                    n_cxp += 1
 
-        logger.info(f"[CFO] _get_projectable_transactions company={company_id} real={len([t for t in transactions if not t.get('_is_virtual')])} virtual={len([t for t in transactions if t.get('_is_virtual')])}")
-        return transactions
+        # ── Source 4: future CFDIs (last resort) ──────────────────────────────
+        if len(all_txns) < 5:
+            future_cfdis = await self.db.cfdis.find(
+                {'company_id': company_id}, {'_id': 0}
+            ).to_list(500)
+
+            for c in future_cfdis:
+                monto = float(c.get('total', c.get('monto', 0)) or 0)
+                if monto <= 0:
+                    continue
+                fecha_str = (c.get('fecha_pago') or c.get('fecha_vencimiento')
+                             or c.get('fecha_emision') or '')
+                if not fecha_str:
+                    continue
+                try:
+                    fc = datetime.fromisoformat(fecha_str) if isinstance(fecha_str, str) else fecha_str
+                    if fc.tzinfo is None:
+                        fc = fc.replace(tzinfo=timezone.utc)
+                    if fc <= now:
+                        continue
+                except Exception:
+                    continue
+
+                tipo = c.get('tipo_cfdi', c.get('tipo', ''))
+                tipo_txn = 'ingreso' if tipo in ('I', 'ingreso') else 'egreso'
+                all_txns.append({
+                    'id': c.get('id', ''),
+                    'company_id': company_id,
+                    'tipo_transaccion': tipo_txn,
+                    'monto': monto,
+                    'fecha_transaccion': fc.isoformat(),
+                    'es_proyeccion': True,
+                    '_is_virtual': True,
+                    '_source': 'cfdi_future',
+                })
+
+        # ── Deduplicate by id ──────────────────────────────────────────────────
+        seen: set = set()
+        result: List[Dict] = []
+        for t in all_txns:
+            tid = t.get('id', '')
+            if tid and tid not in seen:
+                seen.add(tid)
+                result.append(t)
+
+        logger.info(
+            f"[CFO] Genes: {n_txns} transactions + {n_manual} manual_projections"
+            f" + {n_cxc} CxC + {n_cxp} CxP  → total={len(result)} company={company_id}"
+        )
+        return result
 
     async def optimize_cashflow(
         self,
