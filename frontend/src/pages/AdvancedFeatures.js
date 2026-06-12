@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { Brain, Zap, Bell, Sparkles, GitBranch, FileText, Cpu, TrendingUp, CheckCircle } from 'lucide-react';
+import '@/styles/print.css';
 
 const ESCENARIOS_RAPIDOS = [
   {
@@ -198,6 +199,15 @@ const AdvancedFeatures = () => {
 
   return (
     <div className="p-8 space-y-6" data-testid="advanced-features-page">
+      <div className="hidden print:block mb-6 border-b-2 border-[#10B981] pb-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <p className="text-xs text-gray-500">Reporte generado el {new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          </div>
+          <p className="text-xs text-gray-500">cashflow.taxnfin.com</p>
+        </div>
+      </div>
+
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-4xl font-bold text-[#0F172A] mb-2 flex items-center gap-3" style={{fontFamily: 'Manrope'}}>

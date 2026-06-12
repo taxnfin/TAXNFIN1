@@ -1,0 +1,78 @@
+@media print {
+  /* Ocultar navegación y elementos UI */
+  nav, aside, header,
+  [data-sidebar],
+  .sidebar,
+  button,
+  [role="navigation"] {
+    display: none !important;
+  }
+
+  /* Página limpia */
+  body {
+    background: white !important;
+    font-family: 'Manrope', sans-serif;
+  }
+
+  /* Contenedor principal ocupa todo */
+  main, .main-content, [data-testid="advanced-features-page"] {
+    margin: 0 !important;
+    padding: 20px !important;
+    width: 100% !important;
+  }
+
+  /* Header del reporte */
+  h1 {
+    font-size: 24px !important;
+    color: #0F172A !important;
+    border-bottom: 2px solid #10B981;
+    padding-bottom: 8px;
+    margin-bottom: 16px;
+  }
+
+  /* Cards en grid de 2 columnas para impresión */
+  .grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  /* Cards con borde visible */
+  .card, [class*="Card"] {
+    border: 1px solid #E2E8F0 !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Colores de texto preservados */
+  .text-\[\#10B981\] { color: #10B981 !important; }
+  .text-\[\#EF4444\] { color: #EF4444 !important; }
+  .text-\[\#0F172A\] { color: #0F172A !important; }
+
+  /* Ocultar botones de acción */
+  [data-testid="run-analysis-btn"],
+  [data-testid="run-recon-btn"],
+  [data-testid="check-alerts-btn"],
+  [data-testid="create-scenario-btn"],
+  [data-testid="optimize-genetic-btn"] {
+    display: none !important;
+  }
+
+  /* Agregar fecha y empresa en footer */
+  @page {
+    margin: 1.5cm;
+    @bottom-center {
+      content: "TaxnFin — IA Ejecutiva — " counter(page);
+      font-size: 10px;
+      color: #64748B;
+    }
+  }
+
+  /* Salto de página antes de secciones grandes */
+  [data-testid="analysis-results"],
+  [data-testid="optimization-result"] {
+    page-break-before: auto;
+    break-before: auto;
+  }
+}
