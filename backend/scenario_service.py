@@ -105,7 +105,9 @@ class ScenarioAnalysisService:
             'status': 'success',
             'scenario_id': scenario['id'],
             'nombre': nombre,
-            'comparison': comparison
+            'comparison': comparison,
+            'flujo_neto_baseline': round(baseline['flujo_neto_total'], 2),
+            'flujo_neto_simulado': round(simulated_state['flujo_neto_total'], 2),
         }
     
     async def _create_baseline_snapshot(self, company_id: str) -> Dict[str, Any]:

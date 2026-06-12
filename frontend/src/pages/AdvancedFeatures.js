@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '@/api/axios';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,15 +14,17 @@ import { toast } from 'sonner';
 import { Brain, Zap, Bell, Sparkles, GitBranch, Download, FileText, Cpu, TrendingUp, CheckCircle } from 'lucide-react';
 
 const AdvancedFeatures = () => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [reconResult, setReconResult] = useState(null);
+  const [scenarioResult, setScenarioResult] = useState(null);
   const [scenarioDialog, setScenarioDialog] = useState(false);
   const [optimizationDialog, setOptimizationDialog] = useState(false);
   const [optimizationResult, setOptimizationResult] = useState(null);
   const [optimizationConfig, setOptimizationConfig] = useState({
-    generaciones: 50,
-    poblacion: 100,
+    generaciones: 20,
+    poblacion: 30,
     max_retraso_dias: 30,
     max_adelanto_dias: 15
   });
@@ -84,6 +87,7 @@ const AdvancedFeatures = () => {
         modificaciones: [modificacion]
       });
 
+      setScenarioResult(res.data);
       toast.success('Escenario creado');
       setScenarioDialog(false);
       setScenarioForm({ nombre: '', descripcion: '', tipo: 'adelantar_pago', monto: '', fecha: '' });
@@ -354,6 +358,38 @@ const AdvancedFeatures = () => {
         </Card>
       </div>
 
+      {scenarioResult && (
+        <Card className="border-[#10B981] bg-[#F0FDF4]" data-testid="scenario-result">
+          <CardHeader className="pb-2">
+            <div className="flex justify-between items-start">
+              <CardTitle className="text-[#10B981] text-base">Resultado: {scenarioResult.nombre}</CardTitle>
+              <button onClick={() => setScenarioResult(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 mb-3">
+              <div className="p-3 bg-white rounded border">
+                <p className="text-xs text-[#64748B] mb-1">Flujo Neto — Baseline</p>
+                <p className="text-xl font-bold mono text-[#0F172A]">${(scenarioResult.flujo_neto_baseline ?? 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
+              </div>
+              <div className="p-3 bg-white rounded border">
+                <p className="text-xs text-[#64748B] mb-1">Flujo Neto — Simulado</p>
+                <p className="text-xl font-bold mono text-[#10B981]">${(scenarioResult.flujo_neto_simulado ?? 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 bg-white rounded border">
+              <div className="shrink-0">
+                <p className="text-xs text-[#64748B]">Diferencia</p>
+                <p className={`text-lg font-bold mono ${(scenarioResult.comparison?.diferencia_flujo_neto ?? 0) >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                  {(scenarioResult.comparison?.diferencia_flujo_neto ?? 0) >= 0 ? '+' : ''}${(scenarioResult.comparison?.diferencia_flujo_neto ?? 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                </p>
+              </div>
+              <p className="text-sm font-medium text-[#0F172A]">{scenarioResult.comparison?.recomendacion}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {analysis && (
         <Card className="border-[#10B981]" data-testid="analysis-results">
           <CardHeader>
@@ -419,8 +455,11 @@ const AdvancedFeatures = () => {
           <CardContent className="pt-5 pb-4 flex items-start gap-3">
             <span className="text-2xl">⚠️</span>
             <div>
-              <p className="font-semibold text-amber-800 mb-1">Sin datos suficientes para optimizar</p>
-              <p className="text-sm text-amber-700">Necesitas al menos 4 semanas de historial en el Cash Flow para usar esta función.</p>
+              <p className="font-semibold text-amber-800 mb-1">Sin proyecciones para optimizar</p>
+              <p className="text-sm text-amber-700 mb-3">No hay transacciones proyectadas para optimizar. Ve al Cash Flow y agrega proyecciones para las próximas semanas, luego vuelve aquí.</p>
+              <Button size="sm" variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-100" onClick={() => navigate('/projections')}>
+                Ir al Cash Flow →
+              </Button>
             </div>
             <button onClick={() => setOptimizationResult(null)} className="ml-auto text-amber-400 hover:text-amber-600 text-lg leading-none">✕</button>
           </CardContent>
