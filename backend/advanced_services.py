@@ -15,6 +15,48 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+def _cfdi_to_txn(cfdi: Dict) -> Dict:
+    """Normaliza un CFDI al formato de transacción."""
+    tipo = cfdi.get("tipo_cfdi", cfdi.get("tipo", ""))
+    tipo_txn = "ingreso" if tipo in ("I", "ingreso") else "egreso"
+    fecha = cfdi.get("fecha_pago") or cfdi.get("fecha") or cfdi.get("fecha_emision") or ""
+    monto = float(cfdi.get("total", cfdi.get("monto", 0)) or 0)
+    return {
+        "id": cfdi.get("id", ""),
+        "company_id": cfdi.get("company_id", ""),
+        "tipo_transaccion": tipo_txn,
+        "monto": monto,
+        "fecha_transaccion": fecha,
+        "concepto": cfdi.get("concepto", cfdi.get("descripcion", cfdi.get("receptor_nombre", ""))),
+        "es_real": True,
+        "cashflow_week_id": cfdi.get("cashflow_week_id", ""),
+    }
+
+
+async def _get_real_transactions(db, company_id: str) -> List[Dict]:
+    """Primary: db.transactions es_real=True. Fallback: db.cfdis."""
+    txns = await db.transactions.find(
+        {"company_id": company_id, "es_real": True}, {"_id": 0}
+    ).sort("fecha_transaccion", -1).to_list(2000)
+
+    if len(txns) >= 10:
+        return txns
+
+    cfdis = await db.cfdis.find(
+        {"company_id": company_id}, {"_id": 0}
+    ).sort("fecha", -1).to_list(2000)
+
+    cfdi_txns = [_cfdi_to_txn(c) for c in cfdis if float(c.get("total", c.get("monto", 0)) or 0) > 0]
+    combined = txns + cfdi_txns
+    seen, result = set(), []
+    for t in combined:
+        if t["id"] not in seen:
+            seen.add(t["id"])
+            result.append(t)
+    return result
+
+
 class PredictiveAnalysisService:
     """Servicio de análisis predictivo de flujo de efectivo usando ML y LLM"""
     
@@ -24,12 +66,9 @@ class PredictiveAnalysisService:
     async def analyze_cashflow_trends(self, company_id: str, weeks_history: int = 13) -> Dict[str, Any]:
         """Analiza tendencias históricas de cashflow"""
         
-        # Obtener transacciones históricas
-        transactions = await self.db.transactions.find({
-            'company_id': company_id,
-            'es_real': True
-        }).sort('fecha_transaccion', -1).to_list(1000)
-        
+        # Obtener transacciones históricas (fallback a CFDIs si hay menos de 10 reales)
+        transactions = await _get_real_transactions(self.db, company_id)
+
         if len(transactions) < 10:
             return {
                 'status': 'insufficient_data',
