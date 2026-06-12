@@ -662,8 +662,12 @@ const AdvancedFeatures = () => {
               </div>
 
               <div className="mt-4 flex gap-2">
-                <Button 
-                  onClick={() => applyOptimization(optimizationResult.optimization_id)} 
+                <Button
+                  onClick={() => {
+                    console.log('CLICK optimization_id:', optimizationResult?.optimization_id);
+                    console.log('KEYS:', Object.keys(optimizationResult || {}));
+                    applyOptimization(optimizationResult.optimization_id);
+                  }}
                   className="bg-[#10B981] flex-1"
                   data-testid="apply-optimization-btn"
                 >
