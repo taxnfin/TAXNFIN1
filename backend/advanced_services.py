@@ -145,14 +145,37 @@ class PredictiveAnalysisService:
                 'flujo_neto_promedio': round(flujo_neto_promedio, 2),
                 'volatilidad_ingresos': round(volatilidad_ingresos, 2),
                 'volatilidad_egresos': round(volatilidad_egresos, 2),
-                'semanas_analizadas': len(weeks_data)
+                'semanas_analizadas': len(weeks_data),
+                'total_transacciones': len(transactions)
             },
             'predictions': predictions
         }
     
     async def generate_ai_insights(self, company_id: str, analysis_data: Dict[str, Any]) -> str:
-        """Generate AI insights. AI disabled — returns default message."""
-        return "Análisis de IA no disponible. Configure una API key de LLM para habilitar insights inteligentes."
+        try:
+            import anthropic
+            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+            if not api_key:
+                return "Insights IA no disponibles — falta ANTHROPIC_API_KEY en variables de entorno."
+            client = anthropic.Anthropic(api_key=api_key)
+            a = analysis_data.get("analisis", {})
+            preds = analysis_data.get("predictions", [])[:4]
+            prompt = f"""Eres un CFO virtual experto en empresas mexicanas. Analiza estos datos de flujo de efectivo:
+Ingreso promedio semanal: ${a.get("ingresos_promedio_semanal", 0):,.2f}
+Egreso promedio semanal: ${a.get("egresos_promedio_semanal", 0):,.2f}
+Flujo neto promedio: ${a.get("flujo_neto_promedio", 0):,.2f}
+Semanas analizadas: {a.get("semanas_analizadas", 0)} | Transacciones: {a.get("total_transacciones", 0)}
+Proyección próximas 4 semanas: {", ".join(f'S+{p["semana_futura"]}: ${p["flujo_neto_predicho"]:,.0f}' for p in preds)}
+Da 3-4 insights accionables y concisos en español para el CFO. Máximo 150 palabras."""
+            message = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=300,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return message.content[0].text
+        except Exception as e:
+            logger.error(f"generate_ai_insights error: {e}")
+            return f"Análisis IA no disponible temporalmente: {str(e)}"
     
     def _format_predictions(self, predictions: List[Dict]) -> str:
         """Formatea predicciones para el prompt"""
