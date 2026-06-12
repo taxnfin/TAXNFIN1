@@ -145,11 +145,23 @@ async def get_current_cash_position(company_id: str) -> dict:
     }
 
 
+def _get_fecha_efectiva(item: dict, today_date) -> str:
+    """Return ISO date string for due date, estimating from dias_vencido when fecha_vencimiento is absent."""
+    fv = item.get('fecha_vencimiento', '')
+    if fv:
+        return str(fv)[:10]
+    dias = int(item.get('dias_vencido', 0) or 0)
+    if dias > 0:
+        return today_date.isoformat()
+    return (today_date + timedelta(days=14)).isoformat()
+
+
 async def calculate_alerts(company_id: str, threshold: float, weeks_ahead: int) -> List[dict]:
     """Calculate actionable alerts based on cash flow projections"""
     alerts = []
     today = datetime.now(timezone.utc)
-    
+    today_date = today.date()
+
     # Get pending payments grouped by week — from payments collection
     pending_payments = await db.payments.find(
         {'company_id': company_id, 'tipo': 'pago', 'estatus': {'$in': ['pendiente', 'parcial']}},
@@ -207,14 +219,12 @@ async def calculate_alerts(company_id: str, threshold: float, weeks_ahead: int) 
         # Calculate week's inflows and outflows
         week_collections = sum(
             (p.get('saldo_pendiente') or p.get('monto', 0)) for p in pending_collections
-            if p.get('fecha_vencimiento') and 
-            week_start.isoformat()[:10] <= p.get('fecha_vencimiento', '')[:10] < week_end.isoformat()[:10]
+            if week_start.isoformat()[:10] <= _get_fecha_efectiva(p, today_date) < week_end.isoformat()[:10]
         )
-        
+
         week_payments = sum(
             (p.get('saldo_pendiente') or p.get('monto', 0)) for p in pending_payments
-            if p.get('fecha_vencimiento') and 
-            week_start.isoformat()[:10] <= p.get('fecha_vencimiento', '')[:10] < week_end.isoformat()[:10]
+            if week_start.isoformat()[:10] <= _get_fecha_efectiva(p, today_date) < week_end.isoformat()[:10]
         )
         
         weekly_balance += week_collections - week_payments
@@ -235,55 +245,57 @@ async def calculate_alerts(company_id: str, threshold: float, weeks_ahead: int) 
     
     # Check for late collections (clients that might delay)
     for collection in pending_collections:
-        if collection.get('fecha_vencimiento'):
-            try:
-                due_date = safe_parse_date(collection['fecha_vencimiento'])
-                if due_date.tzinfo is None:
-                    due_date = due_date.replace(tzinfo=timezone.utc)
-            except:
+        try:
+            due_date = safe_parse_date(_get_fecha_efectiva(collection, today_date))
+            if due_date is None:
                 continue
-            days_until_due = (due_date - today).days
-            amount = (collection.get('saldo_pendiente') or collection.get('monto', 0))
-            
-            # If client delays 7 days, what happens?
-            if 0 <= days_until_due <= 14 and amount > 50000:
-                # Simulate delay impact
-                delay_week = (days_until_due + 7) // 7
-                alerts.append({
-                    "type": "collection_delay_risk",
-                    "severity": "medium",
-                    "week": get_week_label(delay_week),
-                    "week_date": (today + timedelta(days=days_until_due + 7)).strftime("%d/%m"),
-                    "message": f"Si {collection.get('beneficiario', 'cliente')[:30]} se retrasa 7 días",
-                    "detail": f"Impacto: -${amount:,.0f} MXN en {get_week_label(delay_week)}",
-                    "impact": -amount,
-                    "action": f"Dar seguimiento a cobro de ${amount:,.0f}"
-                })
+            if due_date.tzinfo is None:
+                due_date = due_date.replace(tzinfo=timezone.utc)
+        except:
+            continue
+        days_until_due = (due_date - today).days
+        amount = (collection.get('saldo_pendiente') or collection.get('monto', 0))
+
+        # If client delays 7 days, what happens?
+        if 0 <= days_until_due <= 14 and amount > 50000:
+            # Simulate delay impact
+            delay_week = (days_until_due + 7) // 7
+            alerts.append({
+                "type": "collection_delay_risk",
+                "severity": "medium",
+                "week": get_week_label(delay_week),
+                "week_date": (today + timedelta(days=days_until_due + 7)).strftime("%d/%m"),
+                "message": f"Si {collection.get('beneficiario', 'cliente')[:30]} se retrasa 7 días",
+                "detail": f"Impacto: -${amount:,.0f} MXN en {get_week_label(delay_week)}",
+                "impact": -amount,
+                "action": f"Dar seguimiento a cobro de ${amount:,.0f}"
+            })
     
     # Check for payments that can be moved without risk
     for payment in pending_payments:
-        if payment.get('fecha_vencimiento'):
-            try:
-                due_date = safe_parse_date(payment['fecha_vencimiento'])
-                if due_date.tzinfo is None:
-                    due_date = due_date.replace(tzinfo=timezone.utc)
-            except:
+        try:
+            due_date = safe_parse_date(_get_fecha_efectiva(payment, today_date))
+            if due_date is None:
                 continue
-            days_until_due = (due_date - today).days
-            amount = (payment.get('saldo_pendiente') or payment.get('monto', 0))
-            
-            # Payments due in next 2 weeks that could potentially be delayed
-            if 0 <= days_until_due <= 14 and amount > 30000:
-                alerts.append({
-                    "type": "payment_flexibility",
-                    "severity": "low",
-                    "week": get_week_label(days_until_due // 7),
-                    "week_date": due_date.strftime("%d/%m"),
-                    "message": f"{payment.get('beneficiario', 'Proveedor')[:30]} puede moverse 1 semana",
-                    "detail": f"Libera ${amount:,.0f} MXN temporalmente",
-                    "impact": amount,
-                    "action": "Evaluar reprogramación si hay presión de liquidez"
-                })
+            if due_date.tzinfo is None:
+                due_date = due_date.replace(tzinfo=timezone.utc)
+        except:
+            continue
+        days_until_due = (due_date - today).days
+        amount = (payment.get('saldo_pendiente') or payment.get('monto', 0))
+
+        # Payments due in next 2 weeks that could potentially be delayed
+        if 0 <= days_until_due <= 14 and amount > 30000:
+            alerts.append({
+                "type": "payment_flexibility",
+                "severity": "low",
+                "week": get_week_label(days_until_due // 7),
+                "week_date": due_date.strftime("%d/%m"),
+                "message": f"{payment.get('beneficiario', 'Proveedor')[:30]} puede moverse 1 semana",
+                "detail": f"Libera ${amount:,.0f} MXN temporalmente",
+                "impact": amount,
+                "action": "Evaluar reprogramación si hay presión de liquidez"
+            })
     
     # Sort by severity and week
     severity_order = {'high': 0, 'medium': 1, 'low': 2}
@@ -399,7 +411,9 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
         "creditos": {"name": "Créditos", "icon": "🏦", "keywords": ["credito", "crédito", "prestamo", "préstamo", "bank", "banco", "financ"]},
         "rentas": {"name": "Rentas", "icon": "🏢", "keywords": ["renta", "arrendamiento", "alquiler", "rent", "lease"]},
         "servicios": {"name": "Servicios Fijos", "icon": "⚡", "keywords": ["luz", "agua", "gas", "telefono", "internet", "cfe", "telmex"]},
-        "otros": {"name": "Otros Pagos", "icon": "📋", "keywords": []}
+        "otros": {"name": "Otros Pagos", "icon": "📋", "keywords": []},
+        "cobranza_programada": {"name": "Cobranza Programada", "color": "#10B981", "icon": "💰", "keywords": []},
+        "pagos_programados": {"name": "Pagos Programados", "color": "#EF4444", "icon": "📋", "keywords": []},
     }
     
     def categorize_payment(payment: dict) -> str:
@@ -453,8 +467,46 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
         
         calendar['weeks'].append(week_data)
     
+    # Fallback: cargar CxC y CxP del cache de Contalink
+    today_date = today.date()
+    for cache_key, categoria in [
+        (f"cxc_{company_id}_latest", "cobranza_programada"),
+        (f"cxp_{company_id}_latest", "pagos_programados"),
+    ]:
+        cache_doc = await db.contalink_cache.find_one({'key': cache_key})
+        if not cache_doc:
+            continue
+        raw = cache_doc.get('data', {})
+        items = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
+        for item in items:
+            monto = float(item.get('saldo_pendiente') or item.get('saldo') or item.get('total') or 0)
+            if monto <= 0:
+                continue
+            nombre = (item.get('nombre') or item.get('razon_social') or
+                      item.get('cliente') or item.get('proveedor') or 'Sin nombre')
+            dias_vencido = int(item.get('dias_vencido', 0) or 0)
+            fecha_estimada = today_date if dias_vencido > 0 else (today_date + timedelta(days=14))
+            fecha_str = fecha_estimada.isoformat()
+            for week_offset in range(weeks_ahead):
+                week_start = today + timedelta(weeks=week_offset)
+                week_end = week_start + timedelta(days=7)
+                if week_start.isoformat()[:10] <= fecha_str < week_end.isoformat()[:10]:
+                    wd = calendar['weeks'][week_offset]
+                    wd['payments'].setdefault(categoria, []).append({
+                        'beneficiario': nombre[:30],
+                        'monto': monto,
+                        'fecha': fecha_str,
+                        'dias_vencido': dias_vencido,
+                        'fuente': 'contalink_cache',
+                        'es_proyeccion': True,
+                    })
+                    wd['totals'][categoria] = wd['totals'].get(categoria, 0) + monto
+                    wd['total'] += monto
+                    calendar['totals_by_category'][categoria] += monto
+                    break
+
     calendar['totals_by_category'] = dict(calendar['totals_by_category'])
-    
+
     return calendar
 
 
