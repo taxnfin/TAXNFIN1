@@ -305,32 +305,66 @@ async def apply_optimization(
         }
     
     # Aplicar modificaciones a las transacciones reales
+    from datetime import datetime, timezone
     aplicadas = 0
-    for mod in modificaciones:
-        txn_id = mod.get('transaction_id')
-        if not txn_id:
-            continue
-        
-        update_data = {}
-        if 'nueva_fecha' in mod:
-            update_data['fecha_transaccion'] = mod['nueva_fecha']
-        if 'nuevo_monto' in mod:
-            update_data['monto'] = mod['nuevo_monto']
-        
-        if update_data:
-            result = await db.transactions.update_one(
-                {'id': txn_id, 'company_id': company_id},
-                {'$set': update_data}
-            )
-            if result.modified_count > 0:
-                aplicadas += 1
+    try:
+        for mod in modificaciones:
+            txn_id = mod.get('transaction_id')
+            if not txn_id:
+                continue
 
-    # Registrar en auditor\u00eda
-    await audit_log(
-        company_id,
-        'Optimization',
-        optimization_id,
-        'APPLY',
-        current_user['id'],
-        datos_nuevos={'modificaciones_aplicadas': aplicadas}
-    )
+            # IDs del cache de Contalink \u2014 no existen en db.transactions
+            # Guardarlos como recomendaciones pendientes en db.optimization_applied
+            if txn_id.startswith('cache_ingreso_') or txn_id.startswith('cache_egreso_'):
+                await db.optimization_applied.insert_one({
+                    'company_id': company_id,
+                    'optimization_id': optimization_id,
+                    'transaction_id': txn_id,
+                    'tipo': mod.get('tipo', ''),
+                    'recomendacion': mod.get('razon', ''),
+                    'applied_at': datetime.now(timezone.utc).isoformat(),
+                    'user_id': current_user['id'],
+                    'status': 'recomendacion_pendiente',
+                })
+                aplicadas += 1
+                logger.info(f"[APPLY] recomendacion guardada: {txn_id}")
+                continue
+
+            update_data = {}
+            if 'nueva_fecha' in mod:
+                update_data['fecha_transaccion'] = mod['nueva_fecha']
+            if 'nuevo_monto' in mod:
+                update_data['monto'] = mod['nuevo_monto']
+
+            if update_data:
+                result = await db.transactions.update_one(
+                    {'id': txn_id, 'company_id': company_id},
+                    {'$set': update_data}
+                )
+                if result.modified_count > 0:
+                    aplicadas += 1
+                    logger.info(f"[APPLY] transacci\u00f3n actualizada: {txn_id}")
+                else:
+                    logger.warning(f"[APPLY] transacci\u00f3n no encontrada en DB: {txn_id}")
+
+        # Registrar en auditor\u00eda
+        await audit_log(
+            company_id,
+            'Optimization',
+            optimization_id,
+            'APPLY',
+            current_user['id'],
+            datos_nuevos={'modificaciones_aplicadas': aplicadas}
+        )
+
+    except Exception as e:
+        logger.error(f"[APPLY] Error inesperado: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error aplicando optimizaci\u00f3n: {str(e)}")
+
+    return {
+        'status': 'success',
+        'optimization_id': optimization_id,
+        'modificaciones_aplicadas': aplicadas,
+        'mejora_esperada': mejor_solucion.get('mejora_flujo_neto', 0),
+        'message': f'{aplicadas} modificaciones aplicadas correctamente'
+    }
