@@ -276,8 +276,8 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
         {/* Header */}
         <div style={S.header}>
           <div style={S.logoRow}>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <div style={S.logoMark}>T₦</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <img src="/taxnfin-logo.svg" alt="TaxnFin" style={{ width: 36, height: 36, borderRadius: 8, flexShrink: 0 }} />
               <div>
                 <div style={S.logoName}>TaxnFin</div>
                 <div style={S.logoSub}>Cashflow</div>
