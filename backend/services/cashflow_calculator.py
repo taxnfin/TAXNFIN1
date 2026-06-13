@@ -96,6 +96,16 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
          'receptor_nombre': 1, 'emisor_nombre': 1, 'estado_conciliacion': 1}
     ).to_list(5000)
 
+    logger.info(f"[CALC] Total CFDIs cargados: {len(cfdis)}")
+    junio_cfdis = [c for c in cfdis if '2026-06' in str(c.get('fecha_emision', '') or c.get('fecha', ''))]
+    logger.info(f"[CALC] CFDIs de junio: {len(junio_cfdis)}")
+    if junio_cfdis:
+        logger.info(
+            f"[CALC] Ejemplo CFDI junio: fecha_emision={junio_cfdis[0].get('fecha_emision')} "
+            f"fecha={junio_cfdis[0].get('fecha')} tipo={junio_cfdis[0].get('tipo_cfdi')} "
+            f"total={junio_cfdis[0].get('total')}"
+        )
+
     # ── Proyecciones manuales ──
     proyecciones = await db.transactions.find(
         {'company_id': company_id, 'es_proyeccion': True}, {'_id': 0}
@@ -202,6 +212,16 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
         week['flujo_neto'] = total_ingresos - total_egresos
 
         result.append(week)
+
+    for week in weeks:
+        fi = str(week.get('fecha_inicio', ''))[:10]
+        if '2026-06-15' <= fi <= '2026-06-22':
+            logger.info(
+                f"[CALC S25] fecha_inicio={fi} total_ingresos={week.get('total_ingresos', 0)} "
+                f"total_egresos={week.get('total_egresos', 0)} "
+                f"n_ingresos={len(week.get('ingresos_detalle', []))} "
+                f"n_egresos={len(week.get('egresos_detalle', []))}"
+            )
 
     def _set_tops(week: Dict) -> None:
         ing = week.get('ingresos_detalle', [])
