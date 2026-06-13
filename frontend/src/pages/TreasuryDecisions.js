@@ -87,8 +87,33 @@ export default function TreasuryDecisions() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Fix 2: sort + filter early so mesesDisponibles is ready before useState
+  const hoy = new Date().toISOString().slice(0, 10);
+  const calendarWeeks = ((data?.calendar?.weeks) || [])
+    .sort((a, b) => {
+      const fa = a.week_start || a.fecha_inicio || '';
+      const fb = b.week_start || b.fecha_inicio || '';
+      return fa.localeCompare(fb);
+    })
+    .filter(w => {
+      const weekStart = w.week_start || w.fecha_inicio || '';
+      const tieneDatos = (w.total_ingresos || 0) > 0 || (w.total_egresos || 0) > 0;
+      const esFutura = weekStart >= hoy;
+      return tieneDatos || esFutura;
+    });
+
+  // Fix 3: compute mesesDisponibles before useState so initial value is correct
+  const mesesDisponibles = [...new Set(
+    calendarWeeks.map(w => {
+      const fecha = new Date((w.week_start || w.fecha_inicio) + 'T00:00:00');
+      return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+    })
+  )].sort();
+
   const mesActual = new Date().toISOString().slice(0, 7);
-  const [mesSeleccionado, setMesSeleccionado] = useState(mesActual);
+  const [mesSeleccionado, setMesSeleccionado] = useState(
+    mesesDisponibles.includes(mesActual) ? mesActual : (mesesDisponibles[0] || mesActual)
+  );
 
   const loadData = useCallback(async () => {
     try {
@@ -139,8 +164,6 @@ export default function TreasuryDecisions() {
   const { alerts, recommendations, calendar, concentration_kpis, working_capital, cash_position } = data || {};
 
   // ── Calendario: filtrar por mes, conservar labels originales del backend (S1-S52) ──
-  const calendarWeeks = calendar?.weeks || [];
-
   const formatearMes = (mesStr) => {
     const [year, month] = mesStr.split('-');
     const nombre = new Date(year, month - 1, 1).toLocaleDateString('es-MX', {
@@ -149,20 +172,11 @@ export default function TreasuryDecisions() {
     return nombre.charAt(0).toUpperCase() + nombre.slice(1);
   };
 
-  const mesesDisponibles = [...new Set(
-    calendarWeeks.map(w => {
-      const fecha = new Date((w.week_start || w.fecha_inicio) + 'T00:00:00');
-      return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
-    })
-  )].sort();
-
+  // Fix 1: una semana pertenece al mes donde empieza — sin fin.setDate redundante
   const semanasFiltradas = calendarWeeks.filter(w => {
     const inicio = new Date((w.week_start || w.fecha_inicio) + 'T00:00:00');
-    const fin = new Date((w.week_end || w.fecha_fin || w.week_start) + 'T00:00:00');
-    fin.setDate(fin.getDate() + 6);
     const mesInicio = `${inicio.getFullYear()}-${String(inicio.getMonth() + 1).padStart(2, '0')}`;
-    const mesFin = `${fin.getFullYear()}-${String(fin.getMonth() + 1).padStart(2, '0')}`;
-    return mesInicio === mesSeleccionado || mesFin === mesSeleccionado;
+    return mesInicio === mesSeleccionado;
   });
 
   const categoryIcons = {
