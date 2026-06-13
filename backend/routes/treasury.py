@@ -402,19 +402,62 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
     """Get treasury calendar with fixed payments by category"""
     today = datetime.now(timezone.utc)
 
-    payments_count = await db.payments.count_documents({'company_id': company_id})
-    logger.info(f"[TREASURY CALENDAR] company_id={company_id} payments_en_db={payments_count}")
-
-    # Ver primeros 3 pagos
-    sample = await db.payments.find({'company_id': company_id}, {'_id': 0}).limit(3).to_list(3)
-    for p in sample:
-        logger.info(f"[TREASURY CALENDAR] pago sample: {p}")
-
-    # Get all pending payments
+    # Pagos pendientes (egresos)
     pending_payments = await db.payments.find(
-        {'company_id': company_id, 'tipo': 'pago', 'estatus': {'$in': ['pendiente', 'parcial']}},
+        {'company_id': company_id,
+         'tipo': 'pago',
+         'estatus': {'$in': ['pendiente', 'parcial']}},
         {'_id': 0}
     ).to_list(5000)
+
+    # Cobros pendientes (ingresos) — faltaba completamente
+    pending_cobros = await db.payments.find(
+        {'company_id': company_id,
+         'tipo': 'cobro',
+         'estatus': {'$in': ['pendiente', 'parcial']}},
+        {'_id': 0}
+    ).to_list(5000)
+
+    # Fallback: complementar con CFDIs si hay pocos pagos
+    if len(pending_payments) < 5:
+        cfdis_egreso = await db.cfdis.find(
+            {'company_id': company_id,
+             'tipo_cfdi': {'$in': ['E', 'egreso']},
+             'estado_conciliacion': {'$in': ['pendiente', 'sin_conciliar', None]}},
+            {'_id': 0}
+        ).to_list(1000)
+        for cfdi in cfdis_egreso:
+            pending_payments.append({
+                'id': cfdi.get('id'),
+                'concepto': cfdi.get('descripcion', cfdi.get('receptor_nombre', '')),
+                'monto': float(cfdi.get('total', 0)),
+                'saldo_pendiente': float(cfdi.get('total', 0)),
+                'fecha_vencimiento': cfdi.get('fecha_emision', ''),
+                'tipo': 'pago',
+                'estatus': 'pendiente',
+                'categoria': 'otros_pagos',
+                'fuente': 'cfdis',
+            })
+
+    if len(pending_cobros) < 5:
+        cfdis_ingreso = await db.cfdis.find(
+            {'company_id': company_id,
+             'tipo_cfdi': {'$in': ['I', 'ingreso']},
+             'estado_conciliacion': {'$in': ['pendiente', 'sin_conciliar', None]}},
+            {'_id': 0}
+        ).to_list(1000)
+        for cfdi in cfdis_ingreso:
+            pending_cobros.append({
+                'id': cfdi.get('id'),
+                'concepto': cfdi.get('descripcion', cfdi.get('emisor_nombre', '')),
+                'monto': float(cfdi.get('total', 0)),
+                'saldo_pendiente': float(cfdi.get('total', 0)),
+                'fecha_vencimiento': cfdi.get('fecha_emision', ''),
+                'tipo': 'cobro',
+                'estatus': 'pendiente',
+                'categoria': 'cobranza_programada',
+                'fuente': 'cfdis',
+            })
     
     # Categories to track
     categories = {
@@ -431,7 +474,7 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
     def categorize_payment(payment: dict) -> str:
         concepto = (payment.get('concepto', '') + ' ' + payment.get('beneficiario', '')).lower()
         for cat_id, cat_info in categories.items():
-            if cat_id == 'otros':
+            if cat_id in ('otros', 'cobranza_programada', 'pagos_programados'):
                 continue
             for keyword in cat_info['keywords']:
                 if keyword in concepto:
@@ -463,7 +506,7 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
                 if week_start.isoformat()[:10] <= due_date < week_end.isoformat()[:10]:
                     category = categorize_payment(payment)
                     amount = (payment.get('saldo_pendiente') or payment.get('monto', 0))
-                    
+
                     week_data['payments'][category].append({
                         "beneficiario": payment.get('beneficiario', 'N/A')[:30],
                         "monto": amount,
@@ -472,7 +515,21 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
                     week_data['totals'][category] += amount
                     week_data['total'] += amount
                     calendar['totals_by_category'][category] += amount
-        
+
+        for cobro in pending_cobros:
+            if cobro.get('fecha_vencimiento'):
+                due_date = cobro.get('fecha_vencimiento', '')[:10]
+                if week_start.isoformat()[:10] <= due_date < week_end.isoformat()[:10]:
+                    amount = (cobro.get('saldo_pendiente') or cobro.get('monto', 0))
+                    week_data['payments']['cobranza_programada'].append({
+                        "beneficiario": (cobro.get('beneficiario') or cobro.get('concepto') or 'N/A')[:30],
+                        "monto": amount,
+                        "fecha": due_date,
+                    })
+                    week_data['totals']['cobranza_programada'] += amount
+                    week_data['total'] += amount
+                    calendar['totals_by_category']['cobranza_programada'] += amount
+
         # Convert defaultdicts to regular dicts
         week_data['payments'] = dict(week_data['payments'])
         week_data['totals'] = dict(week_data['totals'])
