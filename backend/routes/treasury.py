@@ -10,6 +10,7 @@ import logging
 
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
+from services.cashflow_calculator import calcular_semanas_cashflow
 
 def safe_parse_date(date_str) -> datetime:
     """Parse date string ensuring timezone awareness"""
@@ -399,126 +400,61 @@ async def generate_recommendations(company_id: str, weeks_ahead: int) -> List[di
 
 
 async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
-    """Get treasury calendar — usa cashflow_weeks como estructura + CFDIs igual que Cash Flow"""
-
-    def _parse_date(val):
-        if not val:
-            return None
-        if hasattr(val, 'date'):
-            return val
-        try:
-            return datetime.fromisoformat(str(val).replace('Z', '+00:00'))
-        except Exception:
-            return None
-
-    # ── Semanas desde cashflow_weeks (misma estructura que el Cash Flow tab) ──
-    cf_weeks = await db.cashflow_weeks.find(
-        {'company_id': company_id}, {'_id': 0}
-    ).sort('fecha_inicio', 1).to_list(weeks_ahead)
-
-    # ── CFDIs (misma fuente que cashflow.py línea 99) ──
-    cfdis = await db.cfdis.find(
-        {'company_id': company_id},
-        {'_id': 0, 'tipo_cfdi': 1, 'total': 1, 'fecha_emision': 1,
-         'receptor_nombre': 1, 'emisor_nombre': 1, 'estado_conciliacion': 1}
-    ).to_list(5000)
-
-    # ── Proyecciones ──
-    proyecciones = await db.transactions.find(
-        {'company_id': company_id, 'es_proyeccion': True},
-        {'_id': 0}
-    ).to_list(500)
+    """Get treasury calendar — delega a calcular_semanas_cashflow (fuente única de verdad)."""
+    cashflow_weeks = await calcular_semanas_cashflow(company_id, weeks_ahead)
 
     total_cobros_global = 0.0
-    total_pagos_global  = 0.0
+    total_pagos_global = 0.0
 
     calendar_weeks = []
-    for i, week in enumerate(cf_weeks):
-        week_start_dt = _parse_date(week.get('fecha_inicio'))
-        week_end_dt   = _parse_date(week.get('fecha_fin'))
-        if not week_start_dt or not week_end_dt:
-            continue
-
-        ws = week_start_dt.strftime('%Y-%m-%d')
-        we = week_end_dt.strftime('%Y-%m-%d')
-
-        semana_cobros = []
-        semana_pagos  = []
-
-        # ── Calcular CFDIs en esta semana (igual que cashflow.py) ──
-        for cfdi in cfdis:
-            fecha_dt = _parse_date(cfdi.get('fecha_emision'))
-            if not fecha_dt:
-                continue
-            fecha_str = fecha_dt.strftime('%Y-%m-%d')
-            if not (ws <= fecha_str <= we):
-                continue
-            monto = float(cfdi.get('total', 0) or 0)
-            if monto <= 0:
-                continue
-            nombre = (cfdi.get('receptor_nombre') or cfdi.get('emisor_nombre') or 'Sin nombre')
-            item = {
-                'concepto': nombre,
-                'monto':    monto,
-                'estado':   cfdi.get('estado_conciliacion', ''),
-            }
-            if cfdi.get('tipo_cfdi') in ('I', 'ingreso'):
-                semana_cobros.append(item)
-            else:
-                semana_pagos.append(item)
-
-        # ── Proyecciones en esta semana ──
-        semana_proy_ing = [t for t in proyecciones
-                           if t.get('tipo_transaccion') == 'ingreso'
-                           and ws <= (t.get('fecha_transaccion', '') or '')[:10] <= we]
-        semana_proy_egr = [t for t in proyecciones
-                           if t.get('tipo_transaccion') == 'egreso'
-                           and ws <= (t.get('fecha_transaccion', '') or '')[:10] <= we]
-
-        total_cobros   = sum(c['monto'] for c in semana_cobros)
-        total_pagos    = sum(p['monto'] for p in semana_pagos)
-        total_proy_ing = sum(t.get('monto', 0) for t in semana_proy_ing)
-        total_proy_egr = sum(t.get('monto', 0) for t in semana_proy_egr)
+    for week in cashflow_weeks:
+        total_cobros = week.get('total_ingresos_reales', 0.0)
+        total_pagos = week.get('total_egresos_reales', 0.0)
+        total_proy_ing = week.get('total_ingresos_proyectados', 0.0)
+        total_proy_egr = week.get('total_egresos_proyectados', 0.0)
 
         total_cobros_global += total_cobros
-        total_pagos_global  += total_pagos
+        total_pagos_global += total_pagos
 
         calendar_weeks.append({
-            'label':      f'S{i + 1}',
-            'date_range': f'{week_start_dt.strftime("%d/%m")} - {week_end_dt.strftime("%d/%m")}',
-            'week_start': ws,
+            'label': week.get('label', ''),
+            'date_range': week.get('date_range', ''),
+            'week_start': week.get('week_start', ''),
             'numero_semana': week.get('numero_semana'),
             'payments': {
-                'cobranza_programada':  semana_cobros,
-                'pagos_programados':    semana_pagos,
-                'proyecciones_ingreso': [{'concepto': t.get('concepto', ''), 'monto': t.get('monto', 0)} for t in semana_proy_ing],
-                'proyecciones_egreso':  [{'concepto': t.get('concepto', ''), 'monto': t.get('monto', 0)} for t in semana_proy_egr],
+                'cobranza_programada': week.get('ingresos_detalle', []),
+                'pagos_programados': week.get('egresos_detalle', []),
+                'proyecciones_ingreso': week.get('proyecciones_ingreso', []),
+                'proyecciones_egreso': week.get('proyecciones_egreso', []),
             },
             'totals': {
-                'cobranza_programada':  total_cobros,
-                'pagos_programados':    total_pagos,
+                'cobranza_programada': total_cobros,
+                'pagos_programados': total_pagos,
                 'proyecciones_ingreso': total_proy_ing,
-                'proyecciones_egreso':  total_proy_egr,
+                'proyecciones_egreso': total_proy_egr,
             },
-            'total_ingresos': total_cobros + total_proy_ing,
-            'total_egresos':  total_pagos  + total_proy_egr,
-            'flujo_neto':     (total_cobros + total_proy_ing) - (total_pagos + total_proy_egr),
-            'total':          total_cobros + total_pagos + total_proy_ing + total_proy_egr,
+            'total_ingresos': week.get('total_ingresos', 0.0),
+            'total_egresos': week.get('total_egresos', 0.0),
+            'flujo_neto': week.get('flujo_neto', 0.0),
+            'total': week.get('total_ingresos', 0.0) + week.get('total_egresos', 0.0),
         })
+
+    total_proy_ing_global = sum(w.get('total_ingresos_proyectados', 0.0) for w in cashflow_weeks)
+    total_proy_egr_global = sum(w.get('total_egresos_proyectados', 0.0) for w in cashflow_weeks)
 
     return {
         'weeks': calendar_weeks,
         'categories': {
-            'cobranza_programada':  {'name': 'Cobranza Programada (CxC)', 'color': '#10B981', 'icon': '💰'},
-            'pagos_programados':    {'name': 'Pagos Programados (CxP)',   'color': '#EF4444', 'icon': '📋'},
-            'proyecciones_ingreso': {'name': 'Proyecciones Ingreso',      'color': '#3B82F6', 'icon': '📈'},
-            'proyecciones_egreso':  {'name': 'Proyecciones Egreso',       'color': '#F59E0B', 'icon': '📉'},
+            'cobranza_programada': {'name': 'Cobranza Programada (CxC)', 'color': '#10B981', 'icon': '💰'},
+            'pagos_programados': {'name': 'Pagos Programados (CxP)', 'color': '#EF4444', 'icon': '📋'},
+            'proyecciones_ingreso': {'name': 'Proyecciones Ingreso', 'color': '#3B82F6', 'icon': '📈'},
+            'proyecciones_egreso': {'name': 'Proyecciones Egreso', 'color': '#F59E0B', 'icon': '📉'},
         },
         'totals_by_category': {
-            'cobranza_programada':  total_cobros_global,
-            'pagos_programados':    total_pagos_global,
-            'proyecciones_ingreso': sum(t.get('monto', 0) for t in proyecciones if t.get('tipo_transaccion') == 'ingreso'),
-            'proyecciones_egreso':  sum(t.get('monto', 0) for t in proyecciones if t.get('tipo_transaccion') == 'egreso'),
+            'cobranza_programada': total_cobros_global,
+            'pagos_programados': total_pagos_global,
+            'proyecciones_ingreso': total_proy_ing_global,
+            'proyecciones_egreso': total_proy_egr_global,
         },
     }
 

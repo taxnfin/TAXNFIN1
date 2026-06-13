@@ -12,8 +12,8 @@ from openpyxl import Workbook
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
 from services.audit import audit_log
-from services.fx import get_fx_rate_by_date
 from services.cashflow import initialize_cashflow_weeks
+from services.cashflow_calculator import calcular_semanas_cashflow
 from services.cfdi_parser import parse_cfdi_xml
 from models.enums import UserRole, TransactionType, TransactionOrigin, BankTransactionType
 from models.transaction import CashFlowWeek, Transaction, TransactionCreate
@@ -30,120 +30,7 @@ async def get_cashflow_weeks(
     num_weeks: int = Query(13, ge=1, le=52, description="Número de semanas a mostrar (13-52)"),
 ):
     company_id = await get_active_company_id(request, current_user)
-    weeks = await db.cashflow_weeks.find({'company_id': company_id}, {'_id': 0}).sort('fecha_inicio', 1).to_list(num_weeks)
-
-    # If no weeks exist, generate them dynamically
-    if not weeks:
-        today = datetime.now(timezone.utc)
-        start_of_current_week = today - timedelta(days=today.weekday())
-
-        weeks = []
-        for i in range(num_weeks):
-            week_start = start_of_current_week + timedelta(weeks=i)
-            week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
-            weeks.append({
-                'id': str(uuid.uuid4()),
-                'company_id': company_id,
-                'año': week_start.year,
-                'numero_semana': week_start.isocalendar()[1],
-                'fecha_inicio': week_start,
-                'fecha_fin': week_end,
-                'total_ingresos_reales': 0,
-                'total_egresos_reales': 0,
-                'total_ingresos_proyectados': 0,
-                'total_egresos_proyectados': 0,
-                'saldo_inicial': 0,
-                'saldo_final_real': 0,
-                'saldo_final_proyectado': 0,
-                'created_at': today
-            })
-    
-    # Get FX rates for conversion
-    fx_rates = await db.fx_rates.find(
-        {'company_id': company_id},
-        {'_id': 0, 'moneda_origen': 1, 'moneda_destino': 1, 'tasa': 1}
-    ).sort('fecha_vigencia', -1).to_list(100)
-    
-    # Build FX rates map
-    fx_map = {'MXN': 1.0}
-    for rate in fx_rates:
-        if rate.get('moneda_destino') == 'MXN':
-            fx_map[rate['moneda_origen']] = rate['tasa']
-        elif rate.get('moneda_origen') == 'MXN':
-            fx_map[rate['moneda_destino']] = 1 / rate['tasa']
-    
-    if 'USD' not in fx_map:
-        fx_map['USD'] = 17.50
-    if 'EUR' not in fx_map:
-        fx_map['EUR'] = 19.00
-    
-    # Get initial balance from bank accounts with historical rates
-    bank_accounts = await db.bank_accounts.find({'company_id': company_id, 'activo': True}, {'_id': 0}).to_list(100)
-    saldo_inicial_total = 0.0
-    for acc in bank_accounts:
-        saldo = acc.get('saldo_inicial', 0)
-        moneda = acc.get('moneda', 'MXN')
-        fecha_saldo = acc.get('fecha_saldo')
-        
-        # Use historical rate if fecha_saldo is available
-        if fecha_saldo:
-            if isinstance(fecha_saldo, str):
-                fecha_saldo = datetime.fromisoformat(fecha_saldo.replace('Z', '+00:00'))
-            tasa = await get_fx_rate_by_date(company_id, moneda, fecha_saldo)
-        else:
-            tasa = fx_map.get(moneda, 1.0)
-        
-        saldo_inicial_total += saldo * tasa
-    
-    # Get CFDIs for calculating real inflows/outflows per week (5000 covers a full year)
-    cfdis = await db.cfdis.find({'company_id': company_id}, {'_id': 0}).to_list(5000)
-    
-    # Track running balance
-    running_balance = saldo_inicial_total
-    
-    for i, week in enumerate(weeks):
-        for field in ['fecha_inicio', 'fecha_fin', 'created_at']:
-            if isinstance(week.get(field), str):
-                week[field] = datetime.fromisoformat(week[field].replace('Z', '+00:00'))
-            # Ensure timezone aware
-            if week.get(field) and week[field].tzinfo is None:
-                week[field] = week[field].replace(tzinfo=timezone.utc)
-        
-        week_start = week['fecha_inicio']
-        week_end = week['fecha_fin']
-        
-        # Calculate from CFDIs
-        week_ingresos = 0
-        week_egresos = 0
-        for cfdi in cfdis:
-            cfdi_date = cfdi.get('fecha_emision')
-            if isinstance(cfdi_date, str):
-                cfdi_date = datetime.fromisoformat(cfdi_date.replace('Z', '+00:00'))
-            if cfdi_date and cfdi_date.tzinfo is None:
-                cfdi_date = cfdi_date.replace(tzinfo=timezone.utc)
-            
-            if cfdi_date and week_start <= cfdi_date <= week_end:
-                if cfdi.get('tipo_cfdi') == 'ingreso':
-                    week_ingresos += cfdi.get('total', 0)
-                else:
-                    week_egresos += cfdi.get('total', 0)
-        
-        week['total_ingresos_reales'] = week_ingresos
-        week['total_egresos_reales'] = week_egresos
-        week['total_ingresos_proyectados'] = 0
-        week['total_egresos_proyectados'] = 0
-        
-        # Set saldo_inicial from running balance
-        week['saldo_inicial'] = running_balance
-        
-        # Calculate saldo_final
-        week['saldo_final_real'] = week['saldo_inicial'] + week_ingresos - week_egresos
-        week['saldo_final_proyectado'] = week['saldo_final_real']
-        
-        # Update running balance for next week
-        running_balance = week['saldo_final_real']
-    
-    return weeks
+    return await calcular_semanas_cashflow(company_id, num_weeks)
 
 @router.post("/transactions", response_model=Transaction)
 async def create_transaction(transaction_data: TransactionCreate, request: Request, current_user: Dict = Depends(get_current_user)):

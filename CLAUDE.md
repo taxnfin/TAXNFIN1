@@ -75,6 +75,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **AI Categorization** (`routes/cfdi_operations.py`): Auto-categorizes CFDIs via OpenAI if confidence ≥ 70%.
 
+**AI Financial Analysis** (`services/ai_financial_analysis.py`): Claude API (Anthropic) via httpx — narrative financial summaries, trend interpretation. Also used by `routes/cashflow_kpi.py` to explain individual KPIs in business context.
+
+**Advanced Features** (`advanced_services.py` + `routes/advanced.py`): `PredictiveAnalysisService`, `AutoReconciliationService`, `AlertService` — ML-driven cash flow forecasting, automated bank reconciliation, configurable financial alerts.
+
+**Scenario Modeling** (`scenario_service.py` + `routes/scenarios.py`): `ScenarioAnalysisService` + `GeneticOptimizer` — what-if scenarios for the 13-week window, stress testing, genetic optimization via DEAP.
+
+**CxC/CxP Projections** (`routes/cxc_proyecciones.py`): Manual accounts-receivable / accounts-payable projections by week, separate from the main cashflow engine.
+
+**Integrations Hub** (`routes/integrations.py`): Manages connection records for ERP/bank integrations (Contalink, Alegra, Belvo). Stores credentials and sync state per `company_id`.
+
 **Cashflow Sync** (`routes/cashflow_sync_service.py`): Maps transactions from connected ERPs (Contalink ✅, Alegra ✅) to the 13-week cashflow model. Includes a default category catalog (`DEFAULT_CATEGORIES` with codes ING-001…ING-099, EGR-001…EGR-099).
 
 **FX Scheduler** (`fx_scheduler.py`): Daily at 9 AM & 1 PM Mexico City time (Banxico + OpenExchangeRates).
@@ -236,6 +246,25 @@ Key test files: `test_dashboard_advanced.py`, `test_categories_diot.py`, `test_a
 | `routes/bank_import.py` | Bank statement import from Excel (cols: `fecha_movimiento`, `descripcion`, `monto`) |
 | `routes/reports.py` | Dashboard data aggregation |
 | `routes/exports.py` | COI, SAT, Alegra, Excel export |
+| `routes/scenarios.py` | Scenario CRUD + genetic optimization triggers |
+| `routes/advanced.py` | AI predictive analysis, auto-reconciliation, alert management |
+| `routes/cashflow_kpi.py` | Claude API (Anthropic) KPI narrative interpretation |
+| `routes/cxc_proyecciones.py` | Manual CxC/CxP projections by week |
+| `routes/integrations.py` | ERP/bank integration connection management |
+| `routes/financial_statements.py` | Balance general + estado de resultados endpoints |
+| `routes/belvo.py` | Belvo open banking — account/transaction sync |
+| `routes/contalink.py` | Contalink base connection + transaction sync |
+| `routes/contalink_cxc_cxp.py` | Contalink CxC/CxP import |
+| `routes/payment_matching.py` | CFDI ↔ bank transaction payment matching |
+| `routes/notifications.py` | In-app notification management |
+| `routes/account_mappings.py` | Chart-of-accounts mapping between ERPs and internal categories |
+| `services/ai_financial_analysis.py` | Claude API financial narrative generation |
+| `services/kpi_alerts.py` | KPI threshold alerting logic |
+| `services/account_mapper.py` | ERP account code → internal category mapping |
+| `services/excel_report_generator.py` | Excel workbook export generation |
+| `services/banxico_fx.py` | Banxico FX rate fetching (MXN pairs) |
+| `advanced_services.py` | `PredictiveAnalysisService`, `AutoReconciliationService`, `AlertService` |
+| `scenario_service.py` | `ScenarioAnalysisService` — what-if modeling |
 | `genetic_optimizer.py` | Virtual CFO optimization (DEAP) |
 | `fx_scheduler.py` | Automated FX rate sync (9 AM & 1 PM MX) |
 | `design_guidelines.json` | Full UI/UX specifications |
