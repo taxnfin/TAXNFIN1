@@ -136,6 +136,10 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
             continue
         tipo = cfdi.get('tipo_cfdi', '')
         nombre = cfdi.get('receptor_nombre') or cfdi.get('emisor_nombre') or cfdi.get('concepto') or 'Sin nombre'
+        if '2026-06-15' <= fecha_str <= '2026-06-22':
+            logger.info(f"[CFDI_S25] fecha_str={fecha_str} monto={monto} tipo={tipo} nombre={nombre[:30]}")
+            semanas_match = [(w.get('fecha_inicio', '')[:10], w.get('fecha_fin', '')[:10]) for w in weeks if w.get('fecha_inicio', '')[:10] <= fecha_str <= w.get('fecha_fin', '')[:10]]
+            logger.info(f"[CFDI_S25] semanas que matchean: {semanas_match}")
         for week in weeks:
             fi = week.get('fecha_inicio', '')
             ff = week.get('fecha_fin', '')
