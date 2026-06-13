@@ -237,22 +237,25 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
                 fi = str(week.get('fecha_inicio', ''))[:10]
                 ff = str(week.get('fecha_fin', ''))[:10]
                 if fi <= fecha_estimada.isoformat() <= ff:
-                    item_norm = {
-                        'id': f"cxc_{nombre}_{fecha_estimada}",
-                        'concepto': nombre,
-                        'monto': monto,
-                        'fecha': fecha_estimada.isoformat(),
-                        'categoria': 'cobranza_programada' if tipo_movimiento == 'ingreso' else 'pagos_programados',
-                        'fuente': 'contalink_cache',
-                        'dias_vencido': dias_vencido,
-                    }
-                    if tipo_movimiento == 'ingreso':
-                        week.setdefault('ingresos_detalle', []).append(item_norm)
-                        week['total_ingresos'] = week.get('total_ingresos', 0) + monto
-                    else:
-                        week.setdefault('egresos_detalle', []).append(item_norm)
-                        week['total_egresos'] = week.get('total_egresos', 0) + monto
-                    week['flujo_neto'] = week.get('total_ingresos', 0) - week.get('total_egresos', 0)
+                    # Solo agregar si la semana NO tiene CFDIs reales
+                    tiene_cfdis = len(week.get('ingresos_detalle', [])) > 0 or len(week.get('egresos_detalle', [])) > 0
+                    if not tiene_cfdis:
+                        item_norm = {
+                            'id': f"cache_{nombre}_{fecha_estimada}",
+                            'concepto': nombre,
+                            'monto': monto,
+                            'fecha': fecha_estimada.isoformat(),
+                            'categoria': 'cobranza_programada' if tipo_movimiento == 'ingreso' else 'pagos_programados',
+                            'fuente': 'contalink_cache',
+                            'dias_vencido': dias_vencido,
+                        }
+                        if tipo_movimiento == 'ingreso':
+                            week.setdefault('ingresos_detalle', []).append(item_norm)
+                            week['total_ingresos'] = week.get('total_ingresos', 0) + monto
+                        else:
+                            week.setdefault('egresos_detalle', []).append(item_norm)
+                            week['total_egresos'] = week.get('total_egresos', 0) + monto
+                        week['flujo_neto'] = week.get('total_ingresos', 0) - week.get('total_egresos', 0)
                     break
 
     # ── Fuente 3: Transacciones reales ──
@@ -268,22 +271,25 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
             fi = str(week.get('fecha_inicio', ''))[:10]
             ff = str(week.get('fecha_fin', ''))[:10]
             if fi <= fecha_str <= ff:
-                item_norm = {
-                    'id': txn.get('id', ''),
-                    'concepto': txn.get('concepto', 'Sin nombre'),
-                    'monto': monto,
-                    'fecha': fecha_str,
-                    'categoria': txn.get('categoria', 'otros'),
-                    'fuente': 'transactions',
-                }
-                tipo = txn.get('tipo_transaccion', '')
-                if tipo == 'ingreso':
-                    week.setdefault('ingresos_detalle', []).append(item_norm)
-                    week['total_ingresos'] = week.get('total_ingresos', 0) + monto
-                else:
-                    week.setdefault('egresos_detalle', []).append(item_norm)
-                    week['total_egresos'] = week.get('total_egresos', 0) + monto
-                week['flujo_neto'] = week.get('total_ingresos', 0) - week.get('total_egresos', 0)
+                # Solo agregar si la semana NO tiene CFDIs reales
+                tiene_cfdis = len(week.get('ingresos_detalle', [])) > 0 or len(week.get('egresos_detalle', [])) > 0
+                if not tiene_cfdis:
+                    item_norm = {
+                        'id': txn.get('id', ''),
+                        'concepto': txn.get('concepto', 'Sin nombre'),
+                        'monto': monto,
+                        'fecha': fecha_str,
+                        'categoria': txn.get('categoria', 'otros'),
+                        'fuente': 'transactions',
+                    }
+                    tipo = txn.get('tipo_transaccion', '')
+                    if tipo == 'ingreso':
+                        week.setdefault('ingresos_detalle', []).append(item_norm)
+                        week['total_ingresos'] = week.get('total_ingresos', 0) + monto
+                    else:
+                        week.setdefault('egresos_detalle', []).append(item_norm)
+                        week['total_egresos'] = week.get('total_egresos', 0) + monto
+                    week['flujo_neto'] = week.get('total_ingresos', 0) - week.get('total_egresos', 0)
                 break
 
     # ── Recalcular tops después de agregar todas las fuentes ──
