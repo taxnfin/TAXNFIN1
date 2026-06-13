@@ -413,16 +413,13 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
             if monto <= 0:
                 continue
             dias_vencido = int(item.get('dias_vencido', 0) or 0)
-            if dias_vencido >= 91:
-                fecha_estimada = today + timedelta(days=30)
-            elif dias_vencido >= 61:
-                fecha_estimada = today + timedelta(days=21)
-            elif dias_vencido >= 31:
-                fecha_estimada = today + timedelta(days=14)
-            elif dias_vencido >= 1:
-                fecha_estimada = today + timedelta(days=7)
+            if dias_vencido >= 1:
+                # Ya vencido → S1 (atención inmediata)
+                fecha_estimada = today
             else:
-                fecha_estimada = today + timedelta(days=14)
+                # Por vencer → usar días reales restantes
+                dias_restantes = abs(dias_vencido) if dias_vencido < 0 else 14
+                fecha_estimada = today + timedelta(days=min(dias_restantes, 90))
             cobros_pendientes.append({
                 'concepto': item.get('nombre', 'Sin nombre'),
                 'monto': monto,
@@ -443,16 +440,13 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
             if monto <= 0:
                 continue
             dias_vencido = int(item.get('dias_vencido', 0) or 0)
-            if dias_vencido >= 91:
-                fecha_estimada = today + timedelta(days=30)
-            elif dias_vencido >= 61:
-                fecha_estimada = today + timedelta(days=21)
-            elif dias_vencido >= 31:
-                fecha_estimada = today + timedelta(days=14)
-            elif dias_vencido >= 1:
-                fecha_estimada = today + timedelta(days=7)
+            if dias_vencido >= 1:
+                # Ya vencido → S1 (atención inmediata)
+                fecha_estimada = today
             else:
-                fecha_estimada = today + timedelta(days=14)
+                # Por vencer → usar días reales restantes
+                dias_restantes = abs(dias_vencido) if dias_vencido < 0 else 14
+                fecha_estimada = today + timedelta(days=min(dias_restantes, 90))
             pagos_pendientes.append({
                 'concepto': item.get('nombre', 'Sin nombre'),
                 'monto': monto,
