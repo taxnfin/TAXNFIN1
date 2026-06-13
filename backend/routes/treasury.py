@@ -462,18 +462,6 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
         {'_id': 0}
     ).to_list(500)
 
-    # ── Diagnóstico temporal ──
-    logger.info(f"[CAL DEBUG] today={today} cobros={len(cobros_pendientes)} pagos={len(pagos_pendientes)}")
-    if cobros_pendientes:
-        logger.info(f"[CAL DEBUG] primer cobro: concepto={cobros_pendientes[0]['concepto']} fecha_estimada={cobros_pendientes[0]['fecha_estimada']} monto={cobros_pendientes[0]['monto']}")
-    if pagos_pendientes:
-        logger.info(f"[CAL DEBUG] primer pago: concepto={pagos_pendientes[0]['concepto']} fecha_estimada={pagos_pendientes[0]['fecha_estimada']} monto={pagos_pendientes[0]['monto']}")
-    week_start_s1 = today + timedelta(days=0)
-    week_end_s1 = today + timedelta(days=7)
-    s1_cobros = [c for c in cobros_pendientes if week_start_s1 <= c['fecha_estimada'] < week_end_s1]
-    s1_pagos  = [p for p in pagos_pendientes  if week_start_s1 <= p['fecha_estimada'] < week_end_s1]
-    logger.info(f"[CAL DEBUG] S1 ({week_start_s1} - {week_end_s1}): cobros={len(s1_cobros)} pagos={len(s1_pagos)}")
-
     # ── Asignar todo a semanas ──
     calendar_weeks = []
     for week_offset in range(weeks_ahead):
