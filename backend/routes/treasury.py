@@ -403,12 +403,8 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
     """Get treasury calendar — delega a calcular_semanas_cashflow (fuente única de verdad)."""
     cashflow_weeks = await calcular_semanas_cashflow(company_id, weeks_ahead)
 
-    # Solo semanas futuras (la semana actual incluida si su fecha_fin >= hoy)
-    today = datetime.now(timezone.utc).date()
-    cashflow_weeks = [
-        w for w in cashflow_weeks
-        if isinstance(w.get('fecha_fin'), datetime) and w['fecha_fin'].date() >= today
-    ][:52]
+    # Devolver todas las semanas (S1-S52), sin filtrar por fecha
+    cashflow_weeks = cashflow_weeks[:52]
 
     total_cobros_global = 0.0
     total_pagos_global = 0.0

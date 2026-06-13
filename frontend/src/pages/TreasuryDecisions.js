@@ -138,22 +138,28 @@ export default function TreasuryDecisions() {
 
   const { alerts, recommendations, calendar, concentration_kpis, working_capital, cash_position } = data || {};
 
-  // ── Calendario: renombrar desde S1 y filtrar por mes ──
+  // ── Calendario: filtrar por mes, conservar labels originales del backend (S1-S52) ──
   const calendarWeeks = calendar?.weeks || [];
-  const semanasRenombradas = calendarWeeks.map((week, index) => ({
-    ...week,
-    label: `S${index + 1}`,
-  }));
+
+  const formatearMes = (mesStr) => {
+    const [year, month] = mesStr.split('-');
+    const nombre = new Date(year, month - 1, 1).toLocaleDateString('es-MX', {
+      month: 'long', year: 'numeric',
+    });
+    return nombre.charAt(0).toUpperCase() + nombre.slice(1);
+  };
+
   const mesesDisponibles = [...new Set(
-    semanasRenombradas.map(w => {
-      const fecha = new Date(w.week_start || w.fecha_inicio);
+    calendarWeeks.map(w => {
+      const fecha = new Date((w.week_start || w.fecha_inicio) + 'T00:00:00');
       return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
     })
   )].sort();
-  const semanasFiltradas = semanasRenombradas.filter(w => {
-    const fecha = new Date(w.week_start || w.fecha_inicio);
-    const mesSemana = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
-    return mesSemana === mesSeleccionado;
+
+  const semanasFiltradas = calendarWeeks.filter(w => {
+    const fecha = new Date((w.week_start || w.fecha_inicio) + 'T00:00:00');
+    const mes = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+    return mes === mesSeleccionado;
   });
 
   const categoryIcons = {
@@ -380,23 +386,19 @@ export default function TreasuryDecisions() {
 
                   {/* Month selector */}
                   <div className="flex gap-2 flex-wrap">
-                    {mesesDisponibles.map(mes => {
-                      const [year, month] = mes.split('-');
-                      const label = new Date(year, month - 1).toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
-                      return (
-                        <button
-                          key={mes}
-                          onClick={() => setMesSeleccionado(mes)}
-                          className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                            mesSeleccionado === mes
-                              ? 'bg-[#0F172A] text-white'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                          }`}
-                        >
-                          {label.charAt(0).toUpperCase() + label.slice(1)}
-                        </button>
-                      );
-                    })}
+                    {mesesDisponibles.map(mes => (
+                      <button
+                        key={mes}
+                        onClick={() => setMesSeleccionado(mes)}
+                        className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                          mesSeleccionado === mes
+                            ? 'bg-[#0F172A] text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {formatearMes(mes)}
+                      </button>
+                    ))}
                   </div>
 
                   {/* Weekly Grid — semanas del mes seleccionado */}
@@ -473,8 +475,8 @@ export default function TreasuryDecisions() {
                                 )}
                               </div>
                             ) : (
-                              <div className="text-center text-gray-400 text-sm py-2">
-                                Sin pagos programados
+                              <div className="text-center text-gray-300 text-xs py-3">
+                                Sin movimientos
                               </div>
                             )}
                           </CardContent>
