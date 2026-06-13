@@ -174,6 +174,17 @@ export default function TreasuryDecisions() {
     otros: <FileText className="h-4 w-4" />
   };
 
+  // TEMP DIAG — eliminar después
+  console.log('Semanas disponibles:', calendarWeeks?.map(w => ({
+    label: w.label,
+    week_start: w.week_start,
+    fecha_inicio: w.fecha_inicio,
+    total_ingresos: w.total_ingresos,
+    total_egresos: w.total_egresos
+  })));
+  console.log('Mes seleccionado:', mesSeleccionado);
+  console.log('Semanas filtradas:', semanasFiltradas?.length);
+
   return (
     <div className="space-y-6" data-testid="treasury-decisions-page">
       {/* Header */}
