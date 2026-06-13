@@ -399,190 +399,135 @@ async def generate_recommendations(company_id: str, weeks_ahead: int) -> List[di
 
 
 async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
-    """Get treasury calendar with fixed payments by category"""
-    today = datetime.now(timezone.utc)
+    """Get treasury calendar — fuentes: CxC/CxP Aging cache + proyecciones"""
+    today = datetime.now(timezone.utc).date()
 
-    # Pagos pendientes (egresos)
-    pending_payments = await db.payments.find(
-        {'company_id': company_id,
-         'tipo': 'pago',
-         'estatus': {'$in': ['pendiente', 'parcial']}},
-        {'_id': 0}
-    ).to_list(5000)
-
-    # Cobros pendientes (ingresos) — faltaba completamente
-    pending_cobros = await db.payments.find(
-        {'company_id': company_id,
-         'tipo': 'cobro',
-         'estatus': {'$in': ['pendiente', 'parcial']}},
-        {'_id': 0}
-    ).to_list(5000)
-
-    # Fallback: complementar con CFDIs si hay pocos pagos
-    if len(pending_payments) < 5:
-        cfdis_egreso = await db.cfdis.find(
-            {'company_id': company_id,
-             'tipo_cfdi': {'$in': ['E', 'egreso']},
-             'estado_conciliacion': {'$in': ['pendiente', 'sin_conciliar', None]}},
-            {'_id': 0}
-        ).to_list(1000)
-        for cfdi in cfdis_egreso:
-            pending_payments.append({
-                'id': cfdi.get('id'),
-                'concepto': cfdi.get('descripcion', cfdi.get('receptor_nombre', '')),
-                'monto': float(cfdi.get('total', 0)),
-                'saldo_pendiente': float(cfdi.get('total', 0)),
-                'fecha_vencimiento': cfdi.get('fecha_emision', ''),
-                'tipo': 'pago',
-                'estatus': 'pendiente',
-                'categoria': 'otros_pagos',
-                'fuente': 'cfdis',
-            })
-
-    if len(pending_cobros) < 5:
-        cfdis_ingreso = await db.cfdis.find(
-            {'company_id': company_id,
-             'tipo_cfdi': {'$in': ['I', 'ingreso']},
-             'estado_conciliacion': {'$in': ['pendiente', 'sin_conciliar', None]}},
-            {'_id': 0}
-        ).to_list(1000)
-        for cfdi in cfdis_ingreso:
-            pending_cobros.append({
-                'id': cfdi.get('id'),
-                'concepto': cfdi.get('descripcion', cfdi.get('emisor_nombre', '')),
-                'monto': float(cfdi.get('total', 0)),
-                'saldo_pendiente': float(cfdi.get('total', 0)),
-                'fecha_vencimiento': cfdi.get('fecha_emision', ''),
-                'tipo': 'cobro',
-                'estatus': 'pendiente',
-                'categoria': 'cobranza_programada',
-                'fuente': 'cfdis',
-            })
-    
-    # Categories to track
-    categories = {
-        "nomina": {"name": "Nómina", "icon": "👥", "keywords": ["nomina", "nómina", "sueldos", "salario", "payroll"]},
-        "impuestos": {"name": "Impuestos", "icon": "🏛️", "keywords": ["iva", "isr", "isn", "imss", "infonavit", "impuesto", "sat", "tax"]},
-        "creditos": {"name": "Créditos", "icon": "🏦", "keywords": ["credito", "crédito", "prestamo", "préstamo", "bank", "banco", "financ"]},
-        "rentas": {"name": "Rentas", "icon": "🏢", "keywords": ["renta", "arrendamiento", "alquiler", "rent", "lease"]},
-        "servicios": {"name": "Servicios Fijos", "icon": "⚡", "keywords": ["luz", "agua", "gas", "telefono", "internet", "cfe", "telmex"]},
-        "otros": {"name": "Otros Pagos", "icon": "📋", "keywords": []},
-        "cobranza_programada": {"name": "Cobranza Programada", "color": "#10B981", "icon": "💰", "keywords": []},
-        "pagos_programados": {"name": "Pagos Programados", "color": "#EF4444", "icon": "📋", "keywords": []},
-    }
-    
-    def categorize_payment(payment: dict) -> str:
-        concepto = (payment.get('concepto', '') + ' ' + payment.get('beneficiario', '')).lower()
-        for cat_id, cat_info in categories.items():
-            if cat_id in ('otros', 'cobranza_programada', 'pagos_programados'):
-                continue
-            for keyword in cat_info['keywords']:
-                if keyword in concepto:
-                    return cat_id
-        return 'otros'
-    
-    # Build calendar by week and category
-    calendar = {
-        "weeks": [],
-        "categories": categories,
-        "totals_by_category": defaultdict(float)
-    }
-    
-    for week_offset in range(weeks_ahead):
-        week_start = today + timedelta(weeks=week_offset)
-        week_end = week_start + timedelta(days=7)
-        
-        week_data = {
-            "label": get_week_label(week_offset),
-            "date_range": f"{week_start.strftime('%d/%m')} - {week_end.strftime('%d/%m')}",
-            "payments": defaultdict(list),
-            "totals": defaultdict(float),
-            "total": 0
-        }
-        
-        for payment in pending_payments:
-            if payment.get('fecha_vencimiento'):
-                due_date = payment.get('fecha_vencimiento', '')[:10]
-                if week_start.isoformat()[:10] <= due_date < week_end.isoformat()[:10]:
-                    category = categorize_payment(payment)
-                    amount = (payment.get('saldo_pendiente') or payment.get('monto', 0))
-
-                    week_data['payments'][category].append({
-                        "beneficiario": payment.get('beneficiario', 'N/A')[:30],
-                        "monto": amount,
-                        "fecha": due_date
-                    })
-                    week_data['totals'][category] += amount
-                    week_data['total'] += amount
-                    calendar['totals_by_category'][category] += amount
-
-        for cobro in pending_cobros:
-            if cobro.get('fecha_vencimiento'):
-                due_date = cobro.get('fecha_vencimiento', '')[:10]
-                if week_start.isoformat()[:10] <= due_date < week_end.isoformat()[:10]:
-                    amount = (cobro.get('saldo_pendiente') or cobro.get('monto', 0))
-                    week_data['payments']['cobranza_programada'].append({
-                        "beneficiario": (cobro.get('beneficiario') or cobro.get('concepto') or 'N/A')[:30],
-                        "monto": amount,
-                        "fecha": due_date,
-                    })
-                    week_data['totals']['cobranza_programada'] += amount
-                    week_data['total'] += amount
-                    calendar['totals_by_category']['cobranza_programada'] += amount
-
-        # Convert defaultdicts to regular dicts
-        week_data['payments'] = dict(week_data['payments'])
-        week_data['totals'] = dict(week_data['totals'])
-        
-        calendar['weeks'].append(week_data)
-    
-    # Fallback: cargar CxC y CxP del cache de Contalink
-    today_date = today.date()
-    for cache_key, categoria in [
-        (f"cxc_{company_id}_latest", "cobranza_programada"),
-        (f"cxp_{company_id}_latest", "pagos_programados"),
-    ]:
-        cache_doc = await db.contalink_cache.find_one({'key': cache_key})
-        if not cache_doc:
-            continue
-        raw = cache_doc.get('data', {})
+    # ── FUENTE 1: CxC del Aging (cobranza pendiente) ──
+    cxc_doc = await db.contalink_cache.find_one({'key': f'cxc_{company_id}_latest'})
+    cobros_pendientes = []
+    if cxc_doc:
+        raw = cxc_doc.get('data', {})
         items = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
         for item in items:
             monto = float(item.get('saldo_pendiente') or item.get('saldo') or item.get('total') or 0)
             if monto <= 0:
                 continue
-            nombre = (item.get('nombre') or item.get('razon_social') or
-                      item.get('cliente') or item.get('proveedor') or 'Sin nombre')
             dias_vencido = int(item.get('dias_vencido', 0) or 0)
-            if dias_vencido > 30:
-                fecha_estimada = today_date
-            elif dias_vencido > 0:
-                fecha_estimada = today_date + timedelta(days=7)
+            if dias_vencido >= 91:
+                fecha_estimada = today + timedelta(days=30)
+            elif dias_vencido >= 61:
+                fecha_estimada = today + timedelta(days=21)
+            elif dias_vencido >= 31:
+                fecha_estimada = today + timedelta(days=14)
+            elif dias_vencido >= 1:
+                fecha_estimada = today + timedelta(days=7)
             else:
-                dias_restantes = abs(dias_vencido) if dias_vencido < 0 else 14
-                fecha_estimada = today_date + timedelta(days=min(dias_restantes, 90))
-            fecha_str = fecha_estimada.isoformat()
-            for week_offset in range(weeks_ahead):
-                week_start = today + timedelta(weeks=week_offset)
-                week_end = week_start + timedelta(days=7)
-                if week_start.isoformat()[:10] <= fecha_str < week_end.isoformat()[:10]:
-                    wd = calendar['weeks'][week_offset]
-                    wd['payments'].setdefault(categoria, []).append({
-                        'beneficiario': nombre[:30],
-                        'monto': monto,
-                        'fecha': fecha_str,
-                        'dias_vencido': dias_vencido,
-                        'fuente': 'contalink_cache',
-                        'es_proyeccion': True,
-                    })
-                    wd['totals'][categoria] = wd['totals'].get(categoria, 0) + monto
-                    wd['total'] += monto
-                    calendar['totals_by_category'][categoria] += monto
-                    break
+                fecha_estimada = today + timedelta(days=14)
+            cobros_pendientes.append({
+                'concepto': item.get('nombre', 'Sin nombre'),
+                'monto': monto,
+                'fecha_estimada': fecha_estimada,
+                'tipo': 'cobro',
+                'categoria': 'cobranza_programada',
+                'dias_vencido': dias_vencido,
+            })
 
-    calendar['totals_by_category'] = dict(calendar['totals_by_category'])
+    # ── FUENTE 2: CxP del Aging (pagos pendientes) ──
+    cxp_doc = await db.contalink_cache.find_one({'key': f'cxp_{company_id}_latest'})
+    pagos_pendientes = []
+    if cxp_doc:
+        raw = cxp_doc.get('data', {})
+        items = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
+        for item in items:
+            monto = float(item.get('saldo_pendiente') or item.get('saldo') or item.get('total') or 0)
+            if monto <= 0:
+                continue
+            dias_vencido = int(item.get('dias_vencido', 0) or 0)
+            if dias_vencido >= 91:
+                fecha_estimada = today + timedelta(days=30)
+            elif dias_vencido >= 61:
+                fecha_estimada = today + timedelta(days=21)
+            elif dias_vencido >= 31:
+                fecha_estimada = today + timedelta(days=14)
+            elif dias_vencido >= 1:
+                fecha_estimada = today + timedelta(days=7)
+            else:
+                fecha_estimada = today + timedelta(days=14)
+            pagos_pendientes.append({
+                'concepto': item.get('nombre', 'Sin nombre'),
+                'monto': monto,
+                'fecha_estimada': fecha_estimada,
+                'tipo': 'pago',
+                'categoria': 'pagos_programados',
+                'dias_vencido': dias_vencido,
+            })
 
-    return calendar
+    # ── FUENTE 3: Proyecciones del Cash Flow ──
+    proyecciones = await db.transactions.find(
+        {'company_id': company_id, 'es_proyeccion': True},
+        {'_id': 0}
+    ).to_list(500)
+
+    # ── Asignar todo a semanas ──
+    calendar_weeks = []
+    for week_offset in range(weeks_ahead):
+        week_start = today + timedelta(weeks=week_offset)
+        week_end = week_start + timedelta(days=7)
+
+        semana_cobros = [c for c in cobros_pendientes if week_start <= c['fecha_estimada'] < week_end]
+        semana_pagos  = [p for p in pagos_pendientes  if week_start <= p['fecha_estimada'] < week_end]
+        semana_proy   = [
+            t for t in proyecciones
+            if week_start.isoformat() <= (t.get('fecha_transaccion', '') or '')[:10] < week_end.isoformat()
+        ]
+
+        total_cobros   = sum(c['monto'] for c in semana_cobros)
+        total_pagos    = sum(p['monto'] for p in semana_pagos)
+        total_proy_ing = sum(t['monto'] for t in semana_proy if t.get('tipo_transaccion') == 'ingreso')
+        total_proy_egr = sum(t['monto'] for t in semana_proy if t.get('tipo_transaccion') == 'egreso')
+
+        calendar_weeks.append({
+            'label': f'S{week_offset + 1}',
+            'date_range': f'{week_start.strftime("%d/%m")} - {week_end.strftime("%d/%m")}',
+            'week_start': week_start.isoformat(),
+            'payments': {
+                'cobranza_programada': semana_cobros,
+                'pagos_programados': semana_pagos,
+                'proyecciones_ingreso': [
+                    {'concepto': t.get('concepto', ''), 'monto': t['monto']}
+                    for t in semana_proy if t.get('tipo_transaccion') == 'ingreso'
+                ],
+                'proyecciones_egreso': [
+                    {'concepto': t.get('concepto', ''), 'monto': t['monto']}
+                    for t in semana_proy if t.get('tipo_transaccion') == 'egreso'
+                ],
+            },
+            'totals': {
+                'cobranza_programada': total_cobros,
+                'pagos_programados': total_pagos,
+                'proyecciones_ingreso': total_proy_ing,
+                'proyecciones_egreso': total_proy_egr,
+            },
+            'total_ingresos': total_cobros + total_proy_ing,
+            'total_egresos':  total_pagos  + total_proy_egr,
+            'flujo_neto': (total_cobros + total_proy_ing) - (total_pagos + total_proy_egr),
+        })
+
+    return {
+        'weeks': calendar_weeks,
+        'categories': {
+            'cobranza_programada': {'name': 'Cobranza Programada (CxC)', 'color': '#10B981', 'icon': '💰'},
+            'pagos_programados':   {'name': 'Pagos Programados (CxP)',   'color': '#EF4444', 'icon': '📋'},
+            'proyecciones_ingreso': {'name': 'Proyecciones Ingreso',     'color': '#3B82F6', 'icon': '📈'},
+            'proyecciones_egreso':  {'name': 'Proyecciones Egreso',      'color': '#F59E0B', 'icon': '📉'},
+        },
+        'totals_by_category': {
+            'cobranza_programada':  sum(c['monto'] for c in cobros_pendientes),
+            'pagos_programados':    sum(p['monto'] for p in pagos_pendientes),
+            'proyecciones_ingreso': sum(t['monto'] for t in proyecciones if t.get('tipo_transaccion') == 'ingreso'),
+            'proyecciones_egreso':  sum(t['monto'] for t in proyecciones if t.get('tipo_transaccion') == 'egreso'),
+        },
+    }
 
 
 async def calculate_concentration_kpis(company_id: str) -> dict:
