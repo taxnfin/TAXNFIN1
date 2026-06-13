@@ -401,7 +401,15 @@ async def generate_recommendations(company_id: str, weeks_ahead: int) -> List[di
 async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
     """Get treasury calendar with fixed payments by category"""
     today = datetime.now(timezone.utc)
-    
+
+    payments_count = await db.payments.count_documents({'company_id': company_id})
+    logger.info(f"[TREASURY CALENDAR] company_id={company_id} payments_en_db={payments_count}")
+
+    # Ver primeros 3 pagos
+    sample = await db.payments.find({'company_id': company_id}, {'_id': 0}).limit(3).to_list(3)
+    for p in sample:
+        logger.info(f"[TREASURY CALENDAR] pago sample: {p}")
+
     # Get all pending payments
     pending_payments = await db.payments.find(
         {'company_id': company_id, 'tipo': 'pago', 'estatus': {'$in': ['pendiente', 'parcial']}},
