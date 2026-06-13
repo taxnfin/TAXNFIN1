@@ -3,6 +3,7 @@
 Used by both /cashflow/weeks and /treasury/calendar to guarantee identical numbers.
 """
 import logging
+import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Optional
@@ -108,42 +109,34 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
          'fecha_transaccion': 1, 'tipo_transaccion': 1, 'categoria': 1}
     ).to_list(2000)
 
+    def _to_date_str(val) -> str:
+        if not val:
+            return ''
+        if isinstance(val, datetime):
+            return val.strftime('%Y-%m-%d')
+        if isinstance(val, date):
+            return val.strftime('%Y-%m-%d')
+        m = re.search(r'(\d{4}-\d{2}-\d{2})', str(val))
+        return m.group(1) if m else ''
+
     # ── Normalizar fechas de semanas a YYYY-MM-DD string ──
     for week in weeks:
-        fi_raw = week.get('fecha_inicio', '')
-        ff_raw = week.get('fecha_fin', '')
-        week['fecha_inicio'] = str(fi_raw)[:10] if fi_raw else ''
-        week['fecha_fin'] = str(ff_raw)[:10] if ff_raw else ''
+        week['_fi'] = week['fecha_inicio'] = _to_date_str(week.get('fecha_inicio'))
+        week['_ff'] = week['fecha_fin'] = _to_date_str(week.get('fecha_fin'))
 
-    # ── Fuente 1: distribuir CFDIs en semanas por comparación de strings ──
+    # ── Fuente 1: distribuir CFDIs en semanas ──
     for cfdi in cfdis:
-        fecha_raw = cfdi.get('fecha_emision') or cfdi.get('fecha', '')
-        if not fecha_raw:
-            continue
-        try:
-            if isinstance(fecha_raw, str):
-                fecha_str = fecha_raw[:10]
-            elif hasattr(fecha_raw, 'date'):
-                fecha_str = fecha_raw.date().isoformat()
-            elif hasattr(fecha_raw, 'isoformat'):
-                fecha_str = fecha_raw.isoformat()[:10]
-            else:
-                fecha_str = str(fecha_raw)[:10]
-        except Exception:
+        fecha_str = _to_date_str(cfdi.get('fecha_emision') or cfdi.get('fecha'))
+        if not fecha_str:
             continue
         monto = float(cfdi.get('total', 0) or 0)
         if monto <= 0:
             continue
-        tipo = cfdi.get('tipo_cfdi', '')
-        nombre = cfdi.get('receptor_nombre') or cfdi.get('emisor_nombre') or cfdi.get('concepto') or 'Sin nombre'
-        if '2026-06-15' <= fecha_str <= '2026-06-22':
-            logger.info(f"[CFDI_S25] fecha_str={fecha_str} monto={monto} tipo={tipo} nombre={nombre[:30]}")
-            semanas_match = [(w.get('fecha_inicio', '')[:10], w.get('fecha_fin', '')[:10]) for w in weeks if w.get('fecha_inicio', '')[:10] <= fecha_str <= w.get('fecha_fin', '')[:10]]
-            logger.info(f"[CFDI_S25] semanas que matchean: {semanas_match}")
+        tipo = str(cfdi.get('tipo_cfdi', '') or '').strip().upper()
+        nombre = (cfdi.get('receptor_nombre') or cfdi.get('emisor_nombre') or
+                  cfdi.get('concepto') or 'Sin nombre')
         for week in weeks:
-            fi = week.get('fecha_inicio', '')
-            ff = week.get('fecha_fin', '')
-            if fi <= fecha_str <= ff:
+            if week['_fi'] <= fecha_str <= week['_ff']:
                 item = {
                     'id': cfdi.get('id', ''),
                     'concepto': nombre,
@@ -152,10 +145,10 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
                     'categoria': cfdi.get('categoria', 'otros'),
                     'fuente': 'cfdis',
                 }
-                if tipo in ('I', 'ingreso'):
+                if tipo in ('I', 'INGRESO'):
                     week.setdefault('ingresos_detalle', []).append(item)
                     week['total_ingresos'] = week.get('total_ingresos', 0) + monto
-                else:
+                elif tipo in ('E', 'EGRESO'):
                     week.setdefault('egresos_detalle', []).append(item)
                     week['total_egresos'] = week.get('total_egresos', 0) + monto
                 week['flujo_neto'] = week.get('total_ingresos', 0) - week.get('total_egresos', 0)
