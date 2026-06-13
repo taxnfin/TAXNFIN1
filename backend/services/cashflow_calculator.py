@@ -4,7 +4,7 @@ Used by both /cashflow/weeks and /treasury/calendar to guarantee identical numbe
 """
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from core.database import db
@@ -26,28 +26,34 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
         {'company_id': company_id}, {'_id': 0}
     ).sort('fecha_inicio', 1).to_list(num_weeks)
 
-    if not weeks:
-        today = datetime.now(timezone.utc)
-        start_of_week = today - timedelta(days=today.weekday())
-        weeks = []
-        for i in range(num_weeks):
-            week_start = start_of_week + timedelta(weeks=i)
-            week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
+    if len(weeks) < num_weeks:
+        if weeks:
+            ultima = weeks[-1]
+            fecha_raw = ultima.get('fecha_fin') or ultima.get('fecha_inicio')
+            if isinstance(fecha_raw, str):
+                ultima_fecha = date.fromisoformat(fecha_raw[:10])
+            elif hasattr(fecha_raw, 'date'):
+                ultima_fecha = fecha_raw.date()
+            else:
+                ultima_fecha = date.today()
+            numero_inicial = int(ultima.get('numero_semana', len(weeks))) + 1
+            next_start = ultima_fecha + timedelta(days=1)
+        else:
+            today_d = date.today()
+            next_start = today_d - timedelta(days=today_d.weekday())
+            numero_inicial = 1
+
+        for i in range(num_weeks - len(weeks)):
+            week_start = next_start + timedelta(weeks=i)
+            week_end = week_start + timedelta(days=6)
             weeks.append({
                 'id': str(uuid.uuid4()),
                 'company_id': company_id,
-                'año': week_start.year,
-                'numero_semana': week_start.isocalendar()[1],
-                'fecha_inicio': week_start,
-                'fecha_fin': week_end,
-                'total_ingresos_reales': 0,
-                'total_egresos_reales': 0,
-                'total_ingresos_proyectados': 0,
-                'total_egresos_proyectados': 0,
+                'numero_semana': numero_inicial + i,
+                'fecha_inicio': week_start.isoformat(),
+                'fecha_fin': week_end.isoformat(),
                 'saldo_inicial': 0,
-                'saldo_final_real': 0,
-                'saldo_final_proyectado': 0,
-                'created_at': today,
+                'es_generada': True,
             })
 
     # ── FX rates ──
