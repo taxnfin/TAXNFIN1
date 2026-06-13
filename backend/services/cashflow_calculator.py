@@ -176,7 +176,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
         running_balance = week['saldo_final_real']
 
         # ── Treasury calendar extras (ignored by CashFlowWeek response_model) ──
-        week['label'] = f'S{i + 1}'
+        week['label'] = f"S{week.get('numero_semana', i + 1)}"
         week['date_range'] = f'{week_start.strftime("%d/%m")} - {week_end.strftime("%d/%m")}'
         week['week_start'] = ws
         week['ingresos_detalle'] = semana_cobros

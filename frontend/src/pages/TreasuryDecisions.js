@@ -87,20 +87,22 @@ export default function TreasuryDecisions() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  // Fix 2: sort + filter early so mesesDisponibles is ready before useState
+  // Fix 2: normalizar week_start a string ISO antes de comparar (puede llegar como datetime)
   const hoy = new Date().toISOString().slice(0, 10);
-  const calendarWeeks = ((data?.calendar?.weeks) || [])
+  const calendarWeeks = (data?.calendar?.weeks || [])
     .sort((a, b) => {
-      const fa = a.week_start || a.fecha_inicio || '';
-      const fb = b.week_start || b.fecha_inicio || '';
+      const fa = String(a.week_start || a.fecha_inicio || '');
+      const fb = String(b.week_start || b.fecha_inicio || '');
       return fa.localeCompare(fb);
     })
     .filter(w => {
-      const weekStart = w.week_start || w.fecha_inicio || '';
+      const weekStart = String(w.week_start || w.fecha_inicio || '').slice(0, 10);
       const tieneDatos = (w.total_ingresos || 0) > 0 || (w.total_egresos || 0) > 0;
       const esFutura = weekStart >= hoy;
       return tieneDatos || esFutura;
     });
+  // TEMP DIAG — eliminar después
+  console.log('calendarWeeks sample:', calendarWeeks.slice(0, 3));
 
   // Fix 3: compute mesesDisponibles before useState so initial value is correct
   const mesesDisponibles = [...new Set(
