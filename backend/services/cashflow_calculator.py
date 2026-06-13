@@ -13,7 +13,7 @@ from services.fx import get_fx_rate_by_date
 logger = logging.getLogger(__name__)
 
 
-async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 16) -> List[Dict]:
+async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> List[Dict]:
     """
     Calcula semanas de cashflow con ingresos/egresos reales (CFDIs) y proyecciones.
 

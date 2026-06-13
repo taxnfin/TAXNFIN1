@@ -87,11 +87,13 @@ export default function TreasuryDecisions() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const mesActual = new Date().toISOString().slice(0, 7);
+  const [mesSeleccionado, setMesSeleccionado] = useState(mesActual);
 
   const loadData = useCallback(async () => {
     try {
       // Usar /treasury/dashboard — calcula todo correctamente en el backend
-      const dashRes = await api.get('/treasury/dashboard?weeks_ahead=16');
+      const dashRes = await api.get('/treasury/dashboard?weeks_ahead=52');
       const dash = dashRes.data || {};
 
       const cash_position = dash.cash_position || {
@@ -135,6 +137,24 @@ export default function TreasuryDecisions() {
   }
 
   const { alerts, recommendations, calendar, concentration_kpis, working_capital, cash_position } = data || {};
+
+  // ── Calendario: renombrar desde S1 y filtrar por mes ──
+  const calendarWeeks = calendar?.weeks || [];
+  const semanasRenombradas = calendarWeeks.map((week, index) => ({
+    ...week,
+    label: `S${index + 1}`,
+  }));
+  const mesesDisponibles = [...new Set(
+    semanasRenombradas.map(w => {
+      const fecha = new Date(w.week_start || w.fecha_inicio);
+      return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+    })
+  )].sort();
+  const semanasFiltradas = semanasRenombradas.filter(w => {
+    const fecha = new Date(w.week_start || w.fecha_inicio);
+    const mesSemana = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+    return mesSemana === mesSeleccionado;
+  });
 
   const categoryIcons = {
     nomina: <Users className="h-4 w-4" />,
@@ -358,87 +378,114 @@ export default function TreasuryDecisions() {
                     ))}
                   </div>
 
-                  {/* Weekly Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    {calendar.weeks.slice(0, 16).map((week, idx) => (
-                      <Card key={idx} className={`${week.total > 0 ? 'border-orange-200' : 'border-gray-100'}`}>
-                        <CardHeader className="pb-2">
-                          <div className="flex items-center justify-between">
-                            <CardTitle className="text-sm font-bold">{week.label}</CardTitle>
-                            <span className="text-xs text-gray-500">{week.date_range}</span>
-                          </div>
-                          {week.total > 0 && (
-                            <div className="text-lg font-bold text-red-600">
-                              -{formatCurrency(week.total)}
-                            </div>
-                          )}
-                        </CardHeader>
-                        <CardContent className="pt-0">
-                          {week.total > 0 ? (
-                            <div className="space-y-2">
-                              {Object.entries(week.totals).map(([cat, amount]) => (
-                                amount > 0 && (
-                                  <div key={cat} className="flex items-center justify-between text-sm">
-                                    <div className="flex items-center gap-1">
-                                      {categoryIcons[cat]}
-                                      <span className="text-gray-600">
-                                        {calendar.categories?.[cat]?.name || cat}
-                                      </span>
-                                    </div>
-                                    <span className="font-medium">{formatCurrency(amount)}</span>
-                                  </div>
-                                )
-                              ))}
-
-                              {/* Top cobros */}
-                              {week.payments?.cobranza_programada?.length > 0 && (
-                                <div className="mt-2 pt-2 border-t border-gray-100">
-                                  <p className="text-xs font-semibold text-[#10B981] mb-1">📥 Top Cobros:</p>
-                                  {(week.top_ingresos || week.payments.cobranza_programada)
-                                    .slice(0, 3)
-                                    .map((item, i) => (
-                                      <div key={i} className="flex justify-between text-xs text-gray-600 py-0.5">
-                                        <span className="truncate max-w-[60%]">{item.concepto || item.nombre || 'Sin nombre'}</span>
-                                        <span className="font-medium text-[#10B981]">
-                                          ${(item.monto || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  {week.payments.cobranza_programada.length > 3 && (
-                                    <p className="text-xs text-gray-400">+{week.payments.cobranza_programada.length - 3} más...</p>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Top pagos */}
-                              {week.payments?.pagos_programados?.length > 0 && (
-                                <div className="mt-2 pt-2 border-t border-gray-100">
-                                  <p className="text-xs font-semibold text-[#EF4444] mb-1">📤 Top Pagos:</p>
-                                  {(week.top_egresos || week.payments.pagos_programados)
-                                    .slice(0, 3)
-                                    .map((item, i) => (
-                                      <div key={i} className="flex justify-between text-xs text-gray-600 py-0.5">
-                                        <span className="truncate max-w-[60%]">{item.concepto || item.nombre || 'Sin nombre'}</span>
-                                        <span className="font-medium text-[#EF4444]">
-                                          ${(item.monto || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  {week.payments.pagos_programados.length > 3 && (
-                                    <p className="text-xs text-gray-400">+{week.payments.pagos_programados.length - 3} más...</p>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="text-center text-gray-400 text-sm py-2">
-                              Sin pagos programados
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    ))}
+                  {/* Month selector */}
+                  <div className="flex gap-2 flex-wrap">
+                    {mesesDisponibles.map(mes => {
+                      const [year, month] = mes.split('-');
+                      const label = new Date(year, month - 1).toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+                      return (
+                        <button
+                          key={mes}
+                          onClick={() => setMesSeleccionado(mes)}
+                          className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                            mesSeleccionado === mes
+                              ? 'bg-[#0F172A] text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {label.charAt(0).toUpperCase() + label.slice(1)}
+                        </button>
+                      );
+                    })}
                   </div>
+
+                  {/* Weekly Grid — semanas del mes seleccionado */}
+                  {semanasFiltradas.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      {semanasFiltradas.map((week, idx) => (
+                        <Card key={idx} className={`${week.total > 0 ? 'border-orange-200' : 'border-gray-100'}`}>
+                          <CardHeader className="pb-2">
+                            <div className="flex items-center justify-between">
+                              <CardTitle className="text-sm font-bold">{week.label}</CardTitle>
+                              <span className="text-xs text-gray-500">{week.date_range}</span>
+                            </div>
+                            {week.total > 0 && (
+                              <div className="text-lg font-bold text-red-600">
+                                -{formatCurrency(week.total)}
+                              </div>
+                            )}
+                          </CardHeader>
+                          <CardContent className="pt-0">
+                            {week.total > 0 ? (
+                              <div className="space-y-2">
+                                {Object.entries(week.totals).map(([cat, amount]) => (
+                                  amount > 0 && (
+                                    <div key={cat} className="flex items-center justify-between text-sm">
+                                      <div className="flex items-center gap-1">
+                                        {categoryIcons[cat]}
+                                        <span className="text-gray-600">
+                                          {calendar.categories?.[cat]?.name || cat}
+                                        </span>
+                                      </div>
+                                      <span className="font-medium">{formatCurrency(amount)}</span>
+                                    </div>
+                                  )
+                                ))}
+
+                                {/* Top cobros */}
+                                {week.payments?.cobranza_programada?.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-gray-100">
+                                    <p className="text-xs font-semibold text-[#10B981] mb-1">📥 Top Cobros:</p>
+                                    {(week.top_ingresos || week.payments.cobranza_programada)
+                                      .slice(0, 3)
+                                      .map((item, i) => (
+                                        <div key={i} className="flex justify-between text-xs text-gray-600 py-0.5">
+                                          <span className="truncate max-w-[60%]">{item.concepto || item.nombre || 'Sin nombre'}</span>
+                                          <span className="font-medium text-[#10B981]">
+                                            ${(item.monto || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    {week.payments.cobranza_programada.length > 3 && (
+                                      <p className="text-xs text-gray-400">+{week.payments.cobranza_programada.length - 3} más...</p>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Top pagos */}
+                                {week.payments?.pagos_programados?.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-gray-100">
+                                    <p className="text-xs font-semibold text-[#EF4444] mb-1">📤 Top Pagos:</p>
+                                    {(week.top_egresos || week.payments.pagos_programados)
+                                      .slice(0, 3)
+                                      .map((item, i) => (
+                                        <div key={i} className="flex justify-between text-xs text-gray-600 py-0.5">
+                                          <span className="truncate max-w-[60%]">{item.concepto || item.nombre || 'Sin nombre'}</span>
+                                          <span className="font-medium text-[#EF4444]">
+                                            ${(item.monto || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    {week.payments.pagos_programados.length > 3 && (
+                                      <p className="text-xs text-gray-400">+{week.payments.pagos_programados.length - 3} más...</p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="text-center text-gray-400 text-sm py-2">
+                                Sin pagos programados
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-400 text-sm">
+                      Sin semanas disponibles para este mes
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-8 text-gray-500">

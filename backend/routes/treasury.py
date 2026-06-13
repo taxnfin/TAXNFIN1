@@ -408,7 +408,7 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
     cashflow_weeks = [
         w for w in cashflow_weeks
         if isinstance(w.get('fecha_fin'), datetime) and w['fecha_fin'].date() >= today
-    ][:16]
+    ][:52]
 
     total_cobros_global = 0.0
     total_pagos_global = 0.0
