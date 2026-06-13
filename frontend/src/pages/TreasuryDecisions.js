@@ -157,9 +157,12 @@ export default function TreasuryDecisions() {
   )].sort();
 
   const semanasFiltradas = calendarWeeks.filter(w => {
-    const fecha = new Date((w.week_start || w.fecha_inicio) + 'T00:00:00');
-    const mes = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
-    return mes === mesSeleccionado;
+    const inicio = new Date((w.week_start || w.fecha_inicio) + 'T00:00:00');
+    const fin = new Date((w.week_end || w.fecha_fin || w.week_start) + 'T00:00:00');
+    fin.setDate(fin.getDate() + 6);
+    const mesInicio = `${inicio.getFullYear()}-${String(inicio.getMonth() + 1).padStart(2, '0')}`;
+    const mesFin = `${fin.getFullYear()}-${String(fin.getMonth() + 1).padStart(2, '0')}`;
+    return mesInicio === mesSeleccionado || mesFin === mesSeleccionado;
   });
 
   const categoryIcons = {
@@ -405,82 +408,55 @@ export default function TreasuryDecisions() {
                   {semanasFiltradas.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       {semanasFiltradas.map((week, idx) => (
-                        <Card key={idx} className={`${week.total > 0 ? 'border-orange-200' : 'border-gray-100'}`}>
-                          <CardHeader className="pb-2">
-                            <div className="flex items-center justify-between">
-                              <CardTitle className="text-sm font-bold">{week.label}</CardTitle>
-                              <span className="text-xs text-gray-500">{week.date_range}</span>
-                            </div>
-                            {week.total > 0 && (
-                              <div className="text-lg font-bold text-red-600">
-                                -{formatCurrency(week.total)}
-                              </div>
-                            )}
-                          </CardHeader>
-                          <CardContent className="pt-0">
-                            {week.total > 0 ? (
-                              <div className="space-y-2">
-                                {Object.entries(week.totals).map(([cat, amount]) => (
-                                  amount > 0 && (
-                                    <div key={cat} className="flex items-center justify-between text-sm">
-                                      <div className="flex items-center gap-1">
-                                        {categoryIcons[cat]}
-                                        <span className="text-gray-600">
-                                          {calendar.categories?.[cat]?.name || cat}
-                                        </span>
-                                      </div>
-                                      <span className="font-medium">{formatCurrency(amount)}</span>
-                                    </div>
-                                  )
-                                ))}
+                        <div
+                          key={idx}
+                          className={`border rounded-lg p-4 ${
+                            week.total_ingresos === 0 && week.total_egresos === 0
+                              ? 'border-gray-200 bg-gray-50'
+                              : week.flujo_neto < 0
+                                ? 'border-red-200 bg-red-50'
+                                : 'border-green-100'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="font-bold text-sm">{week.label}</span>
+                            <span className="text-xs text-gray-400">{week.date_range}</span>
+                          </div>
 
-                                {/* Top cobros */}
-                                {week.payments?.cobranza_programada?.length > 0 && (
-                                  <div className="mt-2 pt-2 border-t border-gray-100">
-                                    <p className="text-xs font-semibold text-[#10B981] mb-1">📥 Top Cobros:</p>
-                                    {(week.top_ingresos || week.payments.cobranza_programada)
-                                      .slice(0, 3)
-                                      .map((item, i) => (
-                                        <div key={i} className="flex justify-between text-xs text-gray-600 py-0.5">
-                                          <span className="truncate max-w-[60%]">{item.concepto || item.nombre || 'Sin nombre'}</span>
-                                          <span className="font-medium text-[#10B981]">
-                                            ${(item.monto || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}
-                                          </span>
-                                        </div>
-                                      ))}
-                                    {week.payments.cobranza_programada.length > 3 && (
-                                      <p className="text-xs text-gray-400">+{week.payments.cobranza_programada.length - 3} más...</p>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Top pagos */}
-                                {week.payments?.pagos_programados?.length > 0 && (
-                                  <div className="mt-2 pt-2 border-t border-gray-100">
-                                    <p className="text-xs font-semibold text-[#EF4444] mb-1">📤 Top Pagos:</p>
-                                    {(week.top_egresos || week.payments.pagos_programados)
-                                      .slice(0, 3)
-                                      .map((item, i) => (
-                                        <div key={i} className="flex justify-between text-xs text-gray-600 py-0.5">
-                                          <span className="truncate max-w-[60%]">{item.concepto || item.nombre || 'Sin nombre'}</span>
-                                          <span className="font-medium text-[#EF4444]">
-                                            ${(item.monto || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}
-                                          </span>
-                                        </div>
-                                      ))}
-                                    {week.payments.pagos_programados.length > 3 && (
-                                      <p className="text-xs text-gray-400">+{week.payments.pagos_programados.length - 3} más...</p>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="text-center text-gray-300 text-xs py-3">
-                                Sin movimientos
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
+                          {week.total_ingresos === 0 && week.total_egresos === 0 ? (
+                            <p className="text-xs text-gray-400 text-center py-2">Sin movimientos</p>
+                          ) : (
+                            <>
+                              <p className={`text-lg font-bold ${week.flujo_neto >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                                {week.flujo_neto >= 0 ? '+' : ''}${Math.abs(week.flujo_neto || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                              </p>
+                              {week.total_ingresos > 0 && (
+                                <div className="flex justify-between text-xs mt-1">
+                                  <span className="text-gray-500">Cobranza</span>
+                                  <span className="text-[#10B981] font-medium">${week.total_ingresos.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                              )}
+                              {week.total_egresos > 0 && (
+                                <div className="flex justify-between text-xs mt-1">
+                                  <span className="text-gray-500">Pagos</span>
+                                  <span className="text-[#EF4444] font-medium">${week.total_egresos.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                              )}
+                              {week.top_ingresos?.slice(0, 2).map((item, i) => (
+                                <div key={i} className="flex justify-between text-xs text-gray-500 mt-0.5">
+                                  <span className="truncate max-w-[65%]">{item.concepto || item.nombre}</span>
+                                  <span className="text-[#10B981]">${(item.monto || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                              ))}
+                              {week.top_egresos?.slice(0, 2).map((item, i) => (
+                                <div key={i} className="flex justify-between text-xs text-gray-500 mt-0.5">
+                                  <span className="truncate max-w-[65%]">{item.concepto || item.nombre}</span>
+                                  <span className="text-[#EF4444]">${(item.monto || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                              ))}
+                            </>
+                          )}
+                        </div>
                       ))}
                     </div>
                   ) : (
