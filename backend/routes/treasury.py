@@ -700,47 +700,6 @@ async def calculate_working_capital_intelligence(company_id: str) -> dict:
     }
 
 
-@router.get("/debug-weeks")
-async def debug_weeks(request: Request, current_user: Dict = Depends(get_current_user)):
-    company_id = await get_active_company_id(request, current_user)
-
-    weeks = await db.cashflow_weeks.find(
-        {'company_id': company_id}, {'_id': 0, 'numero_semana': 1, 'fecha_inicio': 1, 'fecha_fin': 1, 'id': 1}
-    ).sort('numero_semana', -1).to_list(5)
-
-    all_cfdis = await db.cfdis.find(
-        {'company_id': company_id}, {'_id': 0, 'fecha_emision': 1, 'fecha': 1, 'tipo_cfdi': 1, 'total': 1, 'receptor_nombre': 1}
-    ).to_list(5000)
-
-    junio_cfdis = [c for c in all_cfdis if '2026-06' in str(c.get('fecha_emision', '') or c.get('fecha', ''))]
-
-    from collections import defaultdict
-    por_fecha = defaultdict(float)
-    for c in junio_cfdis:
-        fecha = str(c.get('fecha_emision', '') or c.get('fecha', ''))[:10]
-        por_fecha[fecha] += float(c.get('total', 0) or 0)
-
-    return {
-        'company_id': company_id,
-        'ultimas_semanas': [
-            {
-                'numero': w.get('numero_semana'),
-                'fecha_inicio': str(w.get('fecha_inicio', ''))[:10],
-                'fecha_fin': str(w.get('fecha_fin', ''))[:10],
-                'fecha_inicio_raw_type': type(w.get('fecha_inicio')).__name__,
-            }
-            for w in reversed(weeks)
-        ],
-        'cfdis_junio_por_fecha': dict(sorted(por_fecha.items())),
-        'total_cfdis_junio': len(junio_cfdis),
-        'muestra_cfdi': {
-            'fecha_emision': str(junio_cfdis[0].get('fecha_emision', '')) if junio_cfdis else None,
-            'tipo': str(junio_cfdis[0].get('tipo_cfdi', '')) if junio_cfdis else None,
-            'fecha_emision_type': type(junio_cfdis[0].get('fecha_emision')).__name__ if junio_cfdis else None,
-        }
-    }
-
-
 @router.get("/alerts")
 async def get_alerts(
     request: Request,

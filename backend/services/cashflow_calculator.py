@@ -125,34 +125,45 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
         week['_ff'] = week['fecha_fin'] = _to_date_str(week.get('fecha_fin'))
 
     # ── Fuente 1: distribuir CFDIs en semanas ──
+    # Índice por id de semana para match por cashflow_week_id (O(1))
+    weeks_by_id = {w.get('id', ''): w for w in weeks if w.get('id')}
+
     for cfdi in cfdis:
-        fecha_str = _to_date_str(cfdi.get('fecha_emision') or cfdi.get('fecha'))
-        if not fecha_str:
-            continue
         monto = float(cfdi.get('total', 0) or 0)
         if monto <= 0:
             continue
         tipo = str(cfdi.get('tipo_cfdi', '') or '').strip().upper()
         nombre = (cfdi.get('receptor_nombre') or cfdi.get('emisor_nombre') or
                   cfdi.get('concepto') or 'Sin nombre')
-        for week in weeks:
-            if week['_fi'] <= fecha_str <= week['_ff']:
-                item = {
-                    'id': cfdi.get('id', ''),
-                    'concepto': nombre,
-                    'monto': monto,
-                    'fecha': fecha_str,
-                    'categoria': cfdi.get('categoria', 'otros'),
-                    'fuente': 'cfdis',
-                }
-                if tipo in ('I', 'INGRESO'):
-                    week.setdefault('ingresos_detalle', []).append(item)
-                    week['total_ingresos'] = week.get('total_ingresos', 0) + monto
-                elif tipo in ('E', 'EGRESO'):
-                    week.setdefault('egresos_detalle', []).append(item)
-                    week['total_egresos'] = week.get('total_egresos', 0) + monto
-                week['flujo_neto'] = week.get('total_ingresos', 0) - week.get('total_egresos', 0)
-                break
+        fecha_str = _to_date_str(cfdi.get('fecha_emision') or cfdi.get('fecha'))
+
+        # Buscar semana: primero por cashflow_week_id, fallback por fecha_emision
+        cfdi_week_id = cfdi.get('cashflow_week_id', '')
+        matched_week = weeks_by_id.get(cfdi_week_id) if cfdi_week_id else None
+        if matched_week is None and fecha_str:
+            for week in weeks:
+                if week['_fi'] <= fecha_str <= week['_ff']:
+                    matched_week = week
+                    break
+
+        if matched_week is None:
+            continue
+
+        item = {
+            'id': cfdi.get('id', ''),
+            'concepto': nombre,
+            'monto': monto,
+            'fecha': fecha_str,
+            'categoria': cfdi.get('categoria', 'otros'),
+            'fuente': 'cfdis',
+        }
+        if tipo.upper() in ('I', 'INGRESO', 'INCOME', 'ENTRADA'):
+            matched_week.setdefault('ingresos_detalle', []).append(item)
+            matched_week['total_ingresos'] = matched_week.get('total_ingresos', 0) + monto
+        elif tipo.upper() in ('E', 'EGRESO', 'EXPENSE', 'SALIDA', 'GASTO'):
+            matched_week.setdefault('egresos_detalle', []).append(item)
+            matched_week['total_egresos'] = matched_week.get('total_egresos', 0) + monto
+        matched_week['flujo_neto'] = matched_week.get('total_ingresos', 0) - matched_week.get('total_egresos', 0)
 
     running_balance = saldo_inicial_total
     result: List[Dict] = []
