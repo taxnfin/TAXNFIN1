@@ -102,7 +102,7 @@ export default function TreasuryDecisions() {
       return tieneDatos || esFutura;
     });
   // TEMP DIAG — eliminar después
-  console.log('calendarWeeks sample:', calendarWeeks.slice(0, 3));
+  console.log('[CAL DIAG] data existe:', !!data, '| raw weeks:', data?.calendar?.weeks?.length ?? 'undefined', '| filtered:', calendarWeeks.length, '| hoy:', hoy);
 
   // Fix 3: compute mesesDisponibles before useState so initial value is correct
   const mesesDisponibles = [...new Set(
