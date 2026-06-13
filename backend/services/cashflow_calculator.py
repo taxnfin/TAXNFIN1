@@ -89,7 +89,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
             tasa = fx_map.get(moneda, 1.0)
         saldo_inicial_total += saldo * tasa
 
-    # ── CFDIs (misma fuente que cashflow.py) ──
+    # ── Fuente 1: CFDIs ──
     cfdis = await db.cfdis.find(
         {'company_id': company_id},
         {'_id': 0, 'tipo_cfdi': 1, 'total': 1, 'fecha_emision': 1,
@@ -100,6 +100,13 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
     proyecciones = await db.transactions.find(
         {'company_id': company_id, 'es_proyeccion': True}, {'_id': 0}
     ).to_list(500)
+
+    # ── Fuente 3: Transacciones reales (banco, CSV, manual, ERP sync) ──
+    txns_reales = await db.transactions.find(
+        {'company_id': company_id, 'es_real': True},
+        {'_id': 0, 'id': 1, 'concepto': 1, 'monto': 1,
+         'fecha_transaccion': 1, 'tipo_transaccion': 1, 'categoria': 1}
+    ).to_list(2000)
 
     def _parse(val) -> Optional[datetime]:
         if not val:
@@ -189,12 +196,101 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
             {'concepto': t.get('concepto', ''), 'monto': float(t.get('monto', 0) or 0)}
             for t in semana_proy_egr
         ]
-        week['top_ingresos'] = sorted(semana_cobros, key=lambda x: x.get('monto', 0), reverse=True)[:5]
-        week['top_egresos'] = sorted(semana_pagos, key=lambda x: x.get('monto', 0), reverse=True)[:5]
+        # top_ingresos / top_egresos se calculan DESPUÉS de agregar todas las fuentes
         week['total_ingresos'] = total_ingresos
         week['total_egresos'] = total_egresos
         week['flujo_neto'] = total_ingresos - total_egresos
 
         result.append(week)
+
+    # ── Fuente 2: CxC/CxP del cache de Contalink ──
+    today = date.today()
+    for cache_key, tipo_movimiento in [
+        (f"cxc_{company_id}_latest", "ingreso"),
+        (f"cxp_{company_id}_latest", "egreso"),
+    ]:
+        cache_doc = await db.contalink_cache.find_one({'key': cache_key})
+        if not cache_doc:
+            continue
+        raw = cache_doc.get('data', {})
+        items = (
+            next((v for v in raw.values() if isinstance(v, list)), [])
+            if isinstance(raw, dict)
+            else (raw if isinstance(raw, list) else [])
+        )
+        for item in items:
+            monto = float(item.get('saldo_pendiente') or item.get('saldo') or item.get('total') or 0)
+            if monto <= 0:
+                continue
+            nombre = item.get('nombre') or item.get('razon_social') or 'Sin nombre'
+            dias_vencido = int(item.get('dias_vencido', 0) or 0)
+            if dias_vencido > 60:
+                fecha_estimada = today + timedelta(days=30)
+            elif dias_vencido > 30:
+                fecha_estimada = today + timedelta(days=14)
+            elif dias_vencido > 0:
+                fecha_estimada = today + timedelta(days=7)
+            else:
+                fecha_estimada = today + timedelta(days=14)
+
+            for week in weeks:
+                fi = str(week.get('fecha_inicio', ''))[:10]
+                ff = str(week.get('fecha_fin', ''))[:10]
+                if fi <= fecha_estimada.isoformat() <= ff:
+                    item_norm = {
+                        'id': f"cxc_{nombre}_{fecha_estimada}",
+                        'concepto': nombre,
+                        'monto': monto,
+                        'fecha': fecha_estimada.isoformat(),
+                        'categoria': 'cobranza_programada' if tipo_movimiento == 'ingreso' else 'pagos_programados',
+                        'fuente': 'contalink_cache',
+                        'dias_vencido': dias_vencido,
+                    }
+                    if tipo_movimiento == 'ingreso':
+                        week.setdefault('ingresos_detalle', []).append(item_norm)
+                        week['total_ingresos'] = week.get('total_ingresos', 0) + monto
+                    else:
+                        week.setdefault('egresos_detalle', []).append(item_norm)
+                        week['total_egresos'] = week.get('total_egresos', 0) + monto
+                    week['flujo_neto'] = week.get('total_ingresos', 0) - week.get('total_egresos', 0)
+                    break
+
+    # ── Fuente 3: Transacciones reales ──
+    for txn in txns_reales:
+        fecha_raw = txn.get('fecha_transaccion', '')
+        if not fecha_raw:
+            continue
+        fecha_str = str(fecha_raw)[:10]
+        monto = float(txn.get('monto', 0) or 0)
+        if monto <= 0:
+            continue
+        for week in weeks:
+            fi = str(week.get('fecha_inicio', ''))[:10]
+            ff = str(week.get('fecha_fin', ''))[:10]
+            if fi <= fecha_str <= ff:
+                item_norm = {
+                    'id': txn.get('id', ''),
+                    'concepto': txn.get('concepto', 'Sin nombre'),
+                    'monto': monto,
+                    'fecha': fecha_str,
+                    'categoria': txn.get('categoria', 'otros'),
+                    'fuente': 'transactions',
+                }
+                tipo = txn.get('tipo_transaccion', '')
+                if tipo == 'ingreso':
+                    week.setdefault('ingresos_detalle', []).append(item_norm)
+                    week['total_ingresos'] = week.get('total_ingresos', 0) + monto
+                else:
+                    week.setdefault('egresos_detalle', []).append(item_norm)
+                    week['total_egresos'] = week.get('total_egresos', 0) + monto
+                week['flujo_neto'] = week.get('total_ingresos', 0) - week.get('total_egresos', 0)
+                break
+
+    # ── Recalcular tops después de agregar todas las fuentes ──
+    for week in result:
+        ing = week.get('ingresos_detalle', [])
+        egr = week.get('egresos_detalle', [])
+        week['top_ingresos'] = sorted(ing, key=lambda x: x.get('monto', 0), reverse=True)[:5]
+        week['top_egresos'] = sorted(egr, key=lambda x: x.get('monto', 0), reverse=True)[:5]
 
     return result
