@@ -505,6 +505,7 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
             'total_ingresos': total_cobros + total_proy_ing,
             'total_egresos':  total_pagos  + total_proy_egr,
             'flujo_neto': (total_cobros + total_proy_ing) - (total_pagos + total_proy_egr),
+            'total': total_cobros + total_pagos + total_proy_ing + total_proy_egr,
         })
 
     return {
