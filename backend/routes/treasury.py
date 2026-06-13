@@ -399,64 +399,62 @@ async def generate_recommendations(company_id: str, weeks_ahead: int) -> List[di
 
 
 async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
-    """Get treasury calendar — fuentes: CxC/CxP Aging cache + proyecciones"""
+    """Get treasury calendar — misma fuente que Cash Flow: db.cfdis por fecha_emision"""
     today = datetime.now(timezone.utc).date()
 
-    # ── FUENTE 1: CxC del Aging (cobranza pendiente) ──
-    cxc_doc = await db.contalink_cache.find_one({'key': f'cxc_{company_id}_latest'})
+    # ── MISMA FUENTE QUE CASH FLOW: db.cfdis ──
+    cfdis = await db.cfdis.find(
+        {'company_id': company_id, 'estado': {'$ne': 'cancelado'}},
+        {'_id': 0, 'xml_original': 0}
+    ).to_list(5000)
+
     cobros_pendientes = []
-    if cxc_doc:
-        raw = cxc_doc.get('data', {})
-        items = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
-        for item in items:
-            monto = float(item.get('saldo_pendiente') or item.get('saldo') or item.get('total') or 0)
-            if monto <= 0:
+    pagos_pendientes  = []
+
+    for cfdi in cfdis:
+        # Solo pendientes (igual que Cash Flow no filtra, pero el calendario es forward-looking)
+        if cfdi.get('estado_conciliacion') == 'conciliado':
+            continue
+
+        fecha_raw = cfdi.get('fecha_emision')
+        if isinstance(fecha_raw, str):
+            try:
+                fecha = datetime.fromisoformat(fecha_raw.replace('Z', '+00:00')).date()
+            except Exception:
                 continue
-            dias_vencido = int(item.get('dias_vencido', 0) or 0)
-            if dias_vencido >= 1:
-                # Ya vencido → S1 (atención inmediata)
-                fecha_estimada = today
-            else:
-                # Por vencer → usar días reales restantes
-                dias_restantes = abs(dias_vencido) if dias_vencido < 0 else 14
-                fecha_estimada = today + timedelta(days=min(dias_restantes, 90))
+        elif isinstance(fecha_raw, datetime):
+            fecha = fecha_raw.date()
+        else:
+            continue
+
+        # CFDIs pasados pendientes → S1 (vencidos, acción inmediata)
+        # CFDIs futuros → semana real según fecha_emision
+        fecha_estimada = today if fecha < today else fecha
+
+        monto = float(cfdi.get('total', 0) or 0)
+        if monto <= 0:
+            continue
+
+        concepto = (cfdi.get('receptor_nombre') or cfdi.get('emisor_nombre') or '')[:50]
+
+        if cfdi.get('tipo_cfdi') == 'ingreso':
             cobros_pendientes.append({
-                'concepto': item.get('nombre', 'Sin nombre'),
+                'concepto': concepto,
                 'monto': monto,
                 'fecha_estimada': fecha_estimada,
-                'tipo': 'cobro',
+                'uuid': cfdi.get('uuid', ''),
                 'categoria': 'cobranza_programada',
-                'dias_vencido': dias_vencido,
             })
-
-    # ── FUENTE 2: CxP del Aging (pagos pendientes) ──
-    cxp_doc = await db.contalink_cache.find_one({'key': f'cxp_{company_id}_latest'})
-    pagos_pendientes = []
-    if cxp_doc:
-        raw = cxp_doc.get('data', {})
-        items = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
-        for item in items:
-            monto = float(item.get('saldo_pendiente') or item.get('saldo') or item.get('total') or 0)
-            if monto <= 0:
-                continue
-            dias_vencido = int(item.get('dias_vencido', 0) or 0)
-            if dias_vencido >= 1:
-                # Ya vencido → S1 (atención inmediata)
-                fecha_estimada = today
-            else:
-                # Por vencer → usar días reales restantes
-                dias_restantes = abs(dias_vencido) if dias_vencido < 0 else 14
-                fecha_estimada = today + timedelta(days=min(dias_restantes, 90))
+        else:
             pagos_pendientes.append({
-                'concepto': item.get('nombre', 'Sin nombre'),
+                'concepto': concepto,
                 'monto': monto,
                 'fecha_estimada': fecha_estimada,
-                'tipo': 'pago',
+                'uuid': cfdi.get('uuid', ''),
                 'categoria': 'pagos_programados',
-                'dias_vencido': dias_vencido,
             })
 
-    # ── FUENTE 3: Proyecciones del Cash Flow ──
+    # ── Proyecciones del Cash Flow ──
     proyecciones = await db.transactions.find(
         {'company_id': company_id, 'es_proyeccion': True},
         {'_id': 0}
