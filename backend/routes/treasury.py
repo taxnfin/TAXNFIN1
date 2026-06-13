@@ -402,57 +402,56 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
     """Get treasury calendar — misma fuente que Cash Flow: db.cfdis por fecha_emision"""
     today = datetime.now(timezone.utc).date()
 
-    # ── MISMA FUENTE QUE CASH FLOW: db.cfdis ──
+    # ── Leer CFDIs directamente (misma fuente que Cash Flow) ──
     cfdis = await db.cfdis.find(
-        {'company_id': company_id, 'estado': {'$ne': 'cancelado'}},
-        {'_id': 0, 'xml_original': 0}
+        {'company_id': company_id},
+        {'_id': 0, 'id': 1, 'tipo_cfdi': 1, 'total': 1, 'fecha_emision': 1,
+         'receptor_nombre': 1, 'emisor_nombre': 1, 'estado_conciliacion': 1,
+         'categoria': 1, 'concepto': 1, 'descripcion': 1}
     ).to_list(5000)
 
     cobros_pendientes = []
     pagos_pendientes  = []
 
     for cfdi in cfdis:
-        # Solo pendientes (igual que Cash Flow no filtra, pero el calendario es forward-looking)
-        if cfdi.get('estado_conciliacion') == 'conciliado':
-            continue
-
-        fecha_raw = cfdi.get('fecha_emision')
-        if isinstance(fecha_raw, str):
-            try:
-                fecha = datetime.fromisoformat(fecha_raw.replace('Z', '+00:00')).date()
-            except Exception:
-                continue
-        elif isinstance(fecha_raw, datetime):
-            fecha = fecha_raw.date()
-        else:
-            continue
-
-        # CFDIs pasados pendientes → S1 (vencidos, acción inmediata)
-        # CFDIs futuros → semana real según fecha_emision
-        fecha_estimada = today if fecha < today else fecha
-
         monto = float(cfdi.get('total', 0) or 0)
         if monto <= 0:
             continue
 
-        concepto = (cfdi.get('receptor_nombre') or cfdi.get('emisor_nombre') or '')[:50]
+        fecha_raw = cfdi.get('fecha_emision', '')
+        if not fecha_raw:
+            continue
+        try:
+            if isinstance(fecha_raw, str):
+                fecha_cfdi = datetime.fromisoformat(fecha_raw.replace('Z', '+00:00')).date()
+            else:
+                fecha_cfdi = fecha_raw.date() if hasattr(fecha_raw, 'date') else today
+        except Exception:
+            continue
 
-        if cfdi.get('tipo_cfdi') == 'ingreso':
-            cobros_pendientes.append({
-                'concepto': concepto,
-                'monto': monto,
-                'fecha_estimada': fecha_estimada,
-                'uuid': cfdi.get('uuid', ''),
-                'categoria': 'cobranza_programada',
-            })
+        estado = cfdi.get('estado_conciliacion', '')
+        if fecha_cfdi < today and estado not in ('conciliado', 'completado'):
+            fecha_asignada = today  # vencido pendiente → S1
         else:
-            pagos_pendientes.append({
-                'concepto': concepto,
-                'monto': monto,
-                'fecha_estimada': fecha_estimada,
-                'uuid': cfdi.get('uuid', ''),
-                'categoria': 'pagos_programados',
-            })
+            fecha_asignada = fecha_cfdi
+
+        tipo   = cfdi.get('tipo_cfdi', '')
+        nombre = (cfdi.get('receptor_nombre') or cfdi.get('emisor_nombre') or
+                  cfdi.get('concepto') or 'Sin nombre')
+
+        item = {
+            'concepto':      nombre,
+            'monto':         monto,
+            'fecha_estimada': fecha_asignada,
+            'categoria':     'cobranza_programada' if tipo in ('I', 'ingreso') else 'pagos_programados',
+            'estado':        estado,
+            'es_vencido':    fecha_cfdi < today,
+        }
+
+        if tipo in ('I', 'ingreso'):
+            cobros_pendientes.append(item)
+        else:
+            pagos_pendientes.append(item)
 
     # ── Proyecciones del Cash Flow ──
     proyecciones = await db.transactions.find(
@@ -460,65 +459,61 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
         {'_id': 0}
     ).to_list(500)
 
-    # ── Asignar todo a semanas ──
+    # ── Construir 16 semanas ──
     calendar_weeks = []
-    for week_offset in range(weeks_ahead):
+    for week_offset in range(16):
         week_start = today + timedelta(weeks=week_offset)
-        week_end = week_start + timedelta(days=7)
+        week_end   = week_start + timedelta(days=7)
 
-        semana_cobros = [c for c in cobros_pendientes if week_start <= c['fecha_estimada'] < week_end]
-        semana_pagos  = [p for p in pagos_pendientes  if week_start <= p['fecha_estimada'] < week_end]
-        semana_proy   = [
-            t for t in proyecciones
-            if week_start.isoformat() <= (t.get('fecha_transaccion', '') or '')[:10] < week_end.isoformat()
-        ]
+        semana_cobros    = [c for c in cobros_pendientes if week_start <= c['fecha_estimada'] < week_end]
+        semana_pagos     = [p for p in pagos_pendientes  if week_start <= p['fecha_estimada'] < week_end]
+        semana_proy_ing  = [t for t in proyecciones
+                            if t.get('tipo_transaccion') == 'ingreso'
+                            and week_start.isoformat() <= (t.get('fecha_transaccion', '') or '')[:10] < week_end.isoformat()]
+        semana_proy_egr  = [t for t in proyecciones
+                            if t.get('tipo_transaccion') == 'egreso'
+                            and week_start.isoformat() <= (t.get('fecha_transaccion', '') or '')[:10] < week_end.isoformat()]
 
-        total_cobros   = sum(c['monto'] for c in semana_cobros)
-        total_pagos    = sum(p['monto'] for p in semana_pagos)
-        total_proy_ing = sum(t['monto'] for t in semana_proy if t.get('tipo_transaccion') == 'ingreso')
-        total_proy_egr = sum(t['monto'] for t in semana_proy if t.get('tipo_transaccion') == 'egreso')
+        total_cobros    = sum(c['monto'] for c in semana_cobros)
+        total_pagos     = sum(p['monto'] for p in semana_pagos)
+        total_proy_ing  = sum(t.get('monto', 0) for t in semana_proy_ing)
+        total_proy_egr  = sum(t.get('monto', 0) for t in semana_proy_egr)
 
         calendar_weeks.append({
-            'label': f'S{week_offset + 1}',
+            'label':      f'S{week_offset + 1}',
             'date_range': f'{week_start.strftime("%d/%m")} - {week_end.strftime("%d/%m")}',
             'week_start': week_start.isoformat(),
             'payments': {
-                'cobranza_programada': semana_cobros,
-                'pagos_programados': semana_pagos,
-                'proyecciones_ingreso': [
-                    {'concepto': t.get('concepto', ''), 'monto': t['monto']}
-                    for t in semana_proy if t.get('tipo_transaccion') == 'ingreso'
-                ],
-                'proyecciones_egreso': [
-                    {'concepto': t.get('concepto', ''), 'monto': t['monto']}
-                    for t in semana_proy if t.get('tipo_transaccion') == 'egreso'
-                ],
+                'cobranza_programada':  semana_cobros,
+                'pagos_programados':    semana_pagos,
+                'proyecciones_ingreso': [{'concepto': t.get('concepto', ''), 'monto': t.get('monto', 0)} for t in semana_proy_ing],
+                'proyecciones_egreso':  [{'concepto': t.get('concepto', ''), 'monto': t.get('monto', 0)} for t in semana_proy_egr],
             },
             'totals': {
-                'cobranza_programada': total_cobros,
-                'pagos_programados': total_pagos,
+                'cobranza_programada':  total_cobros,
+                'pagos_programados':    total_pagos,
                 'proyecciones_ingreso': total_proy_ing,
-                'proyecciones_egreso': total_proy_egr,
+                'proyecciones_egreso':  total_proy_egr,
             },
             'total_ingresos': total_cobros + total_proy_ing,
             'total_egresos':  total_pagos  + total_proy_egr,
-            'flujo_neto': (total_cobros + total_proy_ing) - (total_pagos + total_proy_egr),
-            'total': total_cobros + total_pagos + total_proy_ing + total_proy_egr,
+            'flujo_neto':     (total_cobros + total_proy_ing) - (total_pagos + total_proy_egr),
+            'total':          total_cobros + total_pagos + total_proy_ing + total_proy_egr,
         })
 
     return {
         'weeks': calendar_weeks,
         'categories': {
-            'cobranza_programada': {'name': 'Cobranza Programada (CxC)', 'color': '#10B981', 'icon': '💰'},
-            'pagos_programados':   {'name': 'Pagos Programados (CxP)',   'color': '#EF4444', 'icon': '📋'},
-            'proyecciones_ingreso': {'name': 'Proyecciones Ingreso',     'color': '#3B82F6', 'icon': '📈'},
-            'proyecciones_egreso':  {'name': 'Proyecciones Egreso',      'color': '#F59E0B', 'icon': '📉'},
+            'cobranza_programada':  {'name': 'Cobranza Programada (CxC)', 'color': '#10B981', 'icon': '💰'},
+            'pagos_programados':    {'name': 'Pagos Programados (CxP)',   'color': '#EF4444', 'icon': '📋'},
+            'proyecciones_ingreso': {'name': 'Proyecciones Ingreso',      'color': '#3B82F6', 'icon': '📈'},
+            'proyecciones_egreso':  {'name': 'Proyecciones Egreso',       'color': '#F59E0B', 'icon': '📉'},
         },
         'totals_by_category': {
             'cobranza_programada':  sum(c['monto'] for c in cobros_pendientes),
             'pagos_programados':    sum(p['monto'] for p in pagos_pendientes),
-            'proyecciones_ingreso': sum(t['monto'] for t in proyecciones if t.get('tipo_transaccion') == 'ingreso'),
-            'proyecciones_egreso':  sum(t['monto'] for t in proyecciones if t.get('tipo_transaccion') == 'egreso'),
+            'proyecciones_ingreso': sum(t.get('monto', 0) for t in proyecciones if t.get('tipo_transaccion') == 'ingreso'),
+            'proyecciones_egreso':  sum(t.get('monto', 0) for t in proyecciones if t.get('tipo_transaccion') == 'egreso'),
         },
     }
 
