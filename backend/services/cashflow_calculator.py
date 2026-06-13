@@ -203,7 +203,17 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
 
         result.append(week)
 
-    # ── Fuente 2: CxC/CxP del cache de Contalink ──
+    def _set_tops(week: Dict) -> None:
+        ing = week.get('ingresos_detalle', [])
+        egr = week.get('egresos_detalle', [])
+        week['top_ingresos'] = sorted(ing, key=lambda x: x.get('monto', 0), reverse=True)[:5]
+        week['top_egresos'] = sorted(egr, key=lambda x: x.get('monto', 0), reverse=True)[:5]
+
+    # ── Segundo: tops de CFDIs (antes de agregar fuentes complementarias) ──
+    for week in result:
+        _set_tops(week)
+
+    # ── Tercero: CxC/CxP del cache — SOLO semanas sin CFDIs (total == 0) ──
     today = date.today()
     for cache_key, tipo_movimiento in [
         (f"cxc_{company_id}_latest", "ingreso"),
@@ -237,9 +247,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
                 fi = str(week.get('fecha_inicio', ''))[:10]
                 ff = str(week.get('fecha_fin', ''))[:10]
                 if fi <= fecha_estimada.isoformat() <= ff:
-                    # Solo agregar si la semana NO tiene CFDIs reales
-                    tiene_cfdis = len(week.get('ingresos_detalle', [])) > 0 or len(week.get('egresos_detalle', [])) > 0
-                    if not tiene_cfdis:
+                    if week.get('total_ingresos', 0) == 0 and week.get('total_egresos', 0) == 0:
                         item_norm = {
                             'id': f"cache_{nombre}_{fecha_estimada}",
                             'concepto': nombre,
@@ -258,7 +266,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
                         week['flujo_neto'] = week.get('total_ingresos', 0) - week.get('total_egresos', 0)
                     break
 
-    # ── Fuente 3: Transacciones reales ──
+    # ── Cuarto: transacciones reales — SOLO semanas sin CFDIs (total == 0) ──
     for txn in txns_reales:
         fecha_raw = txn.get('fecha_transaccion', '')
         if not fecha_raw:
@@ -271,9 +279,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
             fi = str(week.get('fecha_inicio', ''))[:10]
             ff = str(week.get('fecha_fin', ''))[:10]
             if fi <= fecha_str <= ff:
-                # Solo agregar si la semana NO tiene CFDIs reales
-                tiene_cfdis = len(week.get('ingresos_detalle', [])) > 0 or len(week.get('egresos_detalle', [])) > 0
-                if not tiene_cfdis:
+                if week.get('total_ingresos', 0) == 0 and week.get('total_egresos', 0) == 0:
                     item_norm = {
                         'id': txn.get('id', ''),
                         'concepto': txn.get('concepto', 'Sin nombre'),
@@ -292,11 +298,8 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
                     week['flujo_neto'] = week.get('total_ingresos', 0) - week.get('total_egresos', 0)
                 break
 
-    # ── Recalcular tops después de agregar todas las fuentes ──
+    # ── Tops finales: recalcular para semanas llenadas por Fuente 2/3 ──
     for week in result:
-        ing = week.get('ingresos_detalle', [])
-        egr = week.get('egresos_detalle', [])
-        week['top_ingresos'] = sorted(ing, key=lambda x: x.get('monto', 0), reverse=True)[:5]
-        week['top_egresos'] = sorted(egr, key=lambda x: x.get('monto', 0), reverse=True)[:5]
+        _set_tops(week)
 
     return result
