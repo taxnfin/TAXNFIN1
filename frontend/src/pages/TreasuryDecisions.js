@@ -179,6 +179,10 @@ export default function TreasuryDecisions() {
     return mesInicio === mesSeleccionado;
   });
 
+  // TEMP DIAG — eliminar después
+  console.log('[SEM DIAG] mesSeleccionado:', mesSeleccionado, '| meses:', mesesDisponibles, '| filtradas:', semanasFiltradas.length);
+  console.log('[SEM DIAG] primeras 3 semanas raw:', calendarWeeks.slice(0,3).map(w => ({ label: w.label, ws: w.week_start, fi: w.fecha_inicio, ti: w.total_ingresos })));
+
   const categoryIcons = {
     nomina: <Users className="h-4 w-4" />,
     impuestos: <Building2 className="h-4 w-4" />,
