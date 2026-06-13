@@ -389,6 +389,46 @@ export default function TreasuryDecisions() {
                                   </div>
                                 )
                               ))}
+
+                              {/* Top cobros */}
+                              {week.payments?.cobranza_programada?.length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-gray-100">
+                                  <p className="text-xs font-semibold text-[#10B981] mb-1">📥 Top Cobros:</p>
+                                  {(week.top_ingresos || week.payments.cobranza_programada)
+                                    .slice(0, 3)
+                                    .map((item, i) => (
+                                      <div key={i} className="flex justify-between text-xs text-gray-600 py-0.5">
+                                        <span className="truncate max-w-[60%]">{item.concepto || item.nombre || 'Sin nombre'}</span>
+                                        <span className="font-medium text-[#10B981]">
+                                          ${(item.monto || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  {week.payments.cobranza_programada.length > 3 && (
+                                    <p className="text-xs text-gray-400">+{week.payments.cobranza_programada.length - 3} más...</p>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Top pagos */}
+                              {week.payments?.pagos_programados?.length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-gray-100">
+                                  <p className="text-xs font-semibold text-[#EF4444] mb-1">📤 Top Pagos:</p>
+                                  {(week.top_egresos || week.payments.pagos_programados)
+                                    .slice(0, 3)
+                                    .map((item, i) => (
+                                      <div key={i} className="flex justify-between text-xs text-gray-600 py-0.5">
+                                        <span className="truncate max-w-[60%]">{item.concepto || item.nombre || 'Sin nombre'}</span>
+                                        <span className="font-medium text-[#EF4444]">
+                                          ${(item.monto || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  {week.payments.pagos_programados.length > 3 && (
+                                    <p className="text-xs text-gray-400">+{week.payments.pagos_programados.length - 3} más...</p>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <div className="text-center text-gray-400 text-sm py-2">

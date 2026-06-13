@@ -183,6 +183,8 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 16) -> Lis
             {'concepto': t.get('concepto', ''), 'monto': float(t.get('monto', 0) or 0)}
             for t in semana_proy_egr
         ]
+        week['top_ingresos'] = sorted(semana_cobros, key=lambda x: x.get('monto', 0), reverse=True)[:5]
+        week['top_egresos'] = sorted(semana_pagos, key=lambda x: x.get('monto', 0), reverse=True)[:5]
         week['total_ingresos'] = total_ingresos
         week['total_egresos'] = total_egresos
         week['flujo_neto'] = total_ingresos - total_egresos
