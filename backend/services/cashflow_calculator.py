@@ -96,16 +96,6 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
          'receptor_nombre': 1, 'emisor_nombre': 1, 'estado_conciliacion': 1}
     ).to_list(5000)
 
-    logger.info(f"[CALC] Total CFDIs cargados: {len(cfdis)}")
-    junio_cfdis = [c for c in cfdis if '2026-06' in str(c.get('fecha_emision', '') or c.get('fecha', ''))]
-    logger.info(f"[CALC] CFDIs de junio: {len(junio_cfdis)}")
-    if junio_cfdis:
-        logger.info(
-            f"[CALC] Ejemplo CFDI junio: fecha_emision={junio_cfdis[0].get('fecha_emision')} "
-            f"fecha={junio_cfdis[0].get('fecha')} tipo={junio_cfdis[0].get('tipo_cfdi')} "
-            f"total={junio_cfdis[0].get('total')}"
-        )
-
     # ── Proyecciones manuales ──
     proyecciones = await db.transactions.find(
         {'company_id': company_id, 'es_proyeccion': True}, {'_id': 0}
@@ -118,52 +108,68 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
          'fecha_transaccion': 1, 'tipo_transaccion': 1, 'categoria': 1}
     ).to_list(2000)
 
-    def _parse(val) -> Optional[datetime]:
-        if not val:
-            return None
-        if isinstance(val, datetime):
-            return val if val.tzinfo else val.replace(tzinfo=timezone.utc)
+    # ── Normalizar fechas de semanas a YYYY-MM-DD string ──
+    for week in weeks:
+        fi_raw = week.get('fecha_inicio', '')
+        ff_raw = week.get('fecha_fin', '')
+        week['fecha_inicio'] = str(fi_raw)[:10] if fi_raw else ''
+        week['fecha_fin'] = str(ff_raw)[:10] if ff_raw else ''
+
+    # ── Fuente 1: distribuir CFDIs en semanas por comparación de strings ──
+    for cfdi in cfdis:
+        fecha_raw = cfdi.get('fecha_emision') or cfdi.get('fecha', '')
+        if not fecha_raw:
+            continue
         try:
-            dt = datetime.fromisoformat(str(val).replace('Z', '+00:00'))
-            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+            if isinstance(fecha_raw, str):
+                fecha_str = fecha_raw[:10]
+            elif hasattr(fecha_raw, 'date'):
+                fecha_str = fecha_raw.date().isoformat()
+            elif hasattr(fecha_raw, 'isoformat'):
+                fecha_str = fecha_raw.isoformat()[:10]
+            else:
+                fecha_str = str(fecha_raw)[:10]
         except Exception:
-            return None
+            continue
+        monto = float(cfdi.get('total', 0) or 0)
+        if monto <= 0:
+            continue
+        tipo = cfdi.get('tipo_cfdi', '')
+        nombre = cfdi.get('receptor_nombre') or cfdi.get('emisor_nombre') or cfdi.get('concepto') or 'Sin nombre'
+        for week in weeks:
+            fi = week.get('fecha_inicio', '')
+            ff = week.get('fecha_fin', '')
+            if fi <= fecha_str <= ff:
+                item = {
+                    'id': cfdi.get('id', ''),
+                    'concepto': nombre,
+                    'monto': monto,
+                    'fecha': fecha_str,
+                    'categoria': cfdi.get('categoria', 'otros'),
+                    'fuente': 'cfdis',
+                }
+                if tipo in ('I', 'ingreso'):
+                    week.setdefault('ingresos_detalle', []).append(item)
+                    week['total_ingresos'] = week.get('total_ingresos', 0) + monto
+                else:
+                    week.setdefault('egresos_detalle', []).append(item)
+                    week['total_egresos'] = week.get('total_egresos', 0) + monto
+                week['flujo_neto'] = week.get('total_ingresos', 0) - week.get('total_egresos', 0)
+                break
 
     running_balance = saldo_inicial_total
     result: List[Dict] = []
 
     for i, week in enumerate(weeks):
-        for field in ('fecha_inicio', 'fecha_fin', 'created_at'):
-            week[field] = _parse(week.get(field))
-
-        week_start = week.get('fecha_inicio')
-        week_end = week.get('fecha_fin')
-        if not week_start or not week_end:
+        ws = week.get('fecha_inicio', '')
+        we = week.get('fecha_fin', '')
+        if not ws or not we:
             continue
 
-        ws = week_start.strftime('%Y-%m-%d')
-        we = week_end.strftime('%Y-%m-%d')
-
-        semana_cobros: List[Dict] = []
-        semana_pagos: List[Dict] = []
-        week_ingresos = 0.0
-        week_egresos = 0.0
-
-        for cfdi in cfdis:
-            cfdi_date = _parse(cfdi.get('fecha_emision'))
-            if not cfdi_date or not (week_start <= cfdi_date <= week_end):
-                continue
-            monto = float(cfdi.get('total', 0) or 0)
-            if monto <= 0:
-                continue
-            nombre = cfdi.get('receptor_nombre') or cfdi.get('emisor_nombre') or 'Sin nombre'
-            item: Dict = {'concepto': nombre, 'monto': monto, 'estado': cfdi.get('estado_conciliacion', '')}
-            if cfdi.get('tipo_cfdi') == 'ingreso':
-                week_ingresos += monto
-                semana_cobros.append(item)
-            else:
-                week_egresos += monto
-                semana_pagos.append(item)
+        semana_cobros = week.get('ingresos_detalle', [])
+        semana_pagos = week.get('egresos_detalle', [])
+        week_ingresos = sum(item.get('monto', 0) for item in semana_cobros)
+        week_egresos = sum(item.get('monto', 0) for item in semana_pagos)
 
         semana_proy_ing = [
             t for t in proyecciones
@@ -194,7 +200,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
 
         # ── Treasury calendar extras (ignored by CashFlowWeek response_model) ──
         week['label'] = f"S{week.get('numero_semana', i + 1)}"
-        week['date_range'] = f'{week_start.strftime("%d/%m")} - {week_end.strftime("%d/%m")}'
+        week['date_range'] = f'{ws[8:10]}/{ws[5:7]} - {we[8:10]}/{we[5:7]}'
         week['week_start'] = ws
         week['ingresos_detalle'] = semana_cobros
         week['egresos_detalle'] = semana_pagos
@@ -206,22 +212,11 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
             {'concepto': t.get('concepto', ''), 'monto': float(t.get('monto', 0) or 0)}
             for t in semana_proy_egr
         ]
-        # top_ingresos / top_egresos se calculan DESPUÉS de agregar todas las fuentes
         week['total_ingresos'] = total_ingresos
         week['total_egresos'] = total_egresos
         week['flujo_neto'] = total_ingresos - total_egresos
 
         result.append(week)
-
-    for week in weeks:
-        fi = str(week.get('fecha_inicio', ''))[:10]
-        if '2026-06-15' <= fi <= '2026-06-22':
-            logger.info(
-                f"[CALC S25] fecha_inicio={fi} total_ingresos={week.get('total_ingresos', 0)} "
-                f"total_egresos={week.get('total_egresos', 0)} "
-                f"n_ingresos={len(week.get('ingresos_detalle', []))} "
-                f"n_egresos={len(week.get('egresos_detalle', []))}"
-            )
 
     def _set_tops(week: Dict) -> None:
         ing = week.get('ingresos_detalle', [])
