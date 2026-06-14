@@ -87,75 +87,66 @@ async def get_treasury_dashboard(
 
 
 async def get_current_cash_position(company_id: str) -> Dict:
-    # ── Saldo bancario actual ──────────────────────────────────────
     bank_accounts = await db.bank_accounts.find(
         {'company_id': company_id, 'activo': True}, {'_id': 0}
     ).to_list(50)
     total_mxn = sum(float(a.get('saldo_actual', 0) or 0) for a in bank_accounts)
-
-    # ── CxC desde Contalink cache (fuente primaria) ────────────────
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0})
+    usa_alegra = (company or {}).get('alegra_connected', False)
     cxc = 0.0
-    cxc_cache = await db.contalink_cache.find_one({'key': f'cxc_{company_id}_latest'})
-    if cxc_cache:
-        raw = cxc_cache.get('data', {})
-        items = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else []
-        cxc = sum(float(i.get('saldo_pendiente') or i.get('saldo') or 0) for i in items if float(i.get('saldo_pendiente') or i.get('saldo') or 0) > 0)
-        if cxc == 0:
-            cxc = float(raw.get('total_pendiente', 0) or 0) if isinstance(raw, dict) else 0
-
-    # Fallback a db.payments si no hay cache
+    cxp = 0.0
+    if usa_alegra:
+        cfdis = await db.cfdis.find(
+            {'company_id': company_id, 'source': 'alegra'},
+            {'_id': 0, 'tipo_cfdi': 1, 'total': 1, 'estado_conciliacion': 1}
+        ).to_list(5000)
+        for c in cfdis:
+            if c.get('estado_conciliacion', '') in ('conciliado', 'completado', 'pagado'):
+                continue
+            monto = float(c.get('total', 0) or 0)
+            tipo = str(c.get('tipo_cfdi', '') or '').lower()
+            if tipo in ('i', 'ingreso'):
+                cxc += monto
+            elif tipo in ('e', 'egreso'):
+                cxp += monto
+    else:
+        for cache_key, attr in [(f'cxc_{company_id}_latest', 'cxc'), (f'cxp_{company_id}_latest', 'cxp')]:
+            cache = await db.contalink_cache.find_one({'key': cache_key})
+            if not cache:
+                continue
+            raw = cache.get('data', {})
+            if isinstance(raw, dict):
+                items = next((v for v in raw.values() if isinstance(v, list)), [])
+                total = sum(float(i.get('saldo_pendiente') or i.get('saldo') or 0) for i in items)
+                if total == 0:
+                    total = float(raw.get('total_pendiente', 0) or 0)
+            else:
+                total = 0.0
+            if attr == 'cxc':
+                cxc = total
+            else:
+                cxp = total
     if cxc == 0:
-        result = await db.payments.aggregate([
+        r = await db.payments.aggregate([
             {'$match': {'company_id': company_id, 'tipo': 'cobro', 'estatus': {'$in': ['pendiente', 'parcial']}}},
             {'$group': {'_id': None, 'total': {'$sum': {'$ifNull': ['$saldo_pendiente', '$monto']}}}}
         ]).to_list(1)
-        cxc = result[0]['total'] if result else 0
-
-    # ── CxP desde Contalink cache (fuente primaria) ────────────────
-    cxp = 0.0
-    cxp_cache = await db.contalink_cache.find_one({'key': f'cxp_{company_id}_latest'})
-    if cxp_cache:
-        raw = cxp_cache.get('data', {})
-        items = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else []
-        cxp = sum(float(i.get('saldo_pendiente') or i.get('saldo') or 0) for i in items if float(i.get('saldo_pendiente') or i.get('saldo') or 0) > 0)
-        if cxp == 0:
-            cxp = float(raw.get('total_pendiente', 0) or 0) if isinstance(raw, dict) else 0
-
-    # Fallback a db.payments si no hay cache
+        cxc = r[0]['total'] if r else 0
     if cxp == 0:
-        result = await db.payments.aggregate([
+        r = await db.payments.aggregate([
             {'$match': {'company_id': company_id, 'tipo': 'pago', 'estatus': {'$in': ['pendiente', 'parcial']}}},
             {'$group': {'_id': None, 'total': {'$sum': {'$ifNull': ['$saldo_pendiente', '$monto']}}}}
         ]).to_list(1)
-        cxp = result[0]['total'] if result else 0
-
+        cxp = r[0]['total'] if r else 0
     flujo_neto = cxc - cxp
-    posicion_proyectada = total_mxn + flujo_neto
-
     return {
         'saldo_actual': round(total_mxn, 2),
         'cuentas_por_cobrar': round(cxc, 2),
         'cuentas_por_pagar': round(cxp, 2),
         'flujo_neto_esperado': round(flujo_neto, 2),
-        'posicion_proyectada': round(posicion_proyectada, 2),
+        'posicion_proyectada': round(total_mxn + flujo_neto, 2),
+        'erp': 'alegra' if usa_alegra else 'contalink',
     }
-
-
-def _get_fecha_efectiva(item: dict, today_date) -> str:
-    """Return ISO date string for due date, estimating from dias_vencido when fecha_vencimiento is absent."""
-    fv = item.get('fecha_vencimiento', '')
-    if fv:
-        return str(fv)[:10]
-    dias = int(item.get('dias_vencido', 0) or 0)
-    if dias > 30:
-        return today_date.isoformat()
-    elif dias > 0:
-        return (today_date + timedelta(days=7)).isoformat()
-    else:
-        dias_restantes = abs(dias) if dias < 0 else 14
-        return (today_date + timedelta(days=min(dias_restantes, 90))).isoformat()
-
-
 async def calculate_alerts(company_id: str, weeks_ahead: int = 16) -> List[Dict]:
     from services.cashflow_calculator import calcular_semanas_cashflow
 
