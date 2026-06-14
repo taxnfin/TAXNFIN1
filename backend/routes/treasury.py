@@ -736,6 +736,17 @@ async def get_calendar(
     return await get_treasury_calendar(company_id, weeks_ahead)
 
 
+@router.get("/debug-cfdi-weekid")
+async def debug_cfdi_weekid(request: Request, current_user: Dict = Depends(get_current_user)):
+    company_id = await get_active_company_id(request, current_user)
+    total = await db.cfdis.count_documents({'company_id': company_id})
+    con_week_id = await db.cfdis.count_documents({'company_id': company_id, 'cashflow_week_id': {'$exists': True, '$ne': '', '$ne': None}})
+    sin_week_id = total - con_week_id
+    muestra_con = await db.cfdis.find_one({'company_id': company_id, 'cashflow_week_id': {'$exists': True, '$ne': ''}}, {'_id': 0, 'id': 1, 'cashflow_week_id': 1, 'tipo_cfdi': 1, 'total': 1, 'fecha_emision': 1})
+    muestra_sin = await db.cfdis.find_one({'company_id': company_id, '$or': [{'cashflow_week_id': {'$exists': False}}, {'cashflow_week_id': ''}]}, {'_id': 0, 'id': 1, 'cashflow_week_id': 1, 'tipo_cfdi': 1, 'total': 1, 'fecha_emision': 1})
+    return {'total': total, 'con_cashflow_week_id': con_week_id, 'sin_cashflow_week_id': sin_week_id, 'muestra_con': muestra_con, 'muestra_sin': muestra_sin}
+
+
 @router.patch("/weeks/{week_id}/notas")
 async def update_week_notas(
     week_id: str,
