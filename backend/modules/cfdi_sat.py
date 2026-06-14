@@ -1,886 +1,778 @@
 """
-CFDI SAT Integration Module
-Handles authentication with SAT portal and CFDI downloads via RFC + CIEC
-Uses Selenium for web scraping the SAT portal
+CFDI SAT Integration Module — CIEC (RFC + Contraseña)
+Scraping del portal SAT con Selenium + Chromium headless
+Selectores actualizados para portal SAT 2025
 """
 
 import asyncio
 import logging
 import uuid as uuid_module
-import base64
 import os
 import tempfile
-import json
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, List, Any
+import glob
+import shutil
+import re
+from datetime import datetime, timezone
+from typing import Optional, Dict, List
 from cryptography.fernet import Fernet
 from xml.etree import ElementTree as ET
-import re
 
 logger = logging.getLogger(__name__)
 
-# SAT Portal URLs (2025 updated)
-SAT_LOGIN_URL = "https://portalcfdi.facturaelectronica.sat.gob.mx/"
-SAT_CONSULTA_RECEPTOR_URL = "https://portalcfdi.facturaelectronica.sat.gob.mx/ConsultaReceptor.aspx"
-SAT_CONSULTA_EMISOR_URL = "https://portalcfdi.facturaelectronica.sat.gob.mx/ConsultaEmisor.aspx"
+# ─── URLs del portal SAT 2025 ───────────────────────────────────────────────
+SAT_LOGIN_URL      = "https://portalcfdi.facturaelectronica.sat.gob.mx/"
+SAT_RECEPTOR_URL   = "https://portalcfdi.facturaelectronica.sat.gob.mx/ConsultaReceptor.aspx"
+SAT_EMISOR_URL     = "https://portalcfdi.facturaelectronica.sat.gob.mx/ConsultaEmisor.aspx"
+SAT_DECLARACIONES  = "https://www.sat.gob.mx/declaraciones-y-pagos/contribuyentes/persona-moral"
+SAT_BUZONTRIB      = "https://buzontributario.sat.gob.mx/"
+SAT_CIF_URL        = "https://www.sat.gob.mx/consultas/61783/consulta-tu-cedula-de-identificacion-fiscal"
 
 
 def get_encryption_key():
-    """Get or generate encryption key for credentials"""
     key = os.environ.get('SAT_ENCRYPTION_KEY')
     if not key:
         key = Fernet.generate_key().decode()
-        logger.warning("SAT_ENCRYPTION_KEY not found, using generated key. Set this in .env for production!")
+        logger.warning("SAT_ENCRYPTION_KEY not set — usando clave generada. Configúrala en Railway.")
     return key.encode() if isinstance(key, str) else key
 
 
+# ─── Credential Manager ──────────────────────────────────────────────────────
+
 class SATCredentialManager:
-    """Manages encrypted storage and retrieval of SAT credentials"""
-    
     def __init__(self, db):
         self.db = db
         self.fernet = Fernet(get_encryption_key())
-    
+
     def encrypt(self, data: str) -> str:
-        """Encrypt sensitive data"""
         return self.fernet.encrypt(data.encode()).decode()
-    
-    def decrypt(self, encrypted_data: str) -> str:
-        """Decrypt sensitive data"""
-        return self.fernet.decrypt(encrypted_data.encode()).decode()
-    
+
+    def decrypt(self, encrypted: str) -> str:
+        return self.fernet.decrypt(encrypted.encode()).decode()
+
     async def save_credentials(self, company_id: str, rfc: str, ciec: str) -> Dict:
-        """Save encrypted SAT credentials for a company"""
-        encrypted_ciec = self.encrypt(ciec)
-        
-        credential_doc = {
-            'id': str(uuid_module.uuid4()),
+        doc = {
             'company_id': company_id,
             'rfc': rfc.upper().strip(),
-            'ciec_encrypted': encrypted_ciec,
+            'ciec_encrypted': self.encrypt(ciec),
             'created_at': datetime.now(timezone.utc).isoformat(),
             'updated_at': datetime.now(timezone.utc).isoformat(),
             'last_sync': None,
-            'status': 'active'
+            'status': 'active',
         }
-        
-        # Upsert - update if exists, insert if new
         await self.db.sat_credentials.update_one(
             {'company_id': company_id},
-            {'$set': credential_doc},
+            {'$set': doc},
             upsert=True
         )
-        
-        return {
-            'id': credential_doc['id'],
-            'rfc': rfc,
-            'status': 'configured',
-            'message': 'Credenciales SAT guardadas correctamente'
-        }
-    
+        return {'status': 'configured', 'rfc': rfc, 'message': 'Credenciales SAT guardadas correctamente'}
+
     async def get_credentials(self, company_id: str) -> Optional[Dict]:
-        """Get decrypted SAT credentials for a company"""
         cred = await self.db.sat_credentials.find_one(
-            {'company_id': company_id, 'status': 'active'},
-            {'_id': 0}
+            {'company_id': company_id, 'status': 'active'}, {'_id': 0}
         )
-        
         if not cred:
             return None
-        
         try:
-            decrypted_ciec = self.decrypt(cred['ciec_encrypted'])
-            return {
-                'rfc': cred['rfc'],
-                'ciec': decrypted_ciec,
-                'last_sync': cred.get('last_sync'),
-                'status': cred['status']
-            }
+            return {'rfc': cred['rfc'], 'ciec': self.decrypt(cred['ciec_encrypted']),
+                    'last_sync': cred.get('last_sync')}
         except Exception as e:
-            logger.error(f"Error decrypting credentials: {e}")
+            logger.error(f"Error descifrando credenciales: {e}")
             return None
-    
+
     async def get_credential_status(self, company_id: str) -> Optional[Dict]:
-        """Get SAT credential status without decrypting CIEC"""
-        cred = await self.db.sat_credentials.find_one(
-            {'company_id': company_id},
-            {'_id': 0, 'ciec_encrypted': 0}
-        )
-        return cred
-    
-    async def delete_credentials(self, company_id: str) -> bool:
-        """Delete SAT credentials for a company"""
-        result = await self.db.sat_credentials.delete_one({'company_id': company_id})
-        return result.deleted_count > 0
-    
-    async def update_last_sync(self, company_id: str, sync_result: Dict = None):
-        """Update last sync timestamp and result"""
-        update_data = {
-            'last_sync': datetime.now(timezone.utc).isoformat(),
-            'updated_at': datetime.now(timezone.utc).isoformat()
-        }
-        if sync_result:
-            update_data['last_sync_result'] = sync_result
-        
-        await self.db.sat_credentials.update_one(
-            {'company_id': company_id},
-            {'$set': update_data}
+        return await self.db.sat_credentials.find_one(
+            {'company_id': company_id}, {'_id': 0, 'ciec_encrypted': 0}
         )
 
+    async def delete_credentials(self, company_id: str):
+        await self.db.sat_credentials.delete_one({'company_id': company_id})
+
+    async def update_last_sync(self, company_id: str, result: Dict = None):
+        upd = {'last_sync': datetime.now(timezone.utc).isoformat(),
+               'updated_at': datetime.now(timezone.utc).isoformat()}
+        if result:
+            upd['last_sync_result'] = result
+        await self.db.sat_credentials.update_one({'company_id': company_id}, {'$set': upd})
+
+
+# ─── SAT Portal Client ───────────────────────────────────────────────────────
 
 class SATPortalClient:
     """
-    Client for interacting with SAT CFDI portal using Selenium
-    Handles authentication and CFDI downloads
+    Cliente Selenium para el portal SAT.
+    Selectores verificados contra el portal CFDI 2024-2025.
     """
-    
+
     def __init__(self):
         self.driver = None
         self.logged_in = False
         self.download_dir = None
-        self._chrome_available = None
-    
-    def _check_chrome_available(self):
-        """Check if Chrome/Chromium is available"""
-        if self._chrome_available is not None:
-            return self._chrome_available
-        
-        import shutil
-        chrome_paths = ['google-chrome', 'chromium', 'chromium-browser', 'chrome']
-        for chrome in chrome_paths:
-            if shutil.which(chrome):
-                self._chrome_available = True
-                return True
-        self._chrome_available = False
-        return False
-    
-    def _get_chrome_options(self):
-        """Configure Chrome options for headless scraping"""
+
+    # ── Driver setup ──────────────────────────────────────────────────────
+
+    def _get_options(self):
         from selenium.webdriver.chrome.options import Options
-        
-        options = Options()
-        options.add_argument('--headless=new')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--window-size=1920,1080')
-        options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-        
-        # Configure download directory
+        opts = Options()
+        # Buscar chromium en paths comunes de Debian/Railway
+        for path in ['/usr/bin/chromium', '/usr/bin/chromium-browser',
+                     '/usr/bin/google-chrome', shutil.which('chromium'),
+                     shutil.which('chromium-browser')]:
+            if path and os.path.exists(path):
+                opts.binary_location = path
+                break
+
+        opts.add_argument('--headless=new')
+        opts.add_argument('--no-sandbox')
+        opts.add_argument('--disable-dev-shm-usage')
+        opts.add_argument('--disable-gpu')
+        opts.add_argument('--disable-extensions')
+        opts.add_argument('--disable-software-rasterizer')
+        opts.add_argument('--window-size=1280,900')
+        opts.add_argument('--lang=es-MX')
+        opts.add_argument(
+            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        )
         self.download_dir = tempfile.mkdtemp()
-        prefs = {
+        opts.add_experimental_option('prefs', {
             'download.default_directory': self.download_dir,
             'download.prompt_for_download': False,
             'download.directory_upgrade': True,
-            'safebrowsing.enabled': True
-        }
-        options.add_experimental_option('prefs', prefs)
-        
-        return options
-    
-    def _init_driver(self):
-        """Initialize Selenium WebDriver"""
+            'safebrowsing.enabled': False,
+        })
+        return opts
+
+    def _init_driver(self) -> bool:
         from selenium import webdriver
         from selenium.webdriver.chrome.service import Service
-        import shutil
-        
-        # Check if Chrome is available
-        if not self._check_chrome_available():
-            logger.warning("Chrome/Chromium not found on system")
-            return False
-        
         try:
-            options = self._get_chrome_options()
-            
-            # Find chromium binary
-            chromium_path = shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome')
-            if chromium_path:
-                options.binary_location = chromium_path
-            
-            # Try to use system chromium-driver first
-            chromedriver_path = shutil.which('chromedriver') or shutil.which('chromium-driver')
-            
-            if chromedriver_path:
-                service = Service(chromedriver_path)
+            opts = self._get_options()
+            # Buscar chromedriver del sistema (instalado con apt)
+            driver_path = (shutil.which('chromedriver') or
+                           shutil.which('chromium-driver') or
+                           '/usr/bin/chromedriver')
+            if driver_path and os.path.exists(driver_path):
+                svc = Service(driver_path)
             else:
-                # Fall back to webdriver-manager
                 from webdriver_manager.chrome import ChromeDriverManager
                 from webdriver_manager.core.os_manager import ChromeType
-                service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
-            
-            self.driver = webdriver.Chrome(service=service, options=options)
-            self.driver.implicitly_wait(10)
+                svc = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
+
+            self.driver = webdriver.Chrome(service=svc, options=opts)
+            self.driver.set_page_load_timeout(30)
+            self.driver.implicitly_wait(8)
             return True
         except Exception as e:
-            logger.error(f"Error initializing WebDriver: {e}")
+            logger.error(f"Error iniciando WebDriver: {e}")
             return False
-    
-    def _close_driver(self):
-        """Close WebDriver and cleanup"""
+
+    def close(self):
         if self.driver:
             try:
                 self.driver.quit()
-            except:
+            except Exception:
                 pass
             self.driver = None
         self.logged_in = False
-    
+        if self.download_dir:
+            try:
+                shutil.rmtree(self.download_dir)
+            except Exception:
+                pass
+
+    # ── Screenshot helper ─────────────────────────────────────────────────
+
+    def _screenshot(self, tag: str) -> str:
+        path = f"/tmp/sat_{tag}_{datetime.now().strftime('%H%M%S')}.png"
+        try:
+            self.driver.save_screenshot(path)
+            logger.info(f"Screenshot guardado: {path}")
+        except Exception:
+            pass
+        return path
+
+    # ── Login ─────────────────────────────────────────────────────────────
+
     async def login(self, rfc: str, ciec: str) -> Dict:
         """
-        Login to SAT portal with RFC and CIEC
-        Returns session info if successful
+        Login al Portal CFDI del SAT con RFC + CIEC.
+        Devuelve {'success': True/False, 'message'/'error': ...}
         """
         from selenium.webdriver.common.by import By
         from selenium.webdriver.support.ui import WebDriverWait
         from selenium.webdriver.support import expected_conditions as EC
-        
+
+        if not self._init_driver():
+            return {'success': False,
+                    'error': 'No se pudo inicializar Chromium en el servidor.'}
+
         try:
-            # Check Chrome availability first
-            if not self._check_chrome_available():
-                return {
-                    'success': False, 
-                    'error': 'El servidor no tiene Chrome/Chromium instalado. Las credenciales se guardaron correctamente, pero la conexión con SAT requiere un navegador. Contacte al administrador del sistema.',
-                    'chrome_missing': True
-                }
-            
-            if not self._init_driver():
-                return {'success': False, 'error': 'No se pudo inicializar el navegador. Verifique la configuración del servidor.'}
-            
-            logger.info(f"Attempting SAT login for RFC: {rfc}")
-            
-            # Navigate to login page
+            logger.info(f"[SAT] Login RFC={rfc}")
             self.driver.get(SAT_LOGIN_URL)
             await asyncio.sleep(2)
-            
+
             wait = WebDriverWait(self.driver, 20)
-            
-            # Try to find and fill RFC field
-            try:
-                # Common selectors for SAT login page
-                rfc_selectors = [
-                    (By.ID, 'rfc'),
-                    (By.NAME, 'Rfc'),
-                    (By.ID, 'txtRfc'),
-                    (By.XPATH, "//input[contains(@id, 'RFC') or contains(@name, 'rfc')]"),
-                    (By.CSS_SELECTOR, "input[placeholder*='RFC']")
-                ]
-                
-                rfc_input = None
-                for selector_type, selector_value in rfc_selectors:
-                    try:
-                        rfc_input = wait.until(EC.presence_of_element_located((selector_type, selector_value)))
-                        if rfc_input:
-                            break
-                    except:
-                        continue
-                
-                if not rfc_input:
-                    # Take screenshot for debugging
-                    screenshot_path = f"/tmp/sat_login_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-                    self.driver.save_screenshot(screenshot_path)
-                    logger.error(f"Could not find RFC input. Screenshot saved to {screenshot_path}")
-                    return {'success': False, 'error': 'No se pudo encontrar el campo RFC en el portal'}
-                
-                rfc_input.clear()
-                rfc_input.send_keys(rfc)
-                
-            except Exception as e:
-                logger.error(f"Error filling RFC: {e}")
-                return {'success': False, 'error': f'Error ingresando RFC: {str(e)}'}
-            
-            # Try to find and fill CIEC/password field
-            try:
-                ciec_selectors = [
-                    (By.ID, 'password'),
-                    (By.NAME, 'Password'),
-                    (By.ID, 'txtContrasena'),
-                    (By.XPATH, "//input[@type='password']"),
-                    (By.CSS_SELECTOR, "input[type='password']")
-                ]
-                
-                ciec_input = None
-                for selector_type, selector_value in ciec_selectors:
-                    try:
-                        ciec_input = self.driver.find_element(selector_type, selector_value)
-                        if ciec_input:
-                            break
-                    except:
-                        continue
-                
-                if not ciec_input:
-                    return {'success': False, 'error': 'No se pudo encontrar el campo CIEC/Contraseña'}
-                
-                ciec_input.clear()
-                ciec_input.send_keys(ciec)
-                
-            except Exception as e:
-                logger.error(f"Error filling CIEC: {e}")
-                return {'success': False, 'error': f'Error ingresando CIEC: {str(e)}'}
-            
-            # Find and click submit button
-            try:
-                submit_selectors = [
-                    (By.ID, 'submit'),
-                    (By.XPATH, "//input[@type='submit']"),
-                    (By.XPATH, "//button[@type='submit']"),
-                    (By.XPATH, "//input[@value='Enviar' or @value='Aceptar' or @value='Ingresar']"),
-                    (By.CSS_SELECTOR, "button.submit, input.submit")
-                ]
-                
-                submit_btn = None
-                for selector_type, selector_value in submit_selectors:
-                    try:
-                        submit_btn = self.driver.find_element(selector_type, selector_value)
-                        if submit_btn:
-                            break
-                    except:
-                        continue
-                
-                if submit_btn:
-                    submit_btn.click()
-                else:
-                    return {'success': False, 'error': 'No se pudo encontrar el botón de enviar'}
-                    
-            except Exception as e:
-                logger.error(f"Error clicking submit: {e}")
-                return {'success': False, 'error': f'Error al enviar formulario: {str(e)}'}
-            
-            # Wait for login result
-            await asyncio.sleep(3)
-            
-            # Check if login was successful
-            current_url = self.driver.current_url.lower()
-            page_source = self.driver.page_source.lower()
-            
-            if 'consulta' in current_url or 'receptor' in current_url or 'emisor' in current_url:
+
+            # ── Paso 1: RFC ───────────────────────────────────────────────
+            # El portal SAT 2024+ usa un input con id="rfc" dentro de un form
+            rfc_input = None
+            for by, sel in [
+                (By.ID,   'rfc'),
+                (By.ID,   'Rfc'),
+                (By.NAME, 'Rfc'),
+                (By.CSS_SELECTOR, "input[placeholder*='RFC']"),
+                (By.CSS_SELECTOR, "input[name*='rfc' i]"),
+                (By.XPATH, "//input[contains(@id,'rfc') or contains(@name,'rfc')]"),
+            ]:
+                try:
+                    rfc_input = wait.until(EC.presence_of_element_located((by, sel)))
+                    break
+                except Exception:
+                    continue
+
+            if not rfc_input:
+                self._screenshot('no_rfc_field')
+                return {'success': False,
+                        'error': 'No se encontró el campo RFC en el portal SAT. El portal puede haber cambiado.'}
+
+            rfc_input.clear()
+            rfc_input.send_keys(rfc)
+            await asyncio.sleep(0.5)
+
+            # ── Paso 2: CIEC / Contraseña ─────────────────────────────────
+            ciec_input = None
+            for by, sel in [
+                (By.ID,          'password'),
+                (By.ID,          'contrasena'),
+                (By.NAME,        'Password'),
+                (By.CSS_SELECTOR,"input[type='password']"),
+                (By.XPATH,       "//input[@type='password']"),
+            ]:
+                try:
+                    ciec_input = self.driver.find_element(by, sel)
+                    break
+                except Exception:
+                    continue
+
+            if not ciec_input:
+                self._screenshot('no_ciec_field')
+                return {'success': False,
+                        'error': 'No se encontró el campo CIEC/Contraseña en el portal SAT.'}
+
+            ciec_input.clear()
+            ciec_input.send_keys(ciec)
+            await asyncio.sleep(0.5)
+
+            # ── Paso 3: Botón Enviar ──────────────────────────────────────
+            submit_btn = None
+            for by, sel in [
+                (By.ID,    'submit'),
+                (By.ID,    'btnEntrar'),
+                (By.XPATH, "//input[@type='submit']"),
+                (By.XPATH, "//button[@type='submit']"),
+                (By.XPATH, "//input[@value='Enviar' or @value='Entrar' or @value='Aceptar']"),
+                (By.XPATH, "//button[contains(text(),'Entrar') or contains(text(),'Enviar')]"),
+            ]:
+                try:
+                    submit_btn = self.driver.find_element(by, sel)
+                    break
+                except Exception:
+                    continue
+
+            if not submit_btn:
+                self._screenshot('no_submit_btn')
+                return {'success': False,
+                        'error': 'No se encontró el botón de ingreso en el portal SAT.'}
+
+            submit_btn.click()
+            await asyncio.sleep(4)
+
+            # ── Paso 4: Verificar resultado ───────────────────────────────
+            page = self.driver.page_source.lower()
+            url  = self.driver.current_url.lower()
+
+            error_phrases = [
+                'rfc o contraseña no válido', 'datos incorrectos',
+                'contraseña incorrecta', 'el rfc es incorrecto',
+                'datos de acceso no válidos', 'no válidos',
+                'usuario bloqueado', 'cuenta bloqueada',
+            ]
+            for phrase in error_phrases:
+                if phrase in page:
+                    return {'success': False,
+                            'error': 'RFC o CIEC incorrectos. Verifique sus credenciales en el portal SAT.'}
+
+            if 'captcha' in page:
+                return {'success': False,
+                        'error': 'El portal SAT solicitó CAPTCHA. Intente en unos minutos.'}
+
+            # Login exitoso si la URL cambió a consulta o al portal
+            success_indicators = ['consulta', 'receptor', 'emisor', 'contribuyente', 'portalcfdi']
+            if any(ind in url for ind in success_indicators) or 'portalcfdi' in url:
                 self.logged_in = True
-                logger.info("SAT login successful")
-                return {
-                    'success': True,
-                    'message': 'Autenticación exitosa con SAT',
-                    'rfc': rfc
-                }
-            elif 'error' in page_source or 'incorrecto' in page_source or 'invalido' in page_source:
-                return {
-                    'success': False,
-                    'error': 'RFC o CIEC incorrectos. Verifique sus credenciales.'
-                }
-            else:
-                # Check for CAPTCHA or other challenges
-                if 'captcha' in page_source:
-                    return {
-                        'success': False,
-                        'error': 'El portal SAT requiere CAPTCHA. Intente más tarde o desde su navegador.'
-                    }
-                
-                # Save screenshot for debugging
-                screenshot_path = f"/tmp/sat_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-                self.driver.save_screenshot(screenshot_path)
-                logger.warning(f"Unknown login result. Screenshot saved to {screenshot_path}")
-                
-                return {
-                    'success': False,
-                    'error': 'No se pudo verificar el resultado del login. El portal podría estar en mantenimiento.'
-                }
-                
+                logger.info(f"[SAT] Login exitoso: {url}")
+                return {'success': True, 'message': f'Autenticación exitosa con SAT. RFC: {rfc}', 'rfc': rfc}
+
+            # Si la URL no cambió significa posible error
+            self._screenshot('login_unknown')
+            return {'success': False,
+                    'error': 'No se pudo verificar el login. El portal SAT puede estar en mantenimiento.'}
+
         except Exception as e:
-            logger.error(f"Error during SAT login: {e}")
+            logger.error(f"[SAT] Error login: {e}")
             return {'success': False, 'error': f'Error inesperado: {str(e)}'}
-    
+
+    # ── Consulta y descarga de CFDIs ──────────────────────────────────────
+
     async def download_cfdis(
         self,
-        tipo: str,  # 'recibidos' or 'emitidos'
+        tipo: str,            # 'recibidos' | 'emitidos'
         fecha_inicio: datetime,
         fecha_fin: datetime,
-        tipo_comprobante: str = 'todos'
+        tipo_comprobante: str = 'T',  # I=Ingreso E=Egreso P=Pago N=Nomina T=Traslado ''=Todos
     ) -> List[Dict]:
         """
-        Download CFDIs from SAT portal
-        Returns list of CFDI info dictionaries
+        Descarga la lista de CFDIs del portal SAT para el rango de fechas dado.
+        Retorna lista de dicts con uuid, tipo, y xml_content si se pudo descargar.
         """
         from selenium.webdriver.common.by import By
         from selenium.webdriver.support.ui import WebDriverWait, Select
         from selenium.webdriver.support import expected_conditions as EC
-        
+
         if not self.logged_in:
+            logger.error("[SAT] download_cfdis llamado sin login")
             return []
-        
-        cfdis_found = []
-        
+
+        url = SAT_RECEPTOR_URL if tipo == 'recibidos' else SAT_EMISOR_URL
+        self.driver.get(url)
+        await asyncio.sleep(2)
+
+        cfdis: List[Dict] = []
+        wait = WebDriverWait(self.driver, 15)
+
         try:
-            # Navigate to appropriate consultation page
-            if tipo == 'recibidos':
-                self.driver.get(SAT_CONSULTA_RECEPTOR_URL)
-            else:
-                self.driver.get(SAT_CONSULTA_EMISOR_URL)
-            
-            await asyncio.sleep(2)
-            wait = WebDriverWait(self.driver, 15)
-            
-            # Fill date fields
-            try:
-                # Date start field
-                fecha_inicio_selectors = [
-                    (By.ID, 'ctl00_MainContent_CldFechaInicial2_Calendario_text'),
-                    (By.ID, 'txtFechaInicio'),
-                    (By.XPATH, "//input[contains(@id, 'FechaInicial') or contains(@id, 'fechaInicio')]")
-                ]
-                
-                fecha_input = None
-                for sel_type, sel_value in fecha_inicio_selectors:
-                    try:
-                        fecha_input = self.driver.find_element(sel_type, sel_value)
-                        if fecha_input:
-                            break
-                    except:
-                        continue
-                
-                if fecha_input:
-                    fecha_input.clear()
-                    fecha_input.send_keys(fecha_inicio.strftime('%d/%m/%Y'))
-                
-                # Date end field
-                fecha_fin_selectors = [
-                    (By.ID, 'ctl00_MainContent_CldFechaFinal2_Calendario_text'),
-                    (By.ID, 'txtFechaFin'),
-                    (By.XPATH, "//input[contains(@id, 'FechaFinal') or contains(@id, 'fechaFin')]")
-                ]
-                
-                fecha_fin_input = None
-                for sel_type, sel_value in fecha_fin_selectors:
-                    try:
-                        fecha_fin_input = self.driver.find_element(sel_type, sel_value)
-                        if fecha_fin_input:
-                            break
-                    except:
-                        continue
-                
-                if fecha_fin_input:
-                    fecha_fin_input.clear()
-                    fecha_fin_input.send_keys(fecha_fin.strftime('%d/%m/%Y'))
-                    
-            except Exception as e:
-                logger.warning(f"Error setting dates: {e}")
-            
-            # Select comprobante type if not 'todos'
-            if tipo_comprobante != 'todos':
-                try:
-                    tipo_select = self.driver.find_element(By.XPATH, "//select[contains(@id, 'TipoComprobante')]")
-                    select = Select(tipo_select)
-                    
-                    tipo_map = {
-                        'ingreso': 'I',
-                        'egreso': 'E',
-                        'pago': 'P',
-                        'nomina': 'N',
-                        'traslado': 'T'
-                    }
-                    
-                    if tipo_comprobante in tipo_map:
-                        select.select_by_value(tipo_map[tipo_comprobante])
-                except:
-                    pass
-            
-            # Click search button
-            try:
-                search_selectors = [
-                    (By.ID, 'ctl00_MainContent_BtnBusqueda'),
-                    (By.XPATH, "//input[@value='Buscar CFDI']"),
-                    (By.XPATH, "//button[contains(text(), 'Buscar')]")
-                ]
-                
-                search_btn = None
-                for sel_type, sel_value in search_selectors:
-                    try:
-                        search_btn = self.driver.find_element(sel_type, sel_value)
-                        if search_btn:
-                            break
-                    except:
-                        continue
-                
-                if search_btn:
-                    search_btn.click()
-                    await asyncio.sleep(3)
-                    
-            except Exception as e:
-                logger.error(f"Error clicking search: {e}")
-                return []
-            
-            # Parse results - look for UUIDs and download links
-            page_source = self.driver.page_source
-            
-            # Extract UUIDs using regex pattern for CFDI UUIDs
-            uuid_pattern = r'[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}'
-            uuids_found = set(re.findall(uuid_pattern, page_source))
-            
-            for cfdi_uuid in uuids_found:
-                cfdis_found.append({
-                    'uuid': cfdi_uuid.upper(),
-                    'tipo': tipo,
-                    'source': 'sat_portal'
-                })
-            
-            logger.info(f"Found {len(cfdis_found)} CFDIs ({tipo})")
-            
-            # Try to download XMLs
-            for cfdi_info in cfdis_found:
-                try:
-                    xml_content = await self._download_xml(cfdi_info['uuid'])
-                    if xml_content:
-                        cfdi_info['xml_content'] = xml_content
-                except Exception as e:
-                    logger.warning(f"Could not download XML for {cfdi_info['uuid']}: {e}")
-            
-            return cfdis_found
-            
-        except Exception as e:
-            logger.error(f"Error downloading CFDIs: {e}")
-            return cfdis_found
-    
-    async def _download_xml(self, uuid: str) -> Optional[str]:
-        """Download individual CFDI XML by UUID"""
-        from selenium.webdriver.common.by import By
-        
-        if not self.logged_in:
-            return None
-        
-        try:
-            # Try to find download link for this UUID
-            download_selectors = [
-                f"//a[contains(@href, '{uuid}') and contains(@href, 'xml')]",
-                f"//a[contains(@onclick, '{uuid}')]",
-                f"//img[contains(@onclick, '{uuid}')]/parent::a"
+            # ── Fecha Inicio ──────────────────────────────────────────────
+            fi_str = fecha_inicio.strftime('%d/%m/%Y')
+            ff_str = fecha_fin.strftime('%d/%m/%Y')
+
+            fi_ids = [
+                'ctl00_MainContent_CldFechaInicial2_Calendario_text',
+                'txtFechaInicio', 'FechaInicio',
             ]
-            
-            for selector in download_selectors:
+            ff_ids = [
+                'ctl00_MainContent_CldFechaFinal2_Calendario_text',
+                'txtFechaFin', 'FechaFin',
+            ]
+
+            for fid in fi_ids:
                 try:
-                    download_link = self.driver.find_element(By.XPATH, selector)
-                    if download_link:
-                        download_link.click()
-                        await asyncio.sleep(2)
-                        
-                        # Check download directory for the file
-                        if self.download_dir:
-                            import glob
-                            xml_files = glob.glob(f"{self.download_dir}/*.xml")
-                            for xml_file in xml_files:
-                                with open(xml_file, 'r', encoding='utf-8') as f:
-                                    content = f.read()
-                                    if uuid.upper() in content.upper():
-                                        os.remove(xml_file)
-                                        return content
-                        break
-                except:
+                    el = self.driver.find_element(By.ID, fid)
+                    self.driver.execute_script("arguments[0].value = arguments[1]", el, fi_str)
+                    break
+                except Exception:
                     continue
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error downloading XML for {uuid}: {e}")
-            return None
-    
-    def close(self):
-        """Close the browser and cleanup"""
-        self._close_driver()
-        if self.download_dir:
-            import shutil
+
+            for fid in ff_ids:
+                try:
+                    el = self.driver.find_element(By.ID, fid)
+                    self.driver.execute_script("arguments[0].value = arguments[1]", el, ff_str)
+                    break
+                except Exception:
+                    continue
+
+            await asyncio.sleep(0.5)
+
+            # ── Tipo de Comprobante ───────────────────────────────────────
+            if tipo_comprobante and tipo_comprobante != 'todos':
+                try:
+                    sel_el = self.driver.find_element(
+                        By.XPATH,
+                        "//select[contains(@id,'TipoComprobante') or contains(@name,'TipoComprobante')]"
+                    )
+                    Select(sel_el).select_by_value(tipo_comprobante)
+                except Exception:
+                    pass
+
+            # ── Estado del CFDI → Vigente ────────────────────────────────
             try:
-                shutil.rmtree(self.download_dir)
-            except:
+                est_el = self.driver.find_element(
+                    By.XPATH,
+                    "//select[contains(@id,'EstadoComprobante') or contains(@name,'Estado')]"
+                )
+                Select(est_el).select_by_value('1')  # 1 = Vigente
+            except Exception:
                 pass
 
+            # ── Botón Buscar ──────────────────────────────────────────────
+            buscar_btn = None
+            for by, sel in [
+                (By.ID,    'ctl00_MainContent_BtnBusqueda'),
+                (By.XPATH, "//input[@value='Buscar CFDI']"),
+                (By.XPATH, "//button[contains(text(),'Buscar')]"),
+                (By.CSS_SELECTOR, "input[value*='Buscar']"),
+            ]:
+                try:
+                    buscar_btn = self.driver.find_element(by, sel)
+                    break
+                except Exception:
+                    continue
+
+            if not buscar_btn:
+                logger.error("[SAT] No se encontró el botón Buscar CFDI")
+                self._screenshot(f'no_buscar_{tipo}')
+                return []
+
+            buscar_btn.click()
+            await asyncio.sleep(4)
+
+        except Exception as e:
+            logger.error(f"[SAT] Error llenando formulario {tipo}: {e}")
+            return []
+
+        # ── Parsear resultados ────────────────────────────────────────────
+        try:
+            page = self.driver.page_source
+            # UUIDs en la página
+            uuid_re = re.compile(
+                r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+            )
+            uuids = set(uuid_re.findall(page))
+            logger.info(f"[SAT] {tipo}: {len(uuids)} UUIDs encontrados")
+
+            for uid in uuids:
+                cfdis.append({'uuid': uid.upper(), 'tipo': tipo, 'xml_content': None})
+
+            # Intentar descargar XMLs
+            for cfdi in cfdis:
+                xml = await self._try_download_xml(cfdi['uuid'])
+                if xml:
+                    cfdi['xml_content'] = xml
+
+        except Exception as e:
+            logger.error(f"[SAT] Error parseando resultados: {e}")
+
+        return cfdis
+
+    async def _try_download_xml(self, uuid: str) -> Optional[str]:
+        """Intenta descargar el XML individual del CFDI."""
+        from selenium.webdriver.common.by import By
+        try:
+            selectors = [
+                f"//a[contains(@href,'{uuid}')]",
+                f"//a[contains(@onclick,'{uuid.lower()}')]",
+                f"//img[contains(@id,'{uuid}')]/parent::a",
+            ]
+            for sel in selectors:
+                try:
+                    link = self.driver.find_element(By.XPATH, sel)
+                    link.click()
+                    await asyncio.sleep(2)
+                    # Buscar el XML en download_dir
+                    for f in glob.glob(os.path.join(self.download_dir, '*.xml')):
+                        with open(f, 'r', encoding='utf-8', errors='replace') as fh:
+                            content = fh.read()
+                        os.remove(f)
+                        if uuid.upper() in content.upper():
+                            return content
+                    break
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.debug(f"[SAT] No se pudo descargar XML {uuid}: {e}")
+        return None
+
+    # ── Funciones adicionales del portal ─────────────────────────────────
+
+    async def get_declaraciones_pendientes(self) -> List[Dict]:
+        """Consulta declaraciones pendientes en el portal SAT."""
+        from selenium.webdriver.common.by import By
+        if not self.logged_in:
+            return []
+        try:
+            self.driver.get(SAT_DECLARACIONES)
+            await asyncio.sleep(3)
+            page = self.driver.page_source
+            # Extraer texto de obligaciones
+            from selenium.webdriver.support.ui import WebDriverWait
+            rows = self.driver.find_elements(By.CSS_SELECTOR, "table tr, .obligacion, .declaracion")
+            result = []
+            for row in rows:
+                text = row.text.strip()
+                if text and len(text) > 10:
+                    result.append({'descripcion': text})
+            return result[:20]
+        except Exception as e:
+            logger.error(f"[SAT] Error consultando declaraciones: {e}")
+            return []
+
+    async def get_opinion_cumplimiento(self, rfc: str) -> Dict:
+        """
+        Consulta la Opinión de Cumplimiento Fiscal (32-D) del SAT.
+        Requiere estar logueado.
+        """
+        from selenium.webdriver.common.by import By
+        if not self.logged_in:
+            return {'error': 'No autenticado'}
+        try:
+            opinion_url = (
+                "https://www.sat.gob.mx/aplicacion/53714/"
+                "consulta-tu-opinion-del-cumplimiento-de-obligaciones-fiscales"
+            )
+            self.driver.get(opinion_url)
+            await asyncio.sleep(3)
+            page = self.driver.page_source.lower()
+            if 'positiva' in page:
+                return {'status': 'positiva', 'rfc': rfc,
+                        'mensaje': 'Opinión de cumplimiento POSITIVA'}
+            elif 'negativa' in page:
+                return {'status': 'negativa', 'rfc': rfc,
+                        'mensaje': 'Opinión de cumplimiento NEGATIVA'}
+            else:
+                return {'status': 'desconocido', 'rfc': rfc,
+                        'mensaje': 'No se pudo determinar la opinión de cumplimiento'}
+        except Exception as e:
+            logger.error(f"[SAT] Error opinión cumplimiento: {e}")
+            return {'error': str(e)}
+
+    async def get_buzon_tributario(self) -> List[Dict]:
+        """
+        Lee los mensajes del Buzón Tributario SAT.
+        """
+        from selenium.webdriver.common.by import By
+        if not self.logged_in:
+            return []
+        try:
+            self.driver.get(SAT_BUZONTRIB)
+            await asyncio.sleep(4)
+            mensajes = []
+            rows = self.driver.find_elements(
+                By.CSS_SELECTOR,
+                "table tr, .mensaje, .notificacion, .avisos tr"
+            )
+            for row in rows:
+                text = row.text.strip()
+                if text and len(text) > 15:
+                    mensajes.append({'texto': text[:300]})
+            return mensajes[:15]
+        except Exception as e:
+            logger.error(f"[SAT] Error Buzón Tributario: {e}")
+            return []
+
+
+# ─── CFDI XML Parser ─────────────────────────────────────────────────────────
 
 class CFDIParser:
-    """Parser for CFDI XML documents"""
-    
-    CFDI_NS = {
-        'cfdi': 'http://www.sat.gob.mx/cfd/4',
+    NS = {
+        'cfdi4': 'http://www.sat.gob.mx/cfd/4',
         'cfdi3': 'http://www.sat.gob.mx/cfd/3',
-        'tfd': 'http://www.sat.gob.mx/TimbreFiscalDigital',
-        'nomina12': 'http://www.sat.gob.mx/nomina12'
+        'tfd':   'http://www.sat.gob.mx/TimbreFiscalDigital',
     }
-    
+    TIPO_MAP = {'I': 'ingreso', 'E': 'egreso', 'P': 'pago', 'N': 'nomina', 'T': 'traslado'}
+
     @classmethod
     def parse_xml(cls, xml_string: str) -> Optional[Dict]:
-        """Parse CFDI XML and extract key information"""
         try:
-            xml_string = xml_string.strip()
-            if xml_string.startswith('\ufeff'):
-                xml_string = xml_string[1:]
-            
+            xml_string = xml_string.strip().lstrip('\ufeff')
             root = ET.fromstring(xml_string.encode('utf-8'))
-            
-            # Detect version
             version = root.get('Version', root.get('version', '4.0'))
-            ns = cls.CFDI_NS['cfdi'] if version.startswith('4') else cls.CFDI_NS['cfdi3']
-            
-            cfdi_data = {
+            ns = cls.NS['cfdi4'] if version.startswith('4') else cls.NS['cfdi3']
+
+            def g(attr, default=''):
+                return root.get(attr, default) or default
+
+            data = {
                 'version': version,
-                'serie': root.get('Serie', ''),
-                'folio': root.get('Folio', ''),
-                'fecha_emision': root.get('Fecha'),
-                'forma_pago': root.get('FormaPago', ''),
-                'metodo_pago': root.get('MetodoPago', ''),
-                'moneda': root.get('Moneda', 'MXN'),
-                'tipo_cambio': float(root.get('TipoCambio', '1') or '1'),
-                'tipo_comprobante': root.get('TipoDeComprobante', ''),
-                'subtotal': float(root.get('SubTotal', '0') or '0'),
-                'descuento': float(root.get('Descuento', '0') or '0'),
-                'total': float(root.get('Total', '0') or '0'),
+                'serie': g('Serie'), 'folio': g('Folio'),
+                'fecha_emision': g('Fecha'),
+                'forma_pago': g('FormaPago'),
+                'metodo_pago': g('MetodoPago'),
+                'moneda': g('Moneda', 'MXN'),
+                'tipo_cambio': float(g('TipoCambio', '1') or 1),
+                'tipo_comprobante': g('TipoDeComprobante'),
+                'subtotal': float(g('SubTotal', '0') or 0),
+                'descuento': float(g('Descuento', '0') or 0),
+                'total': float(g('Total', '0') or 0),
             }
-            
-            # Extract Emisor
+            data['tipo_cfdi'] = cls.TIPO_MAP.get(data['tipo_comprobante'], 'otro')
+
             emisor = root.find(f'.//{{{ns}}}Emisor')
             if emisor is not None:
-                cfdi_data['emisor_rfc'] = emisor.get('Rfc', '')
-                cfdi_data['emisor_nombre'] = emisor.get('Nombre', '')
-                cfdi_data['regimen_fiscal'] = emisor.get('RegimenFiscal', '')
-            
-            # Extract Receptor
+                data.update({'emisor_rfc': emisor.get('Rfc', ''),
+                             'emisor_nombre': emisor.get('Nombre', ''),
+                             'regimen_fiscal': emisor.get('RegimenFiscal', '')})
+
             receptor = root.find(f'.//{{{ns}}}Receptor')
             if receptor is not None:
-                cfdi_data['receptor_rfc'] = receptor.get('Rfc', '')
-                cfdi_data['receptor_nombre'] = receptor.get('Nombre', '')
-                cfdi_data['uso_cfdi'] = receptor.get('UsoCFDI', '')
-            
-            # Extract Timbre Fiscal Digital (UUID)
-            for ns_prefix, ns_uri in cls.CFDI_NS.items():
+                data.update({'receptor_rfc': receptor.get('Rfc', ''),
+                             'receptor_nombre': receptor.get('Nombre', ''),
+                             'uso_cfdi': receptor.get('UsoCFDI', '')})
+
+            for ns_uri in cls.NS.values():
                 tfd = root.find(f'.//{{{ns_uri}}}TimbreFiscalDigital')
                 if tfd is not None:
-                    cfdi_data['uuid'] = tfd.get('UUID', '')
-                    cfdi_data['fecha_timbrado'] = tfd.get('FechaTimbrado', '')
+                    data.update({'uuid': tfd.get('UUID', ''),
+                                 'fecha_timbrado': tfd.get('FechaTimbrado', '')})
                     break
-            
-            # Extract Impuestos
-            impuestos_ns = f'{{{ns}}}Impuestos'
-            impuestos = root.find(f'.//{impuestos_ns}')
-            if impuestos is not None:
-                cfdi_data['total_impuestos_trasladados'] = float(impuestos.get('TotalImpuestosTrasladados', '0') or '0')
-                cfdi_data['total_impuestos_retenidos'] = float(impuestos.get('TotalImpuestosRetenidos', '0') or '0')
-            else:
-                cfdi_data['total_impuestos_trasladados'] = 0
-                cfdi_data['total_impuestos_retenidos'] = 0
-            
-            # Determine tipo_cfdi
-            tipo_map = {'I': 'ingreso', 'E': 'egreso', 'P': 'pago', 'N': 'nomina', 'T': 'traslado'}
-            cfdi_data['tipo_cfdi'] = tipo_map.get(cfdi_data['tipo_comprobante'], 'otro')
-            
-            return cfdi_data
-            
-        except ET.ParseError as e:
-            logger.error(f"XML Parse error: {e}")
-            return None
+
+            imp = root.find(f'.//{{{ns}}}Impuestos')
+            data['iva_trasladado'] = float(getattr(imp, 'attrib', {}).get('TotalImpuestosTrasladados', 0) or 0)
+            data['isr_retenido']   = float(getattr(imp, 'attrib', {}).get('TotalImpuestosRetenidos', 0) or 0)
+
+            return data
         except Exception as e:
-            logger.error(f"Error parsing CFDI: {e}")
+            logger.error(f"[CFDIParser] Error: {e}")
             return None
 
+
+# ─── SAT Sync Service ────────────────────────────────────────────────────────
 
 class SATSyncService:
-    """Service for syncing CFDIs from SAT to database"""
-    
     def __init__(self, db):
         self.db = db
         self.credential_manager = SATCredentialManager(db)
-    
+
     async def validate_credentials(self, rfc: str, ciec: str) -> Dict:
-        """Validate SAT credentials without saving them"""
         client = SATPortalClient()
         try:
-            result = await client.login(rfc, ciec)
-            return result
+            return await client.login(rfc, ciec)
         finally:
             client.close()
-    
+
     async def sync_cfdis(
         self,
         company_id: str,
         fecha_inicio: datetime,
         fecha_fin: datetime,
-        tipo_comprobante: str = 'todos',
         incluir_emitidos: bool = True,
-        incluir_recibidos: bool = True
+        incluir_recibidos: bool = True,
+        tipo_comprobante: str = '',   # '' = todos
     ) -> Dict:
-        """Sync CFDIs from SAT for a company"""
-        
-        # Get credentials
-        credentials = await self.credential_manager.get_credentials(company_id)
-        if not credentials:
-            return {
-                'success': False,
-                'error': 'No hay credenciales SAT configuradas para esta empresa'
-            }
-        
+        creds = await self.credential_manager.get_credentials(company_id)
+        if not creds:
+            return {'success': False, 'error': 'No hay credenciales SAT configuradas'}
+
         results = {
             'success': True,
-            'emitidos': {'downloaded': 0, 'new': 0, 'updated': 0, 'errors': 0},
+            'emitidos':  {'downloaded': 0, 'new': 0, 'updated': 0, 'errors': 0},
             'recibidos': {'downloaded': 0, 'new': 0, 'updated': 0, 'errors': 0},
-            'total_new': 0,
-            'total_updated': 0,
-            'errors': [],
-            'sync_date': datetime.now(timezone.utc).isoformat()
+            'total_new': 0, 'total_updated': 0,
+            'errors': [], 'sync_date': datetime.now(timezone.utc).isoformat(),
         }
-        
+
         client = SATPortalClient()
-        
         try:
-            # Login
-            login_result = await client.login(credentials['rfc'], credentials['ciec'])
-            if not login_result['success']:
-                return {
-                    'success': False,
-                    'error': login_result.get('error', 'Error de autenticación')
-                }
-            
-            # Download recibidos
-            if incluir_recibidos:
-                recibidos = await client.download_cfdis(
-                    'recibidos', fecha_inicio, fecha_fin, tipo_comprobante
-                )
-                results['recibidos']['downloaded'] = len(recibidos)
-                
-                for cfdi_info in recibidos:
+            login_res = await client.login(creds['rfc'], creds['ciec'])
+            if not login_res.get('success'):
+                return {'success': False, 'error': login_res.get('error', 'Error de autenticación')}
+
+            for tipo, flag in [('recibidos', incluir_recibidos), ('emitidos', incluir_emitidos)]:
+                if not flag:
+                    continue
+                items = await client.download_cfdis(tipo, fecha_inicio, fecha_fin, tipo_comprobante)
+                results[tipo]['downloaded'] = len(items)
+                for item in items:
                     try:
-                        saved = await self._save_cfdi(cfdi_info, company_id, 'recibido')
+                        saved = await self._save_cfdi(item, company_id,
+                                                       'recibido' if tipo == 'recibidos' else 'emitido')
                         if saved == 'new':
-                            results['recibidos']['new'] += 1
+                            results[tipo]['new'] += 1
                         elif saved == 'updated':
-                            results['recibidos']['updated'] += 1
+                            results[tipo]['updated'] += 1
                     except Exception as e:
-                        results['recibidos']['errors'] += 1
-                        results['errors'].append(f"Recibido {cfdi_info.get('uuid', 'unknown')}: {str(e)}")
-            
-            # Download emitidos
-            if incluir_emitidos:
-                emitidos = await client.download_cfdis(
-                    'emitidos', fecha_inicio, fecha_fin, tipo_comprobante
-                )
-                results['emitidos']['downloaded'] = len(emitidos)
-                
-                for cfdi_info in emitidos:
-                    try:
-                        saved = await self._save_cfdi(cfdi_info, company_id, 'emitido')
-                        if saved == 'new':
-                            results['emitidos']['new'] += 1
-                        elif saved == 'updated':
-                            results['emitidos']['updated'] += 1
-                    except Exception as e:
-                        results['emitidos']['errors'] += 1
-                        results['errors'].append(f"Emitido {cfdi_info.get('uuid', 'unknown')}: {str(e)}")
-            
-            results['total_new'] = results['emitidos']['new'] + results['recibidos']['new']
+                        results[tipo]['errors'] += 1
+                        results['errors'].append(f"{tipo} {item.get('uuid','?')}: {e}")
+
+            results['total_new']     = results['emitidos']['new']     + results['recibidos']['new']
             results['total_updated'] = results['emitidos']['updated'] + results['recibidos']['updated']
-            
-            # Update last sync
+
             await self.credential_manager.update_last_sync(company_id, {
                 'total_new': results['total_new'],
                 'total_updated': results['total_updated'],
-                'errors_count': len(results['errors'])
+                'errors_count': len(results['errors']),
             })
-            
             return results
-            
+
         except Exception as e:
-            logger.error(f"Error in SAT sync: {e}")
-            return {
-                'success': False,
-                'error': f'Error durante la sincronización: {str(e)}'
-            }
+            logger.error(f"[SAT] sync_cfdis error: {e}")
+            return {'success': False, 'error': str(e)}
         finally:
             client.close()
-    
+
+    async def sync_extras(self, company_id: str) -> Dict:
+        """
+        Sincroniza datos adicionales: Opinión de Cumplimiento y Buzón Tributario.
+        """
+        creds = await self.credential_manager.get_credentials(company_id)
+        if not creds:
+            return {'success': False, 'error': 'No hay credenciales SAT configuradas'}
+
+        client = SATPortalClient()
+        result = {'success': True, 'opinion': {}, 'buzon': [], 'declaraciones': []}
+        try:
+            login_res = await client.login(creds['rfc'], creds['ciec'])
+            if not login_res.get('success'):
+                return {'success': False, 'error': login_res.get('error')}
+
+            result['opinion']       = await client.get_opinion_cumplimiento(creds['rfc'])
+            result['buzon']         = await client.get_buzon_tributario()
+            result['declaraciones'] = await client.get_declaraciones_pendientes()
+
+            # Guardar en MongoDB
+            await self.db.sat_extras.update_one(
+                {'company_id': company_id},
+                {'$set': {
+                    'company_id': company_id,
+                    'opinion_cumplimiento': result['opinion'],
+                    'buzon_mensajes': result['buzon'],
+                    'declaraciones_pendientes': result['declaraciones'],
+                    'updated_at': datetime.now(timezone.utc).isoformat(),
+                }},
+                upsert=True
+            )
+            return result
+        finally:
+            client.close()
+
     async def _save_cfdi(self, cfdi_info: Dict, company_id: str, origen: str) -> str:
-        """Save individual CFDI to database. Returns 'new', 'updated', or 'exists'"""
-        
-        cfdi_uuid = cfdi_info.get('uuid', '').upper()
-        if not cfdi_uuid:
-            raise Exception("CFDI sin UUID")
-        
-        # Check if exists
-        existing = await self.db.cfdis.find_one({
-            'uuid': cfdi_uuid,
-            'company_id': company_id
-        }, {'_id': 0, 'id': 1})
-        
-        # Parse XML if available
-        cfdi_data = None
-        xml_content = cfdi_info.get('xml_content')
-        if xml_content:
-            cfdi_data = CFDIParser.parse_xml(xml_content)
-        
+        uid = cfdi_info.get('uuid', '').upper()
+        if not uid:
+            raise ValueError('CFDI sin UUID')
+
+        existing = await self.db.cfdis.find_one(
+            {'uuid': uid, 'company_id': company_id}, {'_id': 0, 'id': 1}
+        )
+
+        parsed = CFDIParser.parse_xml(cfdi_info['xml_content']) if cfdi_info.get('xml_content') else None
+
         if existing:
-            # Update with new data if we have XML
-            if cfdi_data and xml_content:
+            if parsed:
                 await self.db.cfdis.update_one(
                     {'id': existing['id']},
-                    {'$set': {
-                        'xml_original': xml_content,
-                        'updated_at': datetime.now(timezone.utc).isoformat()
-                    }}
+                    {'$set': {'xml_original': cfdi_info['xml_content'],
+                              'updated_at': datetime.now(timezone.utc).isoformat()}}
                 )
                 return 'updated'
             return 'exists'
-        
-        # Create new CFDI record
+
         now = datetime.now(timezone.utc)
-        
         doc = {
             'id': str(uuid_module.uuid4()),
             'company_id': company_id,
-            'uuid': cfdi_uuid,
+            'uuid': uid,
             'origen': origen,
-            'source': 'sat_sync',
+            'source': 'sat_ciec_sync',
             'estado_conciliacion': 'pendiente',
-            'monto_pagado': 0,
-            'monto_cobrado': 0,
             'created_at': now.isoformat(),
-            'updated_at': now.isoformat()
+            'updated_at': now.isoformat(),
+            'moneda': 'MXN',
+            'total': 0, 'subtotal': 0,
+            'tipo_cfdi': 'ingreso' if origen == 'recibido' else 'egreso',
+            'fecha_emision': now.isoformat(),
         }
-        
-        # Add parsed data if available
-        if cfdi_data:
-            doc.update({
-                'version': cfdi_data.get('version'),
-                'serie': cfdi_data.get('serie'),
-                'folio': cfdi_data.get('folio'),
-                'fecha_emision': cfdi_data.get('fecha_emision'),
-                'fecha_timbrado': cfdi_data.get('fecha_timbrado'),
-                'emisor_rfc': cfdi_data.get('emisor_rfc'),
-                'emisor_nombre': cfdi_data.get('emisor_nombre'),
-                'receptor_rfc': cfdi_data.get('receptor_rfc'),
-                'receptor_nombre': cfdi_data.get('receptor_nombre'),
-                'tipo_cfdi': cfdi_data.get('tipo_cfdi'),
-                'tipo_comprobante': cfdi_data.get('tipo_comprobante'),
-                'uso_cfdi': cfdi_data.get('uso_cfdi'),
-                'moneda': cfdi_data.get('moneda', 'MXN'),
-                'tipo_cambio': cfdi_data.get('tipo_cambio', 1),
-                'subtotal': cfdi_data.get('subtotal', 0),
-                'descuento': cfdi_data.get('descuento', 0),
-                'total': cfdi_data.get('total', 0),
-                'impuestos': cfdi_data.get('total_impuestos_trasladados', 0),
-                'forma_pago': cfdi_data.get('forma_pago'),
-                'metodo_pago': cfdi_data.get('metodo_pago'),
-                'regimen_fiscal': cfdi_data.get('regimen_fiscal'),
-            })
-            if xml_content:
-                doc['xml_original'] = xml_content
-        else:
-            # Minimal record without XML data
-            doc.update({
-                'fecha_emision': now.isoformat(),
-                'tipo_cfdi': 'ingreso' if origen == 'recibido' else 'egreso',
-                'total': 0,
-                'subtotal': 0,
-                'moneda': 'MXN'
-            })
-        
+        if parsed:
+            doc.update({k: v for k, v in parsed.items() if v is not None})
+        if cfdi_info.get('xml_content'):
+            doc['xml_original'] = cfdi_info['xml_content']
+
         await self.db.cfdis.insert_one(doc)
         return 'new'
-    
-    async def get_sync_history(self, company_id: str, limit: int = 10) -> List[Dict]:
-        """Get sync history for a company"""
-        history = await self.db.sat_sync_history.find(
-            {'company_id': company_id},
-            {'_id': 0}
-        ).sort('created_at', -1).limit(limit).to_list(limit)
-        
-        return history
