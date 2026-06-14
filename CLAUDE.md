@@ -37,9 +37,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 /frontend/
   ├── src/
-  │   ├── pages/            # Page components (~27 pages)
-  │   ├── components/       # Reusable UI components
-  │   ├── api/              # Axios client
+  │   ├── pages/            # Page components (~28 pages)
+  │   ├── components/       # Reusable UI components (Shadcn + custom)
+  │   ├── api/axios.js      # Configured axios instance (auto-injects JWT + X-Company-ID)
   │   ├── hooks/            # React hooks
   │   ├── utils/            # Helpers
   │   └── data/             # Constants
@@ -47,7 +47,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Key Models & Data Flow
 
-**Company-centered Multi-tenancy**: All entities carry `company_id`. Users belong to multiple companies via `company_ids` list. `X-Company-ID` header selects the active company.
+**Company-centered Multi-tenancy**: All entities carry `company_id`. Users belong to multiple companies via `company_ids` list. `X-Company-ID` header selects the active company. When `company.on_hold = True`, the backend returns HTTP 402; the frontend redirects to `/account-suspended`.
 
 **CashFlowWeek**: 13-week rolling window (`saldo_inicial`, `ingresos`, `egresos`, `saldo_final`). Transactions link to `cashflow_week_id`.
 
@@ -67,7 +67,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Critical Services & Integrations
 
-**Cashflow Engine** (`services/cashflow.py`): 13-week rolling window, balance cascading, `saldo_inicial` propagation.
+**Cashflow Engine** (`services/cashflow.py`): 13-week rolling window, balance cascading, `saldo_inicial` propagation. Balance arithmetic lives in `services/cashflow_calculator.py`.
 
 **CFDI Parser** (`services/cfdi_parser.py`): Extracts XML v4.0 data (UUID, RFCs, amounts, taxes).
 
@@ -140,6 +140,8 @@ await db.transactions.insert_one(doc)
 await db.transactions.update_one({"id": tid, "company_id": company_id}, {"$set": {...}})
 ```
 
+Note: `server.py` also creates its own local `db` at startup (used for schedulers only). Routes always import from `core.database`.
+
 ### Route Signature Pattern
 ```python
 from core.auth import get_current_user, get_active_company_id
@@ -152,6 +154,13 @@ async def my_endpoint(
 ):
     company_id = await get_active_company_id(request, current_user)
     # current_user keys: id, email, role, company_ids
+```
+
+### Adding a New Router
+Two steps in `server.py` (import section + register section):
+```python
+from routes.my_module import router as my_module_router   # add to imports block
+api_router.include_router(my_module_router)               # add to register block
 ```
 
 ### Audit Logging
@@ -182,12 +191,20 @@ doc = {
 await db.collection.insert_one(doc)
 ```
 
+### Pydantic Models
+`models/base.py` exports helpers for all models:
+```python
+from models.base import generate_uuid, get_utc_now, BaseModelWithConfig
+# BaseModelWithConfig sets model_config = ConfigDict(extra="ignore")
+```
+
 ### Error Handling
 ```python
 from fastapi import HTTPException
 
 raise HTTPException(status_code=404, detail="Recurso no encontrado")
 raise HTTPException(status_code=403, detail="No tienes acceso a esta empresa")
+raise HTTPException(status_code=402, detail="Cuenta suspendida")  # company.on_hold = True
 ```
 
 ### Enums (`models/enums.py`)
@@ -206,6 +223,24 @@ PaymentMethod: transferencia, cheque, efectivo, tarjeta, domiciliacion, spei
 - Spanish field names: `concepto`, `monto`, `fecha_transaccion`, `estado_conciliacion`
 - All timestamps: `datetime.now(timezone.utc)` — always timezone-aware
 - MongoDB `_id` always excluded with `{"_id": 0}`
+
+## Frontend Patterns
+
+### API Client (`src/api/axios.js`)
+Pre-configured axios instance — import and call directly, do not create a new axios instance:
+```javascript
+import api from '../api/axios';
+const response = await api.get('/cashflow/weeks');
+```
+Interceptors automatically inject `Authorization: Bearer <token>` and `X-Company-ID` from `localStorage`. On 401 it clears localStorage and redirects to `/login`; on 402 redirects to `/account-suspended`.
+
+### Auth Storage
+- `localStorage.getItem('token')` — JWT string
+- `localStorage.getItem('selectedCompany')` — JSON string with `{ id, nombre, ... }`
+- `localStorage.getItem('user')` — JSON string with user object
+
+### Environment Variable
+`REACT_APP_BACKEND_URL` must be set (e.g., `http://localhost:8001`). The axios base URL is `${REACT_APP_BACKEND_URL}/api`.
 
 ## Design System (Frontend)
 
@@ -230,15 +265,20 @@ Key test files: `test_dashboard_advanced.py`, `test_categories_diot.py`, `test_a
 | `core/config.py` | All settings (MongoDB, JWT, API keys) |
 | `core/auth.py` | JWT creation/validation, `get_current_user`, `get_active_company_id` |
 | `core/database.py` | `db` singleton (Motor async client) |
+| `models/base.py` | `generate_uuid()`, `get_utc_now()`, `BaseModelWithConfig` |
 | `services/cashflow.py` | 13-week window logic, balance cascading |
+| `services/cashflow_calculator.py` | Balance arithmetic (saldo_final, ingresos, egresos calculations) |
 | `services/cfdi_parser.py` | XML CFDI v4.0 parsing |
 | `services/fx.py` | Currency conversion |
 | `services/audit.py` | `audit_log()` — all mutation logging |
 | `services/integration_scheduler.py` | ERP sync every 6h |
+| `services/alegra_financials.py` | Alegra integration service |
+| `services/kpi_pdf_generator.py` | KPI PDF report generation |
 | `modules/sat_fiel.py` | `FIELManager` — SAT FIEL/e.firma authentication & bulk CFDI download |
 | `modules/cfdi_sat.py` | SAT CFDI specialist processing |
 | `routes/cashflow.py` | CashFlow weeks + transactions CRUD |
 | `routes/cashflow_sync_service.py` | Multi-ERP → cashflow mapping, default category catalog |
+| `routes/projections.py` | General cashflow projections |
 | `routes/cfdi.py` | CFDI management |
 | `routes/cfdi_operations.py` | AI auto-categorization |
 | `routes/treasury.py` | Treasury dashboard: alerts, recommendations, working capital |
@@ -255,6 +295,7 @@ Key test files: `test_dashboard_advanced.py`, `test_categories_diot.py`, `test_a
 | `routes/belvo.py` | Belvo open banking — account/transaction sync |
 | `routes/contalink.py` | Contalink base connection + transaction sync |
 | `routes/contalink_cxc_cxp.py` | Contalink CxC/CxP import |
+| `routes/contalink_payments_upload.py` | Contalink payments bulk upload |
 | `routes/payment_matching.py` | CFDI ↔ bank transaction payment matching |
 | `routes/notifications.py` | In-app notification management |
 | `routes/account_mappings.py` | Chart-of-accounts mapping between ERPs and internal categories |
@@ -274,8 +315,7 @@ Key test files: `test_dashboard_advanced.py`, `test_categories_diot.py`, `test_a
 
 Required for all multi-company operations:
 ```javascript
-// Frontend: always set on axios instance
-axios.defaults.headers.common['X-Company-ID'] = selectedCompanyId;
+// Frontend: axios.js interceptor reads from localStorage('selectedCompany').id automatically
 ```
 ```python
 # Backend: resolved via get_active_company_id(request, current_user)
@@ -306,4 +346,6 @@ TWILIO_AUTH_TOKEN=your-token
 STRIPE_SECRET_KEY=your-stripe-key
 CONEKTA_SECRET_KEY=your-conekta-key
 CORS_ORIGINS=http://localhost:3000  # comma-separated, defaults to *
+# Frontend only:
+REACT_APP_BACKEND_URL=http://localhost:8001
 ```
