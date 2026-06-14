@@ -22,6 +22,7 @@ import FinancialMetrics from './pages/FinancialMetrics';
 import BoardReport from './pages/BoardReport';
 import Integrations from './pages/Integrations';
 import ContalinkFinancialImport from './components/ContalinkFinancialImport';
+import Financiamiento from './pages/Financiamiento';
 import AccountSuspended from './pages/AccountSuspended';
 import Layout from './components/Layout';
 import { Toaster } from './components/ui/sonner';
@@ -150,6 +151,7 @@ function App() {
             <Route path="audit-logs" element={<AuditLogsPage />} />
             <Route path="integrations" element={<Integrations />} />
             <Route path="contalink-financial" element={<ContalinkFinancialImport />} />
+            <Route path="financiamiento" element={<Financiamiento />} />
           </Route>
         </Routes>
       </BrowserRouter>

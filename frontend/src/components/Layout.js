@@ -136,6 +136,11 @@ const buildNav = (isAdmin) => [
         badge: 'PRO',
         badgeStyle: 'pro',
       },
+      {
+        name: 'Financiamientos',
+        href: '/financiamiento',
+        icon: DollarSign,
+      },
     ],
   },
   ...(isAdmin
