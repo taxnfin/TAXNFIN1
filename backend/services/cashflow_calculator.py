@@ -1,6 +1,6 @@
 """
 Servicio único de cálculo de semanas de cashflow.
-Fuente de verdad: db.cashflow_weeks (estructura) + db.cfdis (totales por fecha_emision).
+Fuentes: db.cashflow_weeks (estructura) + db.cfdis (por fecha_emision) + db.cxc_proyecciones.
 """
 import re
 import uuid as _uuid
@@ -58,6 +58,35 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             'id': c.get('id', ''),
         })
 
+    # ── Fuente 2: Proyecciones manuales de CxC/CxP ───────────────
+    proyecciones = await db.cxc_proyecciones.find(
+        {'company_id': company_id},
+        {'_id': 0, 'nombre': 1, 'tipo': 1, 'semana': 1, 'monto': 1}
+    ).to_list(1000)
+
+    proy_por_semana = {}  # {'S25': {'ingresos': [...], 'egresos': [...]}}
+    for p in proyecciones:
+        semana_label = p.get('semana', '')
+        if not semana_label:
+            continue
+        monto = float(p.get('monto', 0) or 0)
+        if monto <= 0:
+            continue
+        if semana_label not in proy_por_semana:
+            proy_por_semana[semana_label] = {'ingresos': [], 'egresos': []}
+        item = {
+            'id': '',
+            'concepto': p.get('nombre', 'Sin nombre'),
+            'monto': monto,
+            'fecha': '',
+            'categoria': 'proyeccion',
+            'es_proyeccion': True,
+        }
+        if p.get('tipo') == 'cxc':
+            proy_por_semana[semana_label]['ingresos'].append(item)
+        else:
+            proy_por_semana[semana_label]['egresos'].append(item)
+
     # ── 4. Construir resultado por semana ─────────────────────────
     result = []
     today = date.today()
@@ -99,6 +128,13 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             if total_egr > 0:
                 egresos = [{'id': '', 'concepto': 'Egresos del período',
                             'monto': total_egr, 'fecha': fi, 'categoria': 'sync'}]
+
+        # Mezclar proyecciones CxC/CxP para esta semana
+        proy = proy_por_semana.get(f'S{num}', {})
+        ingresos.extend(proy.get('ingresos', []))
+        egresos.extend(proy.get('egresos', []))
+        total_ing = sum(i['monto'] for i in ingresos)
+        total_egr = sum(e['monto'] for e in egresos)
 
         top_ing = sorted(ingresos, key=lambda x: x['monto'], reverse=True)[:5]
         top_egr = sorted(egresos, key=lambda x: x['monto'], reverse=True)[:5]
@@ -160,6 +196,11 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
                         ingresos.append(item)
                     elif c['tipo'] in ('e', 'egreso', 'expense', 'salida', 'gasto'):
                         egresos.append(item)
+
+            # Mezclar proyecciones CxC/CxP para semanas generadas
+            proy = proy_por_semana.get(f'S{num}', {})
+            ingresos.extend(proy.get('ingresos', []))
+            egresos.extend(proy.get('egresos', []))
 
             total_ing = sum(i['monto'] for i in ingresos)
             total_egr = sum(e['monto'] for e in egresos)
