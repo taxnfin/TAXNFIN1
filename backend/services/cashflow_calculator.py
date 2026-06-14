@@ -34,6 +34,10 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
         fi = str(week.get('fecha_inicio', ''))[:10]
         ff = str(week.get('fecha_fin', ''))[:10]
         num = week.get('numero_semana', len(result) + 1)
+        total_ing_raw = week.get('total_ingresos')
+        total_egr_raw = week.get('total_egresos')
+        if num in (24, 25, 26):
+            logger.info(f"[WEEK_RAW] S{num} fi={fi} total_ingresos={total_ing_raw} (type={type(total_ing_raw).__name__}) total_egresos={total_egr_raw}")
         week_id = week.get('id', '')
 
         ingresos = []
