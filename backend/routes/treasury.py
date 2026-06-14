@@ -86,63 +86,58 @@ async def get_treasury_dashboard(
     }
 
 
-async def get_current_cash_position(company_id: str) -> dict:
-    """Get current cash position summary"""
-    # Get bank accounts with balances
-    accounts = await db.bank_accounts.find(
-        {'company_id': company_id, '$or': [{'activa': True}, {'activo': True}]},
-        {'_id': 0}
-    ).to_list(100)
-    
-    # Cargar tipos de cambio reales de la BD
-    fx_docs = await db.fx_rates.find(
-        {'company_id': company_id},
-        {'_id': 0, 'moneda_cotizada': 1, 'tipo_cambio': 1}
-    ).sort('fecha_vigencia', -1).to_list(50)
-    fx_map: dict = {'MXN': 1.0}
-    for fx in fx_docs:
-        code = fx.get('moneda_cotizada')
-        if code and code not in fx_map:
-            fx_map[code] = float(fx.get('tipo_cambio', 1) or 1)
+async def get_current_cash_position(company_id: str) -> Dict:
+    # ── Saldo bancario actual ──────────────────────────────────────
+    bank_accounts = await db.bank_accounts.find(
+        {'company_id': company_id, 'activo': True}, {'_id': 0}
+    ).to_list(50)
+    total_mxn = sum(float(a.get('saldo_actual', 0) or 0) for a in bank_accounts)
 
-    total_mxn = 0
-    for acc in accounts:
-        balance = acc.get('saldo_actual') or acc.get('saldo') or acc.get('saldo_inicial') or acc.get('balance', 0) or 0
-        currency = acc.get('moneda', 'MXN')
-        rate = fx_map.get(currency, 1.0)
-        total_mxn += balance * rate
-    
-    # Get pending collections and payments — from payments collection
-    pending_collections = await db.payments.aggregate([
-        {'$match': {'company_id': company_id, 'tipo': 'cobro', 'estatus': {'$in': ['pendiente', 'parcial']}}},
-        {'$group': {'_id': None, 'total': {'$sum': {'$ifNull': ['$saldo_pendiente', '$monto']}}}}
-    ]).to_list(1)
-    
-    pending_payments = await db.payments.aggregate([
-        {'$match': {'company_id': company_id, 'tipo': 'pago', 'estatus': {'$in': ['pendiente', 'parcial']}}},
-        {'$group': {'_id': None, 'total': {'$sum': {'$ifNull': ['$saldo_pendiente', '$monto']}}}}
-    ]).to_list(1)
-    
-    cxc = pending_collections[0]['total'] if pending_collections else 0
-    cxp = pending_payments[0]['total'] if pending_payments else 0
+    # ── CxC desde Contalink cache (fuente primaria) ────────────────
+    cxc = 0.0
+    cxc_cache = await db.contalink_cache.find_one({'key': f'cxc_{company_id}_latest'})
+    if cxc_cache:
+        raw = cxc_cache.get('data', {})
+        items = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else []
+        cxc = sum(float(i.get('saldo_pendiente') or i.get('saldo') or 0) for i in items if float(i.get('saldo_pendiente') or i.get('saldo') or 0) > 0)
+        if cxc == 0:
+            cxc = float(raw.get('total_pendiente', 0) or 0) if isinstance(raw, dict) else 0
 
-    # Fallback: usar cache de Contalink CxC/CxP cuando no hay pagos pendientes
+    # Fallback a db.payments si no hay cache
     if cxc == 0:
-        cxc_cache = await db.contalink_cache.find_one({"key": f"cxc_{company_id}_latest"})
-        if cxc_cache and cxc_cache.get("data"):
-            cxc = cxc_cache["data"].get("total_pendiente", 0) if isinstance(cxc_cache["data"], dict) else 0
+        result = await db.payments.aggregate([
+            {'$match': {'company_id': company_id, 'tipo': 'cobro', 'estatus': {'$in': ['pendiente', 'parcial']}}},
+            {'$group': {'_id': None, 'total': {'$sum': {'$ifNull': ['$saldo_pendiente', '$monto']}}}}
+        ]).to_list(1)
+        cxc = result[0]['total'] if result else 0
 
+    # ── CxP desde Contalink cache (fuente primaria) ────────────────
+    cxp = 0.0
+    cxp_cache = await db.contalink_cache.find_one({'key': f'cxp_{company_id}_latest'})
+    if cxp_cache:
+        raw = cxp_cache.get('data', {})
+        items = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else []
+        cxp = sum(float(i.get('saldo_pendiente') or i.get('saldo') or 0) for i in items if float(i.get('saldo_pendiente') or i.get('saldo') or 0) > 0)
+        if cxp == 0:
+            cxp = float(raw.get('total_pendiente', 0) or 0) if isinstance(raw, dict) else 0
+
+    # Fallback a db.payments si no hay cache
     if cxp == 0:
-        cxp_cache = await db.contalink_cache.find_one({"key": f"cxp_{company_id}_latest"})
-        if cxp_cache and cxp_cache.get("data"):
-            cxp = cxp_cache["data"].get("total_pendiente", 0) if isinstance(cxp_cache["data"], dict) else 0
-    
+        result = await db.payments.aggregate([
+            {'$match': {'company_id': company_id, 'tipo': 'pago', 'estatus': {'$in': ['pendiente', 'parcial']}}},
+            {'$group': {'_id': None, 'total': {'$sum': {'$ifNull': ['$saldo_pendiente', '$monto']}}}}
+        ]).to_list(1)
+        cxp = result[0]['total'] if result else 0
+
+    flujo_neto = cxc - cxp
+    posicion_proyectada = total_mxn + flujo_neto
+
     return {
-        "saldo_actual": total_mxn,
-        "cuentas_por_cobrar": cxc,
-        "cuentas_por_pagar": cxp,
-        "flujo_neto_esperado": cxc - cxp,
-        "posicion_proyectada": total_mxn + cxc - cxp
+        'saldo_actual': round(total_mxn, 2),
+        'cuentas_por_cobrar': round(cxc, 2),
+        'cuentas_por_pagar': round(cxp, 2),
+        'flujo_neto_esperado': round(flujo_neto, 2),
+        'posicion_proyectada': round(posicion_proyectada, 2),
     }
 
 
