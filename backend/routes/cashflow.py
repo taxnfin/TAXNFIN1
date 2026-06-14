@@ -23,6 +23,12 @@ from models.cfdi import CFDI
 
 router = APIRouter()
 
+
+async def get_semanas_data(company_id: str, num_weeks: int = 52) -> list:
+    """Función reutilizable — misma lógica que el endpoint /cashflow/weeks"""
+    return await calcular_semanas_cashflow(company_id, num_weeks, db)
+
+
 @router.get("/cashflow/weeks", response_model=List[CashFlowWeek])
 async def get_cashflow_weeks(
     request: Request,
@@ -30,7 +36,7 @@ async def get_cashflow_weeks(
     num_weeks: int = Query(13, ge=1, le=52, description="Número de semanas a mostrar (13-52)"),
 ):
     company_id = await get_active_company_id(request, current_user)
-    return await calcular_semanas_cashflow(company_id, num_weeks)
+    return await get_semanas_data(company_id, num_weeks)
 
 @router.post("/transactions", response_model=Transaction)
 async def create_transaction(transaction_data: TransactionCreate, request: Request, current_user: Dict = Depends(get_current_user)):

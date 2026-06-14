@@ -10,7 +10,7 @@ import logging
 
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
-from services.cashflow_calculator import calcular_semanas_cashflow
+from routes.cashflow import get_semanas_data
 
 def safe_parse_date(date_str) -> datetime:
     """Parse date string ensuring timezone awareness"""
@@ -399,30 +399,30 @@ async def generate_recommendations(company_id: str, weeks_ahead: int) -> List[di
     return recommendations
 
 
-async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
-    """Get treasury calendar — usa exactamente los mismos datos que el Cash Flow."""
-    cashflow_data = await calcular_semanas_cashflow(company_id, weeks_ahead)
+async def get_treasury_calendar(company_id: str, weeks_ahead: int = 52) -> dict:
+    """Get treasury calendar — usa EXACTAMENTE los mismos datos que el Cash Flow."""
+    semanas = await get_semanas_data(company_id, weeks_ahead)
 
     calendar_weeks = []
-    for week in cashflow_data:
+    for w in semanas:
         calendar_weeks.append({
-            'label': week.get('label', ''),
-            'date_range': week.get('date_range', ''),
-            'week_start': week.get('fecha_inicio', '') or week.get('week_start', ''),
-            'week_end': week.get('fecha_fin', '') or week.get('week_end', ''),
-            'numero_semana': week.get('numero_semana'),
-            'es_real': week.get('es_real', False),
-            'total_ingresos': week.get('total_ingresos', 0.0),
-            'total_egresos': week.get('total_egresos', 0.0),
-            'flujo_neto': week.get('flujo_neto', 0.0),
-            'notas': week.get('notas', ''),
-            'id': week.get('id', ''),
+            'label': w['label'],
+            'date_range': w['date_range'],
+            'week_start': w['fecha_inicio'],
+            'week_end': w['fecha_fin'],
+            'numero_semana': w['numero_semana'],
+            'es_real': w.get('es_real', False),
+            'total_ingresos': w['total_ingresos'],
+            'total_egresos': w['total_egresos'],
+            'flujo_neto': w['flujo_neto'],
+            'notas': w.get('notas', ''),
+            'id': w.get('id', ''),
             'payments': {
-                'cobranza_programada': week.get('ingresos_detalle', []),
-                'pagos_programados': week.get('egresos_detalle', []),
+                'cobranza_programada': w.get('ingresos_detalle', []),
+                'pagos_programados': w.get('egresos_detalle', []),
             },
-            'top_ingresos': week.get('top_ingresos', []),
-            'top_egresos': week.get('top_egresos', []),
+            'top_ingresos': w.get('top_ingresos', []),
+            'top_egresos': w.get('top_egresos', []),
         })
 
     return {
@@ -432,8 +432,8 @@ async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
             'pagos_programados': {'name': 'Pagos Programados (CxP)', 'color': '#EF4444', 'icon': '📋'},
         },
         'totals_by_category': {
-            'cobranza_programada': sum(w.get('total_ingresos', 0.0) for w in calendar_weeks),
-            'pagos_programados': sum(w.get('total_egresos', 0.0) for w in calendar_weeks),
+            'cobranza_programada': sum(w['total_ingresos'] for w in calendar_weeks),
+            'pagos_programados': sum(w['total_egresos'] for w in calendar_weeks),
         },
     }
 
