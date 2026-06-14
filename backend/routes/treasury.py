@@ -524,153 +524,100 @@ async def calculate_concentration_kpis(company_id: str) -> dict:
     }
 
 
-async def calculate_working_capital_intelligence(company_id: str) -> dict:
-    """Calculate DSO, DPO, Cash Conversion Cycle and trends"""
+async def calculate_working_capital_intelligence(company_id: str) -> Dict:
+    # DSO desde CFDIs emitidos (ingresos)
+    cfdis_ingreso = await db.cfdis.find(
+        {'company_id': company_id, 'tipo_cfdi': {'$in': ['I', 'ingreso']}},
+        {'_id': 0, 'fecha_emision': 1, 'total': 1, 'estado_conciliacion': 1}
+    ).to_list(1000)
+
+    # DPO desde CFDIs recibidos (egresos)
+    cfdis_egreso = await db.cfdis.find(
+        {'company_id': company_id, 'tipo_cfdi': {'$in': ['E', 'egreso']}},
+        {'_id': 0, 'fecha_emision': 1, 'total': 1, 'estado_conciliacion': 1}
+    ).to_list(1000)
+
+    # CxC pendiente (para DSO)
+    cxc_doc = await db.contalink_cache.find_one({'key': f'cxc_{company_id}_latest'})
+    cxc_total = 0
+    if cxc_doc:
+        raw = cxc_doc.get('data', {})
+        items = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else []
+        cxc_total = sum(float(i.get('saldo_pendiente') or i.get('saldo') or 0) for i in items)
+
+    # CxP pendiente (para DPO)
+    cxp_doc = await db.contalink_cache.find_one({'key': f'cxp_{company_id}_latest'})
+    cxp_total = 0
+    if cxp_doc:
+        raw = cxp_doc.get('data', {})
+        items = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else []
+        cxp_total = sum(float(i.get('saldo_pendiente') or i.get('saldo') or 0) for i in items)
+
+    # Ventas promedio diarias (últimos 90 días)
     today = datetime.now(timezone.utc)
-    
-    # Get collections for DSO calculation
-    # DSO = (Average Accounts Receivable / Total Credit Sales) * Number of Days
-    all_collections = await db.payments.find(
-        {'company_id': company_id, 'tipo': 'cobro'},
-        {'_id': 0, 'monto': 1, 'fecha_pago': 1, 'fecha_vencimiento': 1, 'created_at': 1, 'estatus': 1, 'saldo_pendiente': 1}
-    ).to_list(10000)
-    
-    # Get payments for DPO calculation
-    all_payments = await db.payments.find(
-        {'company_id': company_id, 'tipo': 'pago'},
-        {'_id': 0, 'monto': 1, 'fecha_pago': 1, 'fecha_vencimiento': 1, 'created_at': 1, 'estatus': 1, 'saldo_pendiente': 1}
-    ).to_list(10000)
-    
-    # Calculate DSO (Days Sales Outstanding)
-    # DSO = días entre fecha de emisión (vencimiento) y fecha de cobro real
-    collection_days = []
-    for c in all_collections:
-        if c.get('fecha_pago') and c.get('fecha_vencimiento'):
+    hace_90 = today - timedelta(days=90)
+
+    ventas_90 = []
+    compras_90 = []
+    for c in cfdis_ingreso:
+        fe = c.get('fecha_emision', '')
+        if fe:
             try:
-                due = safe_parse_date(c['fecha_vencimiento'])
-                paid = safe_parse_date(c['fecha_pago'])
-                if due and paid:
-                    days = (paid - due).days
-                    if -30 <= days <= 365:  # Negativo = cobró antes del vencimiento
-                        collection_days.append(days)
-            except:
+                fd = datetime.fromisoformat(str(fe).replace('Z', '+00:00'))
+                if fd.tzinfo is None:
+                    fd = fd.replace(tzinfo=timezone.utc)
+                if fd >= hace_90:
+                    ventas_90.append(float(c.get('total', 0) or 0))
+            except Exception:
                 pass
 
-    dso = sum(collection_days) / len(collection_days) if collection_days else 0
-
-    # Calculate DPO (Days Payable Outstanding)
-    # DPO = días entre fecha de vencimiento del proveedor y fecha de pago real
-    payment_days = []
-    for p in all_payments:
-        if p.get('fecha_pago') and p.get('fecha_vencimiento'):
+    for c in cfdis_egreso:
+        fe = c.get('fecha_emision', '')
+        if fe:
             try:
-                due = safe_parse_date(p['fecha_vencimiento'])
-                paid = safe_parse_date(p['fecha_pago'])
-                if due and paid:
-                    days = (paid - due).days
-                    if -30 <= days <= 365:
-                        payment_days.append(days)
-            except:
+                fd = datetime.fromisoformat(str(fe).replace('Z', '+00:00'))
+                if fd.tzinfo is None:
+                    fd = fd.replace(tzinfo=timezone.utc)
+                if fd >= hace_90:
+                    compras_90.append(float(c.get('total', 0) or 0))
+            except Exception:
                 pass
 
-    dpo = sum(payment_days) / len(payment_days) if payment_days else 0
-    
-    # Cash Conversion Cycle = DSO - DPO (simplified, without inventory)
-    # Negative CCC means you're getting paid before you pay suppliers (good)
+    ventas_diarias = sum(ventas_90) / 90 if ventas_90 else 1
+    compras_diarias = sum(compras_90) / 90 if compras_90 else 1
+
+    dso = round(cxc_total / ventas_diarias) if ventas_diarias > 0 else 0
+    dpo = round(cxp_total / compras_diarias) if compras_diarias > 0 else 0
     ccc = dso - dpo
-    
-    # Calculate trends (compare last 30 days vs previous 30 days)
-    thirty_days_ago = today - timedelta(days=30)
-    sixty_days_ago = today - timedelta(days=60)
-    
-    recent_collections = [c for c in all_collections 
-                         if c.get('created_at') and c['created_at'][:10] >= thirty_days_ago.isoformat()[:10]]
-    older_collections = [c for c in all_collections 
-                        if c.get('created_at') and sixty_days_ago.isoformat()[:10] <= c['created_at'][:10] < thirty_days_ago.isoformat()[:10]]
-    
-    # Calculate recent DSO trend
-    recent_dso_days = []
-    for c in recent_collections:
-        if c.get('fecha_pago') and c.get('fecha_vencimiento'):
-            try:
-                due = safe_parse_date(c['fecha_vencimiento'])
-                paid = safe_parse_date(c['fecha_pago'])
-                if due and paid:
-                    days = (paid - due).days
-                    if -30 <= days <= 365:
-                        recent_dso_days.append(days)
-            except:
-                pass
 
-    recent_dso = sum(recent_dso_days) / len(recent_dso_days) if recent_dso_days else dso
-
-    older_dso_days = []
-    for c in older_collections:
-        if c.get('fecha_pago') and c.get('fecha_vencimiento'):
-            try:
-                due = safe_parse_date(c['fecha_vencimiento'])
-                paid = safe_parse_date(c['fecha_pago'])
-                if due and paid:
-                    days = (paid - due).days
-                    if -30 <= days <= 365:
-                        older_dso_days.append(days)
-            except:
-                pass
-
-    older_dso = sum(older_dso_days) / len(older_dso_days) if older_dso_days else dso
-    
-    dso_trend = "improving" if recent_dso < older_dso else ("worsening" if recent_dso > older_dso else "stable")
-    dso_change = recent_dso - older_dso
-    
-    # Health indicators
-    def get_dso_health(days: float) -> str:
-        if days <= 30:
-            return "excellent"
-        elif days <= 45:
-            return "good"
-        elif days <= 60:
-            return "fair"
-        return "poor"
-    
-    def get_ccc_health(days: float) -> str:
-        if days <= 0:
-            return "excellent"
-        elif days <= 30:
-            return "good"
-        elif days <= 60:
-            return "fair"
-        return "poor"
-    
     return {
-        "dso": {
-            "value": round(dso, 1),
-            "label": "DSO (Días de Cobranza)",
-            "description": f"En promedio, cobras en {dso:.0f} días",
-            "health": get_dso_health(dso),
-            "trend": dso_trend,
-            "trend_value": round(dso_change, 1),
-            "trend_description": f"{'↓ Mejorando' if dso_trend == 'improving' else '↑ Empeorando' if dso_trend == 'worsening' else '→ Estable'} ({abs(dso_change):.1f} días)"
+        'dso': {
+            'value': dso,
+            'label': 'DSO (Días de Cobranza)',
+            'description': f'En promedio, cobras en {dso} días',
+            'status': 'good' if dso < 30 else 'warning' if dso < 60 else 'bad',
+            'trend': '→ Estable',
         },
-        "dpo": {
-            "value": round(dpo, 1),
-            "label": "DPO (Días de Pago)",
-            "description": f"En promedio, pagas en {dpo:.0f} días",
-            "health": "good" if dpo >= 30 else "fair",
-            "trend": "stable",
-            "trend_value": 0
+        'dpo': {
+            'value': dpo,
+            'label': 'DPO (Días de Pago)',
+            'description': f'En promedio, pagas en {dpo} días',
+            'status': 'good' if dpo > 30 else 'warning',
+            'trend': '→ Estable',
         },
-        "ccc": {
-            "value": round(ccc, 1),
-            "label": "Ciclo de Conversión de Efectivo",
-            "description": f"{'Recibes dinero ' + str(abs(int(ccc))) + ' días antes de pagar' if ccc < 0 else 'Pagas ' + str(int(ccc)) + ' días antes de cobrar'}",
-            "health": get_ccc_health(ccc),
-            "is_positive": ccc <= 0,
-            "interpretation": "Excelente: tu flujo es positivo" if ccc <= 0 else "Atención: necesitas capital de trabajo"
+        'ccc': {
+            'value': ccc,
+            'label': 'Ciclo de Conversión',
+            'description': f'{"Cobras" if ccc > 0 else "Pagas"} {abs(ccc)} días {"antes de cobrar" if ccc > 0 else "después de cobrar"}',
+            'status': 'good' if ccc <= 0 else 'warning' if ccc < 30 else 'bad',
         },
-        "summary": {
-            "message": f"Tu ciclo de efectivo es de {ccc:.0f} días",
-            "recommendation": "Mantén la estrategia actual" if ccc <= 0 else "Considera acelerar cobranza o negociar plazos con proveedores"
-        }
+        'summary': f'Tu ciclo de efectivo es de {abs(ccc)} días. {"Optimiza cobranza." if ccc > 30 else "Mantén la estrategia actual."}',
+        'raw': {
+            'cxc_total': cxc_total,
+            'cxp_total': cxp_total,
+            'ventas_90_dias': sum(ventas_90),
+            'compras_90_dias': sum(compras_90),
+        },
     }
 
 
