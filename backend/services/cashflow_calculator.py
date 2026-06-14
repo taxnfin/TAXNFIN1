@@ -56,6 +56,12 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
         total_ing = sum(i['monto'] for i in ingresos) or float(week.get('total_ingresos', 0) or 0)
         total_egr = sum(e['monto'] for e in egresos) or float(week.get('total_egresos', 0) or 0)
 
+        # Si hay total pero no detalle, crear item resumen
+        if not ingresos and total_ing > 0:
+            ingresos = [{'id': '', 'concepto': 'Ingresos del período', 'monto': total_ing, 'fecha': fi, 'categoria': 'sync', 'es_resumen': True}]
+        if not egresos and total_egr > 0:
+            egresos = [{'id': '', 'concepto': 'Egresos del período', 'monto': total_egr, 'fecha': fi, 'categoria': 'sync', 'es_resumen': True}]
+
         result.append({
             'id': week_id,
             'company_id': company_id,
