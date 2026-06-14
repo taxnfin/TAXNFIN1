@@ -1,10 +1,13 @@
 """Lee cashflow_weeks de MongoDB y distribuye CFDIs por fecha_emision (igual que Cash Flow)."""
+import logging
 import re
 import uuid as _uuid
 from datetime import date, timedelta
 from typing import Dict, List
 
 from core.database import db
+
+logger = logging.getLogger(__name__)
 
 
 def _date_str(val) -> str:
@@ -59,22 +62,32 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52) -> Lis
                 else:
                     egresos.append(item)
 
-        total_ing = sum(i['monto'] for i in ingresos)
-        total_egr = sum(e['monto'] for e in egresos)
+        # Totales desde cashflow_weeks en DB
+        total_ing_db = float(week.get('total_ingresos', 0) or 0)
+        total_egr_db = float(week.get('total_egresos', 0) or 0)
 
-        # Fallback a totales guardados si no hay CFDIs en rango
-        if total_ing == 0:
-            total_ing = float(week.get('total_ingresos', 0) or 0)
-        if total_egr == 0:
-            total_egr = float(week.get('total_egresos', 0) or 0)
+        # Totales calculados desde CFDIs por fecha
+        total_ing_cfdis = sum(i['monto'] for i in ingresos)
+        total_egr_cfdis = sum(e['monto'] for e in egresos)
 
-        # Si hay total pero no detalle (datos de sync), crear item resumen
+        # Usar el mayor entre los dos
+        total_ing = max(total_ing_cfdis, total_ing_db)
+        total_egr = max(total_egr_cfdis, total_egr_db)
+
+        if num == 25:
+            logger.info(f"[S25] total_ing_db={total_ing_db} total_egr_db={total_egr_db} cfdis={len(ingresos)+len(egresos)}")
+
+        # Si hay total en DB pero no detalle de CFDIs, crear item resumen
         if not ingresos and total_ing > 0:
-            ingresos = [{'id': '', 'concepto': 'Ingresos del período', 'monto': total_ing,
-                         'fecha': fi, 'categoria': 'sync', 'es_resumen': True}]
+            ingresos = [{
+                'id': '', 'concepto': 'Ingresos del período', 'monto': total_ing,
+                'fecha': fi, 'categoria': 'sync', 'es_resumen': True
+            }]
         if not egresos and total_egr > 0:
-            egresos = [{'id': '', 'concepto': 'Egresos del período', 'monto': total_egr,
-                        'fecha': fi, 'categoria': 'sync', 'es_resumen': True}]
+            egresos = [{
+                'id': '', 'concepto': 'Egresos del período', 'monto': total_egr,
+                'fecha': fi, 'categoria': 'sync', 'es_resumen': True
+            }]
 
         result.append({
             'id': week_id,
