@@ -68,7 +68,7 @@ async def get_treasury_dashboard(
     min_balance_threshold = company.get('min_balance_threshold', 100000)
     
     # Calculate all metrics
-    alerts = await calculate_alerts(company_id, min_balance_threshold, weeks_ahead)
+    alerts = await calculate_alerts(company_id, weeks_ahead)
     recommendations = await generate_recommendations(company_id, weeks_ahead)
     calendar = await get_treasury_calendar(company_id, weeks_ahead)
     concentration_kpis = await calculate_concentration_kpis(company_id)
@@ -156,152 +156,82 @@ def _get_fecha_efectiva(item: dict, today_date) -> str:
         return (today_date + timedelta(days=min(dias_restantes, 90))).isoformat()
 
 
-async def calculate_alerts(company_id: str, threshold: float, weeks_ahead: int) -> List[dict]:
-    """Calculate actionable alerts based on cash flow projections"""
+async def calculate_alerts(company_id: str, weeks_ahead: int = 16) -> List[Dict]:
+    from services.cashflow_calculator import calcular_semanas_cashflow
+
+    # Usar las mismas semanas que el Calendario — fuente única de verdad
+    semanas = await calcular_semanas_cashflow(company_id, weeks_ahead, db)
+
+    # Saldo inicial desde bank_accounts
+    bank_accounts = await db.bank_accounts.find(
+        {'company_id': company_id, 'activo': True}, {'_id': 0, 'saldo_actual': 1}
+    ).to_list(50)
+    saldo_inicial = sum(float(a.get('saldo_actual', 0) or 0) for a in bank_accounts)
+
     alerts = []
-    today = datetime.now(timezone.utc)
-    today_date = today.date()
+    weekly_balance = saldo_inicial
+    threshold = 500_000  # umbral mínimo de liquidez
 
-    # Get pending payments grouped by week — from payments collection
-    pending_payments = await db.payments.find(
-        {'company_id': company_id, 'tipo': 'pago', 'estatus': {'$in': ['pendiente', 'parcial']}},
-        {'_id': 0}
-    ).to_list(5000)
-    
-    pending_collections = await db.payments.find(
-        {'company_id': company_id, 'tipo': 'cobro', 'estatus': {'$in': ['pendiente', 'parcial']}},
-        {'_id': 0}
-    ).to_list(5000)
+    for week in semanas:
+        flujo = float(week.get('flujo_neto', 0) or 0)
+        weekly_balance += flujo
 
-    # Fallback: usar cache de Contalink CxC/CxP para proyecciones semanales
-    if not pending_collections:
-        cxc_cache = await db.contalink_cache.find_one({"key": f"cxc_{company_id}_latest"})
-        if cxc_cache:
-            raw = cxc_cache.get('data', {})
-            facturas = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
-            pending_collections = [
-                {
-                    'tipo': 'cobro',
-                    'monto': float(f.get('saldo_pendiente') or f.get('saldo') or f.get('total') or 0),
-                    'fecha_vencimiento': f.get('fecha_vence') or f.get('fecha_vencimiento') or f.get('fecha'),
-                    'beneficiario': f.get('cliente') or f.get('nombre') or f.get('razon_social', ''),
-                }
-                for f in facturas
-                if float(f.get('saldo_pendiente') or f.get('saldo') or f.get('total') or 0) > 0
-            ]
+        label = week.get('label', '')
+        date_range = week.get('date_range', '')
+        total_ing = float(week.get('total_ingresos', 0) or 0)
+        total_egr = float(week.get('total_egresos', 0) or 0)
 
-    if not pending_payments:
-        cxp_cache = await db.contalink_cache.find_one({"key": f"cxp_{company_id}_latest"})
-        if cxp_cache:
-            raw = cxp_cache.get('data', {})
-            facturas = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
-            pending_payments = [
-                {
-                    'tipo': 'pago',
-                    'monto': float(f.get('saldo_pendiente') or f.get('saldo') or f.get('total') or 0),
-                    'fecha_vencimiento': f.get('fecha_vence') or f.get('fecha_vencimiento') or f.get('fecha'),
-                    'beneficiario': f.get('proveedor') or f.get('nombre') or f.get('razon_social', ''),
-                }
-                for f in facturas
-                if float(f.get('saldo_pendiente') or f.get('saldo') or f.get('total') or 0) > 0
-            ]
-    
-    # Get current balance
-    cash_position = await get_current_cash_position(company_id)
-    current_balance = cash_position['saldo_actual']
-    
-    # Simulate cash flow week by week
-    weekly_balance = current_balance
-    for week_offset in range(weeks_ahead):
-        week_start = today + timedelta(weeks=week_offset)
-        week_end = week_start + timedelta(days=7)
-        
-        # Calculate week's inflows and outflows
-        week_collections = sum(
-            (p.get('saldo_pendiente') or p.get('monto', 0)) for p in pending_collections
-            if week_start.isoformat()[:10] <= _get_fecha_efectiva(p, today_date) < week_end.isoformat()[:10]
-        )
-
-        week_payments = sum(
-            (p.get('saldo_pendiente') or p.get('monto', 0)) for p in pending_payments
-            if week_start.isoformat()[:10] <= _get_fecha_efectiva(p, today_date) < week_end.isoformat()[:10]
-        )
-        
-        weekly_balance += week_collections - week_payments
-        
-        # Check if balance falls below threshold
-        if weekly_balance < threshold:
-            deficit = threshold - weekly_balance
+        # Alerta: saldo crítico
+        if weekly_balance < 0:
             alerts.append({
-                "type": "balance_critical",
-                "severity": "high" if weekly_balance < 0 else "medium",
-                "week": get_week_label(week_offset),
-                "week_date": week_start.strftime("%d/%m"),
-                "message": f"Saldo cae por debajo del umbral en {get_week_label(week_offset)}",
-                "detail": f"Saldo proyectado: ${weekly_balance:,.0f} MXN (déficit: ${deficit:,.0f})",
-                "impact": -deficit,
-                "action": "Acelerar cobranza o diferir pagos"
+                'type': 'balance_critical',
+                'severity': 'critical',
+                'week': label,
+                'week_date': date_range,
+                'message': f'Saldo cae por debajo del umbral en {label}',
+                'detail': f'Saldo proyectado: ${weekly_balance:,.0f} MXN (déficit: ${abs(weekly_balance):,.0f})',
+                'impact': weekly_balance,
+                'action': 'Acelerar cobranza o diferir pagos',
             })
-    
-    # Check for late collections (clients that might delay)
-    for collection in pending_collections:
-        try:
-            due_date = safe_parse_date(_get_fecha_efectiva(collection, today_date))
-            if due_date is None:
-                continue
-            if due_date.tzinfo is None:
-                due_date = due_date.replace(tzinfo=timezone.utc)
-        except:
-            continue
-        days_until_due = (due_date - today).days
-        amount = (collection.get('saldo_pendiente') or collection.get('monto', 0))
-
-        # If client delays 7 days, what happens?
-        if 0 <= days_until_due <= 14 and amount > 50000:
-            # Simulate delay impact
-            delay_week = (days_until_due + 7) // 7
+        elif weekly_balance < threshold:
             alerts.append({
-                "type": "collection_delay_risk",
-                "severity": "medium",
-                "week": get_week_label(delay_week),
-                "week_date": (today + timedelta(days=days_until_due + 7)).strftime("%d/%m"),
-                "message": f"Si {collection.get('beneficiario', 'cliente')[:30]} se retrasa 7 días",
-                "detail": f"Impacto: -${amount:,.0f} MXN en {get_week_label(delay_week)}",
-                "impact": -amount,
-                "action": f"Dar seguimiento a cobro de ${amount:,.0f}"
+                'type': 'balance_warning',
+                'severity': 'warning',
+                'week': label,
+                'week_date': date_range,
+                'message': f'Liquidez baja en {label}',
+                'detail': f'Saldo proyectado: ${weekly_balance:,.0f} MXN (bajo umbral de ${threshold:,.0f})',
+                'impact': weekly_balance,
+                'action': 'Revisar cobranza pendiente',
             })
-    
-    # Check for payments that can be moved without risk
-    for payment in pending_payments:
-        try:
-            due_date = safe_parse_date(_get_fecha_efectiva(payment, today_date))
-            if due_date is None:
-                continue
-            if due_date.tzinfo is None:
-                due_date = due_date.replace(tzinfo=timezone.utc)
-        except:
-            continue
-        days_until_due = (due_date - today).days
-        amount = (payment.get('saldo_pendiente') or payment.get('monto', 0))
 
-        # Payments due in next 2 weeks that could potentially be delayed
-        if 0 <= days_until_due <= 14 and amount > 30000:
+        # Alerta: semana con egresos muy altos vs ingresos
+        if total_egr > 0 and total_ing > 0 and total_egr > total_ing * 2:
             alerts.append({
-                "type": "payment_flexibility",
-                "severity": "low",
-                "week": get_week_label(days_until_due // 7),
-                "week_date": due_date.strftime("%d/%m"),
-                "message": f"{payment.get('beneficiario', 'Proveedor')[:30]} puede moverse 1 semana",
-                "detail": f"Libera ${amount:,.0f} MXN temporalmente",
-                "impact": amount,
-                "action": "Evaluar reprogramación si hay presión de liquidez"
+                'type': 'high_payments',
+                'severity': 'warning',
+                'week': label,
+                'week_date': date_range,
+                'message': f'Egresos exceden ingresos 2x en {label}',
+                'detail': f'Ingresos: ${total_ing:,.0f} vs Egresos: ${total_egr:,.0f}',
+                'impact': flujo,
+                'action': 'Considerar diferir algunos pagos',
             })
-    
-    # Sort by severity and week
-    severity_order = {'high': 0, 'medium': 1, 'low': 2}
-    alerts.sort(key=lambda x: (severity_order.get(x['severity'], 3), x.get('week', 'S99')))
-    
-    return alerts[:15]  # Limit to top 15 alerts
+
+        # Alerta: semana sin ingresos pero con egresos
+        if total_ing == 0 and total_egr > 50_000:
+            alerts.append({
+                'type': 'no_income',
+                'severity': 'warning',
+                'week': label,
+                'week_date': date_range,
+                'message': f'Sin ingresos proyectados en {label}',
+                'detail': f'Egresos programados: ${total_egr:,.0f} sin cobros que los cubran',
+                'impact': -total_egr,
+                'action': 'Adelantar algún cobro a esta semana',
+            })
+
+    return alerts
 
 
 async def generate_recommendations(company_id: str, weeks_ahead: int) -> List[dict]:
@@ -660,10 +590,7 @@ async def get_alerts(
 ):
     """Get only alerts"""
     company_id = await get_active_company_id(request, current_user)
-    company = await db.companies.find_one({'id': company_id}, {'_id': 0})
-    threshold = company.get('min_balance_threshold', 100000)
-    
-    return await calculate_alerts(company_id, threshold, weeks_ahead)
+    return await calculate_alerts(company_id, weeks_ahead)
 
 
 @router.get("/recommendations")
