@@ -590,6 +590,40 @@ async def calculate_working_capital_intelligence(company_id: str) -> Dict:
     dpo = round(cxp_total / compras_diarias) if compras_diarias > 0 else 0
     ccc = dso - dpo
 
+    # Generar análisis IA
+    try:
+        import anthropic, os
+        client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY', ''))
+        prompt = f"""Eres un CFO experto en empresas mexicanas. Analiza estos indicadores de capital de trabajo:
+
+DSO (Días de Cobranza): {dso} días — cobras en promedio en {dso} días
+DPO (Días de Pago): {dpo} días — pagas en promedio en {dpo} días
+CCC (Ciclo de Conversión): {ccc} días
+CxC pendiente: ${cxc_total:,.0f}
+CxP pendiente: ${cxp_total:,.0f}
+Ventas últimos 90 días: ${sum(ventas_90):,.0f}
+Compras últimos 90 días: ${sum(compras_90):,.0f}
+
+Datos tomados de: CFDIs de los últimos 90 días y saldos del Aging de Contalink.
+
+Proporciona un análisis ejecutivo en español de máximo 120 palabras que explique:
+1. Qué significan estos números para la empresa
+2. Si el DSO/DPO es bueno o malo para su industria
+3. Una recomendación accionable concreta"""
+
+        msg = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=250,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        ai_analysis = msg.content[0].text
+    except Exception:
+        ai_analysis = (
+            f"DSO de {dso} días indica que tus clientes tardan en pagar. "
+            f"Con DPO de {dpo} días, el ciclo neto es de {ccc} días. "
+            f"Recomendación: implementar descuentos por pronto pago para reducir el DSO."
+        )
+
     return {
         'dso': {
             'value': dso,
@@ -618,6 +652,8 @@ async def calculate_working_capital_intelligence(company_id: str) -> Dict:
             'ventas_90_dias': sum(ventas_90),
             'compras_90_dias': sum(compras_90),
         },
+        'ai_analysis': ai_analysis,
+        'data_source': 'CFDIs últimos 90 días + Aging Contalink',
     }
 
 

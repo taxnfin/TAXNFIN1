@@ -129,10 +129,17 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
                 egresos = [{'id': '', 'concepto': 'Egresos del período',
                             'monto': total_egr, 'fecha': fi, 'categoria': 'sync'}]
 
-        # Mezclar proyecciones CxC/CxP para esta semana
-        proy = proy_por_semana.get(f'S{num}', {})
-        ingresos.extend(proy.get('ingresos', []))
-        egresos.extend(proy.get('egresos', []))
+        # Solo agregar proyecciones si la semana no tiene CFDIs reales
+        label = f'S{num}'
+        if label in proy_por_semana:
+            tiene_cfdis_reales = (
+                any(not i.get('es_proyeccion') for i in ingresos) or
+                any(not e.get('es_proyeccion') for e in egresos)
+            )
+            if not tiene_cfdis_reales:
+                proy = proy_por_semana[label]
+                ingresos.extend(proy['ingresos'])
+                egresos.extend(proy['egresos'])
         total_ing = sum(i['monto'] for i in ingresos)
         total_egr = sum(e['monto'] for e in egresos)
 
@@ -197,10 +204,17 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
                     elif c['tipo'] in ('e', 'egreso', 'expense', 'salida', 'gasto'):
                         egresos.append(item)
 
-            # Mezclar proyecciones CxC/CxP para semanas generadas
-            proy = proy_por_semana.get(f'S{num}', {})
-            ingresos.extend(proy.get('ingresos', []))
-            egresos.extend(proy.get('egresos', []))
+            # Solo agregar proyecciones si la semana generada no tiene CFDIs reales
+            label = f'S{num}'
+            if label in proy_por_semana:
+                tiene_cfdis_reales = (
+                    any(not i.get('es_proyeccion') for i in ingresos) or
+                    any(not e.get('es_proyeccion') for e in egresos)
+                )
+                if not tiene_cfdis_reales:
+                    proy = proy_por_semana[label]
+                    ingresos.extend(proy['ingresos'])
+                    egresos.extend(proy['egresos'])
 
             total_ing = sum(i['monto'] for i in ingresos)
             total_egr = sum(e['monto'] for e in egresos)

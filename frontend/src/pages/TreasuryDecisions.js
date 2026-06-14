@@ -679,16 +679,23 @@ export default function TreasuryDecisions() {
             )}
           </div>
 
+          {/* Análisis IA */}
+          {working_capital?.ai_analysis && (
+            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-xs font-semibold text-blue-700 mb-2">
+                🤖 Análisis IA — Fuente: {working_capital.data_source}
+              </p>
+              <p className="text-sm text-blue-800">{working_capital.ai_analysis}</p>
+            </div>
+          )}
+
           {/* Summary */}
           {working_capital?.summary && (
-            <Card className="bg-gradient-to-r from-blue-50 to-purple-50">
+            <Card className="bg-gradient-to-r from-blue-50 to-purple-50 mt-4">
               <CardContent className="pt-4">
                 <div className="flex items-center gap-4">
                   <Activity className="h-8 w-8 text-blue-600" />
-                  <div>
-                    <h4 className="font-semibold">{working_capital.summary.message}</h4>
-                    <p className="text-sm text-gray-600">{working_capital.summary.recommendation}</p>
-                  </div>
+                  <p className="text-sm text-gray-600">{working_capital.summary}</p>
                 </div>
               </CardContent>
             </Card>
