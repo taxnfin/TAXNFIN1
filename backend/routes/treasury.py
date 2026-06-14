@@ -452,21 +452,39 @@ async def calculate_working_capital_intelligence(company_id: str) -> Dict:
         {'_id': 0, 'fecha_emision': 1, 'total': 1, 'estado_conciliacion': 1}
     ).to_list(1000)
 
-    # CxC pendiente (para DSO)
-    cxc_doc = await db.contalink_cache.find_one({'key': f'cxc_{company_id}_latest'})
-    cxc_total = 0
-    if cxc_doc:
-        raw = cxc_doc.get('data', {})
-        items = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else []
-        cxc_total = sum(float(i.get('saldo_pendiente') or i.get('saldo') or 0) for i in items)
+    # Detectar ERP para CxC/CxP
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0})
+    usa_alegra = (company or {}).get('alegra_connected', False)
 
-    # CxP pendiente (para DPO)
-    cxp_doc = await db.contalink_cache.find_one({'key': f'cxp_{company_id}_latest'})
-    cxp_total = 0
-    if cxp_doc:
-        raw = cxp_doc.get('data', {})
-        items = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else []
-        cxp_total = sum(float(i.get('saldo_pendiente') or i.get('saldo') or 0) for i in items)
+    cxc_total = 0.0
+    cxp_total = 0.0
+
+    if usa_alegra:
+        all_cfdis = await db.cfdis.find(
+            {'company_id': company_id, 'source': 'alegra'},
+            {'_id': 0, 'tipo_cfdi': 1, 'total': 1, 'estado_conciliacion': 1}
+        ).to_list(5000)
+        for c in all_cfdis:
+            if c.get('estado_conciliacion', '') in ('conciliado', 'completado', 'pagado'):
+                continue
+            monto = float(c.get('total', 0) or 0)
+            tipo = str(c.get('tipo_cfdi', '') or '').lower()
+            if tipo in ('i', 'ingreso'):
+                cxc_total += monto
+            elif tipo in ('e', 'egreso'):
+                cxp_total += monto
+    else:
+        cxc_doc = await db.contalink_cache.find_one({'key': f'cxc_{company_id}_latest'})
+        if cxc_doc:
+            raw = cxc_doc.get('data', {})
+            items = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else []
+            cxc_total = sum(float(i.get('saldo_pendiente') or i.get('saldo') or 0) for i in items)
+
+        cxp_doc = await db.contalink_cache.find_one({'key': f'cxp_{company_id}_latest'})
+        if cxp_doc:
+            raw = cxp_doc.get('data', {})
+            items = next((v for v in raw.values() if isinstance(v, list)), []) if isinstance(raw, dict) else []
+            cxp_total = sum(float(i.get('saldo_pendiente') or i.get('saldo') or 0) for i in items)
 
     # Ventas promedio diarias (últimos 90 días)
     today = datetime.now(timezone.utc)
@@ -568,7 +586,7 @@ Proporciona un análisis ejecutivo en español de máximo 120 palabras que expli
             'compras_90_dias': sum(compras_90),
         },
         'ai_analysis': ai_analysis,
-        'data_source': 'CFDIs últimos 90 días + Aging Contalink',
+        'data_source': 'Alegra CFDIs' if usa_alegra else 'CFDIs + Aging Contalink',
     }
 
 
