@@ -137,9 +137,8 @@ const buildNav = (isAdmin) => [
         badge: 'MX',
         badgeStyle: 'mx',
         sub: [
-          { name: 'CFDI',                               href: '/cfdi' },
-          { name: 'Integraciones (Alegra · Contalink)',  href: '/integrations' },
-          { name: 'Estados Financieros',                href: '/contalink-financial' },
+          { name: 'CFDI',                href: '/cfdi' },
+          { name: 'Estados Financieros', href: '/contalink-financial' },
         ],
       },
       { name: 'Catálogo', href: '/catalogs', icon: BookUser },
@@ -502,6 +501,16 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
             >
               <Settings size={13} color={t.text3} />
               <span>Admin</span>
+            </Link>
+          )}
+
+          {isAdmin && (
+            <Link to="/integrations" style={S.footItem}
+              onMouseEnter={(e) => e.currentTarget.style.background = t.hover}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <Link2 size={13} color={t.text3} />
+              <span>Integraciones</span>
             </Link>
           )}
 
