@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import api from '@/api/axios';
+import { getERPEndpoints } from '@/utils/erpHelper';
 import PageHeader from '@/components/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -65,8 +66,8 @@ const AgingModule = () => {
     const refreshParam = forceRefresh ? '?refresh=true' : '';
     try {
       const [cxcRes, cxpRes, fxRes, proyRes, semanasRes, catRes, histRes] = await Promise.all([
-        api.get(`/contalink/cxc${refreshParam}`),
-        api.get(`/contalink/cxp${refreshParam}`),
+        api.get(`${getERPEndpoints().cxcEndpoint}${refreshParam}`),
+        api.get(`${getERPEndpoints().cxpEndpoint}${refreshParam}`),
         api.get('/fx-rates/latest'),
         api.get('/cxc-proyecciones').catch(() => ({ data: [] })),
         api.get('/cxc-proyecciones/semanas-modelo').catch(() => ({ data: [] })),

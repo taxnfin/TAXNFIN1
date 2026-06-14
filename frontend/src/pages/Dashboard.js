@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '@/api/axios';
+import { getERPEndpoints } from '@/utils/erpHelper';
 import PageHeader from '@/components/PageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -134,7 +135,7 @@ const Dashboard = () => {
   // Top clientes con mayor saldo pendiente del Aging CxC (caché de Contalink, montos MXN)
   const loadTopClientesCxc = async () => {
     try {
-      const res = await api.get('/contalink/cxc');
+      const res = await api.get(getERPEndpoints().cxcEndpoint);
       const facturas = res.data?.facturas || [];
       const top = facturas
         .filter(f => (f.saldo_pendiente || 0) > 0)

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '@/api/axios';
+import { getERPEndpoints } from '@/utils/erpHelper';
 import PageHeader from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -186,7 +187,7 @@ const PaymentsModule = () => {
         api.get('/payments/summary'),
         api.get('/payments/breakdown'),
         api.get('/bank-transactions?limit=500'),
-        api.get('/contalink/aging-summary').catch(() => ({ data: null }))
+        api.get(getERPEndpoints().agingSummaryEndpoint).catch(() => ({ data: null }))
       ]);
       
       // Build set of reconciled bank transaction IDs
