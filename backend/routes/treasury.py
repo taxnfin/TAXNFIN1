@@ -162,11 +162,9 @@ async def calculate_alerts(company_id: str, weeks_ahead: int = 16) -> List[Dict]
     # Usar las mismas semanas que el Calendario — fuente única de verdad
     semanas = await calcular_semanas_cashflow(company_id, weeks_ahead, db)
 
-    # Saldo inicial desde bank_accounts
-    bank_accounts = await db.bank_accounts.find(
-        {'company_id': company_id, 'activo': True}, {'_id': 0, 'saldo_actual': 1}
-    ).to_list(50)
-    saldo_inicial = sum(float(a.get('saldo_actual', 0) or 0) for a in bank_accounts)
+    # Saldo inicial desde cash_position ya calculado
+    cash_pos = await get_current_cash_position(company_id)
+    saldo_inicial = float(cash_pos.get('saldo_actual', 0) or 0)
 
     alerts = []
     weekly_balance = saldo_inicial
@@ -181,7 +179,7 @@ async def calculate_alerts(company_id: str, weeks_ahead: int = 16) -> List[Dict]
         total_ing = float(week.get('total_ingresos', 0) or 0)
         total_egr = float(week.get('total_egresos', 0) or 0)
 
-        # Alerta: saldo crítico
+        # Solo la alerta más grave por semana
         if weekly_balance < 0:
             alerts.append({
                 'type': 'balance_critical',
@@ -204,9 +202,19 @@ async def calculate_alerts(company_id: str, weeks_ahead: int = 16) -> List[Dict]
                 'impact': weekly_balance,
                 'action': 'Revisar cobranza pendiente',
             })
-
-        # Alerta: semana con egresos muy altos vs ingresos
-        if total_egr > 0 and total_ing > 0 and total_egr > total_ing * 2:
+        elif total_ing == 0 and total_egr > 50_000:
+            alerts.append({
+                'type': 'no_income',
+                'severity': 'warning',
+                'week': label,
+                'week_date': date_range,
+                'message': f'Sin ingresos proyectados en {label}',
+                'detail': f'Egresos programados: ${total_egr:,.0f} sin cobros que los cubran',
+                'impact': -total_egr,
+                'action': 'Adelantar algún cobro a esta semana',
+            })
+        # high_payments solo si el saldo es positivo y saludable
+        elif total_egr > total_ing * 2 and total_ing > 0 and weekly_balance > threshold:
             alerts.append({
                 'type': 'high_payments',
                 'severity': 'warning',
@@ -218,18 +226,9 @@ async def calculate_alerts(company_id: str, weeks_ahead: int = 16) -> List[Dict]
                 'action': 'Considerar diferir algunos pagos',
             })
 
-        # Alerta: semana sin ingresos pero con egresos
-        if total_ing == 0 and total_egr > 50_000:
-            alerts.append({
-                'type': 'no_income',
-                'severity': 'warning',
-                'week': label,
-                'week_date': date_range,
-                'message': f'Sin ingresos proyectados en {label}',
-                'detail': f'Egresos programados: ${total_egr:,.0f} sin cobros que los cubran',
-                'impact': -total_egr,
-                'action': 'Adelantar algún cobro a esta semana',
-            })
+    # Incluir saldo inicial en la primera alerta para contexto del frontend
+    if alerts:
+        alerts[0]['saldo_inicial'] = saldo_inicial
 
     return alerts
 
