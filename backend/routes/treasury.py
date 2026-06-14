@@ -736,6 +736,21 @@ async def get_calendar(
     return await get_treasury_calendar(company_id, weeks_ahead)
 
 
+@router.patch("/weeks/{week_id}/notas")
+async def update_week_notas(
+    week_id: str,
+    data: dict,
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    company_id = await get_active_company_id(request, current_user)
+    await db.cashflow_weeks.update_one(
+        {'id': week_id, 'company_id': company_id},
+        {'$set': {'notas': data.get('notas', '')}}
+    )
+    return {'status': 'success'}
+
+
 @router.get("/working-capital")
 async def get_working_capital(
     request: Request,

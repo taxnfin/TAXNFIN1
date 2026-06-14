@@ -470,6 +470,20 @@ export default function TreasuryDecisions() {
                               ))}
                             </>
                           )}
+                          {/* Notas manuales */}
+                          <div className="mt-2 border-t border-gray-100 pt-2">
+                            <textarea
+                              className="w-full text-xs text-gray-500 resize-none border-none outline-none bg-transparent placeholder-gray-300"
+                              placeholder="Agregar nota..."
+                              rows={2}
+                              defaultValue={week.notas || ''}
+                              onBlur={async (e) => {
+                                if (e.target.value !== (week.notas || '')) {
+                                  await api.patch(`/treasury/weeks/${week.id}/notas`, { notas: e.target.value });
+                                }
+                              }}
+                            />
+                          </div>
                         </div>
                       ))}
                     </div>
