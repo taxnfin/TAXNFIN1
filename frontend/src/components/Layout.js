@@ -80,10 +80,10 @@ const buildNav = (isAdmin) => [
   {
     section: 'Principal',
     items: [
-      { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-      { name: 'Cash Flow', href: '/projections', icon: TrendingUp },
-      { name: 'Cobranza y Pagos', href: '/payments', icon: CreditCard },
-      { name: 'Aging CxC / CxP',  href: '/transactions', icon: ArrowRightLeft },
+      { name: 'Dashboard',        href: '/',             icon: LayoutDashboard },
+      { name: 'Cash Flow',        href: '/projections',  icon: TrendingUp },
+      { name: 'Cobranza y Pagos', href: '/payments',     icon: CreditCard },
+      { name: 'Aging CxC / CxP', href: '/transactions', icon: ArrowRightLeft },
     ],
   },
   {
@@ -93,32 +93,16 @@ const buildNav = (isAdmin) => [
         name: 'Cuentas y Bancos',
         icon: Building2,
         sub: [
-          { name: 'Cuentas bancarias',       href: '/bank' },
-          { name: 'Conciliaciones',           href: '/bank-statements' },
+          { name: 'Cuentas bancarias',        href: '/bank' },
+          { name: 'Conciliaciones',            href: '/bank-statements' },
           { name: 'Importar estado de cuenta', href: '/bank-statements?import=true' },
-          { name: 'Tipos de cambio',          href: '/fx-rates' },
-        ],
-      },
-      {
-        name: 'Catálogo',
-        href: '/catalogs',
-        icon: BookUser,
-      },
-      {
-        name: 'SAT y Fiscal',
-        icon: FileText,
-        badge: 'MX',
-        badgeStyle: 'mx',
-        sub: [
-          { name: 'CFDI',                              href: '/cfdi' },
-          { name: 'Integraciones (Alegra · Contalink)', href: '/integrations' },
-          { name: 'Estados Financieros',               href: '/contalink-financial' },
+          { name: 'Tipos de cambio',           href: '/fx-rates' },
         ],
       },
     ],
   },
   {
-    section: 'Inteligencia',
+    section: 'CFO Digital',
     items: [
       {
         name: 'Reportes',
@@ -136,11 +120,29 @@ const buildNav = (isAdmin) => [
         badge: 'PRO',
         badgeStyle: 'pro',
       },
+    ],
+  },
+  {
+    section: 'Financiamientos',
+    items: [
+      { name: 'Simulador de Crédito', href: '/financiamiento', icon: DollarSign },
+    ],
+  },
+  {
+    section: 'Fiscal',
+    items: [
       {
-        name: 'Financiamientos',
-        href: '/financiamiento',
-        icon: DollarSign,
+        name: 'SAT y Fiscal',
+        icon: FileText,
+        badge: 'MX',
+        badgeStyle: 'mx',
+        sub: [
+          { name: 'CFDI',                               href: '/cfdi' },
+          { name: 'Integraciones (Alegra · Contalink)',  href: '/integrations' },
+          { name: 'Estados Financieros',                href: '/contalink-financial' },
+        ],
       },
+      { name: 'Catálogo', href: '/catalogs', icon: BookUser },
     ],
   },
   ...(isAdmin
