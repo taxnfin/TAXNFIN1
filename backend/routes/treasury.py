@@ -400,66 +400,40 @@ async def generate_recommendations(company_id: str, weeks_ahead: int) -> List[di
 
 
 async def get_treasury_calendar(company_id: str, weeks_ahead: int) -> dict:
-    """Get treasury calendar — delega a calcular_semanas_cashflow (fuente única de verdad)."""
-    cashflow_weeks = await calcular_semanas_cashflow(company_id, weeks_ahead)
-
-    # Devolver todas las semanas (S1-S52), sin filtrar por fecha
-    cashflow_weeks = cashflow_weeks[:52]
-
-    total_cobros_global = 0.0
-    total_pagos_global = 0.0
+    """Get treasury calendar — usa exactamente los mismos datos que el Cash Flow."""
+    cashflow_data = await calcular_semanas_cashflow(company_id, weeks_ahead)
 
     calendar_weeks = []
-    for week in cashflow_weeks:
-        total_cobros = week.get('total_ingresos_reales', 0.0)
-        total_pagos = week.get('total_egresos_reales', 0.0)
-        total_proy_ing = week.get('total_ingresos_proyectados', 0.0)
-        total_proy_egr = week.get('total_egresos_proyectados', 0.0)
-
-        total_cobros_global += total_cobros
-        total_pagos_global += total_pagos
-
+    for week in cashflow_data:
         calendar_weeks.append({
             'label': week.get('label', ''),
             'date_range': week.get('date_range', ''),
-            'week_start': week.get('week_start', ''),
+            'week_start': week.get('fecha_inicio', '') or week.get('week_start', ''),
+            'week_end': week.get('fecha_fin', '') or week.get('week_end', ''),
             'numero_semana': week.get('numero_semana'),
-            'payments': {
-                'cobranza_programada': week.get('ingresos_detalle', []),
-                'pagos_programados': week.get('egresos_detalle', []),
-                'proyecciones_ingreso': week.get('proyecciones_ingreso', []),
-                'proyecciones_egreso': week.get('proyecciones_egreso', []),
-            },
-            'totals': {
-                'cobranza_programada': total_cobros,
-                'pagos_programados': total_pagos,
-                'proyecciones_ingreso': total_proy_ing,
-                'proyecciones_egreso': total_proy_egr,
-            },
+            'es_real': week.get('es_real', False),
             'total_ingresos': week.get('total_ingresos', 0.0),
             'total_egresos': week.get('total_egresos', 0.0),
             'flujo_neto': week.get('flujo_neto', 0.0),
-            'total': week.get('total_ingresos', 0.0) + week.get('total_egresos', 0.0),
+            'notas': week.get('notas', ''),
+            'id': week.get('id', ''),
+            'payments': {
+                'cobranza_programada': week.get('ingresos_detalle', []),
+                'pagos_programados': week.get('egresos_detalle', []),
+            },
             'top_ingresos': week.get('top_ingresos', []),
             'top_egresos': week.get('top_egresos', []),
         })
-
-    total_proy_ing_global = sum(w.get('total_ingresos_proyectados', 0.0) for w in cashflow_weeks)
-    total_proy_egr_global = sum(w.get('total_egresos_proyectados', 0.0) for w in cashflow_weeks)
 
     return {
         'weeks': calendar_weeks,
         'categories': {
             'cobranza_programada': {'name': 'Cobranza Programada (CxC)', 'color': '#10B981', 'icon': '💰'},
             'pagos_programados': {'name': 'Pagos Programados (CxP)', 'color': '#EF4444', 'icon': '📋'},
-            'proyecciones_ingreso': {'name': 'Proyecciones Ingreso', 'color': '#3B82F6', 'icon': '📈'},
-            'proyecciones_egreso': {'name': 'Proyecciones Egreso', 'color': '#F59E0B', 'icon': '📉'},
         },
         'totals_by_category': {
-            'cobranza_programada': total_cobros_global,
-            'pagos_programados': total_pagos_global,
-            'proyecciones_ingreso': total_proy_ing_global,
-            'proyecciones_egreso': total_proy_egr_global,
+            'cobranza_programada': sum(w.get('total_ingresos', 0.0) for w in calendar_weeks),
+            'pagos_programados': sum(w.get('total_egresos', 0.0) for w in calendar_weeks),
         },
     }
 
