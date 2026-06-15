@@ -159,3 +159,12 @@ async def get_extras(request: Request, current_user: Dict = Depends(get_current_
     if not doc:
         return {'status': 'no_data', 'message': 'Sin datos. Ejecuta sync-extras primero.'}
     return doc
+
+
+@router.get("/debug/env")
+async def debug_env(current_user: Dict = Depends(get_current_user)):
+    import os
+    return {
+        "TWOCAPTCHA_API_KEY": "SET" if os.environ.get("TWOCAPTCHA_API_KEY") else "NOT SET",
+        "KEY_LENGTH": len(os.environ.get("TWOCAPTCHA_API_KEY", "")),
+    }
