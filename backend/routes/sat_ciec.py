@@ -168,3 +168,37 @@ async def debug_env(current_user: Dict = Depends(get_current_user)):
         "TWOCAPTCHA_API_KEY": "SET" if os.environ.get("TWOCAPTCHA_API_KEY") else "NOT SET",
         "KEY_LENGTH": len(os.environ.get("TWOCAPTCHA_API_KEY", "")),
     }
+
+
+@router.post("/debug/sat-page")
+async def debug_sat_page(current_user: Dict = Depends(get_current_user)):
+    """Diagnóstico: carga el portal SAT y reporta lo que Chrome ve (sin login)."""
+    import os, asyncio
+    from modules.cfdi_sat import SATPortalClient
+    client = SATPortalClient()
+    result: dict = {}
+    try:
+        init_ok = client._init_driver()
+        result['chromium_ok'] = init_ok
+        if not init_ok:
+            return result
+
+        client.driver.get("https://portalcfdi.facturaelectronica.sat.gob.mx/")
+        await asyncio.sleep(4)
+
+        page_src = client.driver.page_source
+        result['page_url']        = client.driver.current_url
+        result['page_title']      = client.driver.title
+        result['page_length']     = len(page_src)
+        result['has_recaptcha']   = 'recaptcha' in page_src.lower()
+        result['has_hcaptcha']    = 'hcaptcha' in page_src.lower()
+        result['has_captcha_word'] = 'captcha' in page_src.lower()
+        result['sitekey_js']      = client._extract_sitekey()
+        result['page_snippet']    = page_src[400:900]
+        result['twocaptcha_key_set']    = bool(os.environ.get('TWOCAPTCHA_API_KEY'))
+        result['twocaptcha_key_length'] = len(os.environ.get('TWOCAPTCHA_API_KEY', ''))
+    except Exception as e:
+        result['error'] = str(e)
+    finally:
+        client.close()
+    return result
