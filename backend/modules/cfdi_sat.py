@@ -521,14 +521,50 @@ class SATPortalClient:
                             btn = self.driver.find_element(By.XPATH,
                                 "//input[@type='submit'] | //button[@type='submit'] | //input[@id='submit']")
                             btn.click()
-                        await asyncio.sleep(6)
+                        await asyncio.sleep(8)
                         page = self.driver.page_source.lower()
-                        url = self.driver.current_url.lower()
-                        if any(x in url for x in ['consulta', 'receptor', 'emisor', 'contribuyente']):
+                        url  = self.driver.current_url.lower()
+                        logger.info(f"[SAT] Post-submit-1 URL: {url}")
+
+                        # ── Éxito en primer intento ───────────────────────────
+                        if any(x in url for x in ['consulta','receptor','emisor','contribuyente','portalcfdi']):
                             self.logged_in = True
-                            return {'success': True,
-                                    'message': f'Autenticación exitosa con SAT. RFC: {rfc}',
-                                    'rfc': rfc}
+                            return {'success': True, 'message': f'Autenticación exitosa con SAT. RFC: {rfc}', 'rfc': rfc}
+
+                        # ── Segundo CAPTCHA ───────────────────────────────────
+                        if 'captcha' in page:
+                            logger.info("[SAT] Segundo CAPTCHA detectado, resolviendo...")
+                            token2 = await self._solve_captcha()
+                            if token2:
+                                await self._inject_captcha_token(token2, 'sat_image')
+                                await asyncio.sleep(2)
+                                # Submit #2
+                                for by2, sel2 in [
+                                    (By.ID,    'submit'),
+                                    (By.XPATH, "//input[@type='submit']"),
+                                    (By.XPATH, "//button[@type='submit']"),
+                                ]:
+                                    try:
+                                        btn2 = self.driver.find_element(by2, sel2)
+                                        self.driver.execute_script("arguments[0].click();", btn2)
+                                        logger.info(f"[SAT] Submit #2 ejecutado: {sel2}")
+                                        break
+                                    except Exception:
+                                        continue
+                                await asyncio.sleep(8)
+                                url2  = self.driver.current_url.lower()
+                                page2 = self.driver.page_source.lower()
+                                logger.info(f"[SAT] Post-submit-2 URL: {url2}")
+                                if any(x in url2 for x in ['consulta','receptor','emisor','contribuyente','portalcfdi']):
+                                    self.logged_in = True
+                                    return {'success': True, 'message': f'Autenticación exitosa con SAT. RFC: {rfc}', 'rfc': rfc}
+                                if 'captcha' in page2:
+                                    return {'success': False, 'error': 'SAT requiere más de 2 CAPTCHAs — IP bloqueada temporalmente. Intenta en 10 minutos.'}
+                                return {'success': False, 'error': 'CAPTCHA resuelto pero login falló tras 2 intentos. Reintenta.'}
+                            else:
+                                return {'success': False, 'error': 'No se pudo resolver el segundo CAPTCHA del SAT.'}
+
+                        return {'success': False, 'error': 'Login falló — respuesta inesperada del portal SAT.'}
                     except Exception as ce:
                         logger.error(f"[SAT] Error post-captcha: {ce}")
                     return {'success': False, 'error': 'CAPTCHA resuelto pero login falló. Reintenta.'}
