@@ -139,7 +139,7 @@ const Integrations = () => {
   const handleTest = async (rfc, ciec) => {
     setCiecLoading(true);
     try {
-      const res = await api.post('/sat/ciec/test-connection', { rfc, ciec });
+      const res = await api.post('/sat/ciec/test-connection', { rfc, ciec }, { timeout: 90000 });
       return res.data;
     } catch { return { success: false, error: 'Error de conexión con el servidor' }; }
     finally { setCiecLoading(false); }
