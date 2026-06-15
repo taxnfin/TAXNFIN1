@@ -494,10 +494,22 @@ class SATPortalClient:
                     await self._inject_captcha_token(token, ptype)
                     try:
                         from selenium.webdriver.common.by import By
-                        btn = self.driver.find_element(
-                            By.XPATH, "//input[@type='submit'] | //button[@type='submit']")
-                        btn.click()
-                        await asyncio.sleep(4)
+                        # Esperar a que el portal valide el token antes de submit
+                        await asyncio.sleep(3)
+                        # Intentar submit via JS primero (más confiable post-captcha)
+                        submitted = False
+                        try:
+                            self.driver.execute_script(
+                                "document.querySelector('form').submit();"
+                            )
+                            submitted = True
+                        except Exception:
+                            pass
+                        if not submitted:
+                            btn = self.driver.find_element(By.XPATH,
+                                "//input[@type='submit'] | //button[@type='submit'] | //input[@id='submit']")
+                            btn.click()
+                        await asyncio.sleep(6)
                         page = self.driver.page_source.lower()
                         url = self.driver.current_url.lower()
                         if any(x in url for x in ['consulta', 'receptor', 'emisor', 'contribuyente']):
