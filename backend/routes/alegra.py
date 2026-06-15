@@ -2019,3 +2019,169 @@ async def reject_alegra_reconciliation(
                   'motivo_rechazo': motivo}}
     )
     return {'success': True, 'message': 'Match rechazado', 'match_id': match_id}
+
+
+# ─── Conciliaciones Bancarias ────────────────────────────────────────────────
+
+@router.get("/conciliations")
+async def get_alegra_conciliations(
+    request: Request,
+    account_id: Optional[str] = None,
+    limit: int = 30,
+    start: int = 0,
+    fields: Optional[str] = None,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Lista conciliaciones bancarias de Alegra."""
+    company_id = await get_active_company_id(request, current_user)
+    creds = await db.alegra_credentials.find_one({'company_id': company_id})
+    if not creds:
+        raise HTTPException(status_code=400, detail="Alegra no configurado")
+
+    params = {'limit': min(limit, 30), 'start': start, 'order_direction': 'DESC', 'order_field': 'date'}
+    if account_id:
+        params['account_id'] = account_id
+    if fields:
+        params['fields'] = fields
+
+    data = await alegra_request('GET', 'conciliations', creds['email'], creds['token'], params=params)
+    if data is None:
+        return []
+
+    if isinstance(data, list):
+        for item in data:
+            await db.alegra_conciliations.update_one(
+                {'company_id': company_id, 'alegra_id': str(item.get('id'))},
+                {'$set': {**item, 'company_id': company_id, 'alegra_id': str(item.get('id')),
+                          'synced_at': datetime.now(timezone.utc).isoformat()}},
+                upsert=True
+            )
+
+    return data
+
+
+@router.get("/conciliations/summary")
+async def get_conciliations_summary(
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Resumen de conciliaciones: total, abiertas, con transacciones."""
+    company_id = await get_active_company_id(request, current_user)
+    creds = await db.alegra_credentials.find_one({'company_id': company_id})
+    if not creds:
+        raise HTTPException(status_code=400, detail="Alegra no configurado")
+
+    data = await alegra_request('GET', 'conciliations', creds['email'], creds['token'],
+                                params={'limit': 30, 'fields': 'balance', 'order_direction': 'DESC'})
+    if not data or not isinstance(data, list):
+        return {'total': 0, 'abiertas': 0, 'cerradas': 0, 'con_transacciones': 0}
+
+    return {
+        'total': len(data),
+        'abiertas': sum(1 for c in data if c.get('status') == 'open'),
+        'cerradas': sum(1 for c in data if c.get('status') != 'open'),
+        'con_transacciones': sum(1 for c in data if c.get('transactions')),
+        'ultima_fecha': data[0].get('date') if data else None,
+        'ultima_cuenta': data[0].get('account', {}).get('name') if data else None,
+    }
+
+
+# ─── CxC / CxP desde Alegra ──────────────────────────────────────────────────
+
+@router.get("/receivables")
+async def get_alegra_receivables(
+    request: Request,
+    limit: int = 30,
+    start: int = 0,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Cuentas por cobrar (facturas abiertas) desde Alegra."""
+    company_id = await get_active_company_id(request, current_user)
+    creds = await db.alegra_credentials.find_one({'company_id': company_id})
+    if not creds:
+        raise HTTPException(status_code=400, detail="Alegra no configurado")
+
+    params = {'status': 'open', 'limit': min(limit, 30), 'start': start,
+              'order_field': 'dueDate', 'order_direction': 'ASC'}
+    data = await alegra_request('GET', 'invoices', creds['email'], creds['token'], params=params)
+    if not data or not isinstance(data, list):
+        return {'invoices': [], 'total': 0, 'total_amount': 0}
+
+    total_amount = sum(float(i.get('total', 0)) for i in data)
+    vencidas = [i for i in data if i.get('dueDate') and i['dueDate'] < datetime.now().strftime('%Y-%m-%d')]
+
+    return {
+        'invoices': data,
+        'total': len(data),
+        'total_amount': round(total_amount, 2),
+        'vencidas': len(vencidas),
+        'monto_vencido': round(sum(float(i.get('total', 0)) for i in vencidas), 2),
+    }
+
+
+@router.get("/payables")
+async def get_alegra_payables(
+    request: Request,
+    limit: int = 30,
+    start: int = 0,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Cuentas por pagar (bills abiertas) desde Alegra."""
+    company_id = await get_active_company_id(request, current_user)
+    creds = await db.alegra_credentials.find_one({'company_id': company_id})
+    if not creds:
+        raise HTTPException(status_code=400, detail="Alegra no configurado")
+
+    params = {'status': 'open', 'limit': min(limit, 30), 'start': start,
+              'order_field': 'dueDate', 'order_direction': 'ASC'}
+    data = await alegra_request('GET', 'bills', creds['email'], creds['token'], params=params)
+    if not data or not isinstance(data, list):
+        return {'bills': [], 'total': 0, 'total_amount': 0}
+
+    total_amount = sum(float(b.get('total', 0)) for b in data)
+    vencidas = [b for b in data if b.get('dueDate') and b['dueDate'] < datetime.now().strftime('%Y-%m-%d')]
+
+    return {
+        'bills': data,
+        'total': len(data),
+        'total_amount': round(total_amount, 2),
+        'vencidas': len(vencidas),
+        'monto_vencido': round(sum(float(b.get('total', 0)) for b in vencidas), 2),
+    }
+
+
+@router.get("/cxc-cxp-summary")
+async def get_alegra_cxc_cxp_summary(
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Resumen consolidado CxC + CxP desde Alegra."""
+    company_id = await get_active_company_id(request, current_user)
+    creds = await db.alegra_credentials.find_one({'company_id': company_id})
+    if not creds:
+        raise HTTPException(status_code=400, detail="Alegra no configurado")
+
+    import asyncio
+    cxc_data, cxp_data = await asyncio.gather(
+        alegra_request('GET', 'invoices', creds['email'], creds['token'],
+                       params={'status': 'open', 'limit': 30}),
+        alegra_request('GET', 'bills', creds['email'], creds['token'],
+                       params={'status': 'open', 'limit': 30}),
+    )
+
+    cxc = cxc_data if isinstance(cxc_data, list) else []
+    cxp = cxp_data if isinstance(cxp_data, list) else []
+    hoy = datetime.now().strftime('%Y-%m-%d')
+
+    total_cxc = sum(float(i.get('total', 0)) for i in cxc)
+    total_cxp = sum(float(b.get('total', 0)) for b in cxp)
+    vencido_cxc = sum(float(i.get('total', 0)) for i in cxc if i.get('dueDate', '9999') < hoy)
+    vencido_cxp = sum(float(b.get('total', 0)) for b in cxp if b.get('dueDate', '9999') < hoy)
+
+    return {
+        'source': 'alegra',
+        'cxc': {'total': round(total_cxc, 2), 'count': len(cxc), 'vencido': round(vencido_cxc, 2)},
+        'cxp': {'total': round(total_cxp, 2), 'count': len(cxp), 'vencido': round(vencido_cxp, 2)},
+        'balance_neto': round(total_cxc - total_cxp, 2),
+        'updated_at': datetime.now(timezone.utc).isoformat(),
+    }
