@@ -191,6 +191,98 @@ class SATPortalClient:
             pass
         return path
 
+    # ── CAPTCHA Solver (2captcha) ─────────────────────────────────────────
+
+    async def _solve_captcha(self) -> Optional[str]:
+        import aiohttp, re as _re
+        api_key = os.environ.get('TWOCAPTCHA_API_KEY', '')
+        if not api_key:
+            logger.warning("[2captcha] TWOCAPTCHA_API_KEY no configurada")
+            return None
+        page_url = self.driver.current_url
+        page_src = self.driver.page_source
+        captcha_type = None
+        site_key = None
+        rc_match = _re.search(r'(?:data-sitekey|grecaptcha\.render)["\s=\']+([A-Za-z0-9_\-]{20,})', page_src)
+        if rc_match or 'recaptcha' in page_src.lower():
+            captcha_type = 'recaptcha'
+            site_key = rc_match.group(1) if rc_match else None
+        hc_match = _re.search(r'data-sitekey=["\']([A-Za-z0-9_\-]{20,})["\']', page_src)
+        if 'hcaptcha' in page_src.lower() and hc_match:
+            captcha_type = 'hcaptcha'
+            site_key = hc_match.group(1)
+        if not captcha_type:
+            from selenium.webdriver.common.by import By
+            for sel in ['img#captcha', 'img.captcha', 'img[src*="captcha"]', '#captchaImg', '#imgCaptcha']:
+                try:
+                    if self.driver.find_element(By.CSS_SELECTOR, sel):
+                        captcha_type = 'image'
+                        break
+                except Exception:
+                    continue
+        if not captcha_type:
+            return None
+        logger.info(f"[2captcha] Detectado: {captcha_type}, sitekey={site_key}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                if captcha_type == 'recaptcha' and site_key:
+                    data = {'key': api_key, 'method': 'userrecaptcha', 'googlekey': site_key,
+                            'pageurl': page_url, 'json': 1}
+                elif captcha_type == 'hcaptcha' and site_key:
+                    data = {'key': api_key, 'method': 'hcaptcha', 'sitekey': site_key,
+                            'pageurl': page_url, 'json': 1}
+                elif captcha_type == 'image':
+                    from selenium.webdriver.common.by import By
+                    img = self.driver.find_element(
+                        By.CSS_SELECTOR, 'img#captcha,img.captcha,img[src*="captcha"],#captchaImg')
+                    data = {'key': api_key, 'method': 'base64',
+                            'body': img.screenshot_as_base64, 'json': 1}
+                else:
+                    return None
+                async with session.post('https://2captcha.com/in.php', data=data) as r:
+                    res = await r.json()
+                    if res.get('status') != 1:
+                        logger.error(f"[2captcha] Error al enviar: {res}")
+                        return None
+                    cid = res['request']
+                    logger.info(f"[2captcha] ID={cid}, esperando solución...")
+                for _ in range(24):
+                    await asyncio.sleep(5)
+                    async with session.get(
+                        f'https://2captcha.com/res.php?key={api_key}&action=get&id={cid}&json=1'
+                    ) as r:
+                        res = await r.json()
+                        if res.get('status') == 1:
+                            logger.info("[2captcha] ✅ CAPTCHA resuelto")
+                            return res['request']
+                        elif res.get('request') != 'CAPCHA_NOT_READY':
+                            logger.error(f"[2captcha] Error en polling: {res}")
+                            return None
+        except Exception as e:
+            logger.error(f"[2captcha] Excepción: {e}")
+        return None
+
+    async def _inject_captcha_token(self, token: str, captcha_type: str = 'recaptcha'):
+        try:
+            if captcha_type in ('recaptcha', 'hcaptcha'):
+                self.driver.execute_script(
+                    "document.getElementById('g-recaptcha-response').innerHTML = arguments[0];", token)
+                self.driver.execute_script(
+                    "try { ___grecaptcha_cfg.clients[0].aa.l.callback(arguments[0]); } catch(e) {}", token)
+            elif captcha_type == 'image':
+                from selenium.webdriver.common.by import By
+                for sel in ['#captchaInput', '#txtCaptcha', 'input[name*="captcha" i]']:
+                    try:
+                        inp = self.driver.find_element(By.CSS_SELECTOR, sel)
+                        inp.clear()
+                        inp.send_keys(token)
+                        break
+                    except Exception:
+                        continue
+            await asyncio.sleep(1)
+        except Exception as e:
+            logger.error(f"[2captcha] Error inyectando token: {e}")
+
     # ── Login ─────────────────────────────────────────────────────────────
 
     async def login(self, rfc: str, ciec: str) -> Dict:
@@ -303,8 +395,32 @@ class SATPortalClient:
                             'error': 'RFC o CIEC incorrectos. Verifique sus credenciales en el portal SAT.'}
 
             if 'captcha' in page:
-                return {'success': False,
-                        'error': 'El portal SAT solicitó CAPTCHA. Intente en unos minutos.'}
+                logger.info("[SAT] CAPTCHA detectado, resolviendo con 2captcha...")
+                token = await self._solve_captcha()
+                if token:
+                    ptype = ('recaptcha' if 'recaptcha' in page
+                             else 'hcaptcha' if 'hcaptcha' in page
+                             else 'image')
+                    await self._inject_captcha_token(token, ptype)
+                    try:
+                        from selenium.webdriver.common.by import By
+                        btn = self.driver.find_element(
+                            By.XPATH, "//input[@type='submit'] | //button[@type='submit']")
+                        btn.click()
+                        await asyncio.sleep(4)
+                        page = self.driver.page_source.lower()
+                        url = self.driver.current_url.lower()
+                        if any(x in url for x in ['consulta', 'receptor', 'emisor', 'contribuyente']):
+                            self.logged_in = True
+                            return {'success': True,
+                                    'message': f'Autenticación exitosa con SAT. RFC: {rfc}',
+                                    'rfc': rfc}
+                    except Exception as ce:
+                        logger.error(f"[SAT] Error post-captcha: {ce}")
+                    return {'success': False, 'error': 'CAPTCHA resuelto pero login falló. Reintenta.'}
+                else:
+                    return {'success': False,
+                            'error': 'CAPTCHA detectado. Agrega TWOCAPTCHA_API_KEY en Railway Variables.'}
 
             # Login exitoso si la URL cambió a consulta o al portal
             success_indicators = ['consulta', 'receptor', 'emisor', 'contribuyente', 'portalcfdi']
