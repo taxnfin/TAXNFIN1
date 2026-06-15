@@ -2,48 +2,128 @@ import { useState, useEffect } from 'react';
 import SATIntegration from '@/components/SATIntegration';
 import AlegraIntegration from '@/components/AlegraIntegration';
 import ContalinkIntegration from './ContalinkIntegration';
-import { Building2, Cloud, Link2 } from 'lucide-react';
+import { Building2, Cloud, Link2, Eye, EyeOff, RefreshCw, Trash2, Wifi, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import api from '@/api/axios';
 import { toast } from 'sonner';
 
 const TABS = [
-  {
-    key: 'sat',
-    label: 'SAT (e.firma / FIEL)',
-    icon: Cloud,
-    color: 'text-blue-600',
-    bg: 'bg-blue-50',
-    border: 'border-blue-200',
-    activeBg: 'bg-blue-600',
-  },
-  {
-    key: 'alegra',
-    label: 'Alegra',
-    icon: Building2,
-    color: 'text-purple-600',
-    bg: 'bg-purple-50',
-    border: 'border-purple-200',
-    activeBg: 'bg-purple-600',
-  },
-  {
-    key: 'contalink',
-    label: 'Contalink',
-    icon: Link2,
-    color: 'text-blue-700',
-    bg: 'bg-blue-50',
-    border: 'border-blue-300',
-    activeBg: 'bg-blue-700',
-  },
+  { key: 'sat',       label: 'SAT (e.firma / FIEL)', icon: Cloud,     color: 'text-blue-600' },
+  { key: 'alegra',    label: 'Alegra',                icon: Building2, color: 'text-purple-600' },
+  { key: 'contalink', label: 'Contalink',             icon: Link2,     color: 'text-blue-700' },
 ];
+
+const CiecStatusCard = ({ data, onSync, onDelete, loading }) => {
+  const lastSync = data?.last_sync ? new Date(data.last_sync) : null;
+  const formattedSync = lastSync
+    ? lastSync.toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : 'Nunca';
+  return (
+    <div className="rounded-xl border border-green-200 bg-green-50 p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+            <CheckCircle size={20} className="text-green-600" />
+          </div>
+          <div>
+            <p className="font-semibold text-green-900 text-sm">CIEC conectada</p>
+            <p className="text-green-700 text-xs font-mono mt-0.5">{data?.rfc}</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onSync} disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#10B981] text-white text-xs font-medium rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors">
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            {loading ? 'Iniciando...' : 'Sincronizar CFDIs'}
+          </button>
+          <button onClick={onDelete}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 text-red-500 text-xs font-medium rounded-lg hover:bg-red-50 transition-colors">
+            <Trash2 size={13} /> Eliminar
+          </button>
+        </div>
+      </div>
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="bg-white rounded-lg border border-green-100 px-4 py-3">
+          <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">CFDIs descargados</p>
+          <p className="text-xl font-bold text-[#0F172A]">{data?.total_cfdis ?? '—'}</p>
+        </div>
+        <div className="bg-white rounded-lg border border-green-100 px-4 py-3">
+          <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Errores</p>
+          <p className={`text-xl font-bold ${(data?.errors_count ?? 0) > 0 ? 'text-red-500' : 'text-[#0F172A]'}`}>
+            {data?.errors_count ?? 0}
+          </p>
+        </div>
+        <div className="bg-white rounded-lg border border-green-100 px-4 py-3">
+          <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Último sync</p>
+          <p className="text-xs font-medium text-[#0F172A] flex items-center gap-1">
+            <Clock size={11} className="text-gray-400" />{formattedSync}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CiecForm = ({ onTest, onSave, loading }) => {
+  const [rfc, setRfc] = useState('');
+  const [ciec, setCiec] = useState('');
+  const [showCiec, setShowCiec] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  const [testMsg, setTestMsg] = useState('');
+  const isValid = rfc.length >= 12 && ciec.length >= 8;
+
+  const handleTest = async () => {
+    setTestResult(null);
+    const res = await onTest(rfc, ciec);
+    if (res?.success) { setTestResult('ok'); setTestMsg('Conexión exitosa con el portal SAT'); }
+    else { setTestResult('error'); setTestMsg(res?.error || 'Credenciales incorrectas'); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1.5">RFC de la empresa</label>
+        <input type="text" placeholder="Ej. XAXX010101000" value={rfc}
+          onChange={e => setRfc(e.target.value.toUpperCase().trim())} maxLength={13}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0F172A]" />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1.5">
+          Contraseña SAT (CIEC) <span className="ml-1 text-gray-400 font-normal">— la misma que usas en sat.gob.mx</span>
+        </label>
+        <div className="relative">
+          <input type={showCiec ? 'text' : 'password'} placeholder="Contraseña del portal SAT" value={ciec}
+            onChange={e => setCiec(e.target.value)}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#0F172A]" />
+          <button type="button" onClick={() => setShowCiec(v => !v)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+            {showCiec ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+      </div>
+      {testResult && (
+        <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${testResult === 'ok' ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+          {testResult === 'ok' ? <CheckCircle size={15} /> : <AlertCircle size={15} />} {testMsg}
+        </div>
+      )}
+      <div className="flex gap-2 pt-1">
+        <button onClick={handleTest} disabled={loading || !isValid}
+          className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+          <Wifi size={14} />{loading ? 'Probando...' : 'Probar conexión'}
+        </button>
+        <button onClick={() => onSave(rfc, ciec)} disabled={loading || !isValid}
+          className="flex items-center gap-2 px-4 py-2.5 bg-[#0F172A] text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+          {loading ? 'Guardando...' : 'Guardar y conectar'}
+        </button>
+      </div>
+      <p className="text-[11px] text-gray-400">🔒 Tu contraseña se cifra con AES-256 antes de guardarse.</p>
+    </div>
+  );
+};
 
 const Integrations = () => {
   const [activeTab, setActiveTab] = useState('sat');
-
-  // ── CIEC state ──────────────────────────────────────────────────────────────
   const [ciecStatus, setCiecStatus] = useState('not_configured');
   const [ciecData, setCiecData] = useState(null);
-  const [ciecRFC, setCiecRFC] = useState('');
-  const [ciecPassword, setCiecPassword] = useState('');
   const [ciecLoading, setCiecLoading] = useState(false);
 
   const loadCiecStatus = async () => {
@@ -51,186 +131,88 @@ const Integrations = () => {
       const res = await api.get('/sat/ciec/status');
       setCiecStatus(res.data.status);
       setCiecData(res.data);
-    } catch {
-      // silencioso — CIEC es opcional
-    }
+    } catch { }
   };
 
-  useEffect(() => {
-    loadCiecStatus();
-  }, []);
+  useEffect(() => { loadCiecStatus(); }, []);
 
-  const saveCIEC = async () => {
-    if (!ciecRFC || !ciecPassword) {
-      toast.error('RFC y contraseña son requeridos');
-      return;
-    }
+  const handleTest = async (rfc, ciec) => {
     setCiecLoading(true);
     try {
-      await api.post('/sat/ciec/credentials', { rfc: ciecRFC, ciec: ciecPassword });
-      toast.success('Credenciales CIEC guardadas');
-      setCiecPassword('');
+      const res = await api.post('/sat/ciec/test-connection', { rfc, ciec });
+      return res.data;
+    } catch { return { success: false, error: 'Error de conexión con el servidor' }; }
+    finally { setCiecLoading(false); }
+  };
+
+  const handleSave = async (rfc, ciec) => {
+    if (!rfc || !ciec) { toast.error('RFC y contraseña son requeridos'); return; }
+    setCiecLoading(true);
+    try {
+      await api.post('/sat/ciec/credentials', { rfc, ciec });
+      toast.success('✅ Credenciales SAT guardadas');
       await loadCiecStatus();
-    } catch {
-      toast.error('Error guardando credenciales');
-    } finally {
-      setCiecLoading(false);
-    }
+    } catch { toast.error('Error al guardar credenciales'); }
+    finally { setCiecLoading(false); }
   };
 
-  const testCIEC = async () => {
-    if (!ciecRFC || !ciecPassword) {
-      toast.error('Ingresa RFC y contraseña primero');
-      return;
-    }
-    setCiecLoading(true);
-    try {
-      const res = await api.post('/sat/ciec/test-connection', { rfc: ciecRFC, ciec: ciecPassword });
-      if (res.data.success) {
-        toast.success('✅ Conexión exitosa con SAT');
-      } else {
-        toast.error('❌ ' + (res.data.error || res.data.message || 'Credenciales incorrectas'));
-      }
-    } catch {
-      toast.error('Error al probar la conexión');
-    } finally {
-      setCiecLoading(false);
-    }
-  };
-
-  const syncCIEC = async () => {
+  const handleSync = async () => {
     setCiecLoading(true);
     try {
       await api.post('/sat/ciec/sync', { tipo: 'ambos' });
       toast.success('Sincronización iniciada — espera 2-5 minutos');
-    } catch {
-      toast.error('Error al iniciar sincronización');
-    } finally {
-      setCiecLoading(false);
-    }
+    } catch { toast.error('Error al iniciar sincronización'); }
+    finally { setCiecLoading(false); }
   };
 
-  const deleteCIEC = async () => {
+  const handleDelete = async () => {
     if (!window.confirm('¿Eliminar credenciales CIEC? Esta acción no se puede deshacer.')) return;
     try {
       await api.delete('/sat/ciec/credentials');
       setCiecStatus('not_configured');
       setCiecData(null);
       toast.success('Credenciales eliminadas');
-    } catch {
-      toast.error('Error al eliminar credenciales');
-    }
+    } catch { toast.error('Error al eliminar credenciales'); }
   };
 
   return (
     <div className="p-8 space-y-6">
       <div>
-        <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{ fontFamily: 'Manrope' }}>
-          Integraciones
-        </h1>
-        <p className="text-[#64748B]">
-          Conecta TaxnFin con tus herramientas contables y fiscales
-        </p>
+        <h1 className="text-4xl font-bold text-[#0F172A] mb-2" style={{ fontFamily: 'Manrope' }}>Integraciones</h1>
+        <p className="text-[#64748B]">Conecta TaxnFin con tus herramientas contables y fiscales</p>
       </div>
-
-      <div className="flex gap-3 border-b border-gray-200 pb-0">
+      <div className="flex gap-3 border-b border-gray-200">
         {TABS.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;
           return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium rounded-t-lg border-b-2 transition-all ${
-                isActive
-                  ? `border-[#0F172A] text-[#0F172A] bg-white`
-                  : `border-transparent text-[#64748B] hover:text-[#0F172A] hover:bg-gray-50`
-              }`}
-            >
-              <Icon size={16} />
-              {tab.label}
+            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium rounded-t-lg border-b-2 transition-all ${isActive ? 'border-[#0F172A] text-[#0F172A] bg-white' : 'border-transparent text-[#64748B] hover:text-[#0F172A] hover:bg-gray-50'}`}>
+              <Icon size={16} />{tab.label}
             </button>
           );
         })}
       </div>
-
-      <div className="mt-0">
+      <div>
         {activeTab === 'sat' && (
-          <>
+          <div className="space-y-6">
             <SATIntegration onSyncComplete={() => {}} />
-
-            {/* SAT CIEC */}
-            <div className="mt-6 border rounded-lg p-5">
-              <h3 className="font-semibold text-[#0F172A] mb-1 flex items-center gap-2">
-                🔑 Conexión SAT con CIEC (Contraseña)
-              </h3>
-              <p className="text-sm text-gray-500 mb-4">
-                Descarga automática de CFDIs usando tu RFC y contraseña del SAT.
-                Más fácil que e.firma — no requiere certificados.
-              </p>
-
-              {ciecStatus === 'configured' ? (
-                <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <div>
-                    <p className="text-sm font-medium text-green-800">
-                      ✅ CIEC configurada — RFC: {ciecData?.rfc}
-                    </p>
-                    <p className="text-xs text-green-600">
-                      Último sync: {ciecData?.last_sync ? new Date(ciecData.last_sync).toLocaleString('es-MX') : 'Nunca'}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={syncCIEC}
-                      disabled={ciecLoading}
-                      className="px-3 py-1.5 bg-[#10B981] text-white text-sm rounded disabled:opacity-50"
-                    >
-                      {ciecLoading ? 'Iniciando...' : 'Sincronizar CFDIs'}
-                    </button>
-                    <button
-                      onClick={deleteCIEC}
-                      className="px-3 py-1.5 bg-red-100 text-red-600 text-sm rounded hover:bg-red-200"
-                    >
-                      Eliminar
-                    </button>
-                  </div>
+            <div className="border border-gray-200 rounded-xl p-6 bg-white shadow-sm">
+              <div className="flex items-start gap-3 mb-5">
+                <div className="w-9 h-9 rounded-lg bg-[#0F172A] flex items-center justify-center flex-shrink-0">
+                  <span className="text-white text-base">🔑</span>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    placeholder="RFC (ej. XAXX010101000)"
-                    value={ciecRFC}
-                    onChange={e => setCiecRFC(e.target.value.toUpperCase())}
-                    className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
-                  />
-                  <input
-                    type="password"
-                    placeholder="Contraseña SAT (CIEC)"
-                    value={ciecPassword}
-                    onChange={e => setCiecPassword(e.target.value)}
-                    className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={testCIEC}
-                      disabled={ciecLoading}
-                      className="px-4 py-2 border rounded text-sm hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      {ciecLoading ? 'Probando...' : 'Probar conexión'}
-                    </button>
-                    <button
-                      onClick={saveCIEC}
-                      disabled={ciecLoading}
-                      className="px-4 py-2 bg-[#0F172A] text-white rounded text-sm hover:bg-slate-800 disabled:opacity-50"
-                    >
-                      {ciecLoading ? 'Guardando...' : 'Guardar y conectar'}
-                    </button>
-                  </div>
+                <div>
+                  <h3 className="font-semibold text-[#0F172A] text-base">Conexión SAT con CIEC</h3>
+                  <p className="text-sm text-gray-500 mt-0.5">Descarga automática de CFDIs con tu RFC y contraseña del SAT — sin certificados.</p>
                 </div>
-              )}
+              </div>
+              {ciecStatus === 'configured'
+                ? <CiecStatusCard data={ciecData} onSync={handleSync} onDelete={handleDelete} loading={ciecLoading} />
+                : <CiecForm onTest={handleTest} onSave={handleSave} loading={ciecLoading} />
+              }
             </div>
-          </>
+          </div>
         )}
         {activeTab === 'alegra' && <AlegraIntegration />}
         {activeTab === 'contalink' && <ContalinkIntegration />}
