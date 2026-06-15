@@ -444,6 +444,18 @@ class SATPortalClient:
             ciec_input.send_keys(ciec)
             await asyncio.sleep(0.5)
 
+            # Verificar que los campos quedaron con valor antes de submit
+            await asyncio.sleep(1)
+            rfc_val  = self.driver.execute_script("return document.getElementById('rfc')?.value || ''")
+            ciec_val = self.driver.execute_script("return document.getElementById('password')?.value || ''")
+            logger.info(f"[SAT] Pre-submit check — RFC='{rfc_val}' CIEC_len={len(ciec_val)}")
+            if not rfc_val or not ciec_val:
+                logger.error("[SAT] Campos vacíos antes de submit — reintentando llenado")
+                # Rellenar via JS directamente
+                self.driver.execute_script(f"document.getElementById('rfc').value = '{rfc}'")
+                self.driver.execute_script("document.getElementById('password').value = arguments[0]", ciec)
+                await asyncio.sleep(0.5)
+
             # ── Paso 3: Botón Enviar ──────────────────────────────────────
             submit_btn = None
             for by, sel in [
