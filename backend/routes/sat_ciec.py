@@ -187,16 +187,44 @@ async def debug_sat_page(current_user: Dict = Depends(get_current_user)):
         await asyncio.sleep(4)
 
         page_src = client.driver.page_source
-        result['page_url']        = client.driver.current_url
+        result['final_url']       = client.driver.current_url
         result['page_title']      = client.driver.title
         result['page_length']     = len(page_src)
         result['has_recaptcha']   = 'recaptcha' in page_src.lower()
         result['has_hcaptcha']    = 'hcaptcha' in page_src.lower()
         result['has_captcha_word'] = 'captcha' in page_src.lower()
         result['sitekey_js']      = client._extract_sitekey()
-        result['page_snippet']    = page_src[400:900]
         result['twocaptcha_key_set']    = bool(os.environ.get('TWOCAPTCHA_API_KEY'))
         result['twocaptcha_key_length'] = len(os.environ.get('TWOCAPTCHA_API_KEY', ''))
+
+        # Extraer todos los inputs del formulario via JS
+        result['form_inputs'] = client.driver.execute_script("""
+            return Array.from(document.querySelectorAll('input, select, textarea')).map(el => ({
+                tag: el.tagName,
+                id: el.id || null,
+                name: el.name || null,
+                type: el.type || null,
+                placeholder: el.placeholder || null,
+                class: el.className ? el.className.substring(0, 60) : null
+            }));
+        """)
+
+        # Imágenes que podrían ser captcha
+        result['captcha_images'] = client.driver.execute_script("""
+            return Array.from(document.querySelectorAll('img')).filter(img =>
+                img.src.toLowerCase().includes('captcha') ||
+                (img.id && img.id.toLowerCase().includes('captcha')) ||
+                (img.className && img.className.toLowerCase().includes('captcha'))
+            ).map(img => ({src: img.src, id: img.id, className: img.className}));
+        """)
+
+        # Snippet centrado en el form
+        form_start = page_src.lower().find('<form')
+        if form_start > 0:
+            result['form_snippet'] = page_src[form_start:form_start + 1500]
+        else:
+            result['page_snippet'] = page_src[400:1200]
+
     except Exception as e:
         result['error'] = str(e)
     finally:
