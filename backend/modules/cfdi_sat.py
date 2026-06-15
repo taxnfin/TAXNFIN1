@@ -107,6 +107,7 @@ class SATPortalClient:
         self.driver = None
         self.logged_in = False
         self.download_dir = None
+        self._last_captcha_type = None  # rastreado por _solve_captcha para _inject_captcha_token
 
     # ── Driver setup ──────────────────────────────────────────────────────
 
@@ -249,6 +250,7 @@ class SATPortalClient:
         site_key = None
 
         # Detectar tipo de captcha
+        captcha_b64 = None
         if 'hcaptcha' in page_src:
             captcha_type = 'hcaptcha'
             site_key = self._extract_sitekey()
@@ -257,11 +259,21 @@ class SATPortalClient:
             site_key = self._extract_sitekey()
         else:
             from selenium.webdriver.common.by import By
-            for sel in ['img#captcha', 'img.captcha', 'img[src*="captcha"]', '#captchaImg', '#imgCaptcha']:
+            # SAT cfdiau: imagen base64 inline dentro de #divCaptcha
+            for sel in ['#divCaptcha img', 'label[id*="aptcha"] img',
+                        'img#captcha', 'img.captcha', 'img[src*="captcha"]',
+                        '#captchaImg', '#imgCaptcha']:
                 try:
-                    if self.driver.find_element(By.CSS_SELECTOR, sel):
+                    img_el = self.driver.find_element(By.CSS_SELECTOR, sel)
+                    img_src = img_el.get_attribute('src') or ''
+                    if img_src.startswith('data:image'):
+                        # Extraer base64 del data URL: "data:image/jpeg;base64,XXXX"
+                        if ',' in img_src:
+                            captcha_b64 = img_src.split(',', 1)[1]
+                        captcha_type = 'sat_image'
+                    else:
                         captcha_type = 'image'
-                        break
+                    break
                 except Exception:
                     continue
 
@@ -270,17 +282,11 @@ class SATPortalClient:
             return None
 
         logger.info(f"[2captcha] Detectado: {captcha_type}, sitekey={site_key}, url={page_url}")
+        self._last_captcha_type = captcha_type
 
         if captcha_type in ('recaptcha', 'hcaptcha') and not site_key:
             logger.error(f"[2captcha] {captcha_type} detectado pero no se pudo extraer sitekey")
-            # Intentar como imagen como último recurso
-            try:
-                screenshot_b64 = self.driver.get_screenshot_as_base64()
-                logger.info("[2captcha] Intentando resolver como imagen (screenshot completo)")
-                captcha_type = 'image_screenshot'
-                site_key = None
-            except Exception:
-                return None
+            return None
 
         try:
             async with aiohttp.ClientSession() as session:
@@ -290,6 +296,9 @@ class SATPortalClient:
                 elif captcha_type == 'hcaptcha' and site_key:
                     data = {'key': api_key, 'method': 'hcaptcha', 'sitekey': site_key,
                             'pageurl': page_url, 'json': 1}
+                elif captcha_type == 'sat_image' and captcha_b64:
+                    # Imagen base64 inline del SAT cfdiau
+                    data = {'key': api_key, 'method': 'base64', 'body': captcha_b64, 'json': 1}
                 elif captcha_type == 'image':
                     from selenium.webdriver.common.by import By
                     img = self.driver.find_element(
@@ -297,6 +306,7 @@ class SATPortalClient:
                     data = {'key': api_key, 'method': 'base64',
                             'body': img.screenshot_as_base64, 'json': 1}
                 else:
+                    logger.error(f"[2captcha] Tipo '{captcha_type}' sin datos suficientes para resolver")
                     return None
 
                 async with session.post('https://2captcha.com/in.php', data=data) as r:
@@ -325,14 +335,20 @@ class SATPortalClient:
 
     async def _inject_captcha_token(self, token: str, captcha_type: str = 'recaptcha'):
         try:
-            if captcha_type in ('recaptcha', 'hcaptcha'):
+            from selenium.webdriver.common.by import By
+            if captcha_type == 'sat_image':
+                # Portal SAT cfdiau: escribe la solución en #userCaptcha
+                inp = self.driver.find_element(By.ID, 'userCaptcha')
+                inp.clear()
+                inp.send_keys(token)
+                logger.info(f"[2captcha] Token SAT imagen inyectado en #userCaptcha: {token}")
+            elif captcha_type in ('recaptcha', 'hcaptcha'):
                 self.driver.execute_script(
                     "document.getElementById('g-recaptcha-response').innerHTML = arguments[0];", token)
                 self.driver.execute_script(
                     "try { ___grecaptcha_cfg.clients[0].aa.l.callback(arguments[0]); } catch(e) {}", token)
             elif captcha_type == 'image':
-                from selenium.webdriver.common.by import By
-                for sel in ['#captchaInput', '#txtCaptcha', 'input[name*="captcha" i]']:
+                for sel in ['#captchaInput', '#txtCaptcha', 'input[name*="captcha" i]', '#userCaptcha']:
                     try:
                         inp = self.driver.find_element(By.CSS_SELECTOR, sel)
                         inp.clear()
@@ -366,13 +382,13 @@ class SATPortalClient:
 
             # ── Paso 0: Resolver CAPTCHA en el page load (antes del submit) ──
             page_initial = self.driver.page_source.lower()
-            if 'recaptcha' in page_initial or 'hcaptcha' in page_initial or 'captcha' in page_initial:
+            if 'captcha' in page_initial:
                 logger.info("[SAT] CAPTCHA detectado en page load, resolviendo antes del submit...")
                 pre_token = await self._solve_captcha()
                 if pre_token:
-                    ptype_pre = ('hcaptcha' if 'hcaptcha' in page_initial else 'recaptcha')
+                    ptype_pre = self._last_captcha_type or 'recaptcha'
                     await self._inject_captcha_token(pre_token, ptype_pre)
-                    logger.info("[SAT] Token pre-submit inyectado")
+                    logger.info(f"[SAT] Token pre-submit inyectado (tipo={ptype_pre})")
                 else:
                     logger.warning("[SAT] No se pudo resolver CAPTCHA pre-submit, continuando de todas formas")
 
@@ -468,12 +484,13 @@ class SATPortalClient:
                             'error': 'RFC o CIEC incorrectos. Verifique sus credenciales en el portal SAT.'}
 
             if 'captcha' in page:
-                logger.info("[SAT] CAPTCHA detectado, resolviendo con 2captcha...")
+                logger.info("[SAT] CAPTCHA detectado post-submit, resolviendo con 2captcha...")
                 token = await self._solve_captcha()
                 if token:
-                    ptype = ('recaptcha' if 'recaptcha' in page
-                             else 'hcaptcha' if 'hcaptcha' in page
-                             else 'image')
+                    ptype = self._last_captcha_type or (
+                        'recaptcha' if 'recaptcha' in page
+                        else 'hcaptcha' if 'hcaptcha' in page
+                        else 'sat_image')
                     await self._inject_captcha_token(token, ptype)
                     try:
                         from selenium.webdriver.common.by import By
