@@ -193,25 +193,69 @@ class SATPortalClient:
 
     # ── CAPTCHA Solver (2captcha) ─────────────────────────────────────────
 
+    def _extract_sitekey(self) -> Optional[str]:
+        """Extrae el sitekey de reCAPTCHA via JS (más confiable que regex en page_source)."""
+        try:
+            sitekey = self.driver.execute_script("""
+                var els = document.querySelectorAll('[data-sitekey]');
+                if (els.length > 0) return els[0].getAttribute('data-sitekey');
+                if (window.___grecaptcha_cfg) {
+                    var clients = window.___grecaptcha_cfg.clients || {};
+                    for (var k in clients) {
+                        var c = clients[k];
+                        if (!c) continue;
+                        for (var p in c) {
+                            if (c[p] && typeof c[p] === 'object' && c[p].sitekey) return c[p].sitekey;
+                        }
+                    }
+                }
+                var iframes = document.querySelectorAll('iframe[src*="recaptcha"]');
+                if (iframes.length > 0) {
+                    var m = iframes[0].src.match(/[?&]k=([^&]+)/);
+                    if (m) return m[1];
+                }
+                return null;
+            """)
+            if sitekey and len(sitekey) > 20:
+                return sitekey
+        except Exception as e:
+            logger.debug(f"[2captcha] JS sitekey extraction failed: {e}")
+
+        # Fallback: buscar con regex más amplio en page_source
+        import re as _re
+        page_src = self.driver.page_source
+        for pattern in [
+            r'data-sitekey=["\']([A-Za-z0-9_\-]{20,})["\']',
+            r'sitekey["\s:=\']+([A-Za-z0-9_\-]{20,})',
+            r'render\(["\']([A-Za-z0-9_\-]{20,})["\']',
+            r'["\']([6L][A-Za-z0-9_\-]{38,})["\']',  # reCAPTCHA sitekeys comienzan con "6L"
+        ]:
+            m = _re.search(pattern, page_src)
+            if m:
+                key = m.group(1)
+                if len(key) > 20:
+                    return key
+        return None
+
     async def _solve_captcha(self) -> Optional[str]:
-        import aiohttp, re as _re
+        import aiohttp
         api_key = os.environ.get('TWOCAPTCHA_API_KEY', '')
         if not api_key:
             logger.warning("[2captcha] TWOCAPTCHA_API_KEY no configurada")
             return None
         page_url = self.driver.current_url
-        page_src = self.driver.page_source
+        page_src = self.driver.page_source.lower()
         captcha_type = None
         site_key = None
-        rc_match = _re.search(r'(?:data-sitekey|grecaptcha\.render)["\s=\']+([A-Za-z0-9_\-]{20,})', page_src)
-        if rc_match or 'recaptcha' in page_src.lower():
-            captcha_type = 'recaptcha'
-            site_key = rc_match.group(1) if rc_match else None
-        hc_match = _re.search(r'data-sitekey=["\']([A-Za-z0-9_\-]{20,})["\']', page_src)
-        if 'hcaptcha' in page_src.lower() and hc_match:
+
+        # Detectar tipo de captcha
+        if 'hcaptcha' in page_src:
             captcha_type = 'hcaptcha'
-            site_key = hc_match.group(1)
-        if not captcha_type:
+            site_key = self._extract_sitekey()
+        elif 'recaptcha' in page_src or 'g-recaptcha' in page_src:
+            captcha_type = 'recaptcha'
+            site_key = self._extract_sitekey()
+        else:
             from selenium.webdriver.common.by import By
             for sel in ['img#captcha', 'img.captcha', 'img[src*="captcha"]', '#captchaImg', '#imgCaptcha']:
                 try:
@@ -220,9 +264,24 @@ class SATPortalClient:
                         break
                 except Exception:
                     continue
+
         if not captcha_type:
+            logger.warning("[2captcha] No se detectó tipo de captcha en la página")
             return None
-        logger.info(f"[2captcha] Detectado: {captcha_type}, sitekey={site_key}")
+
+        logger.info(f"[2captcha] Detectado: {captcha_type}, sitekey={site_key}, url={page_url}")
+
+        if captcha_type in ('recaptcha', 'hcaptcha') and not site_key:
+            logger.error(f"[2captcha] {captcha_type} detectado pero no se pudo extraer sitekey")
+            # Intentar como imagen como último recurso
+            try:
+                screenshot_b64 = self.driver.get_screenshot_as_base64()
+                logger.info("[2captcha] Intentando resolver como imagen (screenshot completo)")
+                captcha_type = 'image_screenshot'
+                site_key = None
+            except Exception:
+                return None
+
         try:
             async with aiohttp.ClientSession() as session:
                 if captcha_type == 'recaptcha' and site_key:
@@ -239,6 +298,7 @@ class SATPortalClient:
                             'body': img.screenshot_as_base64, 'json': 1}
                 else:
                     return None
+
                 async with session.post('https://2captcha.com/in.php', data=data) as r:
                     res = await r.json()
                     if res.get('status') != 1:
@@ -246,6 +306,7 @@ class SATPortalClient:
                         return None
                     cid = res['request']
                     logger.info(f"[2captcha] ID={cid}, esperando solución...")
+
                 for _ in range(24):
                     await asyncio.sleep(5)
                     async with session.get(
@@ -301,7 +362,19 @@ class SATPortalClient:
         try:
             logger.info(f"[SAT] Login RFC={rfc}")
             self.driver.get(SAT_LOGIN_URL)
-            await asyncio.sleep(2)
+            await asyncio.sleep(3)
+
+            # ── Paso 0: Resolver CAPTCHA en el page load (antes del submit) ──
+            page_initial = self.driver.page_source.lower()
+            if 'recaptcha' in page_initial or 'hcaptcha' in page_initial or 'captcha' in page_initial:
+                logger.info("[SAT] CAPTCHA detectado en page load, resolviendo antes del submit...")
+                pre_token = await self._solve_captcha()
+                if pre_token:
+                    ptype_pre = ('hcaptcha' if 'hcaptcha' in page_initial else 'recaptcha')
+                    await self._inject_captcha_token(pre_token, ptype_pre)
+                    logger.info("[SAT] Token pre-submit inyectado")
+                else:
+                    logger.warning("[SAT] No se pudo resolver CAPTCHA pre-submit, continuando de todas formas")
 
             wait = WebDriverWait(self.driver, 20)
 
@@ -432,7 +505,9 @@ class SATPortalClient:
             # Si la URL no cambió significa posible error
             self._screenshot('login_unknown')
             return {'success': False,
-                    'error': 'No se pudo verificar el login. El portal SAT puede estar en mantenimiento.'}
+                    'error': 'No se pudo verificar el login. El portal SAT puede estar en mantenimiento.',
+                    'debug_url': self.driver.current_url[:200],
+                    'debug_page_snippet': self.driver.page_source[500:1000]}
 
         except Exception as e:
             logger.error(f"[SAT] Error login: {e}")
