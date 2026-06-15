@@ -209,21 +209,24 @@ async def debug_sat_page(current_user: Dict = Depends(get_current_user)):
             }));
         """)
 
-        # Imágenes que podrían ser captcha
-        result['captcha_images'] = client.driver.execute_script("""
-            return Array.from(document.querySelectorAll('img')).filter(img =>
-                img.src.toLowerCase().includes('captcha') ||
-                (img.id && img.id.toLowerCase().includes('captcha')) ||
-                (img.className && img.className.toLowerCase().includes('captcha'))
-            ).map(img => ({src: img.src, id: img.id, className: img.className}));
+        # TODAS las imágenes de la página (para encontrar la del captcha)
+        result['all_images'] = client.driver.execute_script("""
+            return Array.from(document.querySelectorAll('img')).map(img => ({
+                src: img.src ? img.src.substring(0, 200) : null,
+                id: img.id || null,
+                name: img.getAttribute('name') || null,
+                className: img.className ? img.className.substring(0, 60) : null,
+                width: img.width,
+                height: img.height
+            }));
         """)
 
-        # Snippet centrado en el form
+        # Snippet centrado en el form — más largo para ver el captcha
         form_start = page_src.lower().find('<form')
         if form_start > 0:
-            result['form_snippet'] = page_src[form_start:form_start + 1500]
+            result['form_snippet'] = page_src[form_start:form_start + 3000]
         else:
-            result['page_snippet'] = page_src[400:1200]
+            result['page_snippet'] = page_src[400:2000]
 
     except Exception as e:
         result['error'] = str(e)
