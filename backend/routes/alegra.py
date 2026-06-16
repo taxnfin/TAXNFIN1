@@ -1306,7 +1306,10 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     }},
                     upsert=True
                 )
-            results['payments'] = {'total': len(all_payments), 'created': created, 'updated': updated}
+            # Verificación post-sync: cuántos quedan en db
+            in_db = await db.payments.count_documents({'company_id': company_id})
+            results['payments'] = {'total': len(all_payments), 'created': created, 'updated': updated, 'in_db': in_db}
+            logger.info(f"[Alegra] Payments loop: created={created} updated={updated} in_db={in_db}")
         except Exception as e:
             results['payments'] = {'error': str(e)}
             logger.error(f"[Alegra] Error sync payments: {e}")
