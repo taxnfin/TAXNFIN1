@@ -154,6 +154,22 @@ async def save_proyeccion(
     return {"ok": True, "semana": item.semana, "nombre": item.nombre}
 
 
+# ── DELETE /cxc-proyecciones/bulk ────────────────────────────────────
+@router.delete("/bulk")
+async def delete_proyecciones_bulk(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    source: str = Query(None, description="Filtrar por source (alegra, contalink, manual)"),
+):
+    """Elimina múltiples proyecciones filtradas por source."""
+    company_id = await get_active_company_id(request, current_user)
+    query: dict = {"company_id": company_id}
+    if source:
+        query["source"] = source
+    result = await db.cxc_proyecciones.delete_many(query)
+    return {"ok": True, "deleted": result.deleted_count}
+
+
 # ── DELETE /cxc-proyecciones/{tipo}/{nombre} ─────────────────────────
 @router.delete("/{tipo}/{nombre}")
 async def delete_proyeccion(

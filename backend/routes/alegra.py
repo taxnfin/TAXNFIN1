@@ -8,7 +8,7 @@ import asyncio
 import base64
 import uuid
 import httpx
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from typing import Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Depends, Request, Query, BackgroundTasks
 from pydantic import BaseModel
@@ -1302,13 +1302,16 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
         try:
             pending_invoices = [i for i in all_invoices if i.get('status') not in ('closed', 'paid')]
             pending_bills    = [b for b in all_bills    if b.get('status') not in ('closed', 'paid')]
+            _cutoff = datetime.now(timezone.utc) - timedelta(weeks=8)
 
             for inv in pending_invoices:
                 due_date = inv.get('dueDate') or inv.get('date', '')
                 if not due_date:
                     continue
                 try:
-                    due_dt   = datetime.fromisoformat(due_date)
+                    due_dt   = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
+                    if due_dt.replace(tzinfo=timezone.utc) < _cutoff:
+                        continue  # omitir facturas muy vencidas
                     semana   = f"S{due_dt.isocalendar()[1]}"
                     monto    = float(inv.get('total', 0) or 0)
                     inv_c    = inv.get('currency', {}) if isinstance(inv.get('currency'), dict) else {}
@@ -1344,7 +1347,9 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 if not due_date:
                     continue
                 try:
-                    due_dt   = datetime.fromisoformat(due_date)
+                    due_dt   = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
+                    if due_dt.replace(tzinfo=timezone.utc) < _cutoff:
+                        continue  # omitir compras muy vencidas
                     semana   = f"S{due_dt.isocalendar()[1]}"
                     monto    = float(bill.get('total', 0) or 0)
                     bill_c   = bill.get('currency', {}) if isinstance(bill.get('currency'), dict) else {}
