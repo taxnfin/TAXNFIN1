@@ -1201,6 +1201,12 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
 
         # Sync payments → db.payments con formato compatible con Cobranza y Pagos
         try:
+            # Cargar cuentas internas para mapear nombre Alegra → UUID interno
+            _internal_accounts = await db.bank_accounts.find(
+                {'company_id': company_id, 'activo': True}, {'_id': 0, 'id': 1, 'nombre': 1, 'moneda': 1}
+            ).to_list(50)
+            _acct_by_name = {a['nombre']: a['id'] for a in _internal_accounts}
+
             all_payments, start = [], 0
             while True:
                 params = {'start': start, 'limit': 30, 'order_field': 'date', 'order_direction': 'DESC'}
@@ -1228,6 +1234,8 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 pay_type = pay.get('type', '')
                 tipo = 'cobro' if pay_type in ('in', 'income', 'cobro') else 'pago'
                 bank_account = pay.get('bankAccount', {}) if isinstance(pay.get('bankAccount'), dict) else {}
+                alegra_bank_name = bank_account.get('name', '')
+                internal_bank_id = _acct_by_name.get(alegra_bank_name, '')
                 pay_currency_code = (pay.get('currency') or {}).get('code', 'MXN') if isinstance(pay.get('currency'), dict) else 'MXN'
                 pay_exchange_rate = float(pay.get('exchangeRate', 1) or 1)
                 fecha = pay.get('date') or datetime.now(timezone.utc).strftime('%Y-%m-%d')
@@ -1237,6 +1245,7 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 payment_doc = {
                     'company_id':         company_id,
                     'source':             'alegra',
+                    'fuente':             'alegra',
                     'alegra_payment_id':  alegra_id,
                     'tipo':               tipo,
                     'monto':              float(pay.get('amount', 0) or 0),
@@ -1250,8 +1259,8 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     'es_proyeccion':      False,
                     'concepto':           pay.get('observations') or pay.get('anotation') or f'Pago Alegra #{alegra_id}',
                     'beneficiario':       pay.get('client', {}).get('name', '') if isinstance(pay.get('client'), dict) else (pay.get('vendor', {}).get('name', '') if isinstance(pay.get('vendor'), dict) else ''),
-                    'cuenta_banco':       f"{bank_account.get('name', '')} {bank_account.get('type', '')}".strip(),
-                    'cuenta_banco_id':    str(bank_account.get('id', '')),
+                    'cuenta_banco':       alegra_bank_name,
+                    'bank_account_id':    internal_bank_id,
                     'referencia':         str(pay.get('numberTemplate', {}).get('number', '') if isinstance(pay.get('numberTemplate'), dict) else ''),
                     'forma_pago':         pay.get('paymentMethod', '') or pay.get('type', '') or '',
                     'metodo_pago':        'transferencia',
@@ -1282,10 +1291,11 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                         'fecha_valor':        pay.get('date'),
                         'tipo_movimiento':    'credito' if pay.get('type') == 'in' else 'debito',
                         'saldo':              0.0,
-                        'cuenta_banco':       bank_account.get('name', ''),
-                        'bank_account_id':    str(bank_account.get('id', '')),
+                        'cuenta_banco':       alegra_bank_name,
+                        'bank_account_id':    internal_bank_id,
                         'conciliado':         False,
                         'es_real':            True,
+                        'fuente':             'alegra',
                         'moneda':             pay_currency_code,
                         'tipo_cambio':        pay_exchange_rate,
                         'updated_at':         datetime.now(timezone.utc).isoformat(),
