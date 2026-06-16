@@ -1010,25 +1010,31 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
         # Sync invoices (CxC)
         try:
             all_invoices, start = [], 0
-            while True:
+            MAX_PAGES = 50
+            page_count = 0
+            while page_count < MAX_PAGES:
+                page_count += 1
                 params = {'start': start, 'limit': 30,
                           'order_field': 'date', 'order_direction': 'ASC'}
                 if date_from: params['date[from]'] = date_from
                 if date_to:   params['date[to]']   = date_to
                 batch = await alegra_request('GET', 'invoices', email, token, params=params)
                 await asyncio.sleep(0.3)
-                if not batch or not isinstance(batch, list): break
+                if not batch or not isinstance(batch, list):
+                    break
                 filtered_inv = []
-                for inv_item in batch:
-                    inv_date = inv_item.get('date', '') or ''
-                    if date_from and inv_date and inv_date < date_from:
+                past_range = False
+                for inv in batch:
+                    inv_date = (inv.get('date') or '')[:10]
+                    if date_from and inv_date < date_from:
                         continue
-                    if date_to and inv_date and inv_date > date_to:
+                    if date_to and inv_date > date_to:
+                        past_range = True
                         break
-                    filtered_inv.append(inv_item)
+                    filtered_inv.append(inv)
                 all_invoices.extend(filtered_inv)
-                if len(batch) < 30: break
-                if batch and date_to and (batch[-1].get('date', '') or '') > date_to: break
+                if past_range or len(batch) < 30:
+                    break
                 start += 30
             created = updated = 0
             for inv in all_invoices:
@@ -1089,25 +1095,31 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
         # Sync bills (CxP)
         try:
             all_bills, start = [], 0
-            while True:
+            MAX_PAGES = 50
+            page_count = 0
+            while page_count < MAX_PAGES:
+                page_count += 1
                 params = {'start': start, 'limit': 30,
                           'order_field': 'date', 'order_direction': 'ASC'}
                 if date_from: params['date[from]'] = date_from
                 if date_to:   params['date[to]']   = date_to
                 batch = await alegra_request('GET', 'bills', email, token, params=params)
                 await asyncio.sleep(0.3)
-                if not batch or not isinstance(batch, list): break
+                if not batch or not isinstance(batch, list):
+                    break
                 filtered_bill = []
-                for bill_item in batch:
-                    bill_date = bill_item.get('date', '') or ''
-                    if date_from and bill_date and bill_date < date_from:
+                past_range = False
+                for bill in batch:
+                    bill_date = (bill.get('date') or '')[:10]
+                    if date_from and bill_date < date_from:
                         continue
-                    if date_to and bill_date and bill_date > date_to:
+                    if date_to and bill_date > date_to:
+                        past_range = True
                         break
-                    filtered_bill.append(bill_item)
+                    filtered_bill.append(bill)
                 all_bills.extend(filtered_bill)
-                if len(batch) < 30: break
-                if batch and date_to and (batch[-1].get('date', '') or '') > date_to: break
+                if past_range or len(batch) < 30:
+                    break
                 start += 30
             created = updated = 0
             for bill in all_bills:
