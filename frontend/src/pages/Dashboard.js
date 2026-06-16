@@ -54,6 +54,17 @@ const Dashboard = () => {
     } catch {/* ignore */}
     return { mode: 'auto', valor: 0 };
   });
+  const loadSaldoConfig = async () => {
+    try {
+      const res = await api.get('/companies/cashflow-config');
+      if (res.data && res.data.mode) {
+        setSaldoConfig(res.data);
+        localStorage.setItem('dashboardSaldoInicial', JSON.stringify(res.data));
+      }
+    } catch {
+      // fallback: localStorage ya cargado en useState
+    }
+  };
   const [saldoDialogOpen, setSaldoDialogOpen] = useState(false);
   const [tempSaldoConfig, setTempSaldoConfig] = useState({ mode: 'auto', valor: 0 });
   
@@ -89,6 +100,7 @@ const Dashboard = () => {
     loadSchedulerStatus();
     loadFxAlerts();
     loadTopClientesCxc();
+    loadSaldoConfig();
 
     // Default = 13S: 13 semanas FUTURAS (hoy → hoy + 91 días)
     const today = new Date();
@@ -280,11 +292,16 @@ const Dashboard = () => {
     return `${f(ini)} - ${f(fin)}`;
   };
 
-  const handleSaveSaldoConfig = () => {
+  const handleSaveSaldoConfig = async () => {
     const cfg = { mode: tempSaldoConfig.mode, valor: Number(tempSaldoConfig.valor) || 0 };
     setSaldoConfig(cfg);
-    localStorage.setItem('dashboardSaldoInicial', JSON.stringify(cfg)); // persiste entre sesiones
+    localStorage.setItem('dashboardSaldoInicial', JSON.stringify(cfg));
     setSaldoDialogOpen(false);
+    try {
+      await api.post('/companies/cashflow-config', cfg);
+    } catch {
+      // silencioso — localStorage ya tiene el valor
+    }
     toast.success(cfg.mode === 'auto'
       ? 'Saldo Inicial: automático (saldo actual de cuentas bancarias)'
       : `Saldo Inicial manual: ${formatCurrency(cfg.valor)}`);

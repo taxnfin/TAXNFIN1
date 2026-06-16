@@ -327,3 +327,21 @@ async def delete_company(
     logger.info(f"[DELETE COMPANY] {company_id} eliminada por {current_user['email']}. Summary: {deleted_summary}")
 
     return {'status': 'success', 'deleted': deleted_summary}
+
+
+@router.get("/companies/cashflow-config")
+async def get_cashflow_config(request: Request, current_user: Dict = Depends(get_current_user)):
+    company_id = await get_active_company_id(request, current_user)
+    doc = await db.companies.find_one({'id': company_id}, {'cashflow_config': 1, '_id': 0})
+    return doc.get('cashflow_config', {'mode': 'auto', 'valor': 0}) if doc else {'mode': 'auto', 'valor': 0}
+
+
+@router.post("/companies/cashflow-config")
+async def save_cashflow_config(request: Request, data: dict, current_user: Dict = Depends(get_current_user)):
+    company_id = await get_active_company_id(request, current_user)
+    await db.companies.update_one(
+        {'id': company_id},
+        {'$set': {'cashflow_config': data, 'updated_at': datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    return {'status': 'saved', 'config': data}
