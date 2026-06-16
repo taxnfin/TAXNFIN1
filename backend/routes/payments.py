@@ -868,17 +868,43 @@ async def get_payments_summary(request: Request, current_user: Dict = Depends(ge
     """Summary of payments for dashboard cards"""
     company_id = await get_active_company_id(request, current_user)
     payments = await db.payments.find({'company_id': company_id}, {'_id': 0}).to_list(10000)
-    
-    total_pagado = sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'pago' and p.get('estatus') == 'completado')
-    total_cobrado = sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'cobro' and p.get('estatus') == 'completado')
-    total_proy_pagos = sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'pago' and p.get('es_real') == False)
-    total_proy_cobros = sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'cobro' and p.get('es_real') == False)
-    
+
+    total_pagado     = sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'pago'  and p.get('estatus') == 'completado')
+    total_cobrado    = sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'cobro' and p.get('estatus') == 'completado')
+    total_proy_pagos = sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'pago'  and p.get('es_real') == False)
+    total_proy_cobros= sum(p.get('monto', 0) or 0 for p in payments if p.get('tipo') == 'cobro' and p.get('es_real') == False)
+
+    # CxC pendientes de Alegra (invoices no cobradas) — en MXN
+    cxc_alegra_docs = [
+        p for p in payments
+        if p.get('tipo') == 'cobro' and p.get('estatus') == 'pendiente'
+        and p.get('es_real') == True and p.get('source') == 'alegra'
+    ]
+    monto_cxc_alegra = sum(
+        float(p.get('monto', 0) or 0) * float(p.get('tipo_cambio_historico') or 1)
+        for p in cxc_alegra_docs
+    )
+
+    # CxP pendientes de Alegra (bills no pagadas) — en MXN
+    cxp_alegra_docs = [
+        p for p in payments
+        if p.get('tipo') == 'pago' and p.get('estatus') == 'pendiente'
+        and p.get('es_real') == True and p.get('source') == 'alegra'
+    ]
+    monto_cxp_alegra = sum(
+        float(p.get('monto', 0) or 0) * float(p.get('tipo_cambio_historico') or 1)
+        for p in cxp_alegra_docs
+    )
+
     return {
-        'total_pagado': total_pagado,
-        'total_cobrado': total_cobrado,
-        'total_proy_pagos': total_proy_pagos,
+        'total_pagado':      total_pagado,
+        'total_cobrado':     total_cobrado,
+        'total_proy_pagos':  total_proy_pagos,
         'total_proy_cobros': total_proy_cobros,
+        'por_cobrar':        round(monto_cxc_alegra, 2),
+        'por_cobrar_count':  len(cxc_alegra_docs),
+        'por_pagar':         round(monto_cxp_alegra, 2),
+        'por_pagar_count':   len(cxp_alegra_docs),
     }
 
 
