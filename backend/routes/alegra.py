@@ -987,18 +987,15 @@ async def sync_alegra_payments(
                 'updated_at':         datetime.now(timezone.utc).isoformat(),
             }
 
-            existing = await db.payments.find_one(
+            res = await db.payments.update_one(
                 {'company_id': company_id, 'alegra_id': alegra_id, 'alegra_type': 'payment'},
-                {'_id': 1}
+                {'$set': payment_doc,
+                 '$setOnInsert': {'id': str(uuid.uuid4()),
+                                  'created_at': datetime.now(timezone.utc).isoformat()}},
+                upsert=True
             )
-            if existing:
-                await db.payments.update_one({'_id': existing['_id']}, {'$set': payment_doc})
-                updated += 1
-            else:
-                payment_doc['id']         = str(uuid.uuid4())
-                payment_doc['created_at'] = datetime.now(timezone.utc).isoformat()
-                await db.payments.insert_one(payment_doc)
-                created += 1
+            if res.upserted_id: created += 1
+            else: updated += 1
 
         except Exception as e:
             logger.error(f"Error syncing Alegra payment {payment.get('id')}: {e}")
@@ -1249,7 +1246,7 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 payment_doc = {
                     'company_id':         company_id,
                     'source':             'alegra',
-                    'fuente':             'alegra',
+                    'fuente':             'alegra_sync',
                     'alegra_payment_id':  alegra_id,
                     'tipo':               tipo,
                     'monto':              float(pay.get('amount', 0) or 0),
@@ -1269,7 +1266,6 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     'forma_pago':         pay.get('paymentMethod', '') or pay.get('type', '') or '',
                     'metodo_pago':        'transferencia',
                     'bank_transaction_id': None,
-                    'fuente':             'alegra_sync',
                     'updated_at':         datetime.now(timezone.utc).isoformat(),
                 }
                 res = await db.payments.update_one(
