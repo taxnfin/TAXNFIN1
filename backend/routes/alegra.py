@@ -887,9 +887,12 @@ async def sync_alegra_payments(
     # Paginate through GET /payments
     all_payments = []
     start = 0
-    limit = 30  # Alegra API max page size
+    limit = 30
+    MAX_PAGES = 50
+    page_count = 0
 
-    while True:
+    while page_count < MAX_PAGES:
+        page_count += 1
         params = {
             "start":  start,
             "limit":  limit,
@@ -902,12 +905,24 @@ async def sync_alegra_payments(
             params["date-end"] = date_to
 
         batch = await alegra_request("GET", "payments", email, token, params=params)
+        await asyncio.sleep(0.3)
         if not batch or not isinstance(batch, list):
             break
 
-        all_payments.extend(batch)
+        # Python-side date filter (Alegra may ignore date params on /payments)
+        filtered = []
+        stop = False
+        for pay in batch:
+            pay_date = (pay.get('date') or '')[:10]
+            if date_from and pay_date < date_from:
+                continue
+            if date_to and pay_date > date_to:
+                stop = True
+                break
+            filtered.append(pay)
+        all_payments.extend(filtered)
 
-        if len(batch) < limit:
+        if stop or len(batch) < limit:
             break
         start += limit
 
