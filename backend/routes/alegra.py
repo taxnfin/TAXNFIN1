@@ -1047,6 +1047,12 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     'es_real':           True,
                     'es_proyeccion':     False,
                     'alegra_invoice_id': str(inv.get('id')),
+                    'concepto':          f"Factura {inv.get('numberTemplate', {}).get('fullNumber', inv.get('numberTemplate', {}).get('number', '')) if isinstance(inv.get('numberTemplate'), dict) else ''}".strip(),
+                    'beneficiario':      inv.get('client', {}).get('name', '') if isinstance(inv.get('client'), dict) else '',
+                    'referencia':        str(inv.get('numberTemplate', {}).get('number', '') if isinstance(inv.get('numberTemplate'), dict) else ''),
+                    'forma_pago':        inv.get('paymentMethod', '') or '',
+                    'moneda':            inv.get('currency', {}).get('code', 'MXN') if isinstance(inv.get('currency'), dict) else 'MXN',
+                    'cfdi_uuid':         next((s.get('uuid', '') for s in (inv.get('stamps') or []) if s.get('uuid')), ''),
                     'updated_at':        datetime.now(timezone.utc).isoformat(),
                 }
                 await db.payments.update_one(
@@ -1103,7 +1109,11 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     'es_real':           True,
                     'es_proyeccion':     False,
                     'alegra_bill_id':    str(bill.get('id')),
-                    'beneficiario':      vendor_name,
+                    'concepto':          f"Compra {bill.get('numberTemplate', {}).get('fullNumber', bill.get('numberTemplate', {}).get('number', '')) if isinstance(bill.get('numberTemplate'), dict) else ''}".strip(),
+                    'beneficiario':      bill.get('vendor', {}).get('name', '') if isinstance(bill.get('vendor'), dict) else '',
+                    'referencia':        str(bill.get('numberTemplate', {}).get('number', '') if isinstance(bill.get('numberTemplate'), dict) else ''),
+                    'forma_pago':        bill.get('paymentMethod', '') or '',
+                    'moneda':            bill.get('currency', {}).get('code', 'MXN') if isinstance(bill.get('currency'), dict) else 'MXN',
                     'updated_at':        datetime.now(timezone.utc).isoformat(),
                 }
                 await db.payments.update_one(
@@ -1170,9 +1180,10 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     'es_real':            True,
                     'es_proyeccion':      False,
                     'concepto':           pay.get('observations') or pay.get('anotation') or f'Pago Alegra #{alegra_id}',
-                    'beneficiario':       beneficiario,
+                    'beneficiario':       pay.get('client', {}).get('name', '') if isinstance(pay.get('client'), dict) else (pay.get('vendor', {}).get('name', '') if isinstance(pay.get('vendor'), dict) else ''),
                     'cuenta_banco':       cuenta_banco,
-                    'referencia':         str(pay.get('numberTemplate', {}).get('fullNumber', '') or '') if isinstance(pay.get('numberTemplate'), dict) else '',
+                    'referencia':         str(pay.get('numberTemplate', {}).get('number', '') if isinstance(pay.get('numberTemplate'), dict) else ''),
+                    'forma_pago':         pay.get('paymentMethod', '') or pay.get('type', '') or '',
                     'metodo_pago':        'transferencia',
                     'bank_transaction_id': None,
                     'fuente':             'alegra_sync',
