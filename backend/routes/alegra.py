@@ -1018,6 +1018,9 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 batch = await alegra_request('GET', 'invoices', email, token, params=params)
                 await asyncio.sleep(0.3)  # respetar rate limit de Alegra
                 if not batch or not isinstance(batch, list): break
+                last_date = batch[-1].get('date', '')
+                if date_from and last_date and last_date < date_from:
+                    break
                 all_invoices.extend(batch)
                 if len(batch) < 30: break
                 start += 30
@@ -1069,6 +1072,9 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 batch = await alegra_request('GET', 'bills', email, token, params=params)
                 await asyncio.sleep(0.3)  # respetar rate limit de Alegra
                 if not batch or not isinstance(batch, list): break
+                last_date = batch[-1].get('date', '')
+                if date_from and last_date and last_date < date_from:
+                    break
                 all_bills.extend(batch)
                 if len(batch) < 30: break
                 start += 30
@@ -1117,11 +1123,19 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
             all_payments, start = [], 0
             while True:
                 params = {'start': start, 'limit': 30, 'order_field': 'date', 'order_direction': 'DESC'}
-                if date_from: params['date[from]'] = date_from
-                if date_to:   params['date[to]']   = date_to
+                if date_from: params['date-start'] = date_from
+                if date_to:   params['date-end']   = date_to
                 batch = await alegra_request('GET', 'payments', email, token, params=params)
                 await asyncio.sleep(0.3)  # respetar rate limit de Alegra
                 if not batch or not isinstance(batch, list): break
+                if batch:
+                    first_date = batch[0].get('date', '')
+                    if date_to and first_date and first_date > date_to:
+                        start += 30
+                        continue
+                    last_date = batch[-1].get('date', '')
+                    if date_from and last_date and last_date < date_from:
+                        break
                 all_payments.extend(batch)
                 if len(batch) < 30: break
                 start += 30
