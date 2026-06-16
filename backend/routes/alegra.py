@@ -1047,6 +1047,7 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 inv_exchange_rate = float(inv_currency.get('exchangeRate', 1) or 1)
                 inv_payment_account = inv.get('paymentAccount', {}) if isinstance(inv.get('paymentAccount'), dict) else {}
                 inv_sat_uuid = next((s.get('uuid', '') for s in (inv.get('stamps') or []) if s.get('uuid')), '')
+                inv_status = inv.get('status', '')
                 payment_inv_doc = {
                     'company_id':        company_id,
                     'source':            'alegra',
@@ -1055,7 +1056,7 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     'monto':             float(inv.get('total', 0) or 0),
                     'fecha':             inv.get('date'),
                     'fecha_vencimiento': inv.get('dueDate') or inv.get('date'),
-                    'estatus':           'pendiente',
+                    'estatus':           'completado' if inv_status in ('closed', 'paid') else 'pendiente',
                     'es_real':           True,
                     'es_proyeccion':     False,
                     'alegra_invoice_id': str(inv.get('id')),
@@ -1125,6 +1126,7 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 bill_currency_code = bill_currency.get('code', 'MXN') or 'MXN'
                 bill_exchange_rate = float(bill_currency.get('exchangeRate', 1) or 1)
                 bill_payment_account = bill.get('paymentAccount', {}) if isinstance(bill.get('paymentAccount'), dict) else {}
+                bill_status = bill.get('status', '')
                 payment_bill_doc = {
                     'company_id':        company_id,
                     'source':            'alegra',
@@ -1133,7 +1135,7 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     'monto':             float(bill.get('total', 0) or 0),
                     'fecha':             bill.get('date'),
                     'fecha_vencimiento': bill.get('dueDate') or bill.get('date'),
-                    'estatus':           'pendiente',
+                    'estatus':           'completado' if bill_status in ('closed', 'paid') else 'pendiente',
                     'es_real':           True,
                     'es_proyeccion':     False,
                     'alegra_bill_id':    str(bill.get('id')),
@@ -1192,6 +1194,7 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 pay_exchange_rate = float(pay.get('exchangeRate', 1) or 1)
                 fecha = pay.get('date') or datetime.now(timezone.utc).strftime('%Y-%m-%d')
                 fecha_iso = f"{fecha}T12:00:00" if len(fecha) == 10 else fecha
+                alegra_pay_status = pay.get('status', '')
 
                 payment_doc = {
                     'company_id':         company_id,
@@ -1204,7 +1207,7 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     'monto_mxn':          float(pay.get('amount', 0) or 0) * pay_exchange_rate,
                     'fecha_vencimiento':  fecha_iso,
                     'fecha_pago':         fecha_iso,
-                    'estatus':            'completado',
+                    'estatus':            'completado' if alegra_pay_status in ('paid', 'closed', 'applied') else 'pendiente',
                     'es_real':            True,
                     'es_proyeccion':      False,
                     'concepto':           pay.get('observations') or pay.get('anotation') or f'Pago Alegra #{alegra_id}',
@@ -1227,6 +1230,31 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 )
                 if res.upserted_id: created += 1
                 else: updated += 1
+                # Fix 4: también en bank_transactions para Conciliaciones
+                await db.bank_transactions.update_one(
+                    {'alegra_payment_id': alegra_id, 'company_id': company_id},
+                    {'$set': {
+                        'company_id':         company_id,
+                        'source':             'alegra',
+                        'alegra_payment_id':  alegra_id,
+                        'descripcion':        pay.get('observations') or f"Pago Alegra #{alegra_id}",
+                        'monto':              float(pay.get('amount', 0) or 0),
+                        'tipo':               'ingreso' if tipo == 'cobro' else 'egreso',
+                        'fecha_movimiento':   fecha,
+                        'cuenta_banco':       bank_account.get('name', ''),
+                        'bank_account_id':    str(bank_account.get('id', '')),
+                        'conciliado':         False,
+                        'es_real':            True,
+                        'moneda':             pay_currency_code,
+                        'tipo_cambio':        pay_exchange_rate,
+                        'updated_at':         datetime.now(timezone.utc).isoformat(),
+                    },
+                    '$setOnInsert': {
+                        'id':         str(uuid.uuid4()),
+                        'created_at': datetime.now(timezone.utc).isoformat(),
+                    }},
+                    upsert=True
+                )
             results['payments'] = {'total': len(all_payments), 'created': created, 'updated': updated}
         except Exception as e:
             results['payments'] = {'error': str(e)}
@@ -1240,6 +1268,87 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 logger.info(f"[Alegra] Tipos de cambio backfilled: {date_from} → {date_to}")
             except Exception as e:
                 logger.warning(f"[Alegra] No se pudieron jallar tipos de cambio: {e}")
+
+        # Fix 3: Auto-generar proyecciones CxC/CxP desde facturas y compras pendientes
+        try:
+            pending_invoices = [i for i in all_invoices if i.get('status') not in ('closed', 'paid')]
+            pending_bills    = [b for b in all_bills    if b.get('status') not in ('closed', 'paid')]
+
+            for inv in pending_invoices:
+                due_date = inv.get('dueDate') or inv.get('date', '')
+                if not due_date:
+                    continue
+                try:
+                    due_dt   = datetime.fromisoformat(due_date)
+                    semana   = f"S{due_dt.isocalendar()[1]}"
+                    monto    = float(inv.get('total', 0) or 0)
+                    inv_c    = inv.get('currency', {}) if isinstance(inv.get('currency'), dict) else {}
+                    currency = inv_c.get('code', 'MXN') or 'MXN'
+                    tc       = float(inv_c.get('exchangeRate', 1) or 1)
+                    nombre   = inv.get('client', {}).get('name', '') if isinstance(inv.get('client'), dict) else ''
+                    concepto = f"Factura {inv.get('numberTemplate', {}).get('number', '')}".strip() if isinstance(inv.get('numberTemplate'), dict) else ''
+                    await db.cxc_proyecciones.update_one(
+                        {'company_id': company_id, 'alegra_invoice_id': str(inv.get('id')), 'tipo': 'cxc'},
+                        {'$set': {
+                            'company_id':        company_id,
+                            'alegra_invoice_id': str(inv.get('id')),
+                            'tipo':              'cxc',
+                            'nombre':            nombre,
+                            'semana':            semana,
+                            'fecha_vencimiento': due_date,
+                            'monto':             monto * tc,
+                            'moneda_original':   currency,
+                            'monto_original':    monto,
+                            'tipo_cambio':       tc,
+                            'concepto':          concepto,
+                            'source':            'alegra',
+                            'estatus':           'pendiente',
+                            'updated_at':        datetime.now(timezone.utc).isoformat(),
+                        }},
+                        upsert=True
+                    )
+                except Exception as _e:
+                    logger.warning(f"[Alegra] Error generando proyección CxC inv {inv.get('id')}: {_e}")
+
+            for bill in pending_bills:
+                due_date = bill.get('dueDate') or bill.get('date', '')
+                if not due_date:
+                    continue
+                try:
+                    due_dt   = datetime.fromisoformat(due_date)
+                    semana   = f"S{due_dt.isocalendar()[1]}"
+                    monto    = float(bill.get('total', 0) or 0)
+                    bill_c   = bill.get('currency', {}) if isinstance(bill.get('currency'), dict) else {}
+                    currency = bill_c.get('code', 'MXN') or 'MXN'
+                    tc       = float(bill_c.get('exchangeRate', 1) or 1)
+                    nombre   = bill.get('vendor', {}).get('name', '') if isinstance(bill.get('vendor'), dict) else ''
+                    concepto = f"Compra {bill.get('numberTemplate', {}).get('number', '')}".strip() if isinstance(bill.get('numberTemplate'), dict) else ''
+                    await db.cxc_proyecciones.update_one(
+                        {'company_id': company_id, 'alegra_bill_id': str(bill.get('id')), 'tipo': 'cxp'},
+                        {'$set': {
+                            'company_id':     company_id,
+                            'alegra_bill_id': str(bill.get('id')),
+                            'tipo':           'cxp',
+                            'nombre':         nombre,
+                            'semana':         semana,
+                            'fecha_vencimiento': due_date,
+                            'monto':          monto * tc,
+                            'moneda_original': currency,
+                            'monto_original': monto,
+                            'tipo_cambio':    tc,
+                            'concepto':       concepto,
+                            'source':         'alegra',
+                            'estatus':        'pendiente',
+                            'updated_at':     datetime.now(timezone.utc).isoformat(),
+                        }},
+                        upsert=True
+                    )
+                except Exception as _e:
+                    logger.warning(f"[Alegra] Error generando proyección CxP bill {bill.get('id')}: {_e}")
+
+            logger.info(f"[Alegra] Proyecciones generadas: CxC={len(pending_invoices)} CxP={len(pending_bills)}")
+        except Exception as e:
+            logger.warning(f"[Alegra] Error generando proyecciones CxC/CxP: {e}")
 
         # Actualizar totales CxC / CxP en la empresa para dashboards
         try:

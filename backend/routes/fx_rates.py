@@ -334,6 +334,35 @@ async def sync_fx_rates(request: Request, current_user: Dict = Depends(get_curre
         raise HTTPException(status_code=500, detail=f"Error sincronizando tasas: {str(e)}")
 
 
+@router.get("/year/{year}")
+async def get_fx_rates_by_year(
+    year: int,
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Get all FX rates for a specific year"""
+    company_id = await get_active_company_id(request, current_user)
+    rates = await db.fx_rates.find(
+        {'company_id': company_id, 'fecha_vigencia': {'$regex': f'^{year}'}},
+        {'_id': 0}
+    ).sort('fecha_vigencia', 1).to_list(500)
+    normalized = []
+    for r in rates:
+        rate_obj = {
+            'id': r.get('id', ''),
+            'company_id': r.get('company_id'),
+            'moneda_base': r.get('moneda_base') or r.get('moneda_destino') or 'MXN',
+            'moneda_cotizada': r.get('moneda_cotizada') or r.get('moneda_origen'),
+            'tipo_cambio': r.get('tipo_cambio') or r.get('tasa') or 0,
+            'fuente': r.get('fuente', 'manual'),
+            'auto_sync': r.get('auto_sync', False),
+            'fecha_vigencia': r.get('fecha_vigencia'),
+            'created_at': r.get('created_at') or r.get('fecha_vigencia'),
+        }
+        normalized.append(rate_obj)
+    return normalized
+
+
 @router.get("/scheduler-status")
 async def get_scheduler_status(request: Request, current_user: Dict = Depends(get_current_user)):
     """Get the status of the FX rate scheduler"""
