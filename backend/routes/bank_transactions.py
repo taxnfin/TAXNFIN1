@@ -1,6 +1,6 @@
 """Bank Transactions routes - Bank statement management"""
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 import logging
 
@@ -139,7 +139,7 @@ async def create_bank_transaction(
     return bank_transaction
 
 
-@router.get("", response_model=List[BankTransaction])
+@router.get("", response_model=List[Any])
 async def list_bank_transactions(
     request: Request,
     current_user: Dict = Depends(get_current_user),

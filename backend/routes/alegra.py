@@ -1252,7 +1252,7 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                         'tipo':               'ingreso' if tipo == 'cobro' else 'egreso',
                         'fecha_movimiento':   fecha,
                         'fecha_valor':        pay.get('date'),
-                        'tipo_movimiento':    'ingreso' if pay.get('type') == 'in' else 'egreso',
+                        'tipo_movimiento':    'credito' if pay.get('type') == 'in' else 'debito',
                         'saldo':              0.0,
                         'cuenta_banco':       bank_account.get('name', ''),
                         'bank_account_id':    str(bank_account.get('id', '')),
