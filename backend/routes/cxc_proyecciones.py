@@ -219,7 +219,11 @@ async def get_proyecciones_por_semana(
 
         cat_name = cat_map.get((nombre, tipo), "")
         if not cat_name:
-            cat_name = "CxC Contalink" if tipo == "cxc" else "CxP Contalink"
+            source = doc.get("source", "")
+            if tipo == "cxc":
+                cat_name = "CxC Alegra" if source == "alegra" else "CxC Contalink" if source == "contalink" else "CxC"
+            else:
+                cat_name = "CxP Alegra" if source == "alegra" else "CxP Contalink" if source == "contalink" else "CxP"
 
         if semana not in result:
             result[semana] = {"cxc": 0.0, "cxp": 0.0, "byCategory": {}}
