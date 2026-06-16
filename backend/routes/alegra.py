@@ -439,9 +439,10 @@ async def sync_alegra_invoices(
             
             # Determine status
             inv_status = invoice.get('status', 'open')
-            if balance <= 0:
+            inv_cobrado = round(total - balance, 2)
+            if inv_status in ('closed', 'paid') or balance <= 0:
                 estado_conciliacion = 'conciliado'
-            elif total_paid > 0:
+            elif inv_cobrado > 0:
                 estado_conciliacion = 'parcial'
             else:
                 estado_conciliacion = 'pendiente'
@@ -563,8 +564,9 @@ async def sync_alegra_invoices(
                 'metodo_pago': metodo_pago,
                 'estatus': 'vigente',
                 'estado_conciliacion': estado_conciliacion,
-                'monto_cobrado': round(total_paid, 2),  # In original currency
-                'monto_cobrado_mxn': round(total_paid_mxn, 2),  # Reference in MXN
+                'monto_cobrado': inv_cobrado,  # In original currency
+                'monto_cobrado_mxn': round(inv_cobrado * tipo_cambio, 2),  # Reference in MXN
+                'saldo_pendiente': round(balance, 2),
                 'monto_pagado': 0,
                 'referencia': folio_alegra,  # Full folio CUSTINVC859
                 'folio_alegra': folio_alegra,
@@ -688,9 +690,10 @@ async def sync_alegra_bills(
             
             # Determine status
             bill_status = bill.get('status', 'open')
-            if balance <= 0:
+            bill_pagado = round(total - balance, 2)
+            if bill_status in ('closed', 'paid') or balance <= 0:
                 estado_conciliacion = 'conciliado'
-            elif total_paid > 0:
+            elif bill_pagado > 0:
                 estado_conciliacion = 'parcial'
             else:
                 estado_conciliacion = 'pendiente'
@@ -806,8 +809,9 @@ async def sync_alegra_bills(
                 'estatus': 'vigente',
                 'estado_conciliacion': estado_conciliacion,
                 'monto_cobrado': 0,
-                'monto_pagado': round(total_paid, 2),  # In original currency
-                'monto_pagado_mxn': round(total_paid_mxn, 2),  # Reference in MXN
+                'monto_pagado': bill_pagado,  # In original currency
+                'monto_pagado_mxn': round(bill_pagado * tipo_cambio, 2),  # Reference in MXN
+                'saldo_pendiente': round(balance, 2),
                 'referencia': folio_alegra,
                 'folio_alegra': folio_alegra,
                 'source': 'alegra',
