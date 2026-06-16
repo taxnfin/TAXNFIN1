@@ -1011,8 +1011,8 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
         try:
             all_invoices, start = [], 0
             while True:
-                params = {'start': start, 'limit': 30, 'status': 'open',
-                          'order_field': 'date', 'order_direction': 'DESC'}
+                params = {'start': start, 'limit': 30,
+                          'order_field': 'date', 'order_direction': 'ASC'}
                 if date_from: params['date[from]'] = date_from
                 if date_to:   params['date[to]']   = date_to
                 batch = await alegra_request('GET', 'invoices', email, token, params=params)
@@ -1032,6 +1032,27 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     {'$set': doc}, upsert=True)
                 if res.upserted_id: created += 1
                 else: updated += 1
+                payment_inv_doc = {
+                    'company_id':        company_id,
+                    'source':            'alegra',
+                    'fuente':            'alegra',
+                    'tipo':              'cobro',
+                    'monto':             float(inv.get('total', 0) or 0),
+                    'fecha':             inv.get('date'),
+                    'fecha_vencimiento': inv.get('dueDate') or inv.get('date'),
+                    'estatus':           'pendiente',
+                    'es_real':           True,
+                    'es_proyeccion':     False,
+                    'alegra_invoice_id': str(inv.get('id')),
+                    'updated_at':        datetime.now(timezone.utc).isoformat(),
+                }
+                await db.payments.update_one(
+                    {'company_id': company_id, 'alegra_invoice_id': str(inv.get('id'))},
+                    {'$set': payment_inv_doc,
+                     '$setOnInsert': {'id': str(uuid.uuid4()),
+                                      'created_at': datetime.now(timezone.utc).isoformat()}},
+                    upsert=True
+                )
             results['invoices'] = {'total': len(all_invoices), 'created': created, 'updated': updated}
         except Exception as e:
             results['invoices'] = {'error': str(e)}
@@ -1041,8 +1062,8 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
         try:
             all_bills, start = [], 0
             while True:
-                params = {'start': start, 'limit': 30, 'status': 'open',
-                          'order_field': 'date', 'order_direction': 'DESC'}
+                params = {'start': start, 'limit': 30,
+                          'order_field': 'date', 'order_direction': 'ASC'}
                 if date_from: params['date[from]'] = date_from
                 if date_to:   params['date[to]']   = date_to
                 batch = await alegra_request('GET', 'bills', email, token, params=params)
@@ -1062,6 +1083,30 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     {'$set': doc}, upsert=True)
                 if res.upserted_id: created += 1
                 else: updated += 1
+                vendor_obj = bill.get('vendor') or bill.get('provider') or {}
+                vendor_name = vendor_obj.get('name', '') if isinstance(vendor_obj, dict) else ''
+                payment_bill_doc = {
+                    'company_id':        company_id,
+                    'source':            'alegra',
+                    'fuente':            'alegra',
+                    'tipo':              'pago',
+                    'monto':             float(bill.get('total', 0) or 0),
+                    'fecha':             bill.get('date'),
+                    'fecha_vencimiento': bill.get('dueDate') or bill.get('date'),
+                    'estatus':           'pendiente',
+                    'es_real':           True,
+                    'es_proyeccion':     False,
+                    'alegra_bill_id':    str(bill.get('id')),
+                    'beneficiario':      vendor_name,
+                    'updated_at':        datetime.now(timezone.utc).isoformat(),
+                }
+                await db.payments.update_one(
+                    {'company_id': company_id, 'alegra_bill_id': str(bill.get('id'))},
+                    {'$set': payment_bill_doc,
+                     '$setOnInsert': {'id': str(uuid.uuid4()),
+                                      'created_at': datetime.now(timezone.utc).isoformat()}},
+                    upsert=True
+                )
             results['bills'] = {'total': len(all_bills), 'created': created, 'updated': updated}
         except Exception as e:
             results['bills'] = {'error': str(e)}
