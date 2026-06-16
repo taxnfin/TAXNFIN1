@@ -9,7 +9,7 @@ import uuid
 import httpx
 from datetime import datetime, timezone, date
 from typing import Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Depends, Request, Query
+from fastapi import APIRouter, HTTPException, Depends, Request, Query, BackgroundTasks
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -997,62 +997,141 @@ async def sync_alegra_payments(
     }
 
 
+async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None, date_to: str = None):
+    """Background task: sincroniza invoices, bills y payments desde Alegra."""
+    logger.info(f"[Alegra] Iniciando sync background para company {company_id}")
+    email = company.get('alegra_email')
+    token = company.get('alegra_token')
+    results = {}
+
+    # Sync invoices (CxC)
+    try:
+        all_invoices, start = [], 0
+        while True:
+            params = {'start': start, 'limit': 30, 'status': 'open',
+                      'order_field': 'date', 'order_direction': 'DESC'}
+            if date_from: params['date_from'] = date_from
+            if date_to:   params['date_to']   = date_to
+            batch = await alegra_request('GET', 'invoices', email, token, params=params)
+            if not batch or not isinstance(batch, list): break
+            all_invoices.extend(batch)
+            if len(batch) < 30: break
+            start += 30
+        created = updated = 0
+        for inv in all_invoices:
+            alegra_id = str(inv.get('id'))
+            doc = {**inv, 'company_id': company_id, 'alegra_id': alegra_id,
+                   'source': 'alegra', 'tipo_cfdi': 'ingreso',
+                   'synced_at': datetime.now(timezone.utc).isoformat()}
+            res = await db.cfdis.update_one(
+                {'company_id': company_id, 'alegra_id': alegra_id},
+                {'$set': doc}, upsert=True)
+            if res.upserted_id: created += 1
+            else: updated += 1
+        results['invoices'] = {'total': len(all_invoices), 'created': created, 'updated': updated}
+    except Exception as e:
+        results['invoices'] = {'error': str(e)}
+        logger.error(f"[Alegra] Error sync invoices: {e}")
+
+    # Sync bills (CxP)
+    try:
+        all_bills, start = [], 0
+        while True:
+            params = {'start': start, 'limit': 30, 'status': 'open',
+                      'order_field': 'date', 'order_direction': 'DESC'}
+            if date_from: params['date_from'] = date_from
+            if date_to:   params['date_to']   = date_to
+            batch = await alegra_request('GET', 'bills', email, token, params=params)
+            if not batch or not isinstance(batch, list): break
+            all_bills.extend(batch)
+            if len(batch) < 30: break
+            start += 30
+        created = updated = 0
+        for bill in all_bills:
+            alegra_id = str(bill.get('id'))
+            doc = {**bill, 'company_id': company_id, 'alegra_id': alegra_id,
+                   'source': 'alegra', 'tipo_cfdi': 'egreso',
+                   'synced_at': datetime.now(timezone.utc).isoformat()}
+            res = await db.cfdis.update_one(
+                {'company_id': company_id, 'alegra_id': alegra_id},
+                {'$set': doc}, upsert=True)
+            if res.upserted_id: created += 1
+            else: updated += 1
+        results['bills'] = {'total': len(all_bills), 'created': created, 'updated': updated}
+    except Exception as e:
+        results['bills'] = {'error': str(e)}
+        logger.error(f"[Alegra] Error sync bills: {e}")
+
+    # Sync payments
+    try:
+        all_payments, start = [], 0
+        while True:
+            params = {'start': start, 'limit': 30, 'order_field': 'date', 'order_direction': 'DESC'}
+            if date_from: params['date_from'] = date_from
+            if date_to:   params['date_to']   = date_to
+            batch = await alegra_request('GET', 'payments', email, token, params=params)
+            if not batch or not isinstance(batch, list): break
+            all_payments.extend(batch)
+            if len(batch) < 30: break
+            start += 30
+        created = updated = 0
+        for pay in all_payments:
+            alegra_id = str(pay.get('id'))
+            doc = {**pay, 'company_id': company_id, 'alegra_id': alegra_id,
+                   'source': 'alegra', 'synced_at': datetime.now(timezone.utc).isoformat()}
+            res = await db.alegra_payments.update_one(
+                {'company_id': company_id, 'alegra_id': alegra_id},
+                {'$set': doc}, upsert=True)
+            if res.upserted_id: created += 1
+            else: updated += 1
+        results['payments'] = {'total': len(all_payments), 'created': created, 'updated': updated}
+    except Exception as e:
+        results['payments'] = {'error': str(e)}
+        logger.error(f"[Alegra] Error sync payments: {e}")
+
+    # Marcar último sync
+    await db.companies.update_one(
+        {'id': company_id},
+        {'$set': {'alegra_last_sync': datetime.now(timezone.utc).isoformat(),
+                  'alegra_last_sync_results': results}}
+    )
+    logger.info(f"[Alegra] Sync background completado para {company_id}: {results}")
+
+
 @router.post("/sync/all")
-async def sync_all_alegra_data(
+async def sync_all_background(
     request: Request,
+    background_tasks: BackgroundTasks,
+    data: dict = {},
     current_user: Dict = Depends(get_current_user),
     date_from: str = Query(None, description="Date from (YYYY-MM-DD)"),
     date_to: str = Query(None, description="Date to (YYYY-MM-DD)")
 ):
-    """
-    Sync all data from Alegra: contacts, invoices, bills, and payments
-    With optional date range filtering
-    """
+    """Lanza sincronización completa de Alegra en background. Retorna inmediatamente."""
     company_id = await get_active_company_id(request, current_user)
-    company = await db.companies.find_one({'id': company_id}, {'_id': 0})
-    
-    if not company.get('alegra_connected'):
+    company = await db.companies.find_one({'id': company_id})
+    if not company or not company.get('alegra_connected'):
         raise HTTPException(status_code=400, detail="Alegra no está conectado")
-    
-    results = {}
-    
-    # Sync invoices (CxC) with date filters
-    try:
-        invoices_result = await sync_alegra_invoices(request, current_user, "all", date_from, date_to)
-        results['invoices'] = invoices_result.get('stats', {})
-    except HTTPException as e:
-        results['invoices'] = {'error': e.detail}
-    except Exception as e:
-        results['invoices'] = {'error': str(e)}
 
-    # Sync bills (CxP) with date filters
-    try:
-        bills_result = await sync_alegra_bills(request, current_user, "all", date_from, date_to)
-        results['bills'] = bills_result.get('stats', {})
-    except HTTPException as e:
-        results['bills'] = {'error': e.detail}
-    except Exception as e:
-        results['bills'] = {'error': str(e)}
+    background_tasks.add_task(_run_alegra_sync, company_id, company, date_from, date_to)
+    return {"status": "started", "message": "Sincronización Alegra iniciada. Los datos estarán disponibles en 2-3 minutos."}
 
-    # Sync bank movements with date filters
-    try:
-        payments_result = await sync_alegra_payments(request, current_user, date_from, date_to)
-        results['payments'] = payments_result.get('stats', {})
-    except HTTPException as e:
-        results['payments'] = {'error': e.detail}
-    except Exception as e:
-        results['payments'] = {'error': str(e)}
-    
-    # Update last sync time
-    await db.companies.update_one(
-        {'id': company_id},
-        {'$set': {'alegra_last_sync': datetime.now(timezone.utc).isoformat()}}
-    )
-    
+
+@router.get("/sync/status")
+async def get_alegra_sync_status(
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Devuelve el estado del último sync de Alegra."""
+    company_id = await get_active_company_id(request, current_user)
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0,
+        'alegra_last_sync': 1, 'alegra_last_sync_results': 1, 'alegra_connected': 1})
+    if not company:
+        return {'status': 'unknown'}
     return {
-        "success": True,
-        "message": "Sincronización completa con Alegra",
-        "results": results
+        'connected': company.get('alegra_connected', False),
+        'last_sync': company.get('alegra_last_sync'),
+        'results':   company.get('alegra_last_sync_results', {}),
     }
 
 

@@ -130,42 +130,19 @@ export default function AlegraIntegration() {
     setSyncing(true);
     setSyncResults(null);
     try {
-      // Build URL with date params if provided
       let url = '/alegra/sync/all';
       const params = new URLSearchParams();
       if (syncDateFrom) params.append('date_from', syncDateFrom);
       if (syncDateTo) params.append('date_to', syncDateTo);
       if (params.toString()) url += '?' + params.toString();
-      
-      const response = await api.post(url);
-      const results = { ...(response.data.results || {}) };
 
-      // Traer conciliaciones bancarias
-      try {
-        const concRes = await api.get('/alegra/conciliations');
-        const concList = Array.isArray(concRes.data) ? concRes.data : [];
-        results.conciliations = { total: concList.length, created: concList.length, updated: 0 };
-      } catch {
-        results.conciliations = { error: 'No disponible' };
-      }
-
-      setSyncResults(results);
-
-      // Check if any sync had errors
-      const hasErrors = Object.values(results).some(r => r.error);
-      if (hasErrors) {
-        toast.warning('Sincronización parcial: algunos elementos tuvieron errores temporales de Alegra');
-      } else {
-        toast.success('Sincronización completada');
-      }
+      await api.post(url);
+      toast.success('✅ Sincronización iniciada — los datos estarán listos en 2-3 minutos');
+      setSyncDialogOpen(false);
       fetchStatus();
     } catch (error) {
       const errorMsg = error.response?.data?.detail || error.message;
-      if (errorMsg.includes('500') || errorMsg.includes('error')) {
-        toast.error('Alegra está experimentando problemas temporales. Intenta de nuevo en unos minutos.');
-      } else {
-        toast.error('Error en sincronización: ' + errorMsg);
-      }
+      toast.error('Error iniciando sincronización: ' + errorMsg);
     } finally {
       setSyncing(false);
     }
