@@ -17,6 +17,7 @@ from typing import Dict, List, Optional
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
 import logging
+import uuid
 
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
@@ -407,6 +408,61 @@ async def sync_alegra_to_cashflow(
         logger.error(f"sync_alegra_to_cashflow error: {e}")
 
     return result
+
+
+async def sync_alegra_payments_to_cashflow(
+    company_id: str,
+    date_from: str = None,
+    date_to: str = None,
+) -> dict:
+    """
+    Lee db.payments de Alegra (estatus=completado) y los upsertea en
+    db.cashflow_movements para que aparezcan en el Cash Flow sin botón manual.
+    Llamada automáticamente al final de _run_alegra_sync.
+    """
+    query: dict = {'company_id': company_id, 'source': 'alegra', 'estatus': 'completado'}
+    if date_from or date_to:
+        fecha_filter: dict = {}
+        if date_from: fecha_filter['$gte'] = date_from
+        if date_to:   fecha_filter['$lte'] = date_to
+        query['fecha_pago'] = fecha_filter
+
+    payments = await db.payments.find(query, {'_id': 0}).to_list(5000)
+    saved = 0
+    for p in payments:
+        monto = float(p.get('monto', 0) or 0)
+        if monto <= 0:
+            continue
+        tipo       = p.get('tipo', 'cobro')
+        categoria  = 'ING-001' if tipo == 'cobro' else 'EGR-006'
+        tipo_mov   = 'ingreso'  if tipo == 'cobro' else 'egreso'
+        fecha_raw  = p.get('fecha_pago') or p.get('fecha_vencimiento') or ''
+        fecha      = str(fecha_raw)[:10]
+        referencia = f"alegra-pay-{p.get('alegra_payment_id') or p.get('id')}"
+
+        res = await db.cashflow_movements.update_one(
+            {'company_id': company_id, 'referencia': referencia},
+            {'$set': {
+                'company_id':     company_id,
+                'fecha':          fecha,
+                'monto':          monto,
+                'tipo':           tipo_mov,
+                'descripcion':    p.get('concepto') or f"Pago Alegra #{p.get('alegra_payment_id')}",
+                'referencia':     referencia,
+                'categoria_code': categoria,
+                'source':         'alegra',
+                'periodo':        fecha[:7] if fecha else '',
+                'updated_at':     datetime.now(timezone.utc).isoformat(),
+            }, '$setOnInsert': {
+                'id':         str(uuid.uuid4()),
+                'created_at': datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True
+        )
+        if res.upserted_id or res.modified_count:
+            saved += 1
+
+    return {'payments_synced': len(payments), 'movements_saved': saved}
 
 
 # Placeholder para futuros ERPs — misma interfaz

@@ -1311,6 +1311,15 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
             results['payments'] = {'error': str(e)}
             logger.error(f"[Alegra] Error sync payments: {e}")
 
+        # Sincronizar payments completados al cashflow automáticamente
+        try:
+            from routes.cashflow_sync_service import sync_alegra_payments_to_cashflow
+            cf_result = await sync_alegra_payments_to_cashflow(company_id, date_from, date_to)
+            results['cashflow_sync'] = cf_result
+            logger.info(f"[Alegra] Cashflow sync: {cf_result}")
+        except Exception as e:
+            logger.warning(f"[Alegra] Cashflow sync falló: {e}")
+
         # Jallar tipos de cambio del período sincronizado
         if date_from and date_to:
             try:
