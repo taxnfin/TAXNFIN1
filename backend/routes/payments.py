@@ -933,7 +933,7 @@ async def get_payments_breakdown(request: Request, current_user: Dict = Depends(
     cfdis = await db.cfdis.find(
         {'company_id': company_id, 'estado_cancelacion': {'$ne': 'cancelado'}},
         {'_id': 0, 'tipo_cfdi': 1, 'total': 1, 'moneda': 1, 'tipo_cambio': 1,
-         'monto_cobrado': 1, 'monto_pagado': 1}
+         'currency': 1, 'monto_cobrado': 1, 'monto_pagado': 1}
     ).to_list(10000)
 
     cfdi_por_cobrar_mxn = 0.0
@@ -944,7 +944,14 @@ async def get_payments_breakdown(request: Request, current_user: Dict = Depends(
     for c in cfdis:
         total = c.get('total', 0) or 0
         moneda = c.get('moneda', 'MXN') or 'MXN'
-        tc = c.get('tipo_cambio', 1) or 1
+        tc = c.get('tipo_cambio') or None
+        if not tc or tc == 1:
+            currency = c.get('currency', {})
+            if isinstance(currency, dict):
+                tc = float(currency.get('exchangeRate') or 1)
+            else:
+                tc = 1.0
+        tc = float(tc) if tc else 1.0
 
         if c.get('tipo_cfdi') == 'ingreso':
             ya_cobrado = c.get('monto_cobrado', 0) or 0

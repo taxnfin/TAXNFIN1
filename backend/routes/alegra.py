@@ -1039,8 +1039,14 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
             created = updated = 0
             for inv in all_invoices:
                 alegra_id = str(inv.get('id'))
+                inv_curr = inv.get('currency', {}) if isinstance(inv.get('currency'), dict) else {}
+                inv_tc = float(inv_curr.get('exchangeRate') or inv.get('exchangeRate') or 1)
+                inv_currency_code = inv_curr.get('code', 'MXN') or 'MXN'
                 doc = {**inv, 'company_id': company_id, 'alegra_id': alegra_id,
                        'source': 'alegra', 'tipo_cfdi': 'ingreso',
+                       'tipo_cambio': inv_tc,
+                       'moneda': inv_currency_code,
+                       'total_mxn': float(inv.get('total', 0) or 0) * inv_tc,
                        'synced_at': datetime.now(timezone.utc).isoformat()}
                 res = await db.cfdis.update_one(
                     {'company_id': company_id, 'alegra_id': alegra_id},
@@ -1124,8 +1130,14 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
             created = updated = 0
             for bill in all_bills:
                 alegra_id = str(bill.get('id'))
+                bill_curr = bill.get('currency', {}) if isinstance(bill.get('currency'), dict) else {}
+                bill_tc = float(bill_curr.get('exchangeRate') or bill.get('exchangeRate') or 1)
+                bill_currency_code = bill_curr.get('code', 'MXN') or 'MXN'
                 doc = {**bill, 'company_id': company_id, 'alegra_id': alegra_id,
                        'source': 'alegra', 'tipo_cfdi': 'egreso',
+                       'tipo_cambio': bill_tc,
+                       'moneda': bill_currency_code,
+                       'total_mxn': float(bill.get('total', 0) or 0) * bill_tc,
                        'synced_at': datetime.now(timezone.utc).isoformat()}
                 res = await db.cfdis.update_one(
                     {'company_id': company_id, 'alegra_id': alegra_id},
