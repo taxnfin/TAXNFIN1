@@ -1019,17 +1019,16 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 await asyncio.sleep(0.3)
                 if not batch or not isinstance(batch, list): break
                 filtered_inv = []
-                stop_inv = False
                 for inv_item in batch:
-                    inv_date = inv_item.get('date', '')
-                    if date_to and inv_date and inv_date > date_to:
-                        continue
+                    inv_date = inv_item.get('date', '') or ''
                     if date_from and inv_date and inv_date < date_from:
-                        stop_inv = True
+                        continue
+                    if date_to and inv_date and inv_date > date_to:
                         break
                     filtered_inv.append(inv_item)
                 all_invoices.extend(filtered_inv)
-                if stop_inv or len(batch) < 30: break
+                if len(batch) < 30: break
+                if batch and date_to and (batch[-1].get('date', '') or '') > date_to: break
                 start += 30
             created = updated = 0
             for inv in all_invoices:
@@ -1099,17 +1098,16 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 await asyncio.sleep(0.3)
                 if not batch or not isinstance(batch, list): break
                 filtered_bill = []
-                stop_bill = False
                 for bill_item in batch:
-                    bill_date = bill_item.get('date', '')
-                    if date_to and bill_date and bill_date > date_to:
-                        continue
+                    bill_date = bill_item.get('date', '') or ''
                     if date_from and bill_date and bill_date < date_from:
-                        stop_bill = True
+                        continue
+                    if date_to and bill_date and bill_date > date_to:
                         break
                     filtered_bill.append(bill_item)
                 all_bills.extend(filtered_bill)
-                if stop_bill or len(batch) < 30: break
+                if len(batch) < 30: break
+                if batch and date_to and (batch[-1].get('date', '') or '') > date_to: break
                 start += 30
             created = updated = 0
             for bill in all_bills:
@@ -1241,6 +1239,9 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                         'monto':              float(pay.get('amount', 0) or 0),
                         'tipo':               'ingreso' if tipo == 'cobro' else 'egreso',
                         'fecha_movimiento':   fecha,
+                        'fecha_valor':        pay.get('date'),
+                        'tipo_movimiento':    'ingreso' if pay.get('type') == 'in' else 'egreso',
+                        'saldo':              0.0,
                         'cuenta_banco':       bank_account.get('name', ''),
                         'bank_account_id':    str(bank_account.get('id', '')),
                         'conciliado':         False,
@@ -1263,11 +1264,15 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
         # Jallar tipos de cambio del período sincronizado
         if date_from and date_to:
             try:
-                from routes.fx_rates import backfill_historical_rates
-                await backfill_historical_rates(date_from, date_to)
-                logger.info(f"[Alegra] Tipos de cambio backfilled: {date_from} → {date_to}")
+                async with httpx.AsyncClient() as _fx_client:
+                    await _fx_client.post(
+                        'http://localhost:8000/api/fx-rates/backfill-historical',
+                        json={'fecha_inicio': date_from, 'fecha_fin': date_to},
+                        timeout=30
+                    )
+                logger.info(f"[Alegra] FX backfill solicitado: {date_from} → {date_to}")
             except Exception as e:
-                logger.warning(f"[Alegra] No se pudieron jallar tipos de cambio: {e}")
+                logger.warning(f"[Alegra] FX backfill no disponible: {e}")
 
         # Fix 3: Auto-generar proyecciones CxC/CxP desde facturas y compras pendientes
         try:
