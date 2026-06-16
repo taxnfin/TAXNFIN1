@@ -1230,6 +1230,7 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     break
                 start += 30
             created = updated = 0
+            _first_debug = {}
             for pay in all_payments:
                 alegra_id = str(pay.get('id'))
                 pay_type = pay.get('type', '')
@@ -1277,6 +1278,16 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 )
                 if res.upserted_id: created += 1
                 else: updated += 1
+                if not _first_debug:
+                    cnt_after = await db.payments.count_documents({'company_id': company_id})
+                    _first_debug = {
+                        'alegra_id': alegra_id,
+                        'matched': res.matched_count,
+                        'modified': res.modified_count,
+                        'upserted_id': str(res.upserted_id),
+                        'count_after': cnt_after,
+                    }
+                    logger.info(f"[Alegra] First upsert debug: {_first_debug}")
                 # Fix 4: también en bank_transactions para Conciliaciones
                 await db.bank_transactions.update_one(
                     {'alegra_payment_id': alegra_id, 'company_id': company_id},
@@ -1308,8 +1319,11 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 )
             # Verificación post-sync: cuántos quedan en db
             in_db = await db.payments.count_documents({'company_id': company_id})
-            results['payments'] = {'total': len(all_payments), 'created': created, 'updated': updated, 'in_db': in_db}
-            logger.info(f"[Alegra] Payments loop: created={created} updated={updated} in_db={in_db}")
+            results['payments'] = {
+                'total': len(all_payments), 'created': created, 'updated': updated,
+                'in_db': in_db, 'first_debug': _first_debug,
+            }
+            logger.info(f"[Alegra] Payments loop: created={created} updated={updated} in_db={in_db} first={_first_debug}")
         except Exception as e:
             results['payments'] = {'error': str(e)}
             logger.error(f"[Alegra] Error sync payments: {e}")
