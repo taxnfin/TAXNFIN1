@@ -1010,8 +1010,8 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
         while True:
             params = {'start': start, 'limit': 30, 'status': 'open',
                       'order_field': 'date', 'order_direction': 'DESC'}
-            if date_from: params['date_from'] = date_from
-            if date_to:   params['date_to']   = date_to
+            if date_from: params['date[from]'] = date_from
+            if date_to:   params['date[to]']   = date_to
             batch = await alegra_request('GET', 'invoices', email, token, params=params)
             if not batch or not isinstance(batch, list): break
             all_invoices.extend(batch)
@@ -1039,8 +1039,8 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
         while True:
             params = {'start': start, 'limit': 30, 'status': 'open',
                       'order_field': 'date', 'order_direction': 'DESC'}
-            if date_from: params['date_from'] = date_from
-            if date_to:   params['date_to']   = date_to
+            if date_from: params['date[from]'] = date_from
+            if date_to:   params['date[to]']   = date_to
             batch = await alegra_request('GET', 'bills', email, token, params=params)
             if not batch or not isinstance(batch, list): break
             all_bills.extend(batch)
@@ -1067,8 +1067,8 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
         all_payments, start = [], 0
         while True:
             params = {'start': start, 'limit': 30, 'order_field': 'date', 'order_direction': 'DESC'}
-            if date_from: params['date_from'] = date_from
-            if date_to:   params['date_to']   = date_to
+            if date_from: params['date[from]'] = date_from
+            if date_to:   params['date[to]']   = date_to
             batch = await alegra_request('GET', 'payments', email, token, params=params)
             if not batch or not isinstance(batch, list): break
             all_payments.extend(batch)
@@ -1103,15 +1103,16 @@ async def sync_all_background(
     request: Request,
     background_tasks: BackgroundTasks,
     data: dict = {},
-    current_user: Dict = Depends(get_current_user),
-    date_from: str = Query(None, description="Date from (YYYY-MM-DD)"),
-    date_to: str = Query(None, description="Date to (YYYY-MM-DD)")
+    current_user: Dict = Depends(get_current_user)
 ):
     """Lanza sincronización completa de Alegra en background. Retorna inmediatamente."""
     company_id = await get_active_company_id(request, current_user)
     company = await db.companies.find_one({'id': company_id})
     if not company or not company.get('alegra_connected'):
         raise HTTPException(status_code=400, detail="Alegra no está conectado")
+
+    date_from = data.get('date_from')
+    date_to   = data.get('date_to')
 
     background_tasks.add_task(_run_alegra_sync, company_id, company, date_from, date_to)
     return {"status": "started", "message": "Sincronización Alegra iniciada. Los datos estarán disponibles en 2-3 minutos."}

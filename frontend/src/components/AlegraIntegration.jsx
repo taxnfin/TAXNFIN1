@@ -130,13 +130,11 @@ export default function AlegraIntegration() {
     setSyncing(true);
     setSyncResults(null);
     try {
-      let url = '/alegra/sync/all';
-      const params = new URLSearchParams();
-      if (syncDateFrom) params.append('date_from', syncDateFrom);
-      if (syncDateTo) params.append('date_to', syncDateTo);
-      if (params.toString()) url += '?' + params.toString();
+      const body = {};
+      if (syncDateFrom) body.date_from = syncDateFrom;
+      if (syncDateTo)   body.date_to   = syncDateTo;
 
-      await api.post(url);
+      await api.post('/alegra/sync/all', body);
       toast.success('✅ Sincronización iniciada — los datos estarán listos en 2-3 minutos');
       setSyncDialogOpen(false);
       fetchStatus();
