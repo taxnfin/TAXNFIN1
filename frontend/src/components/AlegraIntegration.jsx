@@ -9,11 +9,11 @@ import { Badge } from '../components/ui/badge';
 import api from '../api/axios';
 import { toast } from 'sonner';
 import { 
-  Cloud, 
+  Cloud,
   CloudOff,
-  RefreshCw, 
-  Settings, 
-  Check, 
+  RefreshCw,
+  Settings,
+  Check,
   X,
   Users,
   FileText,
@@ -24,7 +24,8 @@ import {
   CheckCircle,
   AlertCircle,
   Trash2,
-  Calendar
+  Calendar,
+  Landmark
 } from 'lucide-react';
 
 export default function AlegraIntegration() {
@@ -137,10 +138,21 @@ export default function AlegraIntegration() {
       if (params.toString()) url += '?' + params.toString();
       
       const response = await api.post(url);
-      setSyncResults(response.data.results);
-      
+      const results = { ...(response.data.results || {}) };
+
+      // Traer conciliaciones bancarias
+      try {
+        const concRes = await api.get('/alegra/conciliations');
+        const concList = Array.isArray(concRes.data) ? concRes.data : [];
+        results.conciliations = { total: concList.length, created: concList.length, updated: 0 };
+      } catch {
+        results.conciliations = { error: 'No disponible' };
+      }
+
+      setSyncResults(results);
+
       // Check if any sync had errors
-      const hasErrors = Object.values(response.data.results || {}).some(r => r.error);
+      const hasErrors = Object.values(results).some(r => r.error);
       if (hasErrors) {
         toast.warning('Sincronización parcial: algunos elementos tuvieron errores temporales de Alegra');
       } else {
@@ -310,8 +322,8 @@ export default function AlegraIntegration() {
                 <Building2 className="h-4 w-4 mr-2 text-red-600" />
                 Facturas (CxP)
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => syncEntity('payments')}
                 disabled={syncing}
@@ -320,6 +332,28 @@ export default function AlegraIntegration() {
               >
                 <CreditCard className="h-4 w-4 mr-2 text-purple-600" />
                 Pagos
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  setSyncing(true);
+                  try {
+                    const res = await api.get('/alegra/conciliations');
+                    const n = Array.isArray(res.data) ? res.data.length : 0;
+                    toast.success(`Conciliaciones: ${n} registros obtenidos`);
+                  } catch {
+                    toast.error('Error obteniendo conciliaciones');
+                  } finally {
+                    setSyncing(false);
+                  }
+                }}
+                disabled={syncing}
+                className="justify-start"
+                data-testid="sync-conciliations-btn"
+              >
+                <Landmark className="h-4 w-4 mr-2 text-blue-600" />
+                Conciliaciones
               </Button>
             </div>
 
@@ -490,7 +524,8 @@ export default function AlegraIntegration() {
                         {
                          key === 'invoices' ? 'Facturas (CxC)' :
                          key === 'bills' ? 'Facturas (CxP)' :
-                         key === 'payments' ? 'Pagos' : key}
+                         key === 'payments' ? 'Pagos' :
+                         key === 'conciliations' ? '🏦 Conciliaciones' : key}
                       </div>
                       {stats.error ? (
                         <span className="text-red-600 text-xs">{stats.error}</span>
