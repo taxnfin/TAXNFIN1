@@ -136,8 +136,8 @@ async def list_payments(
     
     for p in payments:
         for field in ['fecha_vencimiento', 'fecha_pago', 'created_at']:
-            if isinstance(p.get(field), str):
-                p[field] = datetime.fromisoformat(p[field])
+            if isinstance(p.get(field), str) and p[field]:
+                p[field] = datetime.fromisoformat(p[field].replace('Z', '+00:00'))
     return payments
 
 
@@ -812,8 +812,8 @@ async def get_payments_with_reconciliation_status(
         
         # Convert datetime fields
         for field in ['fecha_vencimiento', 'fecha_pago', 'created_at']:
-            if isinstance(p.get(field), str):
-                p[field] = datetime.fromisoformat(p[field])
+            if isinstance(p.get(field), str) and p[field]:
+                p[field] = datetime.fromisoformat(p[field].replace('Z', '+00:00'))
     
     return payments
 
