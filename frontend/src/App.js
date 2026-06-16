@@ -67,15 +67,25 @@ function App() {
 
   const fetchCompanies = async () => {
     try {
-      const response = await api.get('/companies');
-      setCompanies(response.data);
-      
-      // If no company selected, select the user's company or first one
-      if (!selectedCompany && response.data.length > 0) {
-        const userCompany = response.data.find(c => c.id === user.company_id);
-        const companyToSelect = userCompany || response.data[0];
-        setSelectedCompany(companyToSelect);
-        localStorage.setItem('selectedCompany', JSON.stringify(companyToSelect));
+      const [companiesRes, intRes] = await Promise.all([
+        api.get('/companies'),
+        api.get('/integrations/connected').catch(() => ({ data: [] })),
+      ]);
+      setCompanies(companiesRes.data);
+
+      const connections = Array.isArray(intRes.data) ? intRes.data : [];
+      const alegraConnected = connections.some(i => i.integration_type === 'alegra');
+
+      if (!selectedCompany && companiesRes.data.length > 0) {
+        const userCompany = companiesRes.data.find(c => c.id === user.company_id);
+        const base = userCompany || companiesRes.data[0];
+        const enriched = { ...base, alegra_connected: alegraConnected };
+        setSelectedCompany(enriched);
+        localStorage.setItem('selectedCompany', JSON.stringify(enriched));
+      } else if (selectedCompany) {
+        const enriched = { ...selectedCompany, alegra_connected: alegraConnected };
+        setSelectedCompany(enriched);
+        localStorage.setItem('selectedCompany', JSON.stringify(enriched));
       }
     } catch (error) {
       console.error('Error fetching companies:', error);
