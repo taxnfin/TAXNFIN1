@@ -104,12 +104,14 @@ async def list_payments(
     es_real: Optional[str] = Query(None, description="real o proyeccion"),
     fecha_desde: Optional[str] = Query(None),
     fecha_hasta: Optional[str] = Query(None),
+    source: Optional[str] = Query(None, description="fuente: alegra, contalink, banco, etc."),
+    fuente: Optional[str] = Query(None, description="alias de source"),
     limit: int = Query(100, le=1000),
     skip: int = Query(0, ge=0)
 ):
     """List payments with optional filters"""
     company_id = await get_active_company_id(request, current_user)
-    
+
     query = {'company_id': company_id}
     if tipo:
         query['tipo'] = tipo
@@ -126,6 +128,9 @@ async def list_payments(
             query['fecha_vencimiento']['$lte'] = fecha_hasta
         else:
             query['fecha_vencimiento'] = {'$lte': fecha_hasta}
+    src = source or fuente
+    if src:
+        query['$or'] = [{'source': src}, {'fuente': src}]
     
     payments = await db.payments.find(query, {'_id': 0}).sort('fecha_vencimiento', -1).skip(skip).limit(limit).to_list(limit)
     

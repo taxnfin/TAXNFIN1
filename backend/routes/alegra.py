@@ -4,6 +4,7 @@ Syncs customers, vendors, invoices, bills, and payments with Alegra accounting s
 for cash flow management purposes.
 """
 import os
+import asyncio
 import base64
 import uuid
 import httpx
@@ -1003,153 +1004,169 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
     email = company.get('alegra_email')
     token = company.get('alegra_token')
     results = {}
+    sync_error = None
 
-    # Sync invoices (CxC)
     try:
-        all_invoices, start = [], 0
-        while True:
-            params = {'start': start, 'limit': 30, 'status': 'open',
-                      'order_field': 'date', 'order_direction': 'DESC'}
-            if date_from: params['date[from]'] = date_from
-            if date_to:   params['date[to]']   = date_to
-            batch = await alegra_request('GET', 'invoices', email, token, params=params)
-            if not batch or not isinstance(batch, list): break
-            all_invoices.extend(batch)
-            if len(batch) < 30: break
-            start += 30
-        created = updated = 0
-        for inv in all_invoices:
-            alegra_id = str(inv.get('id'))
-            doc = {**inv, 'company_id': company_id, 'alegra_id': alegra_id,
-                   'source': 'alegra', 'tipo_cfdi': 'ingreso',
-                   'synced_at': datetime.now(timezone.utc).isoformat()}
-            res = await db.cfdis.update_one(
-                {'company_id': company_id, 'alegra_id': alegra_id},
-                {'$set': doc}, upsert=True)
-            if res.upserted_id: created += 1
-            else: updated += 1
-        results['invoices'] = {'total': len(all_invoices), 'created': created, 'updated': updated}
+        # Sync invoices (CxC)
+        try:
+            all_invoices, start = [], 0
+            while True:
+                params = {'start': start, 'limit': 30, 'status': 'open',
+                          'order_field': 'date', 'order_direction': 'DESC'}
+                if date_from: params['date[from]'] = date_from
+                if date_to:   params['date[to]']   = date_to
+                batch = await alegra_request('GET', 'invoices', email, token, params=params)
+                await asyncio.sleep(0.3)  # respetar rate limit de Alegra
+                if not batch or not isinstance(batch, list): break
+                all_invoices.extend(batch)
+                if len(batch) < 30: break
+                start += 30
+            created = updated = 0
+            for inv in all_invoices:
+                alegra_id = str(inv.get('id'))
+                doc = {**inv, 'company_id': company_id, 'alegra_id': alegra_id,
+                       'source': 'alegra', 'tipo_cfdi': 'ingreso',
+                       'synced_at': datetime.now(timezone.utc).isoformat()}
+                res = await db.cfdis.update_one(
+                    {'company_id': company_id, 'alegra_id': alegra_id},
+                    {'$set': doc}, upsert=True)
+                if res.upserted_id: created += 1
+                else: updated += 1
+            results['invoices'] = {'total': len(all_invoices), 'created': created, 'updated': updated}
+        except Exception as e:
+            results['invoices'] = {'error': str(e)}
+            logger.error(f"[Alegra] Error sync invoices: {e}")
+
+        # Sync bills (CxP)
+        try:
+            all_bills, start = [], 0
+            while True:
+                params = {'start': start, 'limit': 30, 'status': 'open',
+                          'order_field': 'date', 'order_direction': 'DESC'}
+                if date_from: params['date[from]'] = date_from
+                if date_to:   params['date[to]']   = date_to
+                batch = await alegra_request('GET', 'bills', email, token, params=params)
+                await asyncio.sleep(0.3)  # respetar rate limit de Alegra
+                if not batch or not isinstance(batch, list): break
+                all_bills.extend(batch)
+                if len(batch) < 30: break
+                start += 30
+            created = updated = 0
+            for bill in all_bills:
+                alegra_id = str(bill.get('id'))
+                doc = {**bill, 'company_id': company_id, 'alegra_id': alegra_id,
+                       'source': 'alegra', 'tipo_cfdi': 'egreso',
+                       'synced_at': datetime.now(timezone.utc).isoformat()}
+                res = await db.cfdis.update_one(
+                    {'company_id': company_id, 'alegra_id': alegra_id},
+                    {'$set': doc}, upsert=True)
+                if res.upserted_id: created += 1
+                else: updated += 1
+            results['bills'] = {'total': len(all_bills), 'created': created, 'updated': updated}
+        except Exception as e:
+            results['bills'] = {'error': str(e)}
+            logger.error(f"[Alegra] Error sync bills: {e}")
+
+        # Sync payments → db.payments con formato compatible con Cobranza y Pagos
+        try:
+            all_payments, start = [], 0
+            while True:
+                params = {'start': start, 'limit': 30, 'order_field': 'date', 'order_direction': 'DESC'}
+                if date_from: params['date[from]'] = date_from
+                if date_to:   params['date[to]']   = date_to
+                batch = await alegra_request('GET', 'payments', email, token, params=params)
+                await asyncio.sleep(0.3)  # respetar rate limit de Alegra
+                if not batch or not isinstance(batch, list): break
+                all_payments.extend(batch)
+                if len(batch) < 30: break
+                start += 30
+            created = updated = 0
+            for pay in all_payments:
+                alegra_id = str(pay.get('id'))
+                pay_type = pay.get('type', '')
+                tipo = 'cobro' if pay_type in ('in', 'income', 'cobro') else 'pago'
+                client_obj = pay.get('client') or pay.get('vendor') or {}
+                beneficiario = client_obj.get('name', '') if isinstance(client_obj, dict) else ''
+                banco_obj = pay.get('bankAccount') or {}
+                cuenta_banco = banco_obj.get('name', '') if isinstance(banco_obj, dict) else ''
+                fecha = pay.get('date') or datetime.now(timezone.utc).strftime('%Y-%m-%d')
+                if len(fecha) == 10:
+                    fecha_iso = f"{fecha}T12:00:00"
+                else:
+                    fecha_iso = fecha
+                moneda = (pay.get('currency') or {}).get('code', 'MXN') if isinstance(pay.get('currency'), dict) else 'MXN'
+                tc = float((pay.get('currency') or {}).get('exchangeRate', 1) or 1) if isinstance(pay.get('currency'), dict) else 1.0
+
+                payment_doc = {
+                    'company_id':         company_id,
+                    'source':             'alegra',
+                    'alegra_payment_id':  alegra_id,
+                    'tipo':               tipo,
+                    'monto':              float(pay.get('amount', 0) or 0),
+                    'moneda':             moneda,
+                    'tipo_cambio_historico': tc if moneda != 'MXN' else 1,
+                    'fecha_vencimiento':  fecha_iso,
+                    'fecha_pago':         fecha_iso,
+                    'estatus':            'completado',
+                    'es_real':            True,
+                    'es_proyeccion':      False,
+                    'concepto':           pay.get('observations') or pay.get('anotation') or f'Pago Alegra #{alegra_id}',
+                    'beneficiario':       beneficiario,
+                    'cuenta_banco':       cuenta_banco,
+                    'referencia':         str(pay.get('numberTemplate', {}).get('fullNumber', '') or '') if isinstance(pay.get('numberTemplate'), dict) else '',
+                    'metodo_pago':        'transferencia',
+                    'bank_transaction_id': None,
+                    'fuente':             'alegra_sync',
+                    'updated_at':         datetime.now(timezone.utc).isoformat(),
+                }
+                res = await db.payments.update_one(
+                    {'company_id': company_id, 'alegra_payment_id': alegra_id},
+                    {'$set': payment_doc,
+                     '$setOnInsert': {'id': str(uuid.uuid4()),
+                                      'created_at': datetime.now(timezone.utc).isoformat()}},
+                    upsert=True
+                )
+                if res.upserted_id: created += 1
+                else: updated += 1
+            results['payments'] = {'total': len(all_payments), 'created': created, 'updated': updated}
+        except Exception as e:
+            results['payments'] = {'error': str(e)}
+            logger.error(f"[Alegra] Error sync payments: {e}")
+
+        # Actualizar totales CxC / CxP en la empresa para dashboards
+        try:
+            cxc_total = await db.cfdis.count_documents({
+                'company_id': company_id, 'source': 'alegra', 'tipo_cfdi': 'ingreso',
+                'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]}
+            })
+            cxp_total = await db.cfdis.count_documents({
+                'company_id': company_id, 'source': 'alegra', 'tipo_cfdi': 'egreso',
+                'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]}
+            })
+        except Exception:
+            cxc_total = cxp_total = 0
+
+        sync_status = 'completed'
+        logger.info(f"[Alegra] Sync background completado para {company_id}: {results} | CxC={cxc_total} CxP={cxp_total}")
+
     except Exception as e:
-        results['invoices'] = {'error': str(e)}
-        logger.error(f"[Alegra] Error sync invoices: {e}")
-
-    # Sync bills (CxP)
-    try:
-        all_bills, start = [], 0
-        while True:
-            params = {'start': start, 'limit': 30, 'status': 'open',
-                      'order_field': 'date', 'order_direction': 'DESC'}
-            if date_from: params['date[from]'] = date_from
-            if date_to:   params['date[to]']   = date_to
-            batch = await alegra_request('GET', 'bills', email, token, params=params)
-            if not batch or not isinstance(batch, list): break
-            all_bills.extend(batch)
-            if len(batch) < 30: break
-            start += 30
-        created = updated = 0
-        for bill in all_bills:
-            alegra_id = str(bill.get('id'))
-            doc = {**bill, 'company_id': company_id, 'alegra_id': alegra_id,
-                   'source': 'alegra', 'tipo_cfdi': 'egreso',
-                   'synced_at': datetime.now(timezone.utc).isoformat()}
-            res = await db.cfdis.update_one(
-                {'company_id': company_id, 'alegra_id': alegra_id},
-                {'$set': doc}, upsert=True)
-            if res.upserted_id: created += 1
-            else: updated += 1
-        results['bills'] = {'total': len(all_bills), 'created': created, 'updated': updated}
-    except Exception as e:
-        results['bills'] = {'error': str(e)}
-        logger.error(f"[Alegra] Error sync bills: {e}")
-
-    # Sync payments → db.payments con formato compatible con Cobranza y Pagos
-    try:
-        all_payments, start = [], 0
-        while True:
-            params = {'start': start, 'limit': 30, 'order_field': 'date', 'order_direction': 'DESC'}
-            if date_from: params['date[from]'] = date_from
-            if date_to:   params['date[to]']   = date_to
-            batch = await alegra_request('GET', 'payments', email, token, params=params)
-            if not batch or not isinstance(batch, list): break
-            all_payments.extend(batch)
-            if len(batch) < 30: break
-            start += 30
-        created = updated = 0
-        for pay in all_payments:
-            alegra_id = str(pay.get('id'))
-            # Determinar tipo: cobro (entrante) o pago (saliente)
-            pay_type = pay.get('type', '')
-            tipo = 'cobro' if pay_type in ('in', 'income', 'cobro') else 'pago'
-            client_obj = pay.get('client') or pay.get('vendor') or {}
-            beneficiario = client_obj.get('name', '') if isinstance(client_obj, dict) else ''
-            banco_obj = pay.get('bankAccount') or {}
-            cuenta_banco = banco_obj.get('name', '') if isinstance(banco_obj, dict) else ''
-            fecha = pay.get('date') or datetime.now(timezone.utc).strftime('%Y-%m-%d')
-            if len(fecha) == 10:
-                fecha_iso = f"{fecha}T12:00:00"
-            else:
-                fecha_iso = fecha
-            moneda = (pay.get('currency') or {}).get('code', 'MXN') if isinstance(pay.get('currency'), dict) else 'MXN'
-            tc = float((pay.get('currency') or {}).get('exchangeRate', 1) or 1) if isinstance(pay.get('currency'), dict) else 1.0
-
-            payment_doc = {
-                'company_id':         company_id,
-                'source':             'alegra',
-                'alegra_payment_id':  alegra_id,
-                'tipo':               tipo,
-                'monto':              float(pay.get('amount', 0) or 0),
-                'moneda':             moneda,
-                'tipo_cambio_historico': tc if moneda != 'MXN' else 1,
-                'fecha_vencimiento':  fecha_iso,
-                'fecha_pago':         fecha_iso,
-                'estatus':            'completado',
-                'es_real':            True,
-                'es_proyeccion':      False,
-                'concepto':           pay.get('observations') or pay.get('anotation') or f'Pago Alegra #{alegra_id}',
-                'beneficiario':       beneficiario,
-                'cuenta_banco':       cuenta_banco,
-                'referencia':         str(pay.get('numberTemplate', {}).get('fullNumber', '') or '') if isinstance(pay.get('numberTemplate'), dict) else '',
-                'metodo_pago':        'transferencia',
-                'bank_transaction_id': None,
-                'fuente':             'alegra_sync',
-                'updated_at':         datetime.now(timezone.utc).isoformat(),
-            }
-            res = await db.payments.update_one(
-                {'company_id': company_id, 'alegra_payment_id': alegra_id},
-                {'$set': payment_doc,
-                 '$setOnInsert': {'id': str(uuid.uuid4()),
-                                  'created_at': datetime.now(timezone.utc).isoformat()}},
-                upsert=True
-            )
-            if res.upserted_id: created += 1
-            else: updated += 1
-        results['payments'] = {'total': len(all_payments), 'created': created, 'updated': updated}
-    except Exception as e:
-        results['payments'] = {'error': str(e)}
-        logger.error(f"[Alegra] Error sync payments: {e}")
-
-    # Actualizar totales CxC / CxP en la empresa para dashboards
-    try:
-        cxc_total = await db.cfdis.count_documents({
-            'company_id': company_id, 'source': 'alegra', 'tipo_cfdi': 'ingreso',
-            'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]}
-        })
-        cxp_total = await db.cfdis.count_documents({
-            'company_id': company_id, 'source': 'alegra', 'tipo_cfdi': 'egreso',
-            'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]}
-        })
-    except Exception:
+        sync_error = str(e)
+        sync_status = 'failed'
         cxc_total = cxp_total = 0
+        logger.error(f"[Alegra] Sync background FALLIDO para {company_id}: {e}")
 
-    # Marcar último sync + totales
+    # Marcar último sync + totales (siempre, incluso si falló)
     await db.companies.update_one(
         {'id': company_id},
-        {'$set': {'alegra_last_sync': datetime.now(timezone.utc).isoformat(),
-                  'alegra_last_sync_results': results,
-                  'alegra_cxc_count': cxc_total,
-                  'alegra_cxp_count': cxp_total}}
+        {'$set': {
+            'alegra_last_sync': datetime.now(timezone.utc).isoformat(),
+            'alegra_last_sync_status': sync_status,
+            'alegra_last_sync_error': sync_error,
+            'alegra_last_sync_results': results,
+            'alegra_cxc_count': cxc_total,
+            'alegra_cxp_count': cxp_total,
+        }}
     )
-    logger.info(f"[Alegra] Sync background completado para {company_id}: {results} | CxC={cxc_total} CxP={cxp_total}")
 
 
 @router.post("/sync/all")
@@ -1180,13 +1197,17 @@ async def get_alegra_sync_status(
     """Devuelve el estado del último sync de Alegra."""
     company_id = await get_active_company_id(request, current_user)
     company = await db.companies.find_one({'id': company_id}, {'_id': 0,
-        'alegra_last_sync': 1, 'alegra_last_sync_results': 1, 'alegra_connected': 1})
+        'alegra_last_sync': 1, 'alegra_last_sync_results': 1,
+        'alegra_last_sync_status': 1, 'alegra_last_sync_error': 1,
+        'alegra_connected': 1})
     if not company:
         return {'status': 'unknown'}
     return {
-        'connected': company.get('alegra_connected', False),
-        'last_sync': company.get('alegra_last_sync'),
-        'results':   company.get('alegra_last_sync_results', {}),
+        'connected':    company.get('alegra_connected', False),
+        'last_sync':    company.get('alegra_last_sync'),
+        'sync_status':  company.get('alegra_last_sync_status'),
+        'sync_error':   company.get('alegra_last_sync_error'),
+        'results':      company.get('alegra_last_sync_results', {}),
     }
 
 
