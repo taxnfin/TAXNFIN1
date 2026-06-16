@@ -1016,13 +1016,20 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 if date_from: params['date[from]'] = date_from
                 if date_to:   params['date[to]']   = date_to
                 batch = await alegra_request('GET', 'invoices', email, token, params=params)
-                await asyncio.sleep(0.3)  # respetar rate limit de Alegra
+                await asyncio.sleep(0.3)
                 if not batch or not isinstance(batch, list): break
-                last_date = batch[-1].get('date', '')
-                if date_from and last_date and last_date < date_from:
-                    break
-                all_invoices.extend(batch)
-                if len(batch) < 30: break
+                filtered_inv = []
+                stop_inv = False
+                for inv_item in batch:
+                    inv_date = inv_item.get('date', '')
+                    if date_to and inv_date and inv_date > date_to:
+                        continue
+                    if date_from and inv_date and inv_date < date_from:
+                        stop_inv = True
+                        break
+                    filtered_inv.append(inv_item)
+                all_invoices.extend(filtered_inv)
+                if stop_inv or len(batch) < 30: break
                 start += 30
             created = updated = 0
             for inv in all_invoices:
@@ -1035,6 +1042,11 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     {'$set': doc}, upsert=True)
                 if res.upserted_id: created += 1
                 else: updated += 1
+                inv_currency = inv.get('currency', {}) if isinstance(inv.get('currency'), dict) else {}
+                inv_currency_code = inv_currency.get('code', 'MXN') or 'MXN'
+                inv_exchange_rate = float(inv_currency.get('exchangeRate', 1) or 1)
+                inv_payment_account = inv.get('paymentAccount', {}) if isinstance(inv.get('paymentAccount'), dict) else {}
+                inv_sat_uuid = next((s.get('uuid', '') for s in (inv.get('stamps') or []) if s.get('uuid')), '')
                 payment_inv_doc = {
                     'company_id':        company_id,
                     'source':            'alegra',
@@ -1051,8 +1063,15 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     'beneficiario':      inv.get('client', {}).get('name', '') if isinstance(inv.get('client'), dict) else '',
                     'referencia':        str(inv.get('numberTemplate', {}).get('number', '') if isinstance(inv.get('numberTemplate'), dict) else ''),
                     'forma_pago':        inv.get('paymentMethod', '') or '',
-                    'moneda':            inv.get('currency', {}).get('code', 'MXN') if isinstance(inv.get('currency'), dict) else 'MXN',
-                    'cfdi_uuid':         next((s.get('uuid', '') for s in (inv.get('stamps') or []) if s.get('uuid')), ''),
+                    'moneda':            inv_currency_code,
+                    'tipo_cambio_historico': inv_exchange_rate if inv_currency_code != 'MXN' else 1.0,
+                    'monto_mxn':         float(inv.get('total', 0) or 0) * inv_exchange_rate,
+                    'cfdi_uuid':         inv_sat_uuid,
+                    'uuid':              inv_sat_uuid,
+                    'metodo_pago':       inv.get('paymentMethod', ''),
+                    'uso_cfdi':          inv.get('cfdiUse', '') or inv.get('usage', ''),
+                    'regimen_fiscal':    inv.get('fiscalRegime', '') or '',
+                    'cuenta_banco':      inv_payment_account.get('name', ''),
                     'updated_at':        datetime.now(timezone.utc).isoformat(),
                 }
                 await db.payments.update_one(
@@ -1076,13 +1095,20 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 if date_from: params['date[from]'] = date_from
                 if date_to:   params['date[to]']   = date_to
                 batch = await alegra_request('GET', 'bills', email, token, params=params)
-                await asyncio.sleep(0.3)  # respetar rate limit de Alegra
+                await asyncio.sleep(0.3)
                 if not batch or not isinstance(batch, list): break
-                last_date = batch[-1].get('date', '')
-                if date_from and last_date and last_date < date_from:
-                    break
-                all_bills.extend(batch)
-                if len(batch) < 30: break
+                filtered_bill = []
+                stop_bill = False
+                for bill_item in batch:
+                    bill_date = bill_item.get('date', '')
+                    if date_to and bill_date and bill_date > date_to:
+                        continue
+                    if date_from and bill_date and bill_date < date_from:
+                        stop_bill = True
+                        break
+                    filtered_bill.append(bill_item)
+                all_bills.extend(filtered_bill)
+                if stop_bill or len(batch) < 30: break
                 start += 30
             created = updated = 0
             for bill in all_bills:
@@ -1095,8 +1121,10 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     {'$set': doc}, upsert=True)
                 if res.upserted_id: created += 1
                 else: updated += 1
-                vendor_obj = bill.get('vendor') or bill.get('provider') or {}
-                vendor_name = vendor_obj.get('name', '') if isinstance(vendor_obj, dict) else ''
+                bill_currency = bill.get('currency', {}) if isinstance(bill.get('currency'), dict) else {}
+                bill_currency_code = bill_currency.get('code', 'MXN') or 'MXN'
+                bill_exchange_rate = float(bill_currency.get('exchangeRate', 1) or 1)
+                bill_payment_account = bill.get('paymentAccount', {}) if isinstance(bill.get('paymentAccount'), dict) else {}
                 payment_bill_doc = {
                     'company_id':        company_id,
                     'source':            'alegra',
@@ -1113,7 +1141,10 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     'beneficiario':      bill.get('vendor', {}).get('name', '') if isinstance(bill.get('vendor'), dict) else '',
                     'referencia':        str(bill.get('numberTemplate', {}).get('number', '') if isinstance(bill.get('numberTemplate'), dict) else ''),
                     'forma_pago':        bill.get('paymentMethod', '') or '',
-                    'moneda':            bill.get('currency', {}).get('code', 'MXN') if isinstance(bill.get('currency'), dict) else 'MXN',
+                    'moneda':            bill_currency_code,
+                    'tipo_cambio_historico': bill_exchange_rate if bill_currency_code != 'MXN' else 1.0,
+                    'monto_mxn':         float(bill.get('total', 0) or 0) * bill_exchange_rate,
+                    'cuenta_banco':      bill_payment_account.get('name', ''),
                     'updated_at':        datetime.now(timezone.utc).isoformat(),
                 }
                 await db.payments.update_one(
@@ -1133,38 +1164,34 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
             all_payments, start = [], 0
             while True:
                 params = {'start': start, 'limit': 30, 'order_field': 'date', 'order_direction': 'DESC'}
-                if date_from: params['date-start'] = date_from
-                if date_to:   params['date-end']   = date_to
                 batch = await alegra_request('GET', 'payments', email, token, params=params)
-                await asyncio.sleep(0.3)  # respetar rate limit de Alegra
-                if not batch or not isinstance(batch, list): break
-                if batch:
-                    first_date = batch[0].get('date', '')
-                    if date_to and first_date and first_date > date_to:
-                        start += 30
+                await asyncio.sleep(0.3)
+                if not batch or not isinstance(batch, list):
+                    break
+                filtered = []
+                stop = False
+                for pay_item in batch:
+                    pay_date = pay_item.get('date', '')
+                    if date_to and pay_date and pay_date > date_to:
                         continue
-                    last_date = batch[-1].get('date', '')
-                    if date_from and last_date and last_date < date_from:
+                    if date_from and pay_date and pay_date < date_from:
+                        stop = True
                         break
-                all_payments.extend(batch)
-                if len(batch) < 30: break
+                    filtered.append(pay_item)
+                all_payments.extend(filtered)
+                if stop or len(batch) < 30:
+                    break
                 start += 30
             created = updated = 0
             for pay in all_payments:
                 alegra_id = str(pay.get('id'))
                 pay_type = pay.get('type', '')
                 tipo = 'cobro' if pay_type in ('in', 'income', 'cobro') else 'pago'
-                client_obj = pay.get('client') or pay.get('vendor') or {}
-                beneficiario = client_obj.get('name', '') if isinstance(client_obj, dict) else ''
-                banco_obj = pay.get('bankAccount') or {}
-                cuenta_banco = banco_obj.get('name', '') if isinstance(banco_obj, dict) else ''
+                bank_account = pay.get('bankAccount', {}) if isinstance(pay.get('bankAccount'), dict) else {}
+                pay_currency_code = (pay.get('currency') or {}).get('code', 'MXN') if isinstance(pay.get('currency'), dict) else 'MXN'
+                pay_exchange_rate = float(pay.get('exchangeRate', 1) or 1)
                 fecha = pay.get('date') or datetime.now(timezone.utc).strftime('%Y-%m-%d')
-                if len(fecha) == 10:
-                    fecha_iso = f"{fecha}T12:00:00"
-                else:
-                    fecha_iso = fecha
-                moneda = (pay.get('currency') or {}).get('code', 'MXN') if isinstance(pay.get('currency'), dict) else 'MXN'
-                tc = float((pay.get('currency') or {}).get('exchangeRate', 1) or 1) if isinstance(pay.get('currency'), dict) else 1.0
+                fecha_iso = f"{fecha}T12:00:00" if len(fecha) == 10 else fecha
 
                 payment_doc = {
                     'company_id':         company_id,
@@ -1172,8 +1199,9 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     'alegra_payment_id':  alegra_id,
                     'tipo':               tipo,
                     'monto':              float(pay.get('amount', 0) or 0),
-                    'moneda':             moneda,
-                    'tipo_cambio_historico': tc if moneda != 'MXN' else 1,
+                    'moneda':             pay_currency_code,
+                    'tipo_cambio_historico': pay_exchange_rate if pay_currency_code != 'MXN' else 1.0,
+                    'monto_mxn':          float(pay.get('amount', 0) or 0) * pay_exchange_rate,
                     'fecha_vencimiento':  fecha_iso,
                     'fecha_pago':         fecha_iso,
                     'estatus':            'completado',
@@ -1181,7 +1209,8 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     'es_proyeccion':      False,
                     'concepto':           pay.get('observations') or pay.get('anotation') or f'Pago Alegra #{alegra_id}',
                     'beneficiario':       pay.get('client', {}).get('name', '') if isinstance(pay.get('client'), dict) else (pay.get('vendor', {}).get('name', '') if isinstance(pay.get('vendor'), dict) else ''),
-                    'cuenta_banco':       cuenta_banco,
+                    'cuenta_banco':       f"{bank_account.get('name', '')} {bank_account.get('type', '')}".strip(),
+                    'cuenta_banco_id':    str(bank_account.get('id', '')),
                     'referencia':         str(pay.get('numberTemplate', {}).get('number', '') if isinstance(pay.get('numberTemplate'), dict) else ''),
                     'forma_pago':         pay.get('paymentMethod', '') or pay.get('type', '') or '',
                     'metodo_pago':        'transferencia',
@@ -1202,6 +1231,15 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
         except Exception as e:
             results['payments'] = {'error': str(e)}
             logger.error(f"[Alegra] Error sync payments: {e}")
+
+        # Jallar tipos de cambio del período sincronizado
+        if date_from and date_to:
+            try:
+                from routes.fx_rates import backfill_historical_rates
+                await backfill_historical_rates(date_from, date_to)
+                logger.info(f"[Alegra] Tipos de cambio backfilled: {date_from} → {date_to}")
+            except Exception as e:
+                logger.warning(f"[Alegra] No se pudieron jallar tipos de cambio: {e}")
 
         # Actualizar totales CxC / CxP en la empresa para dashboards
         try:
