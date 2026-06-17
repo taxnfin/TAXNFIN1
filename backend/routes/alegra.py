@@ -1060,6 +1060,7 @@ async def sync_alegra_payments(
         'company_id': company_id,
         'source': 'alegra',
         'estado_conciliacion': {'$in': ['conciliado', 'parcial']},
+        'estatus': {'$ne': 'cancelado'},
     }, {'_id': 0, 'id': 1, 'alegra_id': 1, 'tipo_cfdi': 1,
         'monto_cobrado': 1, 'monto_pagado': 1,
         'fecha_vencimiento': 1, 'fecha_emision': 1,
@@ -1067,6 +1068,9 @@ async def sync_alegra_payments(
         'estado_conciliacion': 1}).to_list(10000)
 
     for cfdi in cfdis_conciliados:
+        # Solo procesar CFDIs desde diciembre 2025 en adelante
+        if str(cfdi.get('fecha_emision', '') or '')[:10] < '2025-12-01':
+            continue
         try:
             tipo_c = str(cfdi.get('tipo_cfdi', '') or '').lower()
             if tipo_c in ('ingreso', 'i', 'income'):

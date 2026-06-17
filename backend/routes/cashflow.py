@@ -139,7 +139,12 @@ async def initialize_weeks(
 
     company = await db.companies.find_one({'id': company_id}, {'_id': 0, 'cashflow_config': 1})
     cashflow_cfg = (company or {}).get('cashflow_config') or {}
-    saldo_inicial_banco = float(cashflow_cfg.get('saldo_inicial_banco', 0) or 0)
+    c = company or {}
+    saldo_inicial_banco = (
+        float(cashflow_cfg.get('saldo_inicial_banco', 0) or 0)
+        or float(c.get('saldo_bancos_dashboard', 0) or 0)
+        or float(c.get('bank_summary_total_mxn', 0) or 0)
+    )
 
     start_date = date(2026, 1, 5)
     created = 0
