@@ -3023,6 +3023,23 @@ async def debug_conciliation(
     return results
 
 
+@router.post("/fix-bank-transactions-company-id")
+async def fix_bank_transactions_company_id(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """One-shot: corrige company_id truncado en db.bank_transactions source='alegra'."""
+    company_full = await db.companies.find_one({'id': {'$regex': '^89cda61e'}}, {'_id': 0, 'id': 1})
+    if not company_full:
+        raise HTTPException(status_code=404, detail="Empresa 89cda61e no encontrada en db.companies")
+    company_id_full = company_full['id']
+    result = await db.bank_transactions.update_many(
+        {'company_id': '89cda61e', 'source': 'alegra'},
+        {'$set': {'company_id': company_id_full}}
+    )
+    return {'fixed': result.modified_count, 'company_id_full': company_id_full}
+
+
 @router.get("/sync/conciliations/status")
 async def get_conciliations_sync_status(
     request: Request,
