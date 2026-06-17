@@ -32,7 +32,13 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
 
     # ── 2. Leer TODOS los CFDIs una sola vez ──────────────────────
     cfdis = await db.cfdis.find(
-        {'company_id': company_id},
+        {
+            'company_id': company_id,
+            '$or': [
+                {'source': {'$ne': 'alegra'}},
+                {'source': 'alegra', 'fecha_emision': {'$gte': '2025-12-01'}},
+            ],
+        },
         {'_id': 0, 'tipo_cfdi': 1, 'total': 1, 'fecha_emision': 1,
          'receptor_nombre': 1, 'emisor_nombre': 1, 'concepto': 1, 'categoria': 1, 'id': 1}
     ).to_list(10000)
