@@ -237,32 +237,19 @@ const CashflowProjections = () => {
       };
       
       const companyId = getActiveCompanyId();
-      // ── Cargar proyecciones CxC/CxP ANTES de procesar semanas ────────
-      let porSemana = {};
-      try {
-        const proyRes = await api.get('/cxc-proyecciones/por-semana');
-        porSemana = proyRes.data || {};
-
-        if (Object.keys(porSemana).length > 0) {
-          setCxcCxpData({ porSemana });
-        }
-      } catch (e) {
-        console.log('CxC/CxP proyecciones no disponibles:', e.message);
-      }
-
       if (companyId) {
         try {
           const compRes = await api.get(`/companies/${companyId}`);
           const weekStart = compRes.data?.inicio_semana ?? 1;
           setCompanyConfig({ ...compRes.data, inicio_semana: weekStart });
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, allPayments, customStartDate, porSemana);
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, allPayments, customStartDate);
           setWeeklyData(weeks);
         } catch {
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, allPayments, customStartDate, porSemana);
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, allPayments, customStartDate);
           setWeeklyData(weeks);
         }
       } else {
-        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, allPayments, customStartDate, porSemana);
+        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, allPayments, customStartDate);
         setWeeklyData(weeks);
       }
 
@@ -340,7 +327,7 @@ const CashflowProjections = () => {
     return amount * rate;
   };
 
-  const processWeeklyData = (cfdisData, categoriesData, weekStartDay = 1, rates = {}, payments = [], customStart = '', porSemana = {}) => {
+  const processWeeklyData = (cfdisData, categoriesData, weekStartDay = 1, rates = {}, payments = [], customStart = '') => {
     // =====================================================================
     // NUEVA LÓGICA: ÚNICA FUENTE DE VERDAD
     // - Semanas pasadas/actuales: SOLO datos de Cobranza y Pagos
@@ -668,226 +655,6 @@ const CashflowProjections = () => {
 
       section.total += montoMXN;
     });
-
-    // =====================================================================
-    // PASO 2: Procesar CFDIs (PROYECCIONES para semanas futuras)
-    // Si hay datos de CxC/CxP del Aging (porSemana), estos son la fuente
-    // de verdad para proyecciones — no proyectar CFDIs para evitar duplicación.
-    // =====================================================================
-    const usarCxCComoProyeccion = porSemana && Object.keys(porSemana).length > 0;
-
-    cfdisData.forEach(cfdi => {
-      // For projections, use fecha_vencimiento or estimated date
-      let projectedDate;
-      if (cfdi.fecha_vencimiento) {
-        projectedDate = new Date(cfdi.fecha_vencimiento);
-      } else {
-        // Default: 30 days after emission
-        projectedDate = new Date(cfdi.fecha_emision);
-        projectedDate.setDate(projectedDate.getDate() + 30);
-      }
-      
-      const weekIdx = weeks.findIndex(w => projectedDate >= w.weekStart && projectedDate < w.weekEnd);
-      if (weekIdx === -1) return;
-      
-      const week = weeks[weekIdx];
-      
-      // Only add CFDIs to FUTURE weeks (projections)
-      // For past weeks, we already have real payment data
-      if (week.isPast || week.isCurrent) return;
-
-      // Si hay CxC/CxP del Aging, esa es la fuente de verdad para proyecciones.
-      // No proyectar CFDIs para evitar duplicación con el Aging.
-      if (usarCxCComoProyeccion) return;
-      
-      // Check if USD operation - SKIP projecting currency operations
-      // Currency operations (buy/sell USD) are spot transactions that settle immediately
-      // They should only appear when the bank transaction is reconciled (from payments data)
-      const isCompraUSD = cfdi.category_id === compraUSDId;
-      const isVentaUSD = cfdi.category_id === ventaUSDId;
-      
-      if (isCompraUSD || isVentaUSD) {
-        // Skip - currency operations should not be projected, only show when reconciled
-        return;
-      }
-      
-      // Calculate pending amount
-      const total = cfdi.total || 0;
-      const pagado = cfdi.monto_pagado || 0;
-      const cobrado = cfdi.monto_cobrado || 0;
-      
-      let pendiente = 0;
-      if (cfdi.tipo_cfdi === 'ingreso') {
-        pendiente = total - cobrado;
-      } else {
-        pendiente = total - pagado;
-      }
-      
-      if (pendiente <= 0) return; // Already fully paid/collected
-      
-      const montoMXN = convertToMXN(pendiente, cfdi.moneda, effectiveRates);
-      
-      const category = categoryMap[cfdi.category_id];
-      const categoryName = category?.nombre || 'Sin categoría';
-      const subcategoryInfo = subcategoryMap[cfdi.subcategory_id];
-      const subcategoryName = subcategoryInfo?.nombre || null;
-      
-      // Determine section
-      const section = cfdi.tipo_cfdi === 'ingreso' ? week.ingresos : week.egresos;
-      
-      // Add to category
-      if (!section.byCategory[categoryName]) {
-        section.byCategory[categoryName] = { total: 0, bySubcategory: {}, items: [] };
-      }
-      section.byCategory[categoryName].total += montoMXN;
-      section.byCategory[categoryName].items.push({
-        id: cfdi.id,
-        monto: montoMXN,
-        uuid: cfdi.uuid,
-        emisor: cfdi.emisor_nombre,
-        receptor: cfdi.receptor_nombre,
-        fecha: cfdi.fecha_emision,
-        moneda: cfdi.moneda,
-        source: 'cfdi'
-      });
-      
-      // Add to subcategory
-      const subKey = subcategoryName || 'General';
-      if (!section.byCategory[categoryName].bySubcategory[subKey]) {
-        section.byCategory[categoryName].bySubcategory[subKey] = { total: 0, items: [] };
-      }
-      section.byCategory[categoryName].bySubcategory[subKey].total += montoMXN;
-      section.byCategory[categoryName].bySubcategory[subKey].items.push({
-        id: cfdi.id,
-        monto: montoMXN,
-        uuid: cfdi.uuid,
-        emisor: cfdi.emisor_nombre,
-        receptor: cfdi.receptor_nombre,
-        fecha: cfdi.fecha_emision,
-        moneda: cfdi.moneda,
-        source: 'cfdi'
-      });
-      
-      // Add to section total
-      section.total += montoMXN;
-    });
-    
-    // ── PASO 3: Inyectar proyecciones CxC/CxP por semana y categoría ──
-    // El backend genera el label "S23" contando semanas desde el lunes anterior al 1-ene del año
-    // en curso (= FISCAL_YEAR_START = Dec 29, 2025). Se usa la misma ancla para convertir el
-    // label a fecha y encontrar la semana correcta en el modelo.
-    // Semanas futuras: se inyecta el monto completo. Semana ACTUAL: solo el remanente
-    // (asignado − real ya registrado) para no duplicar. Semanas pasadas: nunca.
-    if (porSemana && Object.keys(porSemana).length > 0) {
-      // FISCAL_YEAR_START ya está definido arriba: new Date(2025, 11, 29) = Dec 29, 2025
-      Object.entries(porSemana).forEach(([semanaLabel, semanaData]) => {
-        const weekNum = parseInt(semanaLabel.replace('S', ''), 10) - 1;
-        const semanaDate = new Date(FISCAL_YEAR_START.getTime() + weekNum * 7 * 24 * 60 * 60 * 1000);
-
-        const weekIdx = weeks.findIndex(w => semanaDate >= w.weekStart && semanaDate < w.weekEnd);
-        if (weekIdx === -1) return;
-
-        const week = weeks[weekIdx];
-        if (week.isPast) return;
-
-        // Semana ACTUAL: inyectar solo el REMANENTE = asignado − lo ya registrado como
-        // real en la semana (cobranza/pagos), para no duplicar contra los datos reales.
-        // El remanente se reparte proporcionalmente entre categorías e ítems
-        // (factor = remanente / asignado). Semanas futuras: factor 1 (se inyecta completo).
-        let factorCxc = 1, factorCxp = 1;
-        if (week.isCurrent) {
-          const cxcAsignado = semanaData.cxc || 0;
-          const cxpAsignado = semanaData.cxp || 0;
-          const remCxc = Math.max(0, cxcAsignado - week.ingresos.total);
-          const remCxp = Math.max(0, cxpAsignado - week.egresos.total);
-          factorCxc = cxcAsignado > 0 ? remCxc / cxcAsignado : 0;
-          factorCxp = cxpAsignado > 0 ? remCxp / cxpAsignado : 0;
-          if (factorCxc <= 0 && factorCxp <= 0) return;
-        }
-        const sufijoCxc = factorCxc < 0.999 ? ' (remanente)' : '';
-        const sufijoCxp = factorCxp < 0.999 ? ' (remanente)' : '';
-
-        const byCat = semanaData.byCategory || {};
-        Object.entries(byCat).forEach(([catName, montos]) => {
-          // CxC → ingresos
-          if ((montos.cxc || 0) * factorCxc > 0.005) {
-            const monto = montos.cxc * factorCxc;
-            week.ingresos.total += monto;
-            if (!week.ingresos.byCategory[catName]) {
-              week.ingresos.byCategory[catName] = { total: 0, bySubcategory: {}, items: [] };
-            }
-            week.ingresos.byCategory[catName].total += monto;
-            if (!week.ingresos.byCategory[catName].bySubcategory['CxC']) {
-              week.ingresos.byCategory[catName].bySubcategory['CxC'] = { total: 0, items: [] };
-            }
-            week.ingresos.byCategory[catName].bySubcategory['CxC'].total += monto;
-            // Un ítem por beneficiario real (del backend); fallback a ítem agrupado si no hay detalle
-            const cxcItems = (montos.items || []).filter(it => it.tipo === 'cxc');
-            if (cxcItems.length > 0) {
-              cxcItems.forEach(it => {
-                const newItem = {
-                  id: `cxc-${it.nombre}-${semanaLabel}`,
-                  monto: it.monto * factorCxc,
-                  concepto: `CxC - ${it.nombre}${sufijoCxc}`,
-                  beneficiario: it.nombre,
-                  source: 'cxc_proyeccion'
-                };
-                week.ingresos.byCategory[catName].items.push(newItem);
-                week.ingresos.byCategory[catName].bySubcategory['CxC'].items.push(newItem);
-              });
-            } else {
-              const newItem = {
-                id: `cxc-proy-${semanaLabel}-${catName}`,
-                monto,
-                concepto: `CxC Proyectado${sufijoCxc}`,
-                beneficiario: catName,
-                source: 'cxc_proyeccion'
-              };
-              week.ingresos.byCategory[catName].items.push(newItem);
-              week.ingresos.byCategory[catName].bySubcategory['CxC'].items.push(newItem);
-            }
-          }
-          // CxP → egresos
-          if ((montos.cxp || 0) * factorCxp > 0.005) {
-            const monto = montos.cxp * factorCxp;
-            week.egresos.total += monto;
-            if (!week.egresos.byCategory[catName]) {
-              week.egresos.byCategory[catName] = { total: 0, bySubcategory: {}, items: [] };
-            }
-            week.egresos.byCategory[catName].total += monto;
-            if (!week.egresos.byCategory[catName].bySubcategory['CxP']) {
-              week.egresos.byCategory[catName].bySubcategory['CxP'] = { total: 0, items: [] };
-            }
-            week.egresos.byCategory[catName].bySubcategory['CxP'].total += monto;
-            // Un ítem por beneficiario real (del backend); fallback a ítem agrupado si no hay detalle
-            const cxpItems = (montos.items || []).filter(it => it.tipo === 'cxp');
-            if (cxpItems.length > 0) {
-              cxpItems.forEach(it => {
-                const newItem = {
-                  id: `cxp-${it.nombre}-${semanaLabel}`,
-                  monto: it.monto * factorCxp,
-                  concepto: `CxP - ${it.nombre}${sufijoCxp}`,
-                  beneficiario: it.nombre,
-                  source: 'cxp_proyeccion'
-                };
-                week.egresos.byCategory[catName].items.push(newItem);
-                week.egresos.byCategory[catName].bySubcategory['CxP'].items.push(newItem);
-              });
-            } else {
-              const newItem = {
-                id: `cxp-proy-${semanaLabel}-${catName}`,
-                monto,
-                concepto: `CxP Proyectado${sufijoCxp}`,
-                beneficiario: catName,
-                source: 'cxp_proyeccion'
-              };
-              week.egresos.byCategory[catName].items.push(newItem);
-              week.egresos.byCategory[catName].bySubcategory['CxP'].items.push(newItem);
-            }
-          }
-        });
-      });
-    }
 
     return weeks;
   };
