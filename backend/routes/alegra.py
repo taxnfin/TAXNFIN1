@@ -3127,6 +3127,40 @@ async def debug_conciliation(
     return results
 
 
+@router.get("/debug-bank-transactions")
+async def debug_bank_transactions(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Debug: inspecciona db.bank_transactions para diagnosticar Fuente 3."""
+    COMPANY_PREFIX = "89cda61e"
+    filter_base = {"company_id": {"$regex": f"^{COMPANY_PREFIX}"}, "source": "alegra"}
+
+    tipos_distinct  = await db.bank_transactions.distinct("tipo",    filter_base)
+    esreal_distinct = await db.bank_transactions.distinct("es_real", filter_base)
+
+    count_retiro = await db.bank_transactions.count_documents({**filter_base, "tipo": "retiro"})
+    count_out    = await db.bank_transactions.count_documents({**filter_base, "tipo": "out"})
+    count_egreso = await db.bank_transactions.count_documents({**filter_base, "tipo": "egreso"})
+    count_total  = await db.bank_transactions.count_documents(filter_base)
+
+    samples = await db.bank_transactions.find(
+        filter_base, {"_id": 0}
+    ).limit(2).to_list(2)
+
+    return {
+        "tipos_distinct":        tipos_distinct,
+        "es_real_distinct":      esreal_distinct,
+        "counts": {
+            "total":   count_total,
+            "retiro":  count_retiro,
+            "out":     count_out,
+            "egreso":  count_egreso,
+        },
+        "samples": samples,
+    }
+
+
 @router.post("/fix-bank-transactions-company-id")
 async def fix_bank_transactions_company_id(
     request: Request,
