@@ -148,10 +148,57 @@ const CashflowProjections = () => {
   // Este useEffect queda desactivado para evitar doble-conteo.
   useEffect(() => {}, [cxcCxpData]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Merge backend cashflow/weeks data into local weeks structure.
+  // Overrides ingresos.total, egresos.total, byCategory from backend detalle.
+  // Falls back to local values when backend has no data for a week.
+  const applyBackendData = (localWeeks, backendWeeks) => {
+    if (!backendWeeks || backendWeeks.length === 0) return localWeeks;
+    const byDate = {};
+    backendWeeks.forEach(bw => {
+      const fi = (bw.fecha_inicio || '').slice(0, 10);
+      if (fi) byDate[fi] = bw;
+    });
+    const buildByCategory = (detalle) => {
+      const bc = {};
+      (detalle || []).forEach(item => {
+        const cat = item.categoria || 'Otros';
+        if (!bc[cat]) bc[cat] = { total: 0, bySubcategory: {}, items: [] };
+        bc[cat].total += item.monto || 0;
+        bc[cat].items.push({ concepto: item.concepto, monto: item.monto || 0, es_real: !!item.es_real });
+      });
+      return bc;
+    };
+    return localWeeks.map(week => {
+      const localFi = week.weekStart instanceof Date
+        ? week.weekStart.toISOString().split('T')[0]
+        : String(week.weekStart).slice(0, 10);
+      const bw = byDate[localFi];
+      if (!bw) return week;
+      const ingBC = buildByCategory(bw.ingresos_detalle);
+      const egrBC = buildByCategory(bw.egresos_detalle);
+      return {
+        ...week,
+        backend_saldo_inicial:       bw.saldo_inicial   ?? 0,
+        backend_flujo_neto:          bw.flujo_neto       ?? 0,
+        backend_ingresos_detalle:    bw.ingresos_detalle || [],
+        backend_egresos_detalle:     bw.egresos_detalle  || [],
+        ingresos: {
+          total:      bw.total_ingresos ?? week.ingresos.total,
+          byCategory: Object.keys(ingBC).length > 0 ? ingBC : week.ingresos.byCategory,
+        },
+        egresos: {
+          total:      bw.total_egresos ?? week.egresos.total,
+          byCategory: Object.keys(egrBC).length > 0 ? egrBC : week.egresos.byCategory,
+        },
+        hasRealData: (bw.total_ingresos > 0 || bw.total_egresos > 0) || week.hasRealData,
+      };
+    });
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes, fxRes, paymentsRes, bankTxnsRes, reconRes, bankAccountsRes] = await Promise.all([
+      const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes, fxRes, paymentsRes, bankTxnsRes, reconRes, bankAccountsRes, backendWeeksRes] = await Promise.all([
         api.get('/cfdi?limit=500'),
         api.get('/cashflow-sync/categories'),
         api.get('/customers'),
@@ -162,7 +209,8 @@ const CashflowProjections = () => {
         api.get('/payments?limit=1000'),
         api.get('/bank-transactions?limit=500'),
         api.get('/reconciliations'),
-        api.get('/bank-accounts')
+        api.get('/bank-accounts'),
+        api.get('/cashflow/weeks?num_weeks=52').catch(() => ({ data: [] }))
       ]);
       
       setCfdis(cfdiRes.data);
@@ -236,6 +284,7 @@ const CashflowProjections = () => {
         return null;
       };
       
+      const backendWeeks = backendWeeksRes.data || [];
       const companyId = getActiveCompanyId();
       if (companyId) {
         try {
@@ -243,14 +292,14 @@ const CashflowProjections = () => {
           const weekStart = compRes.data?.inicio_semana ?? 1;
           setCompanyConfig({ ...compRes.data, inicio_semana: weekStart });
           const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, allPayments, customStartDate);
-          setWeeklyData(weeks);
+          setWeeklyData(applyBackendData(weeks, backendWeeks));
         } catch {
           const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, allPayments, customStartDate);
-          setWeeklyData(weeks);
+          setWeeklyData(applyBackendData(weeks, backendWeeks));
         }
       } else {
         const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, allPayments, customStartDate);
-        setWeeklyData(weeks);
+        setWeeklyData(applyBackendData(weeks, backendWeeks));
       }
 
       // Vista mensual se deriva de weeklyTotals en render — no requiere llamada separada
