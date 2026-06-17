@@ -38,6 +38,95 @@ async def get_cashflow_weeks(
     company_id = await get_active_company_id(request, current_user)
     return await get_semanas_data(company_id, num_weeks)
 
+@router.get("/cashflow/fix-weeks-data")
+async def fix_weeks_data(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    fix: bool = Query(False, description="Si true, zerifica total_ingresos/egresos/flujo_neto en DB"),
+):
+    """Diagnóstico y limpieza de datos fantasma en cashflow_weeks."""
+    company_id = await get_active_company_id(request, current_user)
+
+    weeks_raw = await db.cashflow_weeks.find(
+        {'company_id': company_id}, {'_id': 0}
+    ).sort('numero_semana', 1).to_list(200)
+
+    semanas = []
+    for w in weeks_raw:
+        num = w.get('numero_semana', 0)
+        fi  = str(w.get('fecha_inicio', ''))[:10]
+        ff  = str(w.get('fecha_fin', ''))[:10]
+
+        cfdi_count = 0
+        if fi and ff:
+            cfdi_count = await db.cfdis.count_documents({
+                'company_id': company_id,
+                'source': 'alegra',
+                'fecha_emision': {'$gte': fi, '$lte': ff},
+            })
+
+        semanas.append({
+            'numero_semana': num,
+            'label': w.get('label') or f'S{num}',
+            'fecha_inicio': fi,
+            'fecha_fin': ff,
+            'saldo_inicial': float(w.get('saldo_inicial', 0) or 0),
+            'total_ingresos_guardados': float(w.get('total_ingresos', 0) or 0),
+            'total_egresos_guardados': float(w.get('total_egresos', 0) or 0),
+            'cfdis_reales_en_rango': cfdi_count,
+        })
+
+    # CFDIs Alegra agrupados por mes
+    pipeline_cfdis = [
+        {'$match': {'company_id': company_id, 'source': 'alegra'}},
+        {'$group': {
+            '_id': {'$substr': ['$fecha_emision', 0, 7]},
+            'count': {'$sum': 1},
+        }},
+        {'$sort': {'_id': 1}},
+    ]
+    cfdis_por_mes = {
+        row['_id']: row['count']
+        for row in await db.cfdis.aggregate(pipeline_cfdis).to_list(100)
+        if row.get('_id')
+    }
+    total_cfdis = await db.cfdis.count_documents({'company_id': company_id, 'source': 'alegra'})
+
+    # Payments Alegra agrupados por mes
+    pipeline_pays = [
+        {'$match': {'company_id': company_id, 'source': 'alegra'}},
+        {'$group': {
+            '_id': {'$substr': [{'$ifNull': ['$fecha_pago', '$fecha_vencimiento']}, 0, 7]},
+            'count': {'$sum': 1},
+        }},
+        {'$sort': {'_id': 1}},
+    ]
+    payments_por_mes = {
+        row['_id']: row['count']
+        for row in await db.payments.aggregate(pipeline_pays).to_list(100)
+        if row.get('_id')
+    }
+    total_payments = await db.payments.count_documents({'company_id': company_id, 'source': 'alegra'})
+
+    response = {
+        'semanas': semanas,
+        'total_cfdis_alegra': total_cfdis,
+        'cfdis_por_mes': cfdis_por_mes,
+        'total_payments_alegra': total_payments,
+        'payments_por_mes': payments_por_mes,
+    }
+
+    if fix:
+        res = await db.cashflow_weeks.update_many(
+            {'company_id': company_id},
+            {'$set': {'total_ingresos': 0, 'total_egresos': 0, 'flujo_neto': 0}}
+        )
+        response['cleaned'] = True
+        response['weeks_updated'] = res.modified_count
+
+    return response
+
+
 @router.post("/transactions", response_model=Transaction)
 async def create_transaction(transaction_data: TransactionCreate, request: Request, current_user: Dict = Depends(get_current_user)):
     company_id = await get_active_company_id(request, current_user)
