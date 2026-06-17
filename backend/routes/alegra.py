@@ -2927,8 +2927,12 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
             await asyncio.sleep(0.5)
 
             if not detail or not isinstance(detail, dict):
-                logger.info(f"[Alegra conciliations] conc {conc_id}: respuesta inválida, saltando")
+                logger.info(f"[Alegra conciliations] conc {conc_id}: respuesta inválida tipo={type(detail)}, saltando")
                 continue
+
+            # Log keys reales de la respuesta para diagnosticar qué campo contiene los movimientos
+            detail_keys = list(detail.keys())
+            logger.info(f"[Alegra conciliations] conc {conc_id} keys={detail_keys}")
 
             transactions = detail.get('transactions') or []
             if not isinstance(transactions, list):
