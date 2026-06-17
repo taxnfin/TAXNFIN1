@@ -862,367 +862,382 @@ async def sync_alegra_bills(
     }
 
 
+async def _run_payments_sync(company_id: str, email: str, token: str, date_from: str = None, date_to: str = None):
+    """Background task: sync completo de payments Alegra (API + CFDIs + retiros)."""
+    stats = {'desde_api': 0, 'desde_cfdis': 0, 'retiros_creados': 0, 'total': 0,
+             'api_created': 0, 'api_updated': 0, 'api_skipped': 0, 'api_errors': 0,
+             'cfdi_created': 0, 'cfdi_updated': 0, 'cfdi_errors': 0, 'retiros_errors': 0}
+
+    await db.sync_status.update_one(
+        {'company_id': company_id, 'type': 'alegra_payments'},
+        {'$set': {'status': 'running', 'stats': stats,
+                  'updated_at': datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+
+    try:
+        # ── Fuente 1: GET /payments ───────────────────────────────────────────
+        all_payments = []
+        start = 0
+        limit = 30
+        MAX_PAGES = 50
+        page_count = 0
+
+        while page_count < MAX_PAGES:
+            page_count += 1
+            params = {
+                "start":  start,
+                "limit":  limit,
+                "order":  "date",
+                "fields": "id,date,amount,type,status,bankAccount,client,observations,anotation,categories,invoices",
+            }
+            if date_from:
+                params["date-start"] = date_from
+            if date_to:
+                params["date-end"] = date_to
+
+            batch = await alegra_request("GET", "payments", email, token, params=params)
+            await asyncio.sleep(0.3)
+            if not batch or not isinstance(batch, list):
+                break
+
+            filtered = []
+            stop = False
+            for pay in batch:
+                pay_date = (pay.get('date') or '')[:10]
+                if date_from and pay_date < date_from:
+                    continue
+                if date_to and pay_date > date_to:
+                    stop = True
+                    break
+                filtered.append(pay)
+            all_payments.extend(filtered)
+
+            if stop or len(batch) < limit:
+                break
+            start += limit
+
+        logger.info(f"[Alegra payments] fetched {len(all_payments)} records for {company_id}")
+
+        created = 0
+        updated = 0
+        skipped = 0
+        errors  = 0
+
+        for payment in all_payments:
+            try:
+                alegra_id   = str(payment.get('id'))
+                pago_type   = (payment.get('type') or '').lower()
+                pago_status = (payment.get('status') or '').lower()
+
+                if pago_status == 'void':
+                    skipped += 1
+                    continue
+
+                tipo      = 'cobro' if pago_type == 'in' else 'pago'
+                amount    = float(payment.get('amount', 0) or 0)
+                fecha_mov = payment.get('date') or datetime.now(timezone.utc).strftime('%Y-%m-%d')
+
+                client_obj  = payment.get('client') or {}
+                client_name = (client_obj.get('name') or '') if isinstance(client_obj, dict) else ''
+                categories  = payment.get('categories') or []
+                cat_name    = (categories[0].get('name', '') if categories and isinstance(categories[0], dict) else '')
+                concepto    = (client_name or cat_name or
+                               payment.get('observations') or payment.get('anotation') or
+                               f"Pago Alegra {alegra_id}")
+
+                bank_obj  = payment.get('bankAccount') or {}
+                bank_name = (bank_obj.get('name') or '') if isinstance(bank_obj, dict) else ''
+
+                payment_doc = {
+                    'alegra_id':           alegra_id,
+                    'alegra_type':         'payment',
+                    'company_id':          company_id,
+                    'tipo':                tipo,
+                    'concepto':            concepto,
+                    'monto':               abs(amount),
+                    'moneda':              'MXN',
+                    'metodo_pago':         'transferencia',
+                    'fecha_vencimiento':   fecha_mov,
+                    'fecha_pago':          fecha_mov,
+                    'estatus':             'completado',
+                    'referencia':          str(alegra_id),
+                    'beneficiario':        client_name,
+                    'es_real':             True,
+                    'source':              'alegra',
+                    'alegra_bank_account': bank_name,
+                    'updated_at':          datetime.now(timezone.utc).isoformat(),
+                }
+
+                facturas_aplicadas = []
+                invoices_list = payment.get('invoices') or []
+                if isinstance(invoices_list, list):
+                    for inv_ref in invoices_list:
+                        if not isinstance(inv_ref, dict):
+                            continue
+                        inv_alegra_id  = str(inv_ref.get('id', ''))
+                        monto_aplicado = float(inv_ref.get('amount', 0) or 0)
+                        if not inv_alegra_id:
+                            continue
+                        cfdi_doc = await db.cfdis.find_one(
+                            {'company_id': company_id, 'source': 'alegra', 'alegra_id': inv_alegra_id},
+                            {'_id': 0, 'id': 1, 'folio_alegra': 1, 'total': 1,
+                             'monto_cobrado': 1, 'monto_pagado': 1, 'tipo_cfdi': 1}
+                        )
+                        if not cfdi_doc:
+                            continue
+                        facturas_aplicadas.append({
+                            'cfdi_id': cfdi_doc['id'],
+                            'alegra_id': inv_alegra_id,
+                            'monto_aplicado': monto_aplicado,
+                            'folio': cfdi_doc.get('folio_alegra', ''),
+                        })
+                        cfdi_total   = float(cfdi_doc.get('total', 0) or 0)
+                        cfdi_tipo    = str(cfdi_doc.get('tipo_cfdi', '') or '').lower()
+                        campo_monto  = 'monto_cobrado' if cfdi_tipo in ('ingreso', 'i', 'income') else 'monto_pagado'
+                        monto_previo = float(cfdi_doc.get(campo_monto, 0) or 0)
+                        nuevo_monto  = monto_previo + monto_aplicado
+                        if cfdi_total > 0 and nuevo_monto >= cfdi_total - 0.01:
+                            nuevo_estado = 'conciliado'
+                        elif nuevo_monto > 0:
+                            nuevo_estado = 'parcial'
+                        else:
+                            nuevo_estado = 'pendiente'
+                        await db.cfdis.update_one(
+                            {'company_id': company_id, 'id': cfdi_doc['id']},
+                            {'$set': {campo_monto: nuevo_monto, 'estado_conciliacion': nuevo_estado}}
+                        )
+
+                payment_doc['facturas_aplicadas']   = facturas_aplicadas
+                payment_doc['estado_conciliacion'] = 'conciliado' if facturas_aplicadas else 'sin_factura'
+
+                res = await db.payments.update_one(
+                    {'company_id': company_id, 'alegra_id': alegra_id, 'alegra_type': 'payment'},
+                    {'$set': payment_doc,
+                     '$setOnInsert': {'id': str(uuid.uuid4()),
+                                      'created_at': datetime.now(timezone.utc).isoformat()}},
+                    upsert=True
+                )
+                if res.upserted_id:
+                    created += 1
+                else:
+                    updated += 1
+
+            except Exception as e:
+                logger.error(f"[Alegra payments] Error payment {payment.get('id')}: {e}")
+                errors += 1
+
+        desde_api = created + updated
+        stats.update({'desde_api': desde_api, 'api_created': created, 'api_updated': updated,
+                      'api_skipped': skipped, 'api_errors': errors})
+
+        # ── Fuente 2: payments implícitos en CFDIs ya conciliados ────────────
+        created2 = 0
+        updated2 = 0
+        errors2  = 0
+
+        cfdis_conciliados = await db.cfdis.find({
+            'company_id': company_id,
+            'source': 'alegra',
+            'estado_conciliacion': {'$in': ['conciliado', 'parcial']},
+            'estatus': {'$ne': 'cancelado'},
+        }, {'_id': 0, 'id': 1, 'alegra_id': 1, 'tipo_cfdi': 1,
+            'monto_cobrado': 1, 'monto_pagado': 1,
+            'total': 1, 'saldo_pendiente': 1,
+            'fecha_vencimiento': 1, 'fecha_emision': 1,
+            'receptor_nombre': 1, 'emisor_nombre': 1,
+            'estado_conciliacion': 1}).to_list(10000)
+
+        for cfdi in cfdis_conciliados:
+            if str(cfdi.get('fecha_emision', '') or '')[:10] < '2025-12-01':
+                continue
+            try:
+                tipo_c  = str(cfdi.get('tipo_cfdi', '') or '').lower()
+                total_c = float(cfdi.get('total', 0) or 0)
+                saldo_p = cfdi.get('saldo_pendiente')
+                estado  = cfdi.get('estado_conciliacion', 'conciliado')
+
+                if tipo_c in ('ingreso', 'i', 'income'):
+                    tipo_pay = 'cobro'
+                    nombre   = cfdi.get('receptor_nombre', '') or ''
+                    monto_pag = total_c - float(saldo_p or 0) if saldo_p is not None else total_c
+                    if monto_pag <= 0 and estado == 'parcial':
+                        monto_pag = round(total_c * 0.5, 2)
+                else:
+                    tipo_pay = 'pago'
+                    nombre   = cfdi.get('emisor_nombre', '') or ''
+                    monto_pag = total_c - float(saldo_p or 0) if saldo_p is not None else total_c
+                    if monto_pag <= 0 and estado == 'parcial':
+                        monto_pag = round(total_c * 0.5, 2)
+
+                if monto_pag <= 0.01:
+                    continue
+
+                fecha_pay     = (cfdi.get('fecha_vencimiento') or cfdi.get('fecha_emision') or
+                                 datetime.now(timezone.utc).strftime('%Y-%m-%d'))[:10]
+                pay_alegra_id = f"cfdi-{cfdi.get('alegra_id', cfdi.get('id', ''))}"
+
+                pay_doc = {
+                    'alegra_id':           pay_alegra_id,
+                    'alegra_type':         'cfdi_payment',
+                    'company_id':          company_id,
+                    'tipo':                tipo_pay,
+                    'concepto':            nombre or f'Pago CFDI {pay_alegra_id}',
+                    'monto':               monto_pag,
+                    'moneda':              'MXN',
+                    'metodo_pago':         'transferencia',
+                    'fecha_vencimiento':   fecha_pay,
+                    'fecha_pago':          fecha_pay,
+                    'estatus':             'completado',
+                    'referencia':          pay_alegra_id,
+                    'beneficiario':        nombre,
+                    'es_real':             True,
+                    'source':              'alegra',
+                    'cfdi_id':             cfdi.get('id', ''),
+                    'estado_conciliacion': cfdi.get('estado_conciliacion', 'conciliado'),
+                    'updated_at':          datetime.now(timezone.utc).isoformat(),
+                }
+                res2 = await db.payments.update_one(
+                    {'company_id': company_id, 'alegra_id': pay_alegra_id},
+                    {'$set': pay_doc,
+                     '$setOnInsert': {'id': str(uuid.uuid4()),
+                                      'created_at': datetime.now(timezone.utc).isoformat()}},
+                    upsert=True
+                )
+                if res2.upserted_id:
+                    created2 += 1
+                else:
+                    updated2 += 1
+            except Exception as e:
+                logger.error(f"[Alegra payments] Error cfdi payment {cfdi.get('id')}: {e}")
+                errors2 += 1
+
+        stats.update({'desde_cfdis': created2 + updated2, 'cfdi_created': created2,
+                      'cfdi_updated': updated2, 'cfdi_errors': errors2})
+
+        # ── Fuente 3: Retiros de bank_transactions → payments tipo 'pago' ────
+        retiros_creados = 0
+        retiros_errors  = 0
+
+        retiros = await db.bank_transactions.find({
+            'company_id': company_id,
+            'source': 'alegra',
+            'tipo': 'retiro',
+            'es_real': True,
+        }, {'_id': 0, 'alegra_id': 1, 'fecha': 1, 'monto': 1,
+            'descripcion': 1, 'contacto': 1, 'cuenta_bancaria': 1}).to_list(5000)
+
+        for retiro in retiros:
+            try:
+                ret_id = retiro.get('alegra_id', '')
+                if not ret_id:
+                    continue
+                fecha_ret = (retiro.get('fecha') or '')[:10]
+                if not fecha_ret:
+                    continue
+                if date_from and fecha_ret < date_from:
+                    continue
+                if date_to and fecha_ret > date_to:
+                    continue
+                monto_ret = float(retiro.get('monto', 0) or 0)
+                if monto_ret <= 0:
+                    continue
+                concepto_ret  = retiro.get('descripcion') or retiro.get('contacto') or f'Retiro Alegra {ret_id}'
+                pay_alegra_id = f'retiro-{ret_id}'
+                ret_doc = {
+                    'alegra_id':           pay_alegra_id,
+                    'alegra_type':         'bank_retiro',
+                    'company_id':          company_id,
+                    'tipo':                'pago',
+                    'concepto':            concepto_ret,
+                    'monto':               monto_ret,
+                    'moneda':              'MXN',
+                    'metodo_pago':         'transferencia',
+                    'fecha_vencimiento':   fecha_ret,
+                    'fecha_pago':          fecha_ret,
+                    'estatus':             'completado',
+                    'referencia':          ret_id,
+                    'beneficiario':        retiro.get('contacto', ''),
+                    'es_real':             True,
+                    'source':              'alegra',
+                    'alegra_bank_account': retiro.get('cuenta_bancaria', ''),
+                    'updated_at':          datetime.now(timezone.utc).isoformat(),
+                }
+                res_ret = await db.payments.update_one(
+                    {'company_id': company_id, 'alegra_id': pay_alegra_id},
+                    {'$set': ret_doc,
+                     '$setOnInsert': {'id': str(uuid.uuid4()),
+                                      'created_at': datetime.now(timezone.utc).isoformat()}},
+                    upsert=True
+                )
+                if res_ret.upserted_id:
+                    retiros_creados += 1
+            except Exception as e:
+                logger.error(f"[Alegra payments] Error retiro {retiro.get('alegra_id')}: {e}")
+                retiros_errors += 1
+
+        stats.update({'retiros_creados': retiros_creados, 'retiros_errors': retiros_errors,
+                      'total': desde_api + created2 + updated2 + retiros_creados})
+
+        final_status = 'completed'
+        logger.info(f"[Alegra payments] sync completado para {company_id}: {stats}")
+
+    except Exception as e:
+        final_status = 'error'
+        stats['error_message'] = str(e)
+        logger.error(f"[Alegra payments] sync FALLIDO para {company_id}: {e}")
+
+    await db.sync_status.update_one(
+        {'company_id': company_id, 'type': 'alegra_payments'},
+        {'$set': {'status': final_status, 'stats': stats,
+                  'updated_at': datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+
+
 @router.post("/sync/payments")
 async def sync_alegra_payments(
     request: Request,
+    background_tasks: BackgroundTasks,
     current_user: Dict = Depends(get_current_user),
     date_from: str = Query(None, description="Date from (YYYY-MM-DD)"),
     date_to: str = Query(None, description="Date to (YYYY-MM-DD)")
 ):
-    """
-    Sync payments from Alegra using GET /payments endpoint.
-    Each record has type ('in'=cobro, 'out'=pago), amount, date, bankAccount, client.
-    """
+    """Lanza sync de payments Alegra en background. Retorna inmediatamente."""
     company_id = await get_active_company_id(request, current_user)
     company = await db.companies.find_one({'id': company_id}, {'_id': 0})
 
-    if not company.get('alegra_connected'):
+    if not company or not company.get('alegra_connected'):
         raise HTTPException(status_code=400, detail="Alegra no está conectado")
 
-    # Mutual exclusion: companies with active Contalink must not sync Alegra payments
     contalink_active = await db.integrations.find_one({
-        'company_id': company_id,
-        'type': 'contalink',
-        'active': True,
+        'company_id': company_id, 'type': 'contalink', 'active': True,
     }, {'_id': 1})
     if contalink_active:
-        raise HTTPException(
-            status_code=400,
-            detail="Esta empresa usa Contalink. Alegra sync no aplica."
-        )
+        raise HTTPException(status_code=400, detail="Esta empresa usa Contalink. Alegra sync no aplica.")
 
     email = company.get('alegra_email')
     token = company.get('alegra_token')
+    background_tasks.add_task(_run_payments_sync, company_id, email, token, date_from, date_to)
+    return {'status': 'started', 'message': 'Sync de payments iniciado en background. Consulta /alegra/sync/payments/status para ver el progreso.'}
 
-    # Paginate through GET /payments
-    all_payments = []
-    start = 0
-    limit = 30
-    MAX_PAGES = 50
-    page_count = 0
 
-    while page_count < MAX_PAGES:
-        page_count += 1
-        params = {
-            "start":  start,
-            "limit":  limit,
-            "order":  "date",
-            "fields": "id,date,amount,type,status,bankAccount,client,observations,anotation,categories,invoices",
-        }
-        if date_from:
-            params["date-start"] = date_from
-        if date_to:
-            params["date-end"] = date_to
-
-        batch = await alegra_request("GET", "payments", email, token, params=params)
-        await asyncio.sleep(0.3)
-        if not batch or not isinstance(batch, list):
-            break
-
-        # Python-side date filter (Alegra may ignore date params on /payments)
-        filtered = []
-        stop = False
-        for pay in batch:
-            pay_date = (pay.get('date') or '')[:10]
-            if date_from and pay_date < date_from:
-                continue
-            if date_to and pay_date > date_to:
-                stop = True
-                break
-            filtered.append(pay)
-        all_payments.extend(filtered)
-
-        if stop or len(batch) < limit:
-            break
-        start += limit
-
-    logger.info(f"Alegra /payments fetched {len(all_payments)} records for company {company_id}")
-
-    created = 0
-    updated = 0
-    skipped = 0
-    errors  = 0
-
-    for payment in all_payments:
-        try:
-            alegra_id  = str(payment.get('id'))
-            pago_type  = (payment.get('type') or '').lower()
-            pago_status = (payment.get('status') or '').lower()
-
-            # Excluir pagos anulados
-            if pago_status == 'void':
-                skipped += 1
-                continue
-
-            # Mapear type: "in" → cobro, "out" → pago
-            tipo = 'cobro' if pago_type == 'in' else 'pago'
-
-            amount   = float(payment.get('amount', 0) or 0)
-            fecha_mov = payment.get('date') or datetime.now(timezone.utc).strftime('%Y-%m-%d')
-
-            # Concepto: nombre del cliente o primera categoría
-            client_obj = payment.get('client') or {}
-            client_name = (client_obj.get('name') or '') if isinstance(client_obj, dict) else ''
-            categories  = payment.get('categories') or []
-            cat_name    = (categories[0].get('name', '') if categories and isinstance(categories[0], dict) else '')
-            concepto    = (client_name or cat_name or
-                           payment.get('observations') or payment.get('anotation') or
-                           f"Pago Alegra {alegra_id}")
-
-            # Cuenta bancaria
-            bank_obj  = payment.get('bankAccount') or {}
-            bank_name = (bank_obj.get('name') or '') if isinstance(bank_obj, dict) else ''
-
-            payment_doc = {
-                'alegra_id':          alegra_id,
-                'alegra_type':        'payment',
-                'company_id':         company_id,
-                'tipo':               tipo,
-                'concepto':           concepto,
-                'monto':              abs(amount),
-                'moneda':             'MXN',
-                'metodo_pago':        'transferencia',
-                'fecha_vencimiento':  fecha_mov,
-                'fecha_pago':         fecha_mov,
-                'estatus':            'completado',
-                'referencia':         str(alegra_id),
-                'beneficiario':       client_name,
-                'es_real':            True,
-                'source':             'alegra',
-                'alegra_bank_account': bank_name,
-                'updated_at':         datetime.now(timezone.utc).isoformat(),
-            }
-
-            # Vincular pago con facturas Alegra → CFDIs en db.cfdis
-            facturas_aplicadas = []
-            invoices_list = payment.get('invoices') or []
-            if isinstance(invoices_list, list):
-                for inv_ref in invoices_list:
-                    if not isinstance(inv_ref, dict):
-                        continue
-                    inv_alegra_id = str(inv_ref.get('id', ''))
-                    monto_aplicado = float(inv_ref.get('amount', 0) or 0)
-                    if not inv_alegra_id:
-                        continue
-                    cfdi_doc = await db.cfdis.find_one(
-                        {'company_id': company_id, 'source': 'alegra', 'alegra_id': inv_alegra_id},
-                        {'_id': 0, 'id': 1, 'folio_alegra': 1, 'total': 1,
-                         'monto_cobrado': 1, 'monto_pagado': 1, 'tipo_cfdi': 1}
-                    )
-                    if not cfdi_doc:
-                        continue
-                    facturas_aplicadas.append({
-                        'cfdi_id': cfdi_doc['id'],
-                        'alegra_id': inv_alegra_id,
-                        'monto_aplicado': monto_aplicado,
-                        'folio': cfdi_doc.get('folio_alegra', ''),
-                    })
-
-                    # Actualizar CFDI con monto cobrado/pagado acumulado
-                    cfdi_total = float(cfdi_doc.get('total', 0) or 0)
-                    cfdi_tipo = str(cfdi_doc.get('tipo_cfdi', '') or '').lower()
-                    campo_monto = 'monto_cobrado' if cfdi_tipo in ('ingreso', 'i', 'income') else 'monto_pagado'
-                    monto_previo = float(cfdi_doc.get(campo_monto, 0) or 0)
-                    nuevo_monto = monto_previo + monto_aplicado
-                    if cfdi_total > 0 and nuevo_monto >= cfdi_total - 0.01:
-                        nuevo_estado = 'conciliado'
-                    elif nuevo_monto > 0:
-                        nuevo_estado = 'parcial'
-                    else:
-                        nuevo_estado = 'pendiente'
-                    await db.cfdis.update_one(
-                        {'company_id': company_id, 'id': cfdi_doc['id']},
-                        {'$set': {campo_monto: nuevo_monto,
-                                  'estado_conciliacion': nuevo_estado}}
-                    )
-
-            payment_doc['facturas_aplicadas'] = facturas_aplicadas
-            payment_doc['estado_conciliacion'] = (
-                'conciliado' if facturas_aplicadas else 'sin_factura'
-            )
-
-            res = await db.payments.update_one(
-                {'company_id': company_id, 'alegra_id': alegra_id, 'alegra_type': 'payment'},
-                {'$set': payment_doc,
-                 '$setOnInsert': {'id': str(uuid.uuid4()),
-                                  'created_at': datetime.now(timezone.utc).isoformat()}},
-                upsert=True
-            )
-            if res.upserted_id: created += 1
-            else: updated += 1
-
-        except Exception as e:
-            logger.error(f"Error syncing Alegra payment {payment.get('id')}: {e}")
-            errors += 1
-
-    desde_api = created + updated
-
-    # ── Fuente 2: payments implícitos en CFDIs ya conciliados ────────────
-    created2 = 0
-    updated2 = 0
-    errors2  = 0
-
-    cfdis_conciliados = await db.cfdis.find({
-        'company_id': company_id,
-        'source': 'alegra',
-        'estado_conciliacion': {'$in': ['conciliado', 'parcial']},
-        'estatus': {'$ne': 'cancelado'},
-    }, {'_id': 0, 'id': 1, 'alegra_id': 1, 'tipo_cfdi': 1,
-        'monto_cobrado': 1, 'monto_pagado': 1,
-        'total': 1, 'saldo_pendiente': 1,
-        'fecha_vencimiento': 1, 'fecha_emision': 1,
-        'receptor_nombre': 1, 'emisor_nombre': 1,
-        'estado_conciliacion': 1}).to_list(10000)
-
-    for cfdi in cfdis_conciliados:
-        # Solo procesar CFDIs desde diciembre 2025 en adelante
-        if str(cfdi.get('fecha_emision', '') or '')[:10] < '2025-12-01':
-            continue
-        try:
-            tipo_c  = str(cfdi.get('tipo_cfdi', '') or '').lower()
-            total_c = float(cfdi.get('total', 0) or 0)
-            saldo_p = cfdi.get('saldo_pendiente')
-            estado  = cfdi.get('estado_conciliacion', 'conciliado')
-
-            if tipo_c in ('ingreso', 'i', 'income'):
-                tipo_pay = 'cobro'
-                nombre   = cfdi.get('receptor_nombre', '') or ''
-                if saldo_p is not None:
-                    monto_pag = total_c - float(saldo_p or 0)
-                else:
-                    monto_pag = total_c  # conciliado sin saldo_pendiente → cobro total
-                if monto_pag <= 0 and estado == 'parcial':
-                    monto_pag = round(total_c * 0.5, 2)
-            else:
-                tipo_pay = 'pago'
-                nombre   = cfdi.get('emisor_nombre', '') or ''
-                if saldo_p is not None:
-                    monto_pag = total_c - float(saldo_p or 0)
-                else:
-                    monto_pag = total_c
-                if monto_pag <= 0 and estado == 'parcial':
-                    monto_pag = round(total_c * 0.5, 2)
-
-            if monto_pag <= 0.01:
-                continue
-
-            fecha_pay = (cfdi.get('fecha_vencimiento') or cfdi.get('fecha_emision') or
-                         datetime.now(timezone.utc).strftime('%Y-%m-%d'))[:10]
-            pay_alegra_id = f"cfdi-{cfdi.get('alegra_id', cfdi.get('id', ''))}"
-
-            pay_doc = {
-                'alegra_id':          pay_alegra_id,
-                'alegra_type':        'cfdi_payment',
-                'company_id':         company_id,
-                'tipo':               tipo_pay,
-                'concepto':           nombre or f'Pago CFDI {pay_alegra_id}',
-                'monto':              monto_pag,
-                'moneda':             'MXN',
-                'metodo_pago':        'transferencia',
-                'fecha_vencimiento':  fecha_pay,
-                'fecha_pago':         fecha_pay,
-                'estatus':            'completado',
-                'referencia':         pay_alegra_id,
-                'beneficiario':       nombre,
-                'es_real':            True,
-                'source':             'alegra',
-                'cfdi_id':            cfdi.get('id', ''),
-                'estado_conciliacion': cfdi.get('estado_conciliacion', 'conciliado'),
-                'updated_at':         datetime.now(timezone.utc).isoformat(),
-            }
-            res2 = await db.payments.update_one(
-                {'company_id': company_id, 'alegra_id': pay_alegra_id},
-                {'$set': pay_doc,
-                 '$setOnInsert': {'id': str(uuid.uuid4()),
-                                  'created_at': datetime.now(timezone.utc).isoformat()}},
-                upsert=True
-            )
-            if res2.upserted_id:
-                created2 += 1
-            else:
-                updated2 += 1
-        except Exception as e:
-            logger.error(f"Error syncing cfdi payment {cfdi.get('id')}: {e}")
-            errors2 += 1
-
-    # ── Fuente 3: Retiros de bank_transactions → payments tipo 'pago' ────────
-    retiros_creados = 0
-    retiros_errors  = 0
-
-    retiros = await db.bank_transactions.find({
-        'company_id': company_id,
-        'source': 'alegra',
-        'tipo': 'retiro',
-        'es_real': True,
-    }, {'_id': 0, 'alegra_id': 1, 'fecha': 1, 'monto': 1,
-        'descripcion': 1, 'contacto': 1, 'cuenta_bancaria': 1}).to_list(5000)
-
-    for retiro in retiros:
-        try:
-            ret_id = retiro.get('alegra_id', '')
-            if not ret_id:
-                continue
-            fecha_ret = (retiro.get('fecha') or '')[:10]
-            if not fecha_ret:
-                continue
-            if date_from and fecha_ret < date_from:
-                continue
-            if date_to and fecha_ret > date_to:
-                continue
-            monto_ret = float(retiro.get('monto', 0) or 0)
-            if monto_ret <= 0:
-                continue
-            concepto_ret = retiro.get('descripcion') or retiro.get('contacto') or f'Retiro Alegra {ret_id}'
-            pay_alegra_id = f'retiro-{ret_id}'
-            ret_doc = {
-                'alegra_id':           pay_alegra_id,
-                'alegra_type':         'bank_retiro',
-                'company_id':          company_id,
-                'tipo':                'pago',
-                'concepto':            concepto_ret,
-                'monto':               monto_ret,
-                'moneda':              'MXN',
-                'metodo_pago':         'transferencia',
-                'fecha_vencimiento':   fecha_ret,
-                'fecha_pago':          fecha_ret,
-                'estatus':             'completado',
-                'referencia':          ret_id,
-                'beneficiario':        retiro.get('contacto', ''),
-                'es_real':             True,
-                'source':              'alegra',
-                'alegra_bank_account': retiro.get('cuenta_bancaria', ''),
-                'updated_at':          datetime.now(timezone.utc).isoformat(),
-            }
-            res_ret = await db.payments.update_one(
-                {'company_id': company_id, 'alegra_id': pay_alegra_id},
-                {'$set': ret_doc,
-                 '$setOnInsert': {'id': str(uuid.uuid4()),
-                                  'created_at': datetime.now(timezone.utc).isoformat()}},
-                upsert=True
-            )
-            if res_ret.upserted_id:
-                retiros_creados += 1
-        except Exception as e:
-            logger.error(f"Error syncing retiro bank_transaction {retiro.get('alegra_id')}: {e}")
-            retiros_errors += 1
-
+@router.get("/sync/payments/status")
+async def get_payments_sync_status(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Devuelve el estado del último sync de payments desde db.sync_status."""
+    company_id = await get_active_company_id(request, current_user)
+    record = await db.sync_status.find_one(
+        {'company_id': company_id, 'type': 'alegra_payments'}, {'_id': 0}
+    )
+    if not record:
+        return {'status': 'never_run', 'stats': {}, 'updated_at': None}
     return {
-        "success": True,
-        "message": "Pagos sincronizados desde Alegra (/payments), CFDIs conciliados y retiros bancarios",
-        "stats": {
-            "desde_api":       desde_api,
-            "desde_cfdis":     created2 + updated2,
-            "retiros_creados": retiros_creados,
-            "total":           desde_api + created2 + updated2 + retiros_creados,
-            "api_created":     created,
-            "api_updated":     updated,
-            "api_skipped":     skipped,
-            "api_errors":      errors,
-            "cfdi_created":    created2,
-            "cfdi_updated":    updated2,
-            "cfdi_errors":     errors2,
-            "retiros_errors":  retiros_errors,
-        },
+        'status':     record.get('status', 'unknown'),
+        'stats':      record.get('stats', {}),
+        'updated_at': record.get('updated_at'),
     }
 
 
