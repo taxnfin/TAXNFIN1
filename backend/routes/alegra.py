@@ -1208,8 +1208,10 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
             ).to_list(50)
             _acct_by_name = {a['nombre']: a['id'] for a in _internal_accounts}
 
-            all_payments, start = [], 0
-            while True:
+            all_payments, start, _pay_page = [], 0, 0
+            MAX_PAY_PAGES = 30
+            while _pay_page < MAX_PAY_PAGES:
+                _pay_page += 1
                 params = {'start': start, 'limit': 30, 'order_field': 'date', 'order_direction': 'DESC'}
                 batch = await alegra_request('GET', 'payments', email, token, params=params)
                 await asyncio.sleep(0.3)
@@ -1230,7 +1232,6 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     break
                 start += 30
             created = updated = 0
-            _first_debug = {}
             for pay in all_payments:
                 alegra_id = str(pay.get('id'))
                 pay_type = pay.get('type', '')
@@ -1269,25 +1270,19 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     'bank_transaction_id': None,
                     'updated_at':         datetime.now(timezone.utc).isoformat(),
                 }
-                res = await db.payments.update_one(
+                # Explicit find+insert/update — avoids upsert silent write issues
+                existing = await db.payments.find_one(
                     {'company_id': company_id, 'alegra_payment_id': alegra_id},
-                    {'$set': payment_doc,
-                     '$setOnInsert': {'id': str(uuid.uuid4()),
-                                      'created_at': datetime.now(timezone.utc).isoformat()}},
-                    upsert=True
+                    {'_id': 1}
                 )
-                if res.upserted_id: created += 1
-                else: updated += 1
-                if not _first_debug:
-                    cnt_after = await db.payments.count_documents({'company_id': company_id})
-                    _first_debug = {
-                        'alegra_id': alegra_id,
-                        'matched': res.matched_count,
-                        'modified': res.modified_count,
-                        'upserted_id': str(res.upserted_id),
-                        'count_after': cnt_after,
-                    }
-                    logger.info(f"[Alegra] First upsert debug: {_first_debug}")
+                if existing:
+                    await db.payments.update_one({'_id': existing['_id']}, {'$set': payment_doc})
+                    updated += 1
+                else:
+                    payment_doc['id'] = str(uuid.uuid4())
+                    payment_doc['created_at'] = datetime.now(timezone.utc).isoformat()
+                    await db.payments.insert_one(payment_doc)
+                    created += 1
                 # Fix 4: también en bank_transactions para Conciliaciones
                 await db.bank_transactions.update_one(
                     {'alegra_payment_id': alegra_id, 'company_id': company_id},
@@ -1317,13 +1312,8 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     }},
                     upsert=True
                 )
-            # Verificación post-sync: cuántos quedan en db
-            in_db = await db.payments.count_documents({'company_id': company_id})
-            results['payments'] = {
-                'total': len(all_payments), 'created': created, 'updated': updated,
-                'in_db': in_db, 'first_debug': _first_debug,
-            }
-            logger.info(f"[Alegra] Payments loop: created={created} updated={updated} in_db={in_db} first={_first_debug}")
+            results['payments'] = {'total': len(all_payments), 'created': created, 'updated': updated}
+            logger.info(f"[Alegra] Payments sync: created={created} updated={updated} total={len(all_payments)}")
         except Exception as e:
             results['payments'] = {'error': str(e)}
             logger.error(f"[Alegra] Error sync payments: {e}")
