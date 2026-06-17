@@ -2807,8 +2807,8 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
         stats['conciliaciones'] = len(all_conciliations)
         logger.info(f"[Alegra conciliations] Total conciliaciones: {len(all_conciliations)}")
 
-        # 2. Para cada conciliación obtener sus movimientos y guardar en bank_transactions
-        for conc in all_conciliations:
+        # 2. Para cada conciliación: GET ?fields=transactions,movements,entries (Opción 2 confirmada)
+        for concil_idx, conc in enumerate(all_conciliations):
             conc_id = str(conc.get('id', ''))
             if not conc_id:
                 continue
@@ -2816,45 +2816,32 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
             account_obj = conc.get('account') or {}
             cuenta_bancaria = account_obj.get('name', '') if isinstance(account_obj, dict) else ''
 
-            # CORRECCIÓN 2: Primero GET conciliations/{conc_id} sin parámetros
-            transactions = []
-            detail = await alegra_request('GET', f'conciliations/{conc_id}', email, token)
-            await asyncio.sleep(0.3)
-            if detail and isinstance(detail, dict):
-                txns_raw = detail.get('transactions') or detail.get('movements') or detail.get('items') or []
-                if isinstance(txns_raw, list):
-                    transactions = txns_raw
-                logger.info(f"[Alegra conciliations] conc {conc_id}: detail keys={list(detail.keys())}, transactions={len(transactions)}")
+            detail = await alegra_request(
+                'GET', f'conciliations/{conc_id}', email, token,
+                params={'fields': 'transactions,movements,entries'}
+            )
+            await asyncio.sleep(0.5)
 
-            # Fallback: GET payments?conciliation={conc_id}
-            if not transactions:
-                logger.info(f"[Alegra conciliations] conc {conc_id}: sin transactions, fallback a /payments")
-                pay_batch = await alegra_request(
-                    'GET', 'payments', email, token,
-                    params={'conciliation': conc_id, 'limit': 100}
-                )
-                await asyncio.sleep(0.3)
-                if pay_batch and isinstance(pay_batch, list):
-                    transactions = pay_batch
-                elif pay_batch and isinstance(pay_batch, dict):
-                    transactions = pay_batch.get('data') or pay_batch.get('items') or []
-                logger.info(f"[Alegra conciliations] conc {conc_id}: fallback payments={len(transactions)}")
-
-            if not transactions:
-                logger.info(f"[Alegra conciliations] conc {conc_id}: sin movimientos, saltando")
+            if not detail or not isinstance(detail, dict):
+                logger.info(f"[Alegra conciliations] conc {conc_id}: respuesta inválida, saltando")
                 continue
 
-            for mov in transactions:
+            transactions = detail.get('transactions') or []
+            if not isinstance(transactions, list):
+                transactions = []
+            logger.info(f"[Alegra conciliations] conc {conc_id} ({concil_idx+1}/{len(all_conciliations)}): {len(transactions)} transactions")
+
+            for t in transactions:
                 try:
-                    mov_id = str(mov.get('id', ''))
+                    mov_id = str(t.get('id', ''))
                     if not mov_id:
                         continue
 
-                    monto_raw = float(mov.get('amount', 0) or 0)
-                    if monto_raw == 0:
+                    monto = abs(float(t.get('amount', 0) or 0))
+                    if monto == 0:
                         continue
 
-                    fecha_raw = (mov.get('date') or '')[:10]
+                    fecha_raw = (t.get('date') or '')[:10]
                     if not fecha_raw:
                         continue
 
@@ -2863,13 +2850,15 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
                     if date_to and fecha_raw > date_to:
                         continue
 
+                    tipo = 'deposito' if (t.get('type') or '') == 'in' else 'retiro'
+
+                    client_obj = t.get('client') or {}
+                    contacto = client_obj.get('name', '') if isinstance(client_obj, dict) else ''
+
                     descripcion = (
-                        mov.get('description') or mov.get('detail') or
-                        mov.get('reference') or f'Movimiento Alegra {mov_id}'
+                        t.get('anotation') or t.get('number') or
+                        contacto or f'Movimiento Alegra {mov_id}'
                     )
-                    contact_obj = mov.get('contact') or {}
-                    contacto = contact_obj.get('name', '') if isinstance(contact_obj, dict) else ''
-                    tipo = 'deposito' if monto_raw > 0 else 'retiro'
 
                     doc = {
                         'alegra_id':        mov_id,
@@ -2878,8 +2867,7 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
                         'fecha':            fecha_raw,
                         'fecha_movimiento': fecha_raw,
                         'descripcion':      descripcion,
-                        'monto':            abs(monto_raw),
-                        'monto_original':   monto_raw,
+                        'monto':            monto,
                         'tipo':             tipo,
                         'contacto':         contacto,
                         'cuenta_bancaria':  cuenta_bancaria,
@@ -2904,8 +2892,23 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
                         stats['updated'] += 1
 
                 except Exception as e:
-                    logger.error(f"Error saving conciliation transaction {mov.get('id')}: {e}")
+                    logger.error(f"[Alegra conciliations] Error guardando mov {t.get('id')} de conc {conc_id}: {e}")
                     stats['errors'] += 1
+
+            # Actualizar stats en DB después de cada conciliación para progreso en tiempo real
+            stats['conciliaciones'] = concil_idx + 1
+            await db.sync_status.update_one(
+                {'company_id': company_id, 'type': 'alegra_conciliations'},
+                {'$set': {
+                    'stats.conciliaciones': stats['conciliaciones'],
+                    'stats.movimientos':    stats['movimientos'],
+                    'stats.created':        stats['created'],
+                    'stats.updated':        stats['updated'],
+                    'stats.errors':         stats['errors'],
+                    'updated_at':           datetime.now(timezone.utc).isoformat(),
+                }},
+                upsert=True
+            )
 
         final_status = 'completed'
         logger.info(f"[Alegra] Conciliations sync completado para {company_id}: {stats}")
