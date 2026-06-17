@@ -139,12 +139,40 @@ async def initialize_weeks(
 
     company = await db.companies.find_one({'id': company_id}, {'_id': 0, 'cashflow_config': 1})
     cashflow_cfg = (company or {}).get('cashflow_config') or {}
-    c = company or {}
-    saldo_inicial_banco = (
-        float(cashflow_cfg.get('saldo_inicial_banco', 0) or 0)
-        or float(c.get('saldo_bancos_dashboard', 0) or 0)
-        or float(c.get('bank_summary_total_mxn', 0) or 0)
-    )
+
+    # 1. cashflow_config.saldo_inicial_banco en companies
+    saldo_inicial_banco = float(cashflow_cfg.get('saldo_inicial_banco', 0) or 0)
+    saldo_fuente = 'companies'
+
+    # 2. Sumar saldo_actual / balance / saldo de cuentas bancarias activas
+    if saldo_inicial_banco <= 0:
+        cuentas = await db.bank_accounts.find(
+            {'company_id': company_id, 'activo': {'$ne': False}},
+            {'_id': 0, 'saldo_actual': 1, 'balance': 1, 'saldo': 1}
+        ).to_list(100)
+        total_banco = 0.0
+        for cuenta in cuentas:
+            val = (float(cuenta.get('saldo_actual', 0) or 0)
+                   or float(cuenta.get('balance', 0) or 0)
+                   or float(cuenta.get('saldo', 0) or 0))
+            total_banco += val
+        if total_banco > 0:
+            saldo_inicial_banco = total_banco
+            saldo_fuente = 'bank_accounts'
+
+    # 3. db.cashflow_config separada
+    if saldo_inicial_banco <= 0:
+        cfg_doc = await db.cashflow_config.find_one(
+            {'company_id': company_id},
+            {'_id': 0, 'saldo_inicial_banco': 1}
+        )
+        if cfg_doc:
+            saldo_inicial_banco = float(cfg_doc.get('saldo_inicial_banco', 0) or 0)
+            if saldo_inicial_banco > 0:
+                saldo_fuente = 'cashflow_config'
+
+    if saldo_inicial_banco <= 0:
+        saldo_fuente = 'default_0'
 
     start_date = date(2026, 1, 5)
     created = 0
@@ -186,6 +214,7 @@ async def initialize_weeks(
         'updated':           updated,
         'semanas_generadas': 52,
         'saldo_inicial_s1':  saldo_inicial_banco,
+        'saldo_fuente':      saldo_fuente,
         'desde':             start_date.isoformat(),
         'hasta':             (start_date + timedelta(weeks=52) - timedelta(days=1)).isoformat(),
     }
