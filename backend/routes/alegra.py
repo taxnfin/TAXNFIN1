@@ -1145,20 +1145,83 @@ async def sync_alegra_payments(
             logger.error(f"Error syncing cfdi payment {cfdi.get('id')}: {e}")
             errors2 += 1
 
+    # ── Fuente 3: Retiros de bank_transactions → payments tipo 'pago' ────────
+    retiros_creados = 0
+    retiros_errors  = 0
+
+    retiros = await db.bank_transactions.find({
+        'company_id': company_id,
+        'source': 'alegra',
+        'tipo': 'retiro',
+        'es_real': True,
+    }, {'_id': 0, 'alegra_id': 1, 'fecha': 1, 'monto': 1,
+        'descripcion': 1, 'contacto': 1, 'cuenta_bancaria': 1}).to_list(5000)
+
+    for retiro in retiros:
+        try:
+            ret_id = retiro.get('alegra_id', '')
+            if not ret_id:
+                continue
+            fecha_ret = (retiro.get('fecha') or '')[:10]
+            if not fecha_ret:
+                continue
+            if date_from and fecha_ret < date_from:
+                continue
+            if date_to and fecha_ret > date_to:
+                continue
+            monto_ret = float(retiro.get('monto', 0) or 0)
+            if monto_ret <= 0:
+                continue
+            concepto_ret = retiro.get('descripcion') or retiro.get('contacto') or f'Retiro Alegra {ret_id}'
+            pay_alegra_id = f'retiro-{ret_id}'
+            ret_doc = {
+                'alegra_id':           pay_alegra_id,
+                'alegra_type':         'bank_retiro',
+                'company_id':          company_id,
+                'tipo':                'pago',
+                'concepto':            concepto_ret,
+                'monto':               monto_ret,
+                'moneda':              'MXN',
+                'metodo_pago':         'transferencia',
+                'fecha_vencimiento':   fecha_ret,
+                'fecha_pago':          fecha_ret,
+                'estatus':             'completado',
+                'referencia':          ret_id,
+                'beneficiario':        retiro.get('contacto', ''),
+                'es_real':             True,
+                'source':              'alegra',
+                'alegra_bank_account': retiro.get('cuenta_bancaria', ''),
+                'updated_at':          datetime.now(timezone.utc).isoformat(),
+            }
+            res_ret = await db.payments.update_one(
+                {'company_id': company_id, 'alegra_id': pay_alegra_id},
+                {'$set': ret_doc,
+                 '$setOnInsert': {'id': str(uuid.uuid4()),
+                                  'created_at': datetime.now(timezone.utc).isoformat()}},
+                upsert=True
+            )
+            if res_ret.upserted_id:
+                retiros_creados += 1
+        except Exception as e:
+            logger.error(f"Error syncing retiro bank_transaction {retiro.get('alegra_id')}: {e}")
+            retiros_errors += 1
+
     return {
         "success": True,
-        "message": "Pagos sincronizados desde Alegra (/payments) y CFDIs conciliados",
+        "message": "Pagos sincronizados desde Alegra (/payments), CFDIs conciliados y retiros bancarios",
         "stats": {
-            "desde_api":    desde_api,
-            "desde_cfdis":  created2 + updated2,
-            "total":        desde_api + created2 + updated2,
-            "api_created":  created,
-            "api_updated":  updated,
-            "api_skipped":  skipped,
-            "api_errors":   errors,
-            "cfdi_created": created2,
-            "cfdi_updated": updated2,
-            "cfdi_errors":  errors2,
+            "desde_api":       desde_api,
+            "desde_cfdis":     created2 + updated2,
+            "retiros_creados": retiros_creados,
+            "total":           desde_api + created2 + updated2 + retiros_creados,
+            "api_created":     created,
+            "api_updated":     updated,
+            "api_skipped":     skipped,
+            "api_errors":      errors,
+            "cfdi_created":    created2,
+            "cfdi_updated":    updated2,
+            "cfdi_errors":     errors2,
+            "retiros_errors":  retiros_errors,
         },
     }
 
