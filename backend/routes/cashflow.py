@@ -127,6 +127,65 @@ async def fix_weeks_data(
     return response
 
 
+@router.post("/cashflow/initialize-weeks")
+async def initialize_weeks(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Genera 52 semanas en db.cashflow_weeks a partir del 2026-01-05.
+    Upsert por numero_semana + company_id — seguro de ejecutar varias veces."""
+    from datetime import date
+    company_id = await get_active_company_id(request, current_user)
+
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0, 'cashflow_config': 1})
+    cashflow_cfg = (company or {}).get('cashflow_config') or {}
+    saldo_inicial_banco = float(cashflow_cfg.get('saldo_inicial_banco', 0) or 0)
+
+    start_date = date(2026, 1, 5)
+    created = 0
+    updated = 0
+
+    for i in range(52):
+        week_start = start_date + timedelta(weeks=i)
+        week_end   = week_start + timedelta(days=6)
+        num        = i + 1
+        saldo_ini  = saldo_inicial_banco if i == 0 else 0.0
+
+        doc = {
+            'company_id':     company_id,
+            'numero_semana':  num,
+            'label':          f'S{num}',
+            'fecha_inicio':   week_start.isoformat(),
+            'fecha_fin':      week_end.isoformat(),
+            'saldo_inicial':  saldo_ini,
+            'total_ingresos': 0,
+            'total_egresos':  0,
+            'flujo_neto':     0,
+            'notas':          '',
+            'updated_at':     datetime.now(timezone.utc).isoformat(),
+        }
+        res = await db.cashflow_weeks.update_one(
+            {'company_id': company_id, 'numero_semana': num},
+            {'$set': doc,
+             '$setOnInsert': {'id': str(uuid.uuid4()),
+                              'created_at': datetime.now(timezone.utc).isoformat()}},
+            upsert=True
+        )
+        if res.upserted_id:
+            created += 1
+        else:
+            updated += 1
+
+    return {
+        'created':           created,
+        'updated':           updated,
+        'semanas_generadas': 52,
+        'saldo_inicial_s1':  saldo_inicial_banco,
+        'desde':             start_date.isoformat(),
+        'hasta':             (start_date + timedelta(weeks=52) - timedelta(days=1)).isoformat(),
+    }
+
+
 @router.post("/transactions", response_model=Transaction)
 async def create_transaction(transaction_data: TransactionCreate, request: Request, current_user: Dict = Depends(get_current_user)):
     company_id = await get_active_company_id(request, current_user)

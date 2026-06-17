@@ -1049,15 +1049,91 @@ async def sync_alegra_payments(
             logger.error(f"Error syncing Alegra payment {payment.get('id')}: {e}")
             errors += 1
 
+    desde_api = created + updated
+
+    # ── Fuente 2: payments implícitos en CFDIs ya conciliados ────────────
+    created2 = 0
+    updated2 = 0
+    errors2  = 0
+
+    cfdis_conciliados = await db.cfdis.find({
+        'company_id': company_id,
+        'source': 'alegra',
+        'estado_conciliacion': {'$in': ['conciliado', 'parcial']},
+    }, {'_id': 0, 'id': 1, 'alegra_id': 1, 'tipo_cfdi': 1,
+        'monto_cobrado': 1, 'monto_pagado': 1,
+        'fecha_vencimiento': 1, 'fecha_emision': 1,
+        'receptor_nombre': 1, 'emisor_nombre': 1,
+        'estado_conciliacion': 1}).to_list(10000)
+
+    for cfdi in cfdis_conciliados:
+        try:
+            tipo_c = str(cfdi.get('tipo_cfdi', '') or '').lower()
+            if tipo_c in ('ingreso', 'i', 'income'):
+                monto_pag = float(cfdi.get('monto_cobrado', 0) or 0)
+                tipo_pay  = 'cobro'
+                nombre    = cfdi.get('receptor_nombre', '') or ''
+            else:
+                monto_pag = float(cfdi.get('monto_pagado', 0) or 0)
+                tipo_pay  = 'pago'
+                nombre    = cfdi.get('emisor_nombre', '') or ''
+
+            if monto_pag <= 0:
+                continue
+
+            fecha_pay = (cfdi.get('fecha_vencimiento') or cfdi.get('fecha_emision') or
+                         datetime.now(timezone.utc).strftime('%Y-%m-%d'))[:10]
+            pay_alegra_id = f"cfdi-{cfdi.get('alegra_id', cfdi.get('id', ''))}"
+
+            pay_doc = {
+                'alegra_id':          pay_alegra_id,
+                'alegra_type':        'cfdi_payment',
+                'company_id':         company_id,
+                'tipo':               tipo_pay,
+                'concepto':           nombre or f'Pago CFDI {pay_alegra_id}',
+                'monto':              monto_pag,
+                'moneda':             'MXN',
+                'metodo_pago':        'transferencia',
+                'fecha_vencimiento':  fecha_pay,
+                'fecha_pago':         fecha_pay,
+                'estatus':            'completado',
+                'referencia':         pay_alegra_id,
+                'beneficiario':       nombre,
+                'es_real':            True,
+                'source':             'alegra',
+                'cfdi_id':            cfdi.get('id', ''),
+                'estado_conciliacion': cfdi.get('estado_conciliacion', 'conciliado'),
+                'updated_at':         datetime.now(timezone.utc).isoformat(),
+            }
+            res2 = await db.payments.update_one(
+                {'company_id': company_id, 'alegra_id': pay_alegra_id},
+                {'$set': pay_doc,
+                 '$setOnInsert': {'id': str(uuid.uuid4()),
+                                  'created_at': datetime.now(timezone.utc).isoformat()}},
+                upsert=True
+            )
+            if res2.upserted_id:
+                created2 += 1
+            else:
+                updated2 += 1
+        except Exception as e:
+            logger.error(f"Error syncing cfdi payment {cfdi.get('id')}: {e}")
+            errors2 += 1
+
     return {
         "success": True,
-        "message": f"Pagos sincronizados desde Alegra (/payments)",
+        "message": "Pagos sincronizados desde Alegra (/payments) y CFDIs conciliados",
         "stats": {
-            "total":   len(all_payments),
-            "created": created,
-            "updated": updated,
-            "skipped": skipped,
-            "errors":  errors,
+            "desde_api":    desde_api,
+            "desde_cfdis":  created2 + updated2,
+            "total":        desde_api + created2 + updated2,
+            "api_created":  created,
+            "api_updated":  updated,
+            "api_skipped":  skipped,
+            "api_errors":   errors,
+            "cfdi_created": created2,
+            "cfdi_updated": updated2,
+            "cfdi_errors":  errors2,
         },
     }
 
