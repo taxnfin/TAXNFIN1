@@ -442,6 +442,9 @@ async def sync_alegra_invoices(
             inv_cobrado = round(total - balance, 2)
             if inv_status in ('closed', 'paid') or balance <= 0:
                 estado_conciliacion = 'conciliado'
+                # Si Alegra marca como paid/closed pero balance no refleja el pago, asumir cobro total
+                if inv_cobrado <= 0 and total > 0:
+                    inv_cobrado = round(total, 2)
             elif inv_cobrado > 0:
                 estado_conciliacion = 'parcial'
             else:
@@ -693,6 +696,9 @@ async def sync_alegra_bills(
             bill_pagado = round(total - balance, 2)
             if bill_status in ('closed', 'paid') or balance <= 0:
                 estado_conciliacion = 'conciliado'
+                # Si Alegra marca como paid/closed pero balance no refleja el pago, asumir pago total
+                if bill_pagado <= 0 and total > 0:
+                    bill_pagado = round(total, 2)
             elif bill_pagado > 0:
                 estado_conciliacion = 'parcial'
             else:
@@ -1063,6 +1069,7 @@ async def sync_alegra_payments(
         'estatus': {'$ne': 'cancelado'},
     }, {'_id': 0, 'id': 1, 'alegra_id': 1, 'tipo_cfdi': 1,
         'monto_cobrado': 1, 'monto_pagado': 1,
+        'total': 1, 'saldo_pendiente': 1,
         'fecha_vencimiento': 1, 'fecha_emision': 1,
         'receptor_nombre': 1, 'emisor_nombre': 1,
         'estado_conciliacion': 1}).to_list(10000)
@@ -1072,17 +1079,31 @@ async def sync_alegra_payments(
         if str(cfdi.get('fecha_emision', '') or '')[:10] < '2025-12-01':
             continue
         try:
-            tipo_c = str(cfdi.get('tipo_cfdi', '') or '').lower()
-            if tipo_c in ('ingreso', 'i', 'income'):
-                monto_pag = float(cfdi.get('monto_cobrado', 0) or 0)
-                tipo_pay  = 'cobro'
-                nombre    = cfdi.get('receptor_nombre', '') or ''
-            else:
-                monto_pag = float(cfdi.get('monto_pagado', 0) or 0)
-                tipo_pay  = 'pago'
-                nombre    = cfdi.get('emisor_nombre', '') or ''
+            tipo_c  = str(cfdi.get('tipo_cfdi', '') or '').lower()
+            total_c = float(cfdi.get('total', 0) or 0)
+            saldo_p = cfdi.get('saldo_pendiente')
+            estado  = cfdi.get('estado_conciliacion', 'conciliado')
 
-            if monto_pag <= 0:
+            if tipo_c in ('ingreso', 'i', 'income'):
+                tipo_pay = 'cobro'
+                nombre   = cfdi.get('receptor_nombre', '') or ''
+                if saldo_p is not None:
+                    monto_pag = total_c - float(saldo_p or 0)
+                else:
+                    monto_pag = total_c  # conciliado sin saldo_pendiente → cobro total
+                if monto_pag <= 0 and estado == 'parcial':
+                    monto_pag = round(total_c * 0.5, 2)
+            else:
+                tipo_pay = 'pago'
+                nombre   = cfdi.get('emisor_nombre', '') or ''
+                if saldo_p is not None:
+                    monto_pag = total_c - float(saldo_p or 0)
+                else:
+                    monto_pag = total_c
+                if monto_pag <= 0 and estado == 'parcial':
+                    monto_pag = round(total_c * 0.5, 2)
+
+            if monto_pag <= 0.01:
                 continue
 
             fecha_pay = (cfdi.get('fecha_vencimiento') or cfdi.get('fecha_emision') or
