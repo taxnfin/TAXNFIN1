@@ -678,6 +678,8 @@ const PaymentsModule = () => {
 
   const currentParties = formData.tipo === 'cobro' ? customers : vendors;
   const totalSelectedAmount = selectedCfdis.reduce((sum, c) => sum + c.saldo_pendiente, 0);
+  const { usaAlegra } = getERPEndpoints();
+  const erpLabel = usaAlegra ? 'Alegra' : 'Contalink';
   
   const handleExportPayments = () => {
     if (payments.length === 0) {
@@ -1569,12 +1571,12 @@ const PaymentsModule = () => {
               {agingSummary?.cxp && (
                 <span className="ml-auto flex items-center gap-1 text-[10px] font-normal bg-red-100 text-red-600 border border-red-300 rounded-full px-2 py-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block"></span>
-                  Live Contalink
+                  Live {erpLabel}
                 </span>
               )}
             </CardTitle>
             <CardDescription className="text-xs">
-              {agingSummary?.cxp ? 'Contalink · Aging CxP' : 'Facturas CFDI pendientes'}
+              {agingSummary?.cxp ? `${erpLabel} · Aging CxP` : 'Facturas CFDI pendientes'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -1598,12 +1600,12 @@ const PaymentsModule = () => {
               {agingSummary?.cxc && (
                 <span className="ml-auto flex items-center gap-1 text-[10px] font-normal bg-green-100 text-green-700 border border-green-300 rounded-full px-2 py-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block"></span>
-                  Live Contalink
+                  Live {erpLabel}
                 </span>
               )}
             </CardTitle>
             <CardDescription className="text-xs">
-              {agingSummary?.cxc ? 'Contalink · Aging CxC' : 'Facturas CFDI pendientes'}
+              {agingSummary?.cxc ? `${erpLabel} · Aging CxC` : 'Facturas CFDI pendientes'}
             </CardDescription>
           </CardHeader>
           <CardContent>
