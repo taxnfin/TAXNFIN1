@@ -2746,149 +2746,180 @@ async def get_conciliations_summary(
     }
 
 
+async def _run_conciliations_sync(company_id: str, company: dict, date_from: str = None, date_to: str = None):
+    """Background task: pagina conciliaciones Alegra y guarda movimientos en db.bank_transactions."""
+    email = company.get('alegra_email')
+    token = company.get('alegra_token')
+    stats = {'conciliaciones': 0, 'movimientos': 0, 'created': 0, 'updated': 0, 'errors': 0}
+
+    # Marcar como running
+    await db.sync_status.update_one(
+        {'company_id': company_id, 'type': 'alegra_conciliations'},
+        {'$set': {'status': 'running', 'stats': stats,
+                  'updated_at': datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+
+    try:
+        # 1. Paginar todas las conciliaciones
+        all_conciliations = []
+        start = 0
+        MAX_PAGES = 50
+        for _ in range(MAX_PAGES):
+            params = {'start': start, 'limit': 30, 'order_direction': 'DESC', 'order_field': 'date'}
+            if date_from:
+                params['date-start'] = date_from
+            if date_to:
+                params['date-end'] = date_to
+            batch = await alegra_request('GET', 'conciliations', email, token, params=params)
+            await asyncio.sleep(0.3)
+            if not batch or not isinstance(batch, list):
+                break
+            all_conciliations.extend(batch)
+            if len(batch) < 30:
+                break
+            start += 30
+
+        stats['conciliaciones'] = len(all_conciliations)
+
+        # 2. Para cada conciliación obtener sus movimientos y guardar en bank_transactions
+        for conc in all_conciliations:
+            conc_id = str(conc.get('id', ''))
+            if not conc_id:
+                continue
+
+            account_obj = conc.get('account') or {}
+            cuenta_bancaria = account_obj.get('name', '') if isinstance(account_obj, dict) else ''
+
+            detail = await alegra_request(
+                'GET', f'conciliations/{conc_id}', email, token,
+                params={'fields': 'transactions'}
+            )
+            await asyncio.sleep(0.3)
+            if not detail or not isinstance(detail, dict):
+                continue
+
+            transactions = detail.get('transactions') or []
+            if not isinstance(transactions, list):
+                continue
+
+            for mov in transactions:
+                try:
+                    mov_id = str(mov.get('id', ''))
+                    if not mov_id:
+                        continue
+
+                    monto_raw = float(mov.get('amount', 0) or 0)
+                    if monto_raw == 0:
+                        continue
+
+                    fecha_raw = (mov.get('date') or '')[:10]
+                    if not fecha_raw:
+                        continue
+
+                    if date_from and fecha_raw < date_from:
+                        continue
+                    if date_to and fecha_raw > date_to:
+                        continue
+
+                    descripcion = (
+                        mov.get('description') or mov.get('detail') or
+                        mov.get('reference') or f'Movimiento Alegra {mov_id}'
+                    )
+                    contact_obj = mov.get('contact') or {}
+                    contacto = contact_obj.get('name', '') if isinstance(contact_obj, dict) else ''
+                    tipo = 'deposito' if monto_raw > 0 else 'retiro'
+
+                    doc = {
+                        'alegra_id':        mov_id,
+                        'company_id':       company_id,
+                        'source':           'alegra',
+                        'fecha':            fecha_raw,
+                        'fecha_movimiento': fecha_raw,
+                        'descripcion':      descripcion,
+                        'monto':            abs(monto_raw),
+                        'monto_original':   monto_raw,
+                        'tipo':             tipo,
+                        'contacto':         contacto,
+                        'cuenta_bancaria':  cuenta_bancaria,
+                        'conciliation_id':  conc_id,
+                        'estado':           'conciliado',
+                        'conciliado':       True,
+                        'es_real':          True,
+                        'updated_at':       datetime.now(timezone.utc).isoformat(),
+                    }
+
+                    res = await db.bank_transactions.update_one(
+                        {'company_id': company_id, 'alegra_id': mov_id, 'source': 'alegra'},
+                        {'$set': doc,
+                         '$setOnInsert': {'id': str(uuid.uuid4()),
+                                          'created_at': datetime.now(timezone.utc).isoformat()}},
+                        upsert=True
+                    )
+                    stats['movimientos'] += 1
+                    if res.upserted_id:
+                        stats['created'] += 1
+                    else:
+                        stats['updated'] += 1
+
+                except Exception as e:
+                    logger.error(f"Error saving conciliation transaction {mov.get('id')}: {e}")
+                    stats['errors'] += 1
+
+        final_status = 'completed'
+        logger.info(f"[Alegra] Conciliations sync completado para {company_id}: {stats}")
+
+    except Exception as e:
+        final_status = 'error'
+        stats['error_message'] = str(e)
+        logger.error(f"[Alegra] Conciliations sync FALLIDO para {company_id}: {e}")
+
+    await db.sync_status.update_one(
+        {'company_id': company_id, 'type': 'alegra_conciliations'},
+        {'$set': {'status': final_status, 'stats': stats,
+                  'updated_at': datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+
+
 @router.post("/sync/conciliations")
 async def sync_alegra_conciliations(
     request: Request,
+    background_tasks: BackgroundTasks,
     current_user: Dict = Depends(get_current_user),
     date_from: str = Query(None, description="Date from (YYYY-MM-DD)"),
     date_to: str = Query(None, description="Date to (YYYY-MM-DD)"),
 ):
-    """
-    Pagina todas las conciliaciones de Alegra y guarda cada movimiento
-    en db.bank_transactions. Upsert por alegra_id + company_id.
-    """
+    """Lanza sync de conciliaciones Alegra en background. Retorna inmediatamente."""
     company_id = await get_active_company_id(request, current_user)
     company = await db.companies.find_one({'id': company_id}, {'_id': 0})
     if not company or not company.get('alegra_connected'):
         raise HTTPException(status_code=400, detail="Alegra no configurado")
 
-    email = company.get('alegra_email')
-    token = company.get('alegra_token')
-
-    # 1. Paginar todas las conciliaciones
-    all_conciliations = []
-    start = 0
-    MAX_PAGES = 50
-    for _ in range(MAX_PAGES):
-        params = {'start': start, 'limit': 30, 'order_direction': 'DESC', 'order_field': 'date'}
-        if date_from:
-            params['date-start'] = date_from
-        if date_to:
-            params['date-end'] = date_to
-        batch = await alegra_request('GET', 'conciliations', email, token, params=params)
-        await asyncio.sleep(0.3)
-        if not batch or not isinstance(batch, list):
-            break
-        all_conciliations.extend(batch)
-        if len(batch) < 30:
-            break
-        start += 30
-
-    # 2. Para cada conciliación obtener sus movimientos y guardar en bank_transactions
-    conciliaciones_count = len(all_conciliations)
-    movimientos_count = 0
-    created = 0
-    updated = 0
-    errors = 0
-
-    for conc in all_conciliations:
-        conc_id = str(conc.get('id', ''))
-        if not conc_id:
-            continue
-
-        account_obj = conc.get('account') or {}
-        cuenta_bancaria = account_obj.get('name', '') if isinstance(account_obj, dict) else ''
-
-        # Obtener detalle con transactions
-        detail = await alegra_request(
-            'GET', f'conciliations/{conc_id}', email, token,
-            params={'fields': 'transactions'}
-        )
-        await asyncio.sleep(0.3)
-        if not detail or not isinstance(detail, dict):
-            continue
-
-        transactions = detail.get('transactions') or []
-        if not isinstance(transactions, list):
-            continue
-
-        for mov in transactions:
-            try:
-                mov_id = str(mov.get('id', ''))
-                if not mov_id:
-                    continue
-
-                monto_raw = float(mov.get('amount', 0) or 0)
-                if monto_raw == 0:
-                    continue
-
-                fecha_raw = (mov.get('date') or '')[:10]
-                if not fecha_raw:
-                    continue
-
-                # Filtro de fecha opcional
-                if date_from and fecha_raw < date_from:
-                    continue
-                if date_to and fecha_raw > date_to:
-                    continue
-
-                descripcion = (
-                    mov.get('description') or mov.get('detail') or
-                    mov.get('reference') or f'Movimiento Alegra {mov_id}'
-                )
-
-                contact_obj = mov.get('contact') or {}
-                contacto = contact_obj.get('name', '') if isinstance(contact_obj, dict) else ''
-
-                tipo = 'deposito' if monto_raw > 0 else 'retiro'
-
-                doc = {
-                    'alegra_id':        mov_id,
-                    'company_id':       company_id,
-                    'source':           'alegra',
-                    'fecha':            fecha_raw,
-                    'fecha_movimiento': fecha_raw,
-                    'descripcion':      descripcion,
-                    'monto':            abs(monto_raw),
-                    'monto_original':   monto_raw,
-                    'tipo':             tipo,
-                    'contacto':         contacto,
-                    'cuenta_bancaria':  cuenta_bancaria,
-                    'conciliation_id':  conc_id,
-                    'estado':           'conciliado',
-                    'conciliado':       True,
-                    'es_real':          True,
-                    'updated_at':       datetime.now(timezone.utc).isoformat(),
-                }
-
-                res = await db.bank_transactions.update_one(
-                    {'company_id': company_id, 'alegra_id': mov_id, 'source': 'alegra'},
-                    {'$set': doc,
-                     '$setOnInsert': {'id': str(uuid.uuid4()),
-                                      'created_at': datetime.now(timezone.utc).isoformat()}},
-                    upsert=True
-                )
-                movimientos_count += 1
-                if res.upserted_id:
-                    created += 1
-                else:
-                    updated += 1
-
-            except Exception as e:
-                logger.error(f"Error saving conciliation transaction {mov.get('id')}: {e}")
-                errors += 1
-
+    background_tasks.add_task(_run_conciliations_sync, company_id, company, date_from, date_to)
     return {
-        'success': True,
-        'message': (f'Conciliaciones sincronizadas: {conciliaciones_count} conciliaciones, '
-                    f'{movimientos_count} movimientos'),
-        'stats': {
-            'conciliaciones': conciliaciones_count,
-            'movimientos':    movimientos_count,
-            'created':        created,
-            'updated':        updated,
-            'errors':         errors,
-        },
+        'status': 'started',
+        'message': 'Sync de conciliaciones iniciado en background. Consulta /alegra/sync/conciliations/status para ver el progreso.',
+    }
+
+
+@router.get("/sync/conciliations/status")
+async def get_conciliations_sync_status(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Devuelve el estado del último sync de conciliaciones desde db.sync_status."""
+    company_id = await get_active_company_id(request, current_user)
+    record = await db.sync_status.find_one(
+        {'company_id': company_id, 'type': 'alegra_conciliations'},
+        {'_id': 0}
+    )
+    if not record:
+        return {'status': 'never_run', 'stats': {}, 'updated_at': None}
+    return {
+        'status':     record.get('status', 'unknown'),
+        'stats':      record.get('stats', {}),
+        'updated_at': record.get('updated_at'),
     }
 
 
