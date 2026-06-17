@@ -90,6 +90,34 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             'es_real': True,
         })
 
+    # ── Fuente 5: Movimientos bancarios reales de Alegra (conciliaciones) ─
+    bank_txns_alegra = await db.bank_transactions.find({
+        'company_id': company_id,
+        'source': 'alegra',
+        'es_real': True,
+    }, {'_id': 0, 'tipo': 1, 'monto': 1, 'fecha': 1, 'fecha_movimiento': 1,
+        'descripcion': 1, 'contacto': 1, 'id': 1}).to_list(5000)
+
+    processed_bank_txns = []
+    for t in bank_txns_alegra:
+        fecha = _parse_date(t.get('fecha') or t.get('fecha_movimiento'))
+        if not fecha:
+            continue
+        monto = float(t.get('monto', 0) or 0)
+        if monto <= 0:
+            continue
+        tipo_raw = str(t.get('tipo', '') or '').lower()
+        tipo = 'ingreso' if tipo_raw in ('deposito', 'ingreso', 'credito') else 'egreso'
+        nombre = t.get('descripcion') or t.get('contacto') or 'Mov. bancario Alegra'
+        processed_bank_txns.append({
+            'fecha': fecha,
+            'monto': monto,
+            'tipo': tipo,
+            'nombre': nombre,
+            'id': t.get('id', ''),
+            'es_real': True,
+        })
+
     # ── Fuente 2: Proyecciones manuales de CxC/CxP ───────────────
     proyecciones = await db.cxc_proyecciones.find(
         {'company_id': company_id},
@@ -160,6 +188,21 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
                     'es_real': True,
                 }
                 if p['tipo'] == 'cobro':
+                    ingresos.append(item)
+                else:
+                    egresos.append(item)
+
+        for bt in processed_bank_txns:
+            if fi <= bt['fecha'] <= ff:
+                item = {
+                    'id': bt['id'],
+                    'concepto': bt['nombre'],
+                    'monto': bt['monto'],
+                    'fecha': bt['fecha'],
+                    'categoria': 'banco_alegra',
+                    'es_real': True,
+                }
+                if bt['tipo'] == 'ingreso':
                     ingresos.append(item)
                 else:
                     egresos.append(item)
@@ -263,6 +306,16 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
                             'monto': p['monto'], 'fecha': p['fecha'],
                             'categoria': p['categoria'], 'es_real': True}
                     if p['tipo'] == 'cobro':
+                        ingresos.append(item)
+                    else:
+                        egresos.append(item)
+
+            for bt in processed_bank_txns:
+                if fi_s <= bt['fecha'] <= ff_s:
+                    item = {'id': bt['id'], 'concepto': bt['nombre'],
+                            'monto': bt['monto'], 'fecha': bt['fecha'],
+                            'categoria': 'banco_alegra', 'es_real': True}
+                    if bt['tipo'] == 'ingreso':
                         ingresos.append(item)
                     else:
                         egresos.append(item)
