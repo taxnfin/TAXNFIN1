@@ -2944,6 +2944,82 @@ async def sync_alegra_conciliations(
     }
 
 
+@router.get("/debug-conciliation/{conciliation_id}")
+async def debug_conciliation(
+    conciliation_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Endpoint temporal de diagnóstico: prueba 3 formas de obtener movimientos de una conciliación."""
+    company_id = await get_active_company_id(request, current_user)
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0})
+    if not company or not company.get('alegra_connected'):
+        raise HTTPException(status_code=400, detail="Alegra no configurado")
+
+    email = company.get('alegra_email')
+    token = company.get('alegra_token')
+    results = {}
+
+    # Opción 1: GET conciliations/{id} sin parámetros
+    try:
+        r1 = await alegra_request('GET', f'conciliations/{conciliation_id}', email, token)
+        results['opcion_1_conciliation_detail'] = {
+            'endpoint': f'GET /conciliations/{conciliation_id}',
+            'type': type(r1).__name__,
+            'keys': list(r1.keys()) if isinstance(r1, dict) else None,
+            'transactions_count': len(r1.get('transactions', [])) if isinstance(r1, dict) else None,
+            'movements_count': len(r1.get('movements', [])) if isinstance(r1, dict) else None,
+            'entries_count': len(r1.get('entries', [])) if isinstance(r1, dict) else None,
+            'raw': r1,
+        }
+    except Exception as e:
+        results['opcion_1_conciliation_detail'] = {'error': str(e)}
+
+    await asyncio.sleep(0.3)
+
+    # Opción 2: GET conciliations/{id}?fields=transactions,movements,entries
+    try:
+        r2 = await alegra_request(
+            'GET', f'conciliations/{conciliation_id}', email, token,
+            params={'fields': 'transactions,movements,entries'}
+        )
+        results['opcion_2_with_fields'] = {
+            'endpoint': f'GET /conciliations/{conciliation_id}?fields=transactions,movements,entries',
+            'type': type(r2).__name__,
+            'keys': list(r2.keys()) if isinstance(r2, dict) else None,
+            'transactions_count': len(r2.get('transactions', [])) if isinstance(r2, dict) else None,
+            'movements_count': len(r2.get('movements', [])) if isinstance(r2, dict) else None,
+            'entries_count': len(r2.get('entries', [])) if isinstance(r2, dict) else None,
+            'raw': r2,
+        }
+    except Exception as e:
+        results['opcion_2_with_fields'] = {'error': str(e)}
+
+    await asyncio.sleep(0.3)
+
+    # Opción 3: GET bank-accounts/5/transactions (cuenta BAJIO MXN)
+    try:
+        r3 = await alegra_request(
+            'GET', 'bank-accounts/5/transactions', email, token,
+            params={'start': 0, 'limit': 10, 'order_field': 'date'}
+        )
+        results['opcion_3_bank_account_transactions'] = {
+            'endpoint': 'GET /bank-accounts/5/transactions?start=0&limit=10&order_field=date',
+            'type': type(r3).__name__,
+            'is_list': isinstance(r3, list),
+            'count': len(r3) if isinstance(r3, list) else (len(r3.get('data', [])) if isinstance(r3, dict) else None),
+            'keys': list(r3.keys()) if isinstance(r3, dict) else None,
+            'first_item_keys': list(r3[0].keys()) if isinstance(r3, list) and r3 else (
+                list(r3.get('data', [{}])[0].keys()) if isinstance(r3, dict) and r3.get('data') else None
+            ),
+            'raw': r3,
+        }
+    except Exception as e:
+        results['opcion_3_bank_account_transactions'] = {'error': str(e)}
+
+    return results
+
+
 @router.get("/sync/conciliations/status")
 async def get_conciliations_sync_status(
     request: Request,
