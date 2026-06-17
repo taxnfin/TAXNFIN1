@@ -146,10 +146,10 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         if not label:
             continue
 
-        # No agregar si la semana ya es pasada (datos reales ya la cubren)
+        # Solo proyectar en semanas 100% futuras (excluye semana actual y pasadas)
         if week_ff_str:
             try:
-                if date.fromisoformat(week_ff_str) < today:
+                if date.fromisoformat(week_ff_str) <= today:
                     continue
             except Exception:
                 pass
@@ -201,6 +201,17 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         total_ing = sum(i['monto'] for i in ingresos)
         total_egr = sum(e['monto'] for e in egresos)
 
+        try:
+            fi_date = date.fromisoformat(fi)
+            ff_date = date.fromisoformat(ff)
+            es_real = ff_date < today
+            date_range = f"{fi_date.strftime('%d/%m')} - {ff_date.strftime('%d/%m')}"
+        except Exception:
+            fi_date = None
+            ff_date = None
+            es_real = False
+            date_range = f"{fi[8:10]}/{fi[5:7]} - {ff[8:10]}/{ff[5:7]}"
+
         # Solo agregar proyecciones si la semana no tiene CFDIs reales
         label = f'S{num}'
         if label in proy_por_semana:
@@ -210,22 +221,19 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             )
             if not tiene_cfdis_reales:
                 proy = proy_por_semana[label]
-                ingresos.extend(proy['ingresos'])
-                egresos.extend(proy['egresos'])
+                semana_es_futura = fi_date is not None and fi_date > today
+                if semana_es_futura:
+                    ingresos.extend(proy['ingresos'])
+                    egresos.extend(proy['egresos'])
+                else:
+                    # Semanas pasadas/actuales: solo proyecciones manuales, no Alegra CxC/CxP
+                    ingresos.extend([i for i in proy['ingresos'] if i.get('fuente') not in ('alegra_cxc', 'alegra_cxp')])
+                    egresos.extend([e for e in proy['egresos'] if e.get('fuente') not in ('alegra_cxc', 'alegra_cxp')])
         total_ing = sum(i['monto'] for i in ingresos)
         total_egr = sum(e['monto'] for e in egresos)
 
         top_ing = sorted(ingresos, key=lambda x: x['monto'], reverse=True)[:5]
         top_egr = sorted(egresos, key=lambda x: x['monto'], reverse=True)[:5]
-
-        try:
-            fi_date = date.fromisoformat(fi)
-            ff_date = date.fromisoformat(ff)
-            es_real = ff_date < today
-            date_range = f"{fi_date.strftime('%d/%m')} - {ff_date.strftime('%d/%m')}"
-        except Exception:
-            es_real = False
-            date_range = f"{fi[8:10]}/{fi[5:7]} - {ff[8:10]}/{ff[5:7]}"
 
         # Rolling saldo_inicial: primera semana usa valor de DB, las siguientes acumulan
         if saldo_acumulado is None:
