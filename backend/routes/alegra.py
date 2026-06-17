@@ -3148,16 +3148,28 @@ async def debug_bank_transactions(
         filter_base, {"_id": 0}
     ).limit(2).to_list(2)
 
+    total_sin_filtro    = await db.bank_transactions.count_documents({"source": "alegra"})
+    company_ids         = await db.bank_transactions.distinct("company_id", {"source": "alegra"})
+    samples_sin_filtro  = await db.bank_transactions.find(
+        {"source": "alegra"},
+        {"_id": 0, "company_id": 1, "tipo": 1, "fecha": 1, "monto": 1}
+    ).limit(2).to_list(2)
+
     return {
-        "tipos_distinct":        tipos_distinct,
-        "es_real_distinct":      esreal_distinct,
+        "tipos_distinct":   tipos_distinct,
+        "es_real_distinct": esreal_distinct,
         "counts": {
-            "total":   count_total,
-            "retiro":  count_retiro,
-            "out":     count_out,
-            "egreso":  count_egreso,
+            "total":  count_total,
+            "retiro": count_retiro,
+            "out":    count_out,
+            "egreso": count_egreso,
         },
         "samples": samples,
+        "sin_filtro": {
+            "total":      total_sin_filtro,
+            "company_ids": company_ids,
+            "samples":    samples_sin_filtro,
+        },
     }
 
 
