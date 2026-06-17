@@ -2748,6 +2748,14 @@ async def get_conciliations_summary(
 
 async def _run_conciliations_sync(company_id: str, company: dict, date_from: str = None, date_to: str = None):
     """Background task: pagina conciliaciones Alegra y guarda movimientos en db.bank_transactions."""
+    # CORRECCIÓN 1: Resolver company_id completo (puede llegar truncado como "89cda61e")
+    company_full = await db.companies.find_one(
+        {'id': {'$regex': f'^{company_id}'}}, {'_id': 0, 'id': 1}
+    )
+    if company_full:
+        company_id = company_full['id']
+    logger.info(f"[Alegra conciliations] company_id resuelto: {company_id}")
+
     email = company.get('alegra_email')
     token = company.get('alegra_token')
     stats = {'conciliaciones': 0, 'movimientos': 0, 'created': 0, 'updated': 0, 'errors': 0}
@@ -2761,26 +2769,43 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
     )
 
     try:
-        # 1. Paginar todas las conciliaciones
+        # 1. Paginar TODAS las conciliaciones (sin filtro de status)
         all_conciliations = []
         start = 0
         MAX_PAGES = 50
-        for _ in range(MAX_PAGES):
+        for page_num in range(MAX_PAGES):
             params = {'start': start, 'limit': 30, 'order_direction': 'DESC', 'order_field': 'date'}
             if date_from:
                 params['date-start'] = date_from
             if date_to:
                 params['date-end'] = date_to
-            batch = await alegra_request('GET', 'conciliations', email, token, params=params)
+            batch_raw = await alegra_request('GET', 'conciliations', email, token, params=params)
             await asyncio.sleep(0.3)
-            if not batch or not isinstance(batch, list):
+
+            # CORRECCIÓN 3: manejar respuesta dict {"data": [...]} o lista directa
+            if not batch_raw:
+                logger.info(f"[Alegra conciliations] page {page_num}: respuesta vacía, fin paginación")
+                break
+            if isinstance(batch_raw, dict):
+                batch = batch_raw.get('data') or batch_raw.get('items') or batch_raw.get('list') or []
+                logger.info(f"[Alegra conciliations] page {page_num}: respuesta dict keys={list(batch_raw.keys())}, items={len(batch)}")
+            elif isinstance(batch_raw, list):
+                batch = batch_raw
+                logger.info(f"[Alegra conciliations] page {page_num}: respuesta lista items={len(batch)}")
+            else:
+                logger.warning(f"[Alegra conciliations] page {page_num}: tipo inesperado {type(batch_raw)}, rompiendo")
+                break
+
+            if not batch:
                 break
             all_conciliations.extend(batch)
+            logger.info(f"[Alegra conciliations] acumulado: {len(all_conciliations)}")
             if len(batch) < 30:
                 break
             start += 30
 
         stats['conciliaciones'] = len(all_conciliations)
+        logger.info(f"[Alegra conciliations] Total conciliaciones: {len(all_conciliations)}")
 
         # 2. Para cada conciliación obtener sus movimientos y guardar en bank_transactions
         for conc in all_conciliations:
@@ -2791,16 +2816,32 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
             account_obj = conc.get('account') or {}
             cuenta_bancaria = account_obj.get('name', '') if isinstance(account_obj, dict) else ''
 
-            detail = await alegra_request(
-                'GET', f'conciliations/{conc_id}', email, token,
-                params={'fields': 'transactions'}
-            )
+            # CORRECCIÓN 2: Primero GET conciliations/{conc_id} sin parámetros
+            transactions = []
+            detail = await alegra_request('GET', f'conciliations/{conc_id}', email, token)
             await asyncio.sleep(0.3)
-            if not detail or not isinstance(detail, dict):
-                continue
+            if detail and isinstance(detail, dict):
+                txns_raw = detail.get('transactions') or detail.get('movements') or detail.get('items') or []
+                if isinstance(txns_raw, list):
+                    transactions = txns_raw
+                logger.info(f"[Alegra conciliations] conc {conc_id}: detail keys={list(detail.keys())}, transactions={len(transactions)}")
 
-            transactions = detail.get('transactions') or []
-            if not isinstance(transactions, list):
+            # Fallback: GET payments?conciliation={conc_id}
+            if not transactions:
+                logger.info(f"[Alegra conciliations] conc {conc_id}: sin transactions, fallback a /payments")
+                pay_batch = await alegra_request(
+                    'GET', 'payments', email, token,
+                    params={'conciliation': conc_id, 'limit': 100}
+                )
+                await asyncio.sleep(0.3)
+                if pay_batch and isinstance(pay_batch, list):
+                    transactions = pay_batch
+                elif pay_batch and isinstance(pay_batch, dict):
+                    transactions = pay_batch.get('data') or pay_batch.get('items') or []
+                logger.info(f"[Alegra conciliations] conc {conc_id}: fallback payments={len(transactions)}")
+
+            if not transactions:
+                logger.info(f"[Alegra conciliations] conc {conc_id}: sin movimientos, saltando")
                 continue
 
             for mov in transactions:
