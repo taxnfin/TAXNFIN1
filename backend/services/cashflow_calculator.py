@@ -1,6 +1,6 @@
 """
 Servicio único de cálculo de semanas de cashflow.
-Fuentes: db.cashflow_weeks (estructura) + db.cfdis (por fecha_emision) + db.cxc_proyecciones.
+Fuentes: db.cashflow_weeks (estructura) + db.cfdis (por fecha_emision) + db.cxc_proyecciones + Alegra CxC/CxP pendientes.
 """
 import re
 import uuid as _uuid
@@ -87,9 +87,86 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         else:
             proy_por_semana[semana_label]['egresos'].append(item)
 
+    # ── Fuente 3: CxC/CxP reales de Alegra (facturas pendientes) ─
+    today = date.today()
+
+    cfdis_pendientes = await db.cfdis.find({
+        'company_id': company_id,
+        'source': 'alegra',
+        'estado_conciliacion': {'$in': ['pendiente', 'parcial']},
+        'estatus': {'$ne': 'cancelado'},
+    }, {'_id': 0, 'tipo_cfdi': 1, 'saldo_pendiente': 1, 'total': 1,
+        'monto_cobrado': 1, 'monto_pagado': 1, 'fecha_vencimiento': 1,
+        'receptor_nombre': 1, 'emisor_nombre': 1, 'folio_alegra': 1}).to_list(5000)
+
+    # Construir mapa de rangos de semanas para lookup por fecha_vencimiento
+    week_ranges = []
+    for w in weeks_raw:
+        wfi = _parse_date(w.get('fecha_inicio'))
+        wff = _parse_date(w.get('fecha_fin'))
+        wnum = int(w.get('numero_semana', 0))
+        if wfi and wff:
+            week_ranges.append((wfi, wff, f'S{wnum}'))
+
+    for cfdi_p in cfdis_pendientes:
+        fv = _parse_date(cfdi_p.get('fecha_vencimiento'))
+        if not fv:
+            continue
+        total = float(cfdi_p.get('total', 0) or 0)
+        monto_cob = float(cfdi_p.get('monto_cobrado', 0) or 0)
+        monto_pag = float(cfdi_p.get('monto_pagado', 0) or 0)
+        tipo_c = str(cfdi_p.get('tipo_cfdi', '') or '').lower().strip()
+
+        if tipo_c in ('ingreso', 'i', 'income'):
+            saldo = total - monto_cob
+            fuente = 'alegra_cxc'
+            bucket = 'ingresos'
+        else:
+            saldo = total - monto_pag
+            fuente = 'alegra_cxp'
+            bucket = 'egresos'
+
+        if saldo <= 0.01:
+            continue
+
+        label = None
+        week_ff_str = None
+        for (wfi, wff, lbl) in week_ranges:
+            if wfi <= fv <= wff:
+                label = lbl
+                week_ff_str = wff
+                break
+
+        if not label:
+            continue
+
+        # No agregar si la semana ya es pasada (datos reales ya la cubren)
+        if week_ff_str:
+            try:
+                if date.fromisoformat(week_ff_str) < today:
+                    continue
+            except Exception:
+                pass
+
+        nombre = (cfdi_p.get('receptor_nombre') or cfdi_p.get('emisor_nombre') or
+                  cfdi_p.get('folio_alegra') or 'Sin nombre')
+
+        if label not in proy_por_semana:
+            proy_por_semana[label] = {'ingresos': [], 'egresos': []}
+
+        proy_por_semana[label][bucket].append({
+            'id': '',
+            'concepto': nombre,
+            'monto': saldo,
+            'fecha': fv,
+            'categoria': 'cxc' if fuente == 'alegra_cxc' else 'cxp',
+            'es_proyeccion': True,
+            'fuente': fuente,
+        })
+
     # ── 4. Construir resultado por semana ─────────────────────────
     result = []
-    today = date.today()
+    saldo_acumulado = None  # Para rolling saldo_inicial
 
     for week in weeks_raw:
         fi = _parse_date(week.get('fecha_inicio'))
@@ -118,17 +195,6 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         total_ing = sum(i['monto'] for i in ingresos)
         total_egr = sum(e['monto'] for e in egresos)
 
-        # Fallback: si no hay CFDIs, usar totales guardados en DB
-        if total_ing == 0 and total_egr == 0:
-            total_ing = float(week.get('total_ingresos', 0) or 0)
-            total_egr = float(week.get('total_egresos', 0) or 0)
-            if total_ing > 0:
-                ingresos = [{'id': '', 'concepto': 'Ingresos del período',
-                             'monto': total_ing, 'fecha': fi, 'categoria': 'sync'}]
-            if total_egr > 0:
-                egresos = [{'id': '', 'concepto': 'Egresos del período',
-                            'monto': total_egr, 'fecha': fi, 'categoria': 'sync'}]
-
         # Solo agregar proyecciones si la semana no tiene CFDIs reales
         label = f'S{num}'
         if label in proy_por_semana:
@@ -155,6 +221,13 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             es_real = False
             date_range = f"{fi[8:10]}/{fi[5:7]} - {ff[8:10]}/{ff[5:7]}"
 
+        # Rolling saldo_inicial: primera semana usa valor de DB, las siguientes acumulan
+        if saldo_acumulado is None:
+            saldo_ini = float(week.get('saldo_inicial', 0) or 0)
+        else:
+            saldo_ini = saldo_acumulado
+        saldo_acumulado = saldo_ini + (total_ing - total_egr)
+
         result.append({
             'id': week.get('id', ''),
             'company_id': company_id,
@@ -166,7 +239,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             'week_start': fi,
             'week_end': ff,
             'es_real': es_real,
-            'saldo_inicial': float(week.get('saldo_inicial', 0) or 0),
+            'saldo_inicial': saldo_ini,
             'total_ingresos': total_ing,
             'total_egresos': total_egr,
             'flujo_neto': total_ing - total_egr,
@@ -219,6 +292,10 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             total_ing = sum(i['monto'] for i in ingresos)
             total_egr = sum(e['monto'] for e in egresos)
 
+            # Rolling saldo_inicial continúa desde donde terminó el loop anterior
+            saldo_ini = saldo_acumulado if saldo_acumulado is not None else 0
+            saldo_acumulado = saldo_ini + (total_ing - total_egr)
+
             result.append({
                 'id': str(_uuid.uuid4()),
                 'company_id': company_id,
@@ -231,7 +308,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
                 'week_end': ff_s,
                 'es_real': False,
                 'es_generada': True,
-                'saldo_inicial': 0,
+                'saldo_inicial': saldo_ini,
                 'total_ingresos': total_ing,
                 'total_egresos': total_egr,
                 'flujo_neto': total_ing - total_egr,

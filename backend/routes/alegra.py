@@ -901,7 +901,7 @@ async def sync_alegra_payments(
             "start":  start,
             "limit":  limit,
             "order":  "date",
-            "fields": "id,date,amount,type,status,bankAccount,client,observations,anotation,categories",
+            "fields": "id,date,amount,type,status,bankAccount,client,observations,anotation,categories,invoices",
         }
         if date_from:
             params["date-start"] = date_from
@@ -986,6 +986,54 @@ async def sync_alegra_payments(
                 'alegra_bank_account': bank_name,
                 'updated_at':         datetime.now(timezone.utc).isoformat(),
             }
+
+            # Vincular pago con facturas Alegra → CFDIs en db.cfdis
+            facturas_aplicadas = []
+            invoices_list = payment.get('invoices') or []
+            if isinstance(invoices_list, list):
+                for inv_ref in invoices_list:
+                    if not isinstance(inv_ref, dict):
+                        continue
+                    inv_alegra_id = str(inv_ref.get('id', ''))
+                    monto_aplicado = float(inv_ref.get('amount', 0) or 0)
+                    if not inv_alegra_id:
+                        continue
+                    cfdi_doc = await db.cfdis.find_one(
+                        {'company_id': company_id, 'source': 'alegra', 'alegra_id': inv_alegra_id},
+                        {'_id': 0, 'id': 1, 'folio_alegra': 1, 'total': 1,
+                         'monto_cobrado': 1, 'monto_pagado': 1, 'tipo_cfdi': 1}
+                    )
+                    if not cfdi_doc:
+                        continue
+                    facturas_aplicadas.append({
+                        'cfdi_id': cfdi_doc['id'],
+                        'alegra_id': inv_alegra_id,
+                        'monto_aplicado': monto_aplicado,
+                        'folio': cfdi_doc.get('folio_alegra', ''),
+                    })
+
+                    # Actualizar CFDI con monto cobrado/pagado acumulado
+                    cfdi_total = float(cfdi_doc.get('total', 0) or 0)
+                    cfdi_tipo = str(cfdi_doc.get('tipo_cfdi', '') or '').lower()
+                    campo_monto = 'monto_cobrado' if cfdi_tipo in ('ingreso', 'i', 'income') else 'monto_pagado'
+                    monto_previo = float(cfdi_doc.get(campo_monto, 0) or 0)
+                    nuevo_monto = monto_previo + monto_aplicado
+                    if cfdi_total > 0 and nuevo_monto >= cfdi_total - 0.01:
+                        nuevo_estado = 'conciliado'
+                    elif nuevo_monto > 0:
+                        nuevo_estado = 'parcial'
+                    else:
+                        nuevo_estado = 'pendiente'
+                    await db.cfdis.update_one(
+                        {'company_id': company_id, 'id': cfdi_doc['id']},
+                        {'$set': {campo_monto: nuevo_monto,
+                                  'estado_conciliacion': nuevo_estado}}
+                    )
+
+            payment_doc['facturas_aplicadas'] = facturas_aplicadas
+            payment_doc['estado_conciliacion'] = (
+                'conciliado' if facturas_aplicadas else 'sin_factura'
+            )
 
             res = await db.payments.update_one(
                 {'company_id': company_id, 'alegra_id': alegra_id, 'alegra_type': 'payment'},
