@@ -3137,42 +3137,44 @@ async def debug_bank_transactions(
     current_user: Dict = Depends(get_current_user),
 ):
     """Debug: inspecciona db.bank_transactions para diagnosticar Fuente 3."""
-    COMPANY_PREFIX = "89cda61e"
-    filter_base = {"company_id": {"$regex": f"^{COMPANY_PREFIX}"}, "source": "alegra"}
-
-    tipos_distinct  = await db.bank_transactions.distinct("tipo",    filter_base)
-    esreal_distinct = await db.bank_transactions.distinct("es_real", filter_base)
-
-    count_retiro = await db.bank_transactions.count_documents({**filter_base, "tipo": "retiro"})
-    count_out    = await db.bank_transactions.count_documents({**filter_base, "tipo": "out"})
-    count_egreso = await db.bank_transactions.count_documents({**filter_base, "tipo": "egreso"})
-    count_total  = await db.bank_transactions.count_documents(filter_base)
-
-    samples = await db.bank_transactions.find(
-        filter_base, {"_id": 0}
+    # Query 1: regex sin ancla — busca '89cda61e' en cualquier parte del company_id
+    filter_regex = {"company_id": {"$regex": "89cda61e"}, "source": "alegra"}
+    count_regex      = await db.bank_transactions.count_documents(filter_regex)
+    tipos_regex      = await db.bank_transactions.distinct("tipo",       filter_regex)
+    esreal_regex     = await db.bank_transactions.distinct("es_real",    filter_regex)
+    cids_regex       = await db.bank_transactions.distinct("company_id", filter_regex)
+    count_retiro     = await db.bank_transactions.count_documents({**filter_regex, "tipo": "retiro"})
+    count_out        = await db.bank_transactions.count_documents({**filter_regex, "tipo": "out"})
+    count_egreso     = await db.bank_transactions.count_documents({**filter_regex, "tipo": "egreso"})
+    samples_regex    = await db.bank_transactions.find(
+        filter_regex, {"_id": 0}
     ).limit(2).to_list(2)
 
-    total_sin_filtro    = await db.bank_transactions.count_documents({"source": "alegra"})
-    company_ids         = await db.bank_transactions.distinct("company_id", {"source": "alegra"})
-    samples_sin_filtro  = await db.bank_transactions.find(
-        {"source": "alegra"},
-        {"_id": 0, "company_id": 1, "tipo": 1, "fecha": 1, "monto": 1}
+    # Query 2: sin filtro de company_id
+    filter_global = {"source": "alegra"}
+    count_global     = await db.bank_transactions.count_documents(filter_global)
+    cids_global      = await db.bank_transactions.distinct("company_id", filter_global)
+    samples_global   = await db.bank_transactions.find(
+        filter_global, {"_id": 0, "company_id": 1, "tipo": 1, "fecha": 1, "monto": 1}
     ).limit(2).to_list(2)
 
     return {
-        "tipos_distinct":   tipos_distinct,
-        "es_real_distinct": esreal_distinct,
-        "counts": {
-            "total":  count_total,
-            "retiro": count_retiro,
-            "out":    count_out,
-            "egreso": count_egreso,
+        "con_regex_89cda61e": {
+            "total":            count_regex,
+            "company_ids":      cids_regex,
+            "tipos_distinct":   tipos_regex,
+            "es_real_distinct": esreal_regex,
+            "counts_tipo": {
+                "retiro": count_retiro,
+                "out":    count_out,
+                "egreso": count_egreso,
+            },
+            "samples": samples_regex,
         },
-        "samples": samples,
-        "sin_filtro": {
-            "total":      total_sin_filtro,
-            "company_ids": company_ids,
-            "samples":    samples_sin_filtro,
+        "sin_filtro_company_id": {
+            "total":       count_global,
+            "company_ids": cids_global,
+            "samples":     samples_global,
         },
     }
 
