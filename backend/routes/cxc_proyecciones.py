@@ -409,6 +409,18 @@ async def sincronizar_montos_con_aging(
             "actualizados": actualizados, "sin_cambio": sin_cambio, "cambios": cambios}
 
 
+# ── DELETE /cxc-proyecciones/clear ──────────────────────────────────
+@router.delete("/clear")
+async def clear_cxc_proyecciones(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Elimina todas las proyecciones manuales CxC/CxP de la empresa activa."""
+    company_id = await get_active_company_id(request, current_user)
+    result = await db.cxc_proyecciones.delete_many({"company_id": company_id})
+    return {"deleted": result.deleted_count, "company_id": company_id}
+
+
 # ── GET /cxc-proyecciones/historial-sync ────────────────────────────
 @router.get("/historial-sync")
 async def get_historial_sync(
