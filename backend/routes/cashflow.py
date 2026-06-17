@@ -29,7 +29,7 @@ async def get_semanas_data(company_id: str, num_weeks: int = 52) -> list:
     return await calcular_semanas_cashflow(company_id, num_weeks, db)
 
 
-@router.get("/cashflow/weeks", response_model=List[CashFlowWeek])
+@router.get("/cashflow/weeks")
 async def get_cashflow_weeks(
     request: Request,
     current_user: Dict = Depends(get_current_user),
