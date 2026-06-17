@@ -143,19 +143,42 @@ async def initialize_weeks(
     # 1. cashflow_config.saldo_inicial_banco en companies
     saldo_inicial_banco = float(cashflow_cfg.get('saldo_inicial_banco', 0) or 0)
     saldo_fuente = 'companies'
+    detalle_cuentas = []
 
-    # 2. Sumar saldo_actual / balance / saldo de cuentas bancarias activas
+    # 2. Sumar saldo_inicial de cuentas bancarias activas, con conversión FX
     if saldo_inicial_banco <= 0:
         cuentas = await db.bank_accounts.find(
-            {'company_id': company_id, 'activo': {'$ne': False}},
-            {'_id': 0, 'saldo_actual': 1, 'balance': 1, 'saldo': 1}
+            {'company_id': company_id, 'activo': True},
+            {'_id': 0, 'nombre': 1, 'moneda': 1, 'saldo_inicial': 1}
         ).to_list(100)
+
+        fx_docs = await db.fx_rates.find(
+            {}, {'_id': 0, 'moneda_cotizada': 1, 'tipo_cambio': 1, 'rate': 1}
+        ).sort('fecha_vigencia', -1).to_list(50)
+        fx_map: dict = {'MXN': 1.0}
+        for fx in fx_docs:
+            code = fx.get('moneda_cotizada')
+            if code and code not in fx_map:
+                fx_map[code] = float(fx.get('tipo_cambio') or fx.get('rate') or 1)
+        if 'USD' not in fx_map:
+            fx_map['USD'] = 17.5
+
+        detalle_cuentas = []
         total_banco = 0.0
         for cuenta in cuentas:
-            val = (float(cuenta.get('saldo_actual', 0) or 0)
-                   or float(cuenta.get('balance', 0) or 0)
-                   or float(cuenta.get('saldo', 0) or 0))
-            total_banco += val
+            moneda  = (cuenta.get('moneda') or 'MXN').upper()
+            saldo   = float(cuenta.get('saldo_inicial', 0) or 0)
+            tc      = fx_map.get(moneda, 1.0)
+            saldo_mxn = saldo * tc
+            total_banco += saldo_mxn
+            detalle_cuentas.append({
+                'nombre':    cuenta.get('nombre', ''),
+                'moneda':    moneda,
+                'saldo':     saldo,
+                'tc':        tc,
+                'saldo_mxn': round(saldo_mxn, 2),
+            })
+
         if total_banco > 0:
             saldo_inicial_banco = total_banco
             saldo_fuente = 'bank_accounts'
@@ -213,8 +236,9 @@ async def initialize_weeks(
         'created':           created,
         'updated':           updated,
         'semanas_generadas': 52,
-        'saldo_inicial_s1':  saldo_inicial_banco,
+        'saldo_inicial_s1':  round(saldo_inicial_banco, 2),
         'saldo_fuente':      saldo_fuente,
+        'detalle_cuentas':   detalle_cuentas,
         'desde':             start_date.isoformat(),
         'hasta':             (start_date + timedelta(weeks=52) - timedelta(days=1)).isoformat(),
     }
