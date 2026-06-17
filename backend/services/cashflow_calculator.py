@@ -1,5 +1,5 @@
 """
-Servicio único de cálculo de semanas de cashflow.
+Servicio único de cálculo de semanas de cashflow. v2.1 - 2026-06-17
 Fuentes: db.cashflow_weeks (estructura) + db.cfdis (por fecha_emision) + db.cxc_proyecciones + Alegra CxC/CxP pendientes.
 """
 import re
