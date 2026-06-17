@@ -864,6 +864,30 @@ async def sync_alegra_bills(
 
 async def _run_payments_sync(company_id: str, email: str, token: str, date_from: str = None, date_to: str = None):
     """Background task: sync completo de payments Alegra (API + CFDIs + retiros)."""
+    logger.info(f"[Payments sync] Iniciando para company {company_id}")
+
+    # Resolver UUID completo (por si llegó prefijo corto)
+    company_full = await db.companies.find_one(
+        {'id': {'$regex': f'^{company_id}'}},
+        {'_id': 0, 'id': 1, 'alegra_email': 1, 'alegra_token': 1, 'alegra_connected': 1}
+    )
+    if company_full:
+        company_id = company_full['id']
+        if not email:
+            email = company_full.get('alegra_email')
+        if not token:
+            token = company_full.get('alegra_token')
+
+    if not email or not token:
+        await db.sync_status.update_one(
+            {'company_id': company_id, 'type': 'alegra_payments'},
+            {'$set': {'status': 'error', 'stats': {}, 'error_message': 'Sin credenciales Alegra',
+                      'updated_at': datetime.now(timezone.utc).isoformat()}},
+            upsert=True
+        )
+        logger.error(f"[Payments sync] Sin credenciales para company {company_id}")
+        return
+
     stats = {'desde_api': 0, 'desde_cfdis': 0, 'retiros_creados': 0, 'total': 0,
              'api_created': 0, 'api_updated': 0, 'api_skipped': 0, 'api_errors': 0,
              'cfdi_created': 0, 'cfdi_updated': 0, 'cfdi_errors': 0, 'retiros_errors': 0}
