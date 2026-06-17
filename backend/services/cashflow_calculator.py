@@ -30,14 +30,11 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         {'company_id': company_id}, {'_id': 0}
     ).sort('numero_semana', 1).to_list(200)
 
-    # ── 2. Leer TODOS los CFDIs una sola vez ──────────────────────
+    # ── 2. Leer CFDIs de fuentes NO-Alegra (Contalink, SAT, manual, etc.) ──
     cfdis = await db.cfdis.find(
         {
             'company_id': company_id,
-            '$or': [
-                {'source': {'$ne': 'alegra'}},
-                {'source': 'alegra', 'fecha_emision': {'$gte': '2025-12-01'}},
-            ],
+            'source': {'$ne': 'alegra'},
         },
         {'_id': 0, 'tipo_cfdi': 1, 'total': 1, 'fecha_emision': 1,
          'receptor_nombre': 1, 'emisor_nombre': 1, 'concepto': 1, 'categoria': 1, 'id': 1}
@@ -62,6 +59,35 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             'nombre': nombre,
             'categoria': c.get('categoria', 'otros'),
             'id': c.get('id', ''),
+        })
+
+    # ── Fuente 4: Payments reales de Alegra (cobros/pagos efectivos) ─
+    payments_reales = await db.payments.find({
+        'company_id': company_id,
+        'source': 'alegra',
+        'estatus': 'completado',
+        'es_real': True,
+    }, {'_id': 0, 'tipo': 1, 'monto': 1, 'fecha_pago': 1,
+        'concepto': 1, 'beneficiario': 1, 'id': 1}).to_list(5000)
+
+    processed_payments = []
+    for p in payments_reales:
+        fecha = _parse_date(p.get('fecha_pago'))
+        if not fecha:
+            continue
+        monto = float(p.get('monto', 0) or 0)
+        if monto <= 0:
+            continue
+        tipo = str(p.get('tipo', '') or '').lower()
+        nombre = p.get('concepto') or p.get('beneficiario') or 'Sin nombre'
+        processed_payments.append({
+            'fecha': fecha,
+            'monto': monto,
+            'tipo': 'cobro' if tipo == 'cobro' else 'pago',
+            'nombre': nombre,
+            'categoria': 'cobro_alegra' if tipo == 'cobro' else 'pago_alegra',
+            'id': p.get('id', ''),
+            'es_real': True,
         })
 
     # ── Fuente 2: Proyecciones manuales de CxC/CxP ───────────────
@@ -198,6 +224,21 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
                 elif c['tipo'] in ('e', 'egreso', 'expense', 'salida', 'gasto'):
                     egresos.append(item)
 
+        for p in processed_payments:
+            if fi <= p['fecha'] <= ff:
+                item = {
+                    'id': p['id'],
+                    'concepto': p['nombre'],
+                    'monto': p['monto'],
+                    'fecha': p['fecha'],
+                    'categoria': p['categoria'],
+                    'es_real': True,
+                }
+                if p['tipo'] == 'cobro':
+                    ingresos.append(item)
+                else:
+                    egresos.append(item)
+
         total_ing = sum(i['monto'] for i in ingresos)
         total_egr = sum(e['monto'] for e in egresos)
 
@@ -289,6 +330,16 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
                     if c['tipo'] in ('i', 'ingreso', 'income', 'entrada'):
                         ingresos.append(item)
                     elif c['tipo'] in ('e', 'egreso', 'expense', 'salida', 'gasto'):
+                        egresos.append(item)
+
+            for p in processed_payments:
+                if fi_s <= p['fecha'] <= ff_s:
+                    item = {'id': p['id'], 'concepto': p['nombre'],
+                            'monto': p['monto'], 'fecha': p['fecha'],
+                            'categoria': p['categoria'], 'es_real': True}
+                    if p['tipo'] == 'cobro':
+                        ingresos.append(item)
+                    else:
                         egresos.append(item)
 
             # Solo agregar proyecciones si la semana generada no tiene CFDIs reales
