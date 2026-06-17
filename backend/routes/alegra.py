@@ -1163,6 +1163,24 @@ async def sync_alegra_payments(
     }
 
 
+@router.delete("/payments-from-cfdis")
+async def delete_payments_from_cfdis(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Elimina payments generados incorrectamente desde CFDIs (alegra_id starts with 'cfdi-')."""
+    company_id = await get_active_company_id(request, current_user)
+    res = await db.payments.delete_many({
+        'company_id': company_id,
+        'source': 'alegra',
+        'alegra_id': {'$regex': '^cfdi-'},
+    })
+    return {
+        'deleted': res.deleted_count,
+        'message': 'Payments generados de CFDIs eliminados',
+    }
+
+
 @router.get("/debug-cfdis")
 async def debug_cfdis(
     request: Request,
