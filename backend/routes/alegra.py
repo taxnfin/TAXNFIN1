@@ -1142,6 +1142,47 @@ async def sync_alegra_payments(
     }
 
 
+@router.get("/debug-cfdis")
+async def debug_cfdis(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Diagnóstico: valores reales de estado_conciliacion y monto_cobrado en db.cfdis."""
+    company_id = await get_active_company_id(request, current_user)
+
+    total = await db.cfdis.count_documents({'company_id': company_id, 'source': 'alegra'})
+
+    por_estado = await db.cfdis.aggregate([
+        {'$match': {'company_id': company_id, 'source': 'alegra'}},
+        {'$group': {'_id': '$estado_conciliacion', 'count': {'$sum': 1}}},
+        {'$sort': {'count': -1}},
+    ]).to_list(20)
+
+    por_tipo = await db.cfdis.aggregate([
+        {'$match': {'company_id': company_id, 'source': 'alegra'}},
+        {'$group': {'_id': '$tipo_cfdi', 'count': {'$sum': 1}}},
+        {'$sort': {'count': -1}},
+    ]).to_list(20)
+
+    ejemplos_cobrado = await db.cfdis.find(
+        {'company_id': company_id, 'source': 'alegra', 'monto_cobrado': {'$gt': 0}},
+        {'_id': 0, 'alegra_id': 1, 'tipo_cfdi': 1, 'estado_conciliacion': 1,
+         'monto_cobrado': 1, 'total': 1, 'fecha_emision': 1}
+    ).limit(3).to_list(3)
+
+    return {
+        'company_id':          company_id,
+        'total_cfdis_alegra':  total,
+        'por_estado_conciliacion': [
+            {'estado': r.get('_id'), 'count': r['count']} for r in por_estado
+        ],
+        'por_tipo_cfdi': [
+            {'tipo': r.get('_id'), 'count': r['count']} for r in por_tipo
+        ],
+        'ejemplos_monto_cobrado_gt0': ejemplos_cobrado,
+    }
+
+
 async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None, date_to: str = None):
     """Background task: sincroniza invoices, bills y payments desde Alegra."""
     logger.info(f"[Alegra] Iniciando sync background para company {company_id}")
