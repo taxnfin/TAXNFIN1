@@ -1151,6 +1151,8 @@ async def _run_payments_sync(company_id: str, email: str, token: str, date_from:
         }, {'_id': 0, 'alegra_id': 1, 'fecha': 1, 'monto': 1,
             'descripcion': 1, 'contacto': 1, 'cuenta_bancaria': 1}).to_list(5000)
 
+        logger.info(f"[Payments sync] Retiros encontrados en bank_transactions: {len(retiros)}")
+
         for retiro in retiros:
             try:
                 ret_id = retiro.get('alegra_id', '')
