@@ -196,6 +196,9 @@ const PaymentsModule = () => {
       
       // Filter payments based on actual reconciliation status
       let filteredPayments = paymentsRes.data;
+      console.log('[PaymentsModule] paymentsRes.data:',
+        Array.isArray(paymentsRes.data) ? paymentsRes.data.length + ' items' : typeof paymentsRes.data,
+        paymentsRes.data?.[0]?.tipo, paymentsRes.data?.[0]?.fecha_pago);
       
       // Apply status filter based on REAL status (estado_real), not stored estatus
       if (filterEstatus !== 'all') {
@@ -229,6 +232,7 @@ const PaymentsModule = () => {
       }
       
       setPayments(filteredPayments);
+      console.log('[PaymentsModule] filteredPayments:', filteredPayments?.length, 'items');
       setSummary(summaryRes.data || {});
       setBreakdown(breakdownRes.data || {});
       setAgingSummary(agingRes?.data || null);
