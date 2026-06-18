@@ -2937,95 +2937,100 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
         # ── Procesar transactions directamente del listado ────────────────
         for concil_idx, conc in enumerate(all_conciliations):
             conc_id = str(conc.get('id', ''))
-            if not conc_id:
-                continue
+            try:
+                if not conc_id:
+                    continue
 
-            account_obj     = conc.get('account') or {}
-            account_name    = account_obj.get('name', '') if isinstance(account_obj, dict) else ''
-            moneda          = 'USD' if 'USD' in account_name.upper() else 'MXN'
+                account_obj  = conc.get('account') or {}
+                account_name = account_obj.get('name', '') if isinstance(account_obj, dict) else ''
+                moneda       = 'USD' if 'USD' in account_name.upper() else 'MXN'
 
-            transactions = conc.get('transactions') or []
-            if not isinstance(transactions, list):
-                transactions = []
+                transactions = conc.get('transactions') or []
+                if not isinstance(transactions, list):
+                    transactions = []
 
-            logger.info(f"[Alegra conciliations] conc {conc_id} ({concil_idx+1}/{len(all_conciliations)}): "
-                        f"cuenta='{account_name}' moneda={moneda} txns={len(transactions)}")
+                logger.info(f"[Alegra conciliations] conc {conc_id} ({concil_idx+1}/{len(all_conciliations)}): "
+                            f"cuenta='{account_name}' moneda={moneda} txns={len(transactions)}")
 
-            for t in transactions:
-                try:
-                    mov_id = str(t.get('id', ''))
-                    if not mov_id:
-                        continue
+                for t in transactions:
+                    try:
+                        mov_id = str(t.get('id', ''))
+                        if not mov_id:
+                            continue
 
-                    monto_original = abs(float(t.get('amount', 0) or 0))
-                    if monto_original == 0:
-                        continue
+                        monto_original = abs(float(t.get('amount', 0) or 0))
+                        if monto_original == 0:
+                            continue
 
-                    fecha_raw = (t.get('date') or '')[:10]
-                    if not fecha_raw:
-                        continue
-                    if date_from and fecha_raw < date_from:
-                        continue
-                    if date_to and fecha_raw > date_to:
-                        continue
+                        fecha_raw = (t.get('date') or '')[:10]
+                        if not fecha_raw:
+                            continue
+                        if date_from and fecha_raw < date_from:
+                            continue
+                        if date_to and fecha_raw > date_to:
+                            continue
 
-                    tipo = 'deposito' if (t.get('type') or '') == 'in' else 'retiro'
+                        tipo = 'deposito' if (t.get('type') or '') == 'in' else 'retiro'
 
-                    client_obj = t.get('client') or {}
-                    contacto   = client_obj.get('name', '') if isinstance(client_obj, dict) else ''
+                        client_obj = t.get('client') or {}
+                        contacto   = client_obj.get('name', '') if isinstance(client_obj, dict) else ''
 
-                    num_template = t.get('numberTemplate') or {}
-                    numero = str(num_template.get('number', '') or '') if isinstance(num_template, dict) else ''
+                        num_template = t.get('numberTemplate') or {}
+                        numero = str(num_template.get('number', '') or '') if isinstance(num_template, dict) else ''
 
-                    associations = t.get('associations') or []
-                    facturas_ligadas = [
-                        a.get('name', '') for a in associations
-                        if isinstance(a, dict) and a.get('type') in ('invoice', 'bill')
-                    ]
+                        associations = t.get('associations') or []
+                        facturas_ligadas = [
+                            a.get('name', '') for a in associations
+                            if isinstance(a, dict) and a.get('type') in ('invoice', 'bill')
+                        ]
 
-                    # Convertir a MXN
-                    tipo_cambio = get_tc(fecha_raw) if moneda == 'USD' else 1.0
-                    monto_mxn   = round(monto_original * tipo_cambio, 2)
+                        tipo_cambio = get_tc(fecha_raw) if moneda == 'USD' else 1.0
+                        monto_mxn   = round(monto_original * tipo_cambio, 2)
 
-                    doc = {
-                        'alegra_id':          mov_id,
-                        'company_id':         company_id,
-                        'source':             'alegra',
-                        'fecha':              fecha_raw,
-                        'fecha_movimiento':   fecha_raw,
-                        'tipo':               tipo,
-                        'monto':              monto_mxn,
-                        'monto_original':     monto_original,
-                        'moneda':             moneda,
-                        'tipo_cambio':        tipo_cambio,
-                        'descripcion':        numero or contacto or f'Movimiento Alegra {mov_id}',
-                        'numero_movimiento':  numero,
-                        'contacto':           contacto,
-                        'cuenta_bancaria':    account_name,
-                        'facturas_ligadas':   facturas_ligadas,
-                        'conciliation_id':    conc_id,
-                        'estado':             'conciliado',
-                        'conciliado':         True,
-                        'es_real':            True,
-                        'updated_at':         datetime.now(timezone.utc).isoformat(),
-                    }
+                        doc = {
+                            'alegra_id':          mov_id,
+                            'company_id':         company_id,
+                            'source':             'alegra',
+                            'fecha':              fecha_raw,
+                            'fecha_movimiento':   fecha_raw,
+                            'tipo':               tipo,
+                            'monto':              monto_mxn,
+                            'monto_original':     monto_original,
+                            'moneda':             moneda,
+                            'tipo_cambio':        tipo_cambio,
+                            'descripcion':        numero or contacto or f'Movimiento Alegra {mov_id}',
+                            'numero_movimiento':  numero,
+                            'contacto':           contacto,
+                            'cuenta_bancaria':    account_name,
+                            'facturas_ligadas':   facturas_ligadas,
+                            'conciliation_id':    conc_id,
+                            'estado':             'conciliado',
+                            'conciliado':         True,
+                            'es_real':            True,
+                            'updated_at':         datetime.now(timezone.utc).isoformat(),
+                        }
 
-                    res = await db.bank_transactions.update_one(
-                        {'company_id': company_id, 'alegra_id': mov_id, 'source': 'alegra'},
-                        {'$set': doc,
-                         '$setOnInsert': {'id': str(uuid.uuid4()),
-                                          'created_at': datetime.now(timezone.utc).isoformat()}},
-                        upsert=True
-                    )
-                    stats['movimientos'] += 1
-                    if res.upserted_id:
-                        stats['created'] += 1
-                    else:
-                        stats['updated'] += 1
+                        res = await db.bank_transactions.update_one(
+                            {'company_id': company_id, 'alegra_id': mov_id, 'source': 'alegra'},
+                            {'$set': doc,
+                             '$setOnInsert': {'id': str(uuid.uuid4()),
+                                              'created_at': datetime.now(timezone.utc).isoformat()}},
+                            upsert=True
+                        )
+                        stats['movimientos'] += 1
+                        if res.upserted_id:
+                            stats['created'] += 1
+                        else:
+                            stats['updated'] += 1
 
-                except Exception as e:
-                    logger.error(f"[Alegra conciliations] Error guardando mov {t.get('id')} conc {conc_id}: {e}", exc_info=True)
-                    stats['errors'] += 1
+                    except Exception as e:
+                        logger.error(f"[Alegra conciliations] Error mov {t.get('id')} conc {conc_id}: {e}", exc_info=True)
+                        stats['errors'] += 1
+
+            except Exception as e:
+                logger.error(f"[Alegra conciliations] ERROR en concil {conc_id}: {e}", exc_info=True)
+                stats['errors'] += 1
+                # Continuar con la siguiente conciliación
 
             # Progreso en tiempo real después de cada conciliación
             stats['conciliaciones'] = concil_idx + 1
