@@ -2142,6 +2142,9 @@ const BankStatementsModule = () => {
                 <TableBody>
                   {filteredTransactions.map((txn) => {
                     const account = bankAccounts.find(a => a.id === txn.bank_account_id);
+                    // Alegra bank_transactions use cuenta_bancaria (string) instead of bank_account_id
+                    const displayBanco = account?.banco || txn.cuenta_bancaria || 'N/A';
+                    const displayNombre = account?.nombre || txn.cuenta_bancaria || '-';
                     return (
                       <TableRow key={txn.id} className={txn.conciliado ? 'bg-green-50/50' : ''}>
                         <TableCell className="font-mono text-sm">
@@ -2149,8 +2152,8 @@ const BankStatementsModule = () => {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col">
-                            <span className="text-xs font-medium bg-blue-100 text-blue-800 px-2 py-0.5 rounded w-fit">{account?.banco || 'N/A'}</span>
-                            <span className="text-xs text-gray-500 mt-0.5">{account?.nombre || '-'}</span>
+                            <span className="text-xs font-medium bg-blue-100 text-blue-800 px-2 py-0.5 rounded w-fit">{displayBanco}</span>
+                            <span className="text-xs text-gray-500 mt-0.5">{displayNombre}</span>
                           </div>
                         </TableCell>
                         <TableCell className="max-w-[250px]">
