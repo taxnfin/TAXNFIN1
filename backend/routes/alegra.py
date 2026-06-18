@@ -2067,6 +2067,11 @@ async def get_alegra_cxc(
 ):
     """CxC de Alegra con aging calculado desde CFDIs sincronizados (no requiere llamada extra a la API)."""
     company_id = await get_active_company_id(request, current_user)
+    company_doc = await db.companies.find_one(
+        {'id': {'$regex': f'^{company_id}'}}, {'_id': 0, 'id': 1}
+    )
+    if company_doc:
+        company_id = company_doc['id']
     today = date.today()
 
     invoices = await db.cfdis.find({
@@ -2076,6 +2081,7 @@ async def get_alegra_cxc(
         'estatus':            {'$ne': 'cancelado'},
         'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
     }, {'_id': 0}).to_list(5000)
+    logger.info(f"[CxC] company_id={company_id} query ejecutado, results={len(invoices)}")
 
     facturas = []
     aging = {'corriente': 0.0, 'vencido_30': 0.0, 'vencido_60': 0.0, 'vencido_90': 0.0, 'vencido_mas90': 0.0}
@@ -2140,6 +2146,11 @@ async def get_alegra_cxp(
 ):
     """CxP de Alegra con aging calculado desde CFDIs sincronizados."""
     company_id = await get_active_company_id(request, current_user)
+    company_doc = await db.companies.find_one(
+        {'id': {'$regex': f'^{company_id}'}}, {'_id': 0, 'id': 1}
+    )
+    if company_doc:
+        company_id = company_doc['id']
     today = date.today()
 
     bills = await db.cfdis.find({
@@ -2149,6 +2160,7 @@ async def get_alegra_cxp(
         'estatus':            {'$ne': 'cancelado'},
         'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
     }, {'_id': 0}).to_list(5000)
+    logger.info(f"[CxP] company_id={company_id} query ejecutado, results={len(bills)}")
 
     facturas = []
     aging = {'corriente': 0.0, 'vencido_30': 0.0, 'vencido_60': 0.0, 'vencido_90': 0.0, 'vencido_mas90': 0.0}
