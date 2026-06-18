@@ -2964,7 +2964,7 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
 
                 # Llamada individual SIN ?fields — la API devuelve transactions por defecto
                 detail = await alegra_request('GET', f'conciliations/{conc_id}', email, token,
-                                              params={'fields': 'transactions'})
+                                              params={'fields': 'transactions,movements,entries'})
                 await asyncio.sleep(0.3)
 
                 if not detail or not isinstance(detail, dict):
