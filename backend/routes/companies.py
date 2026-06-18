@@ -84,6 +84,9 @@ async def list_companies(current_user: Dict = Depends(get_current_user)):
             seen.add(c['id'])
             if isinstance(c.get('created_at'), str):
                 c['created_at'] = datetime.fromisoformat(c['created_at'])
+            # Infer alegra_connected from stored credentials if the flag is missing
+            if not c.get('alegra_connected') and c.get('alegra_email') and c.get('alegra_token'):
+                c['alegra_connected'] = True
             result.append(c)
 
     return result

@@ -229,6 +229,29 @@ async def get_alegra_status(
     }
 
 
+@router.post("/fix-company-flag")
+async def fix_alegra_company_flag(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Set alegra_connected=True for the active company when credentials exist but the flag is missing."""
+    company_id = await get_active_company_id(request, current_user)
+    company_doc = await db.companies.find_one(
+        {'id': {'$regex': f'^{company_id}'}},
+        {'_id': 0, 'id': 1, 'alegra_email': 1, 'alegra_token': 1, 'alegra_connected': 1}
+    )
+    if not company_doc:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    full_id = company_doc['id']
+    if not company_doc.get('alegra_email') or not company_doc.get('alegra_token'):
+        return {'updated': False, 'company_id': full_id, 'reason': 'no_credentials'}
+    await db.companies.update_one(
+        {'id': full_id},
+        {'$set': {'alegra_connected': True}}
+    )
+    return {'updated': True, 'company_id': full_id}
+
+
 @router.post("/sync/contacts")
 async def sync_alegra_contacts(
     request: Request,

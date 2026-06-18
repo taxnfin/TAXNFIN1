@@ -18,6 +18,7 @@ class Company(BaseModel):
     on_hold: bool = False
     hold_reason: Optional[str] = None
     hold_since: Optional[str] = None
+    alegra_connected: Optional[bool] = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
