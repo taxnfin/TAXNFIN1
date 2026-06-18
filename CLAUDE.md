@@ -311,6 +311,84 @@ Key test files: `test_dashboard_advanced.py`, `test_categories_diot.py`, `test_a
 | `design_guidelines.json` | Full UI/UX specifications |
 | `memory/PRD.md` | Full product roadmap |
 
+## Background Tasks for Long-Running Syncs
+
+ERP sync endpoints that time out on Railway use FastAPI `BackgroundTasks`. The pattern:
+
+```python
+from fastapi import BackgroundTasks
+
+async def _run_X_sync(company_id: str, email: str, token: str, ...):
+    # 1. Resolve full UUID — company_id may arrive as 8-char prefix
+    company_full = await db.companies.find_one(
+        {'id': {'$regex': f'^{company_id}'}}, {'_id': 0, 'id': 1, 'alegra_email': 1, 'alegra_token': 1}
+    )
+    if company_full:
+        company_id = company_full['id']
+        if not email: email = company_full.get('alegra_email')
+        if not token: token = company_full.get('alegra_token')
+
+    # 2. Mark running
+    await db.sync_status.update_one(
+        {'company_id': company_id, 'type': 'alegra_X'},
+        {'$set': {'status': 'running', 'stats': {}, 'updated_at': ...}}, upsert=True
+    )
+    try:
+        # ... all work here ...
+        final_status = 'completed'
+    except Exception as e:
+        final_status = 'error'
+        stats['error_message'] = str(e)
+    await db.sync_status.update_one(
+        {'company_id': company_id, 'type': 'alegra_X'},
+        {'$set': {'status': final_status, 'stats': stats, 'updated_at': ...}}, upsert=True
+    )
+
+@router.post("/sync/X")
+async def sync_X(request, background_tasks: BackgroundTasks, current_user=Depends(...)):
+    company_id = await get_active_company_id(request, current_user)
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0})
+    background_tasks.add_task(_run_X_sync, company_id, company.get('alegra_email'), ...)
+    return {'status': 'started'}
+
+@router.get("/sync/X/status")
+async def get_X_status(request, current_user=Depends(...)):
+    company_id = await get_active_company_id(request, current_user)
+    record = await db.sync_status.find_one({'company_id': company_id, 'type': 'alegra_X'}, {'_id': 0})
+    if not record: return {'status': 'never_run'}
+    return {'status': record.get('status'), 'stats': record.get('stats'), 'updated_at': record.get('updated_at')}
+```
+
+**Critical**: Background tasks receive `company_id` at call time — `get_active_company_id()` resolves 8-char prefixes but the full UUID must be re-resolved inside the task (the company may not have been loaded yet). Always re-resolve at the top of `_run_X_sync`.
+
+Implemented for: `POST /alegra/sync/payments` → `_run_payments_sync`, `POST /alegra/sync/conciliations` → `_run_conciliations_sync`. Status tracked in `db.sync_status` with `type` discriminator (`'alegra_payments'`, `'alegra_conciliations'`).
+
+## Alegra Data Collections
+
+`routes/alegra.py` (~3200 lines) writes to several distinct MongoDB collections:
+
+| Collection | Written by | Contains |
+|---|---|---|
+| `db.cfdis` | Invoice/bill sync | CFDI documents (facturas) from Alegra |
+| `db.payments` | `_run_payments_sync` | Individual payments — Fuente 1 (API `/payments`), Fuente 2 (synthetic from CFDIs), Fuente 3 (retiros from bank_transactions) |
+| `db.bank_transactions` | `_run_conciliations_sync` | Individual bank movements (deposito/retiro) from conciliation detail |
+| `db.alegra_conciliations` | `GET /conciliations` list endpoint | Raw conciliation headers cached from API (not movements) |
+| `db.sync_status` | All background tasks | Progress tracking (`status`, `stats`, `updated_at`) |
+
+`db.bank_transactions` with `source='alegra'` is the input for **Fuente 5** in `cashflow_calculator.py`. It only gets populated when `_run_conciliations_sync` successfully extracts `transactions` from `GET /conciliations/{id}?fields=transactions,movements,entries`.
+
+## response_model Gotcha
+
+**Never add `response_model=` to endpoints that return computed aggregates.** Pydantic models use `extra="ignore"` (`BaseModelWithConfig`), which silently strips any field not declared in the model. Endpoints like `GET /cashflow/weeks` call `cashflow_calculator.py` which computes `total_ingresos`, `ingresos_detalle`, `flujo_neto`, etc. — none of these are in the `CashFlowWeek` Pydantic model, so they would be stripped from the response.
+
+```python
+# Wrong — strips all calculated fields:
+@router.get("/cashflow/weeks", response_model=List[CashFlowWeek])
+
+# Correct — returns the full computed dict:
+@router.get("/cashflow/weeks")
+```
+
 ## X-Company-ID Header
 
 Required for all multi-company operations:
