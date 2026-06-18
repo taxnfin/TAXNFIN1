@@ -2870,6 +2870,9 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
 
     email = company.get('alegra_email')
     token = company.get('alegra_token')
+    logger.info(f"[Alegra conciliations] company_id resuelto: {company_id}")
+    logger.info(f"[Alegra conciliations] email: {email[:10] if email else 'NONE'}")
+    logger.info(f"[Alegra conciliations] token: {'OK' if token else 'NONE'}")
     # FIX 1: actualizar sync_status a 'error' antes del return
     if not email or not token:
         logger.error(f"[Alegra conciliations] Sin credenciales para {company_id}")
@@ -2945,6 +2948,7 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
 
         total_concs = len(all_conciliations)
         stats['conciliaciones_total'] = total_concs
+        logger.info(f"[Alegra conciliations] all_conciliations count: {total_concs}")
         logger.info(f"[Alegra conciliations] Total conciliaciones a procesar: {total_concs}")
 
         # ── 2. Por cada conciliación: GET /conciliations/{id} sin params ─────
@@ -2969,6 +2973,9 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
 
                 if not detail or not isinstance(detail, dict):
                     logger.warning(f"[Alegra conciliations] conc {conc_id}: respuesta inválida tipo={type(detail)}")
+                    continue
+                if detail.get('error'):
+                    logger.error(f"[Alegra conciliations] API error en conc {conc_id}: {detail}")
                     continue
 
                 transactions = detail.get('transactions') or []
