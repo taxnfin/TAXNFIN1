@@ -3196,6 +3196,20 @@ async def debug_conciliation(
     return results
 
 
+@router.delete("/bank-transactions/clear")
+async def clear_alegra_bank_transactions(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Elimina todos los documentos de db.bank_transactions con source='alegra' para la empresa activa."""
+    company_id = await get_active_company_id(request, current_user)
+    result = await db.bank_transactions.delete_many(
+        {'company_id': company_id, 'source': 'alegra'}
+    )
+    logger.info(f"[Alegra] clear bank_transactions: eliminados {result.deleted_count} docs para {company_id}")
+    return {'deleted': result.deleted_count}
+
+
 @router.get("/debug-bank-transactions")
 async def debug_bank_transactions(
     request: Request,
