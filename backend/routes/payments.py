@@ -774,145 +774,103 @@ async def get_payments_with_reconciliation_status(
     associated bank transaction is actually reconciled.
     """
     company_id = await get_active_company_id(request, current_user)
-    
-    # Get all bank transactions for this company
-    bank_txns = await db.bank_transactions.find({'company_id': company_id}, {'_id': 0}).to_list(5000)
-    bank_txn_map = {t['id']: t for t in bank_txns}
-    
-    # Build query
-    query = {'company_id': company_id}
-    if tipo:
-        query['tipo'] = tipo
-    if fecha_desde:
-        query['fecha_pago'] = {'$gte': fecha_desde}
-    if fecha_hasta:
-        if 'fecha_pago' in query:
-            query['fecha_pago']['$lte'] = fecha_hasta
-        else:
-            query['fecha_pago'] = {'$lte': fecha_hasta}
-    
-    payments = await db.payments.find(query, {'_id': 0}).sort('fecha_pago', -1).limit(limit).to_list(limit)
 
-    # Add computed 'estado_real' based on bank transaction status
-    for p in payments:
-        bank_txn_id = p.get('bank_transaction_id')
-        if bank_txn_id:
-            bank_txn = bank_txn_map.get(bank_txn_id)
-            if bank_txn:
-                p['estado_real'] = 'completado' if bank_txn.get('conciliado') == True else 'pendiente'
-                p['conciliacion_real'] = bank_txn.get('conciliado', False)
-            else:
-                p['estado_real'] = 'desconocido'
-                p['conciliacion_real'] = False
-        else:
-            p['estado_real'] = p.get('estatus', 'pendiente')
-            p['conciliacion_real'] = None
+    # ── Detectar si la empresa usa Alegra como fuente principal ──
+    alegra_count = await db.bank_transactions.count_documents(
+        {'company_id': company_id, 'source': 'alegra'}, limit=1
+    )
+    usa_alegra = alegra_count > 0
 
-        for field in ['fecha_vencimiento', 'fecha_pago', 'created_at']:
-            if isinstance(p.get(field), str) and p[field]:
-                p[field] = datetime.fromisoformat(p[field].replace('Z', '+00:00'))
+    payments: list = []
 
-    # ── Enriquecer fecha_pago real para payments Alegra desde bank_transactions ──
-    alegra_depositos = [
-        t for t in bank_txns
-        if t.get('source') == 'alegra'
-        and t.get('tipo') in ('deposito', 'ingreso', 'credito')
-    ]
-    depositos_por_contacto: dict = {}
-    for bt in alegra_depositos:
-        key = (bt.get('contacto') or '').lower().strip()
-        if key:
-            depositos_por_contacto.setdefault(key, []).append(bt)
-    depositos_por_folio: dict = {}
-    for bt in alegra_depositos:
-        for folio in (bt.get('facturas_ligadas') or []):
-            folio_str = str(folio).strip()
-            if folio_str:
-                depositos_por_folio.setdefault(folio_str, []).append(bt)
-
-    for p in payments:
-        if p.get('source') != 'alegra' or p.get('tipo') != 'cobro':
-            continue
-        concepto = str(p.get('concepto') or '').strip()
-        beneficiario = (p.get('beneficiario') or '').lower().strip()
-        fecha_pago_raw = p.get('fecha_pago')
-        fecha_pago_str = str(fecha_pago_raw)[:10] if fecha_pago_raw else ''
-        if not fecha_pago_str or fecha_pago_str == 'None':
-            continue
-        try:
-            fecha_ref = datetime.strptime(fecha_pago_str, '%Y-%m-%d')
-            fecha_min = (fecha_ref - timedelta(days=60)).strftime('%Y-%m-%d')
-            fecha_max = (fecha_ref + timedelta(days=60)).strftime('%Y-%m-%d')
-        except ValueError:
-            continue
-
-        candidatos = []
-        if concepto:
-            candidatos += depositos_por_folio.get(concepto, [])
-        if beneficiario:
-            candidatos += depositos_por_contacto.get(beneficiario, [])
-
-        for bt in candidatos:
-            bt_fecha = str(bt.get('fecha') or bt.get('fecha_movimiento') or '')[:10]
-            if fecha_min <= bt_fecha <= fecha_max:
-                bt_fecha_real = bt.get('fecha') or bt.get('fecha_movimiento')
-                p['fecha_pago_real'] = bt_fecha_real
-                p['fecha_pago'] = bt_fecha_real
-                if not p.get('cuenta_bancaria'):
-                    p['cuenta_bancaria'] = bt.get('cuenta_bancaria', '')
-                break
-
-    # ── Merge movimientos reales de db.bank_transactions source='alegra' ──
-    bt_query: dict = {'company_id': company_id, 'source': 'alegra', 'es_real': True}
-    if tipo:
-        # cobro → deposito, pago → retiro
+    if usa_alegra:
+        # ── Fuente principal: db.bank_transactions source='alegra' ──
+        bt_query: dict = {'company_id': company_id, 'source': 'alegra', 'es_real': True}
         if tipo == 'cobro':
             bt_query['tipo'] = {'$in': ['deposito', 'ingreso', 'credito']}
         elif tipo == 'pago':
-            bt_query['tipo'] = 'retiro'
-    if fecha_desde:
-        bt_query['fecha'] = {'$gte': fecha_desde}
-    if fecha_hasta:
-        if 'fecha' in bt_query:
-            bt_query['fecha']['$lte'] = fecha_hasta
-        else:
-            bt_query['fecha'] = {'$lte': fecha_hasta}
+            bt_query['tipo'] = {'$in': ['retiro', 'egreso', 'debito']}
+        if fecha_desde:
+            bt_query['fecha'] = {'$gte': fecha_desde}
+        if fecha_hasta:
+            if 'fecha' in bt_query:
+                bt_query['fecha']['$lte'] = fecha_hasta
+            else:
+                bt_query['fecha'] = {'$lte': fecha_hasta}
 
-    bank_txns_alegra = await db.bank_transactions.find(bt_query, {'_id': 0}).to_list(5000)
+        bank_txns_alegra = await db.bank_transactions.find(
+            bt_query, {'_id': 0}
+        ).sort('fecha', -1).limit(limit).to_list(limit)
 
-    existing_ids = {p.get('alegra_id') for p in payments if p.get('source') == 'alegra' and p.get('alegra_id')}
+        for t in bank_txns_alegra:
+            tipo_bt = t.get('tipo', '')
+            tipo_pay = 'cobro' if tipo_bt in ('deposito', 'ingreso', 'credito') else 'pago'
+            fecha = t.get('fecha') or t.get('fecha_movimiento', '')
+            payments.append({
+                'id':                      t.get('id') or f"bt-{t.get('alegra_id', '')}",
+                'company_id':              company_id,
+                'tipo':                    tipo_pay,
+                'concepto':                t.get('descripcion') or t.get('numero_movimiento') or t.get('contacto') or '',
+                'monto':                   t.get('monto', 0),
+                'monto_original':          t.get('monto_original', t.get('monto', 0)),
+                'moneda':                  t.get('moneda', 'MXN'),
+                'tipo_cambio':             t.get('tipo_cambio', 1),
+                'fecha_pago':              fecha,
+                'fecha_vencimiento':       fecha,
+                'beneficiario':            t.get('contacto', ''),
+                'cuenta_bancaria':         t.get('cuenta_bancaria', ''),
+                'alegra_bank_account':     t.get('cuenta_bancaria', ''),
+                'facturas_ligadas':        t.get('facturas_ligadas', []),
+                'categorias':              t.get('categorias', []),
+                'estatus':                 'completado',
+                'es_real':                 True,
+                'source':                  'alegra',
+                'fuente':                  'bank_transaction',
+                'alegra_id':               t.get('alegra_id', ''),
+                'estado_real':             'completado',
+                'conciliacion_real':       True,
+                '_from_bank_transactions': True,
+            })
 
-    for t in bank_txns_alegra:
-        bt_alegra_id = t.get('alegra_id', '')
-        # Evitar duplicados con payments ya cargados desde db.payments
-        if bt_alegra_id and bt_alegra_id in existing_ids:
-            continue
-        tipo_bt = t.get('tipo', '')
-        tipo_pay = 'cobro' if tipo_bt in ('deposito', 'ingreso', 'credito') else 'pago'
-        fecha = t.get('fecha') or t.get('fecha_movimiento', '')
-        payments.append({
-            'id':                  t.get('id') or f"bt-{bt_alegra_id}",
-            'company_id':          company_id,
-            'tipo':                tipo_pay,
-            'concepto':            t.get('descripcion') or t.get('contacto') or f'Movimiento Alegra {bt_alegra_id}',
-            'monto':               t.get('monto', 0),
-            'monto_original':      t.get('monto_original', t.get('monto', 0)),
-            'moneda':              t.get('moneda', 'MXN'),
-            'tipo_cambio':         t.get('tipo_cambio', 1),
-            'fecha_pago':          fecha,
-            'fecha_vencimiento':   fecha,
-            'estatus':             'completado',
-            'es_real':             True,
-            'source':              'alegra',
-            'alegra_id':           bt_alegra_id,
-            'beneficiario':        t.get('contacto', ''),
-            'cuenta_bancaria':     t.get('cuenta_bancaria', ''),
-            'alegra_bank_account': t.get('cuenta_bancaria', ''),
-            'facturas_ligadas':    t.get('facturas_ligadas', []),
-            'estado_real':         'completado',
-            'conciliacion_real':   True,
-            '_from_bank_transactions': True,
-        })
+    else:
+        # ── Fuente fallback: db.payments (Contalink / manual) ──
+        query: dict = {'company_id': company_id}
+        if tipo:
+            query['tipo'] = tipo
+        if fecha_desde:
+            query['fecha_pago'] = {'$gte': fecha_desde}
+        if fecha_hasta:
+            if 'fecha_pago' in query:
+                query['fecha_pago']['$lte'] = fecha_hasta
+            else:
+                query['fecha_pago'] = {'$lte': fecha_hasta}
+
+        bank_txns_all = await db.bank_transactions.find(
+            {'company_id': company_id}, {'_id': 0}
+        ).to_list(5000)
+        bank_txn_map = {t['id']: t for t in bank_txns_all}
+
+        raw = await db.payments.find(query, {'_id': 0}).sort('fecha_pago', -1).limit(limit).to_list(limit)
+
+        for p in raw:
+            bank_txn_id = p.get('bank_transaction_id')
+            if bank_txn_id:
+                bt = bank_txn_map.get(bank_txn_id)
+                if bt:
+                    p['estado_real'] = 'completado' if bt.get('conciliado') else 'pendiente'
+                    p['conciliacion_real'] = bt.get('conciliado', False)
+                else:
+                    p['estado_real'] = 'desconocido'
+                    p['conciliacion_real'] = False
+            else:
+                p['estado_real'] = p.get('estatus', 'pendiente')
+                p['conciliacion_real'] = None
+
+            for field in ['fecha_vencimiento', 'fecha_pago', 'created_at']:
+                if isinstance(p.get(field), str) and p[field]:
+                    p[field] = datetime.fromisoformat(p[field].replace('Z', '+00:00'))
+
+            payments.append(p)
 
     payments.sort(
         key=lambda p: str(p.get('fecha_pago') or p.get('fecha_vencimiento') or ''),
