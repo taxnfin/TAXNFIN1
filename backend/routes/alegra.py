@@ -2895,7 +2895,7 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
         return fx_by_date.get(fecha, FX_FALLBACK)
 
     try:
-        # ── Paginar GET /conciliations — transactions vienen incluidas ──────
+        # ── 1. Paginar GET /conciliations para obtener IDs y metadata ────────
         all_conciliations = []
         start = 0
         MAX_PAGES = 100
@@ -2931,25 +2931,38 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
                 break
             start += 30
 
-        stats['conciliaciones'] = len(all_conciliations)
-        logger.info(f"[Alegra conciliations] Total conciliaciones: {len(all_conciliations)}")
+        total_concs = len(all_conciliations)
+        stats['conciliaciones_total'] = total_concs
+        logger.info(f"[Alegra conciliations] Total conciliaciones a procesar: {total_concs}")
 
-        # ── Procesar transactions directamente del listado ────────────────
+        # ── 2. Por cada conciliación: GET /conciliations/{id} sin params ─────
+        # Procesa en lotes de 10, actualizando sync_status después de cada lote
+        BATCH_SIZE = 10
+
         for concil_idx, conc in enumerate(all_conciliations):
             conc_id = str(conc.get('id', ''))
+            # Extraer metadata de cuenta del listado
+            account_obj  = conc.get('account') or {}
+            account_name = account_obj.get('name', '') if isinstance(account_obj, dict) else ''
+            moneda       = 'USD' if 'USD' in account_name.upper() else 'MXN'
+
             try:
                 if not conc_id:
                     continue
 
-                account_obj  = conc.get('account') or {}
-                account_name = account_obj.get('name', '') if isinstance(account_obj, dict) else ''
-                moneda       = 'USD' if 'USD' in account_name.upper() else 'MXN'
+                # Llamada individual SIN ?fields — la API devuelve transactions por defecto
+                detail = await alegra_request('GET', f'conciliations/{conc_id}', email, token)
+                await asyncio.sleep(0.3)
 
-                transactions = conc.get('transactions') or []
+                if not detail or not isinstance(detail, dict):
+                    logger.warning(f"[Alegra conciliations] conc {conc_id}: respuesta inválida tipo={type(detail)}")
+                    continue
+
+                transactions = detail.get('transactions') or []
                 if not isinstance(transactions, list):
                     transactions = []
 
-                logger.info(f"[Alegra conciliations] conc {conc_id} ({concil_idx+1}/{len(all_conciliations)}): "
+                logger.info(f"[Alegra conciliations] conc {conc_id} ({concil_idx+1}/{total_concs}): "
                             f"cuenta='{account_name}' moneda={moneda} txns={len(transactions)}")
 
                 for t in transactions:
@@ -3030,22 +3043,25 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
             except Exception as e:
                 logger.error(f"[Alegra conciliations] ERROR en concil {conc_id}: {e}", exc_info=True)
                 stats['errors'] += 1
-                # Continuar con la siguiente conciliación
 
-            # Progreso en tiempo real después de cada conciliación
+            # Progreso en tiempo real después de cada lote de BATCH_SIZE
             stats['conciliaciones'] = concil_idx + 1
-            await db.sync_status.update_one(
-                {'company_id': company_id, 'type': 'alegra_conciliations'},
-                {'$set': {
-                    'stats.conciliaciones': stats['conciliaciones'],
-                    'stats.movimientos':    stats['movimientos'],
-                    'stats.created':        stats['created'],
-                    'stats.updated':        stats['updated'],
-                    'stats.errors':         stats['errors'],
-                    'updated_at':           datetime.now(timezone.utc).isoformat(),
-                }},
-                upsert=True
-            )
+            if (concil_idx + 1) % BATCH_SIZE == 0 or (concil_idx + 1) == total_concs:
+                await db.sync_status.update_one(
+                    {'company_id': company_id, 'type': 'alegra_conciliations'},
+                    {'$set': {
+                        'stats.conciliaciones':       stats['conciliaciones'],
+                        'stats.conciliaciones_total': total_concs,
+                        'stats.movimientos':          stats['movimientos'],
+                        'stats.created':              stats['created'],
+                        'stats.updated':              stats['updated'],
+                        'stats.errors':               stats['errors'],
+                        'updated_at':                 datetime.now(timezone.utc).isoformat(),
+                    }},
+                    upsert=True
+                )
+                logger.info(f"[Alegra conciliations] Lote {concil_idx+1}/{total_concs} — "
+                            f"mov={stats['movimientos']} created={stats['created']} errors={stats['errors']}")
 
         final_status = 'completed'
         logger.info(f"[Alegra conciliations] Sync completado para {company_id}: {stats}")
