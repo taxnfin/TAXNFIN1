@@ -217,13 +217,13 @@ const PaymentsModule = () => {
       // Apply date filters — string comparison avoids timezone offset issues
       if (filterFechaDesde) {
         filteredPayments = filteredPayments.filter(p => {
-          const fecha = (p.fecha_pago || p.fecha_vencimiento || p.fecha || '').substring(0, 10);
+          const fecha = (p.fecha_pago || p.fecha || '').substring(0, 10);
           return fecha >= filterFechaDesde;
         });
       }
       if (filterFechaHasta) {
         filteredPayments = filteredPayments.filter(p => {
-          const fecha = (p.fecha_pago || p.fecha_vencimiento || p.fecha || '').substring(0, 10);
+          const fecha = (p.fecha_pago || p.fecha || '').substring(0, 10);
           return fecha <= filterFechaHasta;
         });
       }
@@ -1900,7 +1900,7 @@ const PaymentsModule = () => {
           <Table className="data-table">
             <TableHeader>
               <TableRow>
-                <TableHead>Fecha Venc.</TableHead>
+                <TableHead>Fecha Pago</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Real/Proy.</TableHead>
                 <TableHead>UUID CFDI</TableHead>
@@ -1943,7 +1943,7 @@ const PaymentsModule = () => {
                   return (
                   <TableRow key={payment.id} className={payment.es_real === false ? 'bg-blue-50/30' : ''}>
                     <TableCell className="mono text-sm">
-                      {(payment.fecha_vencimiento ? format(new Date(payment.fecha_vencimiento), 'dd/MM/yyyy') : payment.fecha ? format(new Date(payment.fecha), 'dd/MM/yyyy') : 'Sin fecha')}
+                      {(payment.fecha_pago ? format(new Date(payment.fecha_pago), 'dd/MM/yyyy') : payment.fecha ? format(new Date(payment.fecha), 'dd/MM/yyyy') : 'Sin fecha')}
                       {payment.domiciliacion_activa && (
                         <span className="ml-2 text-xs px-1 py-0.5 bg-blue-100 text-blue-800 rounded">DOM</span>
                       )}
