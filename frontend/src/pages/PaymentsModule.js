@@ -183,24 +183,31 @@ const PaymentsModule = () => {
       if (filterFechaHasta) url += `&fecha_hasta=${filterFechaHasta}`;
       
       console.log('[DEBUG URL]', url);
-      const [paymentsRes, summaryRes, breakdownRes, bankTxnsRes, agingRes] = await Promise.all([
+      const [paymentsRes, summaryRes, breakdownRes, bankTxnsRes, agingRes] = await Promise.allSettled([
         api.get(url),
         api.get('/payments/summary'),
         api.get('/payments/breakdown'),
         api.get('/bank-transactions?limit=500'),
         api.get(getERPEndpoints().agingSummaryEndpoint).catch(() => ({ data: null }))
       ]);
-      
+
+      const paymentsData = paymentsRes.status === 'fulfilled' ? paymentsRes.value.data : [];
+      const summaryData  = summaryRes.status  === 'fulfilled' ? summaryRes.value.data  : {};
+      const breakdownData = breakdownRes.status === 'fulfilled' ? breakdownRes.value.data : {};
+      const bankTxnsData  = bankTxnsRes.status  === 'fulfilled' ? bankTxnsRes.value.data  : [];
+      const agingData     = agingRes.status      === 'fulfilled' ? agingRes.value.data      : null;
+
+      console.log('[PaymentsModule] paymentsRes:', paymentsRes.status,
+        Array.isArray(paymentsData) ? paymentsData.length + ' items' : typeof paymentsData,
+        paymentsData?.[0]?.tipo, paymentsData?.[0]?.fecha_pago);
+
       // Build set of reconciled bank transaction IDs
-      const bankTxns = bankTxnsRes.data || [];
+      const bankTxns = Array.isArray(bankTxnsData) ? bankTxnsData : [];
       const reconciledTxnIds = new Set(bankTxns.filter(t => t.conciliado === true).map(t => t.id));
-      
+
       // Filter payments based on actual reconciliation status
-      let filteredPayments = paymentsRes.data;
-      console.log('[PaymentsModule] paymentsRes.data:',
-        Array.isArray(paymentsRes.data) ? paymentsRes.data.length + ' items' : typeof paymentsRes.data,
-        paymentsRes.data?.[0]?.tipo, paymentsRes.data?.[0]?.fecha_pago);
-      
+      let filteredPayments = Array.isArray(paymentsData) ? paymentsData : [];
+
       // Apply status filter based on REAL status (estado_real), not stored estatus
       if (filterEstatus !== 'all') {
         filteredPayments = filteredPayments.filter(p => {
@@ -208,7 +215,7 @@ const PaymentsModule = () => {
           return realStatus === filterEstatus;
         });
       }
-      
+
       // Apply es_real filter
       if (filterEsReal !== 'all') {
         filteredPayments = filteredPayments.filter(p => {
@@ -217,7 +224,7 @@ const PaymentsModule = () => {
           return true;
         });
       }
-      
+
       // Apply date filters — string comparison avoids timezone offset issues
       if (filterFechaDesde) {
         filteredPayments = filteredPayments.filter(p => {
@@ -231,12 +238,12 @@ const PaymentsModule = () => {
           return fecha <= filterFechaHasta;
         });
       }
-      
+
       setPayments(filteredPayments);
       console.log('[PaymentsModule] filteredPayments:', filteredPayments?.length, 'items');
-      setSummary(summaryRes.data || {});
-      setBreakdown(breakdownRes.data || {});
-      setAgingSummary(agingRes?.data || null);
+      setSummary(summaryData || {});
+      setBreakdown(breakdownData || {});
+      setAgingSummary(agingData);
     } catch (error) {
       toast.error('Error cargando pagos');
     } finally {
