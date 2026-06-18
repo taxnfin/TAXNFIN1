@@ -2081,11 +2081,13 @@ async def get_alegra_cxc(
 ):
     """CxC de Alegra con aging calculado desde CFDIs sincronizados (no requiere llamada extra a la API)."""
     company_id = await get_active_company_id(request, current_user)
+    logger.info(f"[CxC] company_id={company_id}")
     company_doc = await db.companies.find_one(
         {'id': {'$regex': f'^{company_id}'}}, {'_id': 0, 'id': 1}
     )
     if company_doc:
         company_id = company_doc['id']
+    logger.info(f"[CxC] company_id resuelto={company_id}")
     today = date.today()
 
     invoices = await db.cfdis.find({
@@ -2095,17 +2097,19 @@ async def get_alegra_cxc(
         'estatus':            {'$ne': 'cancelado'},
         'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
     }, {'_id': 0}).to_list(5000)
-    logger.info(f"[CxC] company_id={company_id} query ejecutado, results={len(invoices)}")
+    logger.info(f"[CxC] raw_count={len(invoices)}")
 
     facturas = []
     aging = {'corriente': 0.0, 'vencido_30': 0.0, 'vencido_60': 0.0, 'vencido_90': 0.0, 'vencido_mas90': 0.0}
     total_pendiente = 0.0
+    skip_saldo = 0
 
     for inv in invoices:
         total_inv = float(inv.get('total', 0) or 0)
         cobrado   = float(inv.get('monto_cobrado', 0) or 0)
         saldo     = round(total_inv - cobrado, 2)
         if saldo < 0.01:
+            skip_saldo += 1
             continue
 
         fecha_venc_raw = inv.get('fecha_vencimiento') or inv.get('fecha_emision', '')
@@ -2136,6 +2140,16 @@ async def get_alegra_cxc(
             'estado_conciliacion': inv.get('estado_conciliacion', 'pendiente'),
             'referencia':          inv.get('referencia', ''),
         })
+
+    logger.info(f"[CxC] después de filtros: {len(facturas)} facturas (skip_saldo={skip_saldo})")
+    if len(facturas) == 0 and len(invoices) > 0:
+        sample = invoices[:3]
+        for s in sample:
+            logger.warning(
+                f"[CxC] SKIP sample: total={s.get('total')} monto_cobrado={s.get('monto_cobrado')} "
+                f"estatus={s.get('estatus')} estado_conciliacion={s.get('estado_conciliacion')} "
+                f"tipo_cfdi={s.get('tipo_cfdi')}"
+            )
 
     facturas.sort(key=lambda x: x['dias_vencido'], reverse=True)
     vencido_total = sum(aging[k] for k in ['vencido_30', 'vencido_60', 'vencido_90', 'vencido_mas90'])
