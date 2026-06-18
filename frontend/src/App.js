@@ -74,16 +74,20 @@ function App() {
       setCompanies(companiesRes.data);
 
       const connections = Array.isArray(intRes.data) ? intRes.data : [];
-      const alegraConnected = connections.some(i => i.integration_type === 'alegra');
+      const alegraViaIntegrations = connections.some(i => i.integration_type === 'alegra');
 
       if (!selectedCompany && companiesRes.data.length > 0) {
         const userCompany = companiesRes.data.find(c => c.id === user.company_id);
         const base = userCompany || companiesRes.data[0];
+        // alegra_connected: true si el campo ya viene en el objeto empresa O si está en integraciones
+        const alegraConnected = base.alegra_connected === true || alegraViaIntegrations;
         const enriched = { ...base, alegra_connected: alegraConnected };
         setSelectedCompany(enriched);
         localStorage.setItem('selectedCompany', JSON.stringify(enriched));
       } else if (selectedCompany) {
-        const enriched = { ...selectedCompany, alegra_connected: alegraConnected };
+        const currentBase = companiesRes.data.find(c => c.id === selectedCompany.id) || selectedCompany;
+        const alegraConnected = currentBase.alegra_connected === true || alegraViaIntegrations;
+        const enriched = { ...currentBase, alegra_connected: alegraConnected };
         setSelectedCompany(enriched);
         localStorage.setItem('selectedCompany', JSON.stringify(enriched));
       }
@@ -107,10 +111,19 @@ function App() {
     setCompanies([]);
   };
 
-  const handleCompanyChange = (company) => {
-    setSelectedCompany(company);
-    localStorage.setItem('selectedCompany', JSON.stringify(company));
-    // Reload the page to refresh data for new company
+  const handleCompanyChange = async (company) => {
+    // Re-fetch integrations for the new company before storing, so alegra_connected is accurate
+    try {
+      const intRes = await api.get('/integrations/connected').catch(() => ({ data: [] }));
+      const connections = Array.isArray(intRes.data) ? intRes.data : [];
+      const alegraConnected = company.alegra_connected === true || connections.some(i => i.integration_type === 'alegra');
+      const enriched = { ...company, alegra_connected: alegraConnected };
+      setSelectedCompany(enriched);
+      localStorage.setItem('selectedCompany', JSON.stringify(enriched));
+    } catch {
+      setSelectedCompany(company);
+      localStorage.setItem('selectedCompany', JSON.stringify(company));
+    }
     window.location.reload();
   };
 

@@ -792,7 +792,7 @@ async def get_payments_with_reconciliation_status(
             query['fecha_pago'] = {'$lte': fecha_hasta}
     
     payments = await db.payments.find(query, {'_id': 0}).sort('fecha_pago', -1).limit(limit).to_list(limit)
-    
+
     # Add computed 'estado_real' based on bank transaction status
     for p in payments:
         bank_txn_id = p.get('bank_transaction_id')
@@ -802,20 +802,69 @@ async def get_payments_with_reconciliation_status(
                 p['estado_real'] = 'completado' if bank_txn.get('conciliado') == True else 'pendiente'
                 p['conciliacion_real'] = bank_txn.get('conciliado', False)
             else:
-                # Bank transaction not found, mark as unknown
                 p['estado_real'] = 'desconocido'
                 p['conciliacion_real'] = False
         else:
-            # No bank transaction linked, use payment's own status
             p['estado_real'] = p.get('estatus', 'pendiente')
-            p['conciliacion_real'] = None  # Not applicable
-        
-        # Convert datetime fields
+            p['conciliacion_real'] = None
+
         for field in ['fecha_vencimiento', 'fecha_pago', 'created_at']:
             if isinstance(p.get(field), str) and p[field]:
                 p[field] = datetime.fromisoformat(p[field].replace('Z', '+00:00'))
-    
-    return payments
+
+    # ── Merge movimientos reales de db.bank_transactions source='alegra' ──
+    bt_query: dict = {'company_id': company_id, 'source': 'alegra', 'es_real': True}
+    if tipo:
+        # cobro → deposito, pago → retiro
+        if tipo == 'cobro':
+            bt_query['tipo'] = {'$in': ['deposito', 'ingreso', 'credito']}
+        elif tipo == 'pago':
+            bt_query['tipo'] = 'retiro'
+    if fecha_desde:
+        bt_query['fecha'] = {'$gte': fecha_desde}
+    if fecha_hasta:
+        if 'fecha' in bt_query:
+            bt_query['fecha']['$lte'] = fecha_hasta
+        else:
+            bt_query['fecha'] = {'$lte': fecha_hasta}
+
+    bank_txns_alegra = await db.bank_transactions.find(bt_query, {'_id': 0}).to_list(5000)
+
+    existing_ids = {p.get('alegra_id') for p in payments if p.get('source') == 'alegra' and p.get('alegra_id')}
+
+    for t in bank_txns_alegra:
+        bt_alegra_id = t.get('alegra_id', '')
+        # Evitar duplicados con payments ya cargados desde db.payments
+        if bt_alegra_id and bt_alegra_id in existing_ids:
+            continue
+        tipo_bt = t.get('tipo', '')
+        tipo_pay = 'cobro' if tipo_bt in ('deposito', 'ingreso', 'credito') else 'pago'
+        fecha = t.get('fecha') or t.get('fecha_movimiento', '')
+        payments.append({
+            'id':                  t.get('id') or f"bt-{bt_alegra_id}",
+            'company_id':          company_id,
+            'tipo':                tipo_pay,
+            'concepto':            t.get('descripcion') or t.get('contacto') or f'Movimiento Alegra {bt_alegra_id}',
+            'monto':               t.get('monto', 0),
+            'moneda':              'MXN',
+            'fecha_pago':          fecha,
+            'fecha_vencimiento':   fecha,
+            'estatus':             'completado',
+            'es_real':             True,
+            'source':              'alegra',
+            'alegra_id':           bt_alegra_id,
+            'beneficiario':        t.get('contacto', ''),
+            'alegra_bank_account': t.get('cuenta_bancaria', ''),
+            'estado_real':         'completado',
+            'conciliacion_real':   True,
+            '_from_bank_transactions': True,
+        })
+
+    payments.sort(
+        key=lambda p: str(p.get('fecha_pago') or p.get('fecha_vencimiento') or ''),
+        reverse=True
+    )
+    return payments[:limit]
 
 
 @router.post("/cleanup-duplicates")
@@ -972,15 +1021,33 @@ async def get_payments_breakdown(request: Request, current_user: Dict = Depends(
     # Get real payments from payments collection
     payments = await db.payments.find(
         {'company_id': company_id, 'es_real': True, 'estatus': 'completado'},
-        {'_id': 0, 'tipo': 1, 'monto': 1, 'moneda': 1}
+        {'_id': 0, 'tipo': 1, 'monto': 1, 'moneda': 1, 'cfdi_id': 1}
     ).to_list(10000)
 
-    total_pagado_mxn = sum(to_mxn(p.get('monto', 0) or 0, p.get('moneda', 'MXN')) for p in payments if p.get('tipo') == 'pago')
+    pagado_count  = sum(1 for p in payments if p.get('tipo') == 'pago')
+    cobrado_count = sum(1 for p in payments if p.get('tipo') == 'cobro')
+    pagado_con_cfdi  = sum(1 for p in payments if p.get('tipo') == 'pago'  and p.get('cfdi_id'))
+    cobrado_con_cfdi = sum(1 for p in payments if p.get('tipo') == 'cobro' and p.get('cfdi_id'))
+
+    total_pagado_mxn  = sum(to_mxn(p.get('monto', 0) or 0, p.get('moneda', 'MXN')) for p in payments if p.get('tipo') == 'pago')
     total_cobrado_mxn = sum(to_mxn(p.get('monto', 0) or 0, p.get('moneda', 'MXN')) for p in payments if p.get('tipo') == 'cobro')
 
-    # FIX A: Si no hay payments registrados pero los CFDIs tienen monto_cobrado/pagado
-    # (vienen de Alegra/Contalink), leer directamente de los CFDIs para que las tarjetas
-    # Pagado/Cobrado no aparezcan en $0.
+    # Sumar movimientos reales de db.bank_transactions source='alegra'
+    bank_txns_alegra = await db.bank_transactions.find(
+        {'company_id': company_id, 'source': 'alegra', 'es_real': True},
+        {'_id': 0, 'tipo': 1, 'monto': 1}
+    ).to_list(10000)
+    for t in bank_txns_alegra:
+        tipo_bt = t.get('tipo', '')
+        monto_t = float(t.get('monto', 0) or 0)
+        if tipo_bt in ('deposito', 'ingreso', 'credito'):
+            total_cobrado_mxn += monto_t
+            cobrado_count += 1
+        else:
+            total_pagado_mxn += monto_t
+            pagado_count += 1
+
+    # Fallback: si aún no hay nada, leer monto_cobrado/pagado de los CFDIs
     if total_pagado_mxn == 0 and total_cobrado_mxn == 0:
         for c in cfdis:
             moneda = c.get('moneda', 'MXN') or 'MXN'
@@ -1025,9 +1092,13 @@ async def get_payments_breakdown(request: Request, current_user: Dict = Depends(
         },
         'pagado': {
             'total_equiv_mxn': round(total_pagado_mxn, 2),
+            'total_count':     pagado_count,
+            'con_cfdi':        pagado_con_cfdi,
         },
         'cobrado': {
             'total_equiv_mxn': round(total_cobrado_mxn, 2),
+            'total_count':     cobrado_count,
+            'con_cfdi':        cobrado_con_cfdi,
         },
         'proy_pagos': {
             'total_equiv_mxn': round(proy_pagos_mxn, 2),
