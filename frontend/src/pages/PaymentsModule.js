@@ -182,6 +182,7 @@ const PaymentsModule = () => {
       if (filterFechaDesde) url += `&fecha_desde=${filterFechaDesde}`;
       if (filterFechaHasta) url += `&fecha_hasta=${filterFechaHasta}`;
       
+      console.log('[DEBUG URL]', url);
       const [paymentsRes, summaryRes, breakdownRes, bankTxnsRes, agingRes] = await Promise.all([
         api.get(url),
         api.get('/payments/summary'),
