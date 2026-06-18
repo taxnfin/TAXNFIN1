@@ -1544,12 +1544,15 @@ const BankStatementsModule = () => {
       .filter(c => c && c.length > 0)
   )].sort();
 
+  // tipo_movimiento (credito/debito) es el campo estándar; source='alegra' guarda tipo (deposito/retiro)
+  const isDeposito = (t) => t.tipo_movimiento === 'credito' || t.tipo === 'deposito' || t.tipo === 'ingreso';
+
   // Stats
   const totalDepositos = filteredTransactions
-    .filter(t => t.tipo_movimiento === 'credito')
+    .filter(t => isDeposito(t))
     .reduce((sum, t) => sum + t.monto, 0);
   const totalRetiros = filteredTransactions
-    .filter(t => t.tipo_movimiento === 'debito')
+    .filter(t => !isDeposito(t))
     .reduce((sum, t) => sum + t.monto, 0);
   const pendientesConciliar = filteredTransactions.filter(t => !t.conciliado).length;
   
@@ -2156,11 +2159,11 @@ const BankStatementsModule = () => {
                         <TableCell className="font-mono text-sm text-gray-500">{txn.referencia || '-'}</TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded font-medium ${
-                            txn.tipo_movimiento === 'credito' 
-                              ? 'bg-green-100 text-green-700' 
+                            isDeposito(txn)
+                              ? 'bg-green-100 text-green-700'
                               : 'bg-red-100 text-red-700'
                           }`}>
-                            {txn.tipo_movimiento === 'credito' ? (
+                            {isDeposito(txn) ? (
                               <><ArrowUpCircle size={12} /> Depósito</>
                             ) : (
                               <><ArrowDownCircle size={12} /> Retiro</>
@@ -2168,10 +2171,10 @@ const BankStatementsModule = () => {
                           </span>
                         </TableCell>
                         <TableCell className={`text-right font-mono font-semibold ${
-                          txn.tipo_movimiento === 'credito' ? 'text-green-600' : 'text-red-600'
+                          isDeposito(txn) ? 'text-green-600' : 'text-red-600'
                         }`}>
                           <div>
-                            {txn.tipo_movimiento === 'credito' ? '+' : '-'}
+                            {isDeposito(txn) ? '+' : '-'}
                             ${Math.abs(txn.monto).toLocaleString('es-MX', {minimumFractionDigits: 2})}
                             <span className="text-xs ml-1">{txn.moneda || account?.moneda || 'MXN'}</span>
                           </div>

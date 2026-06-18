@@ -214,17 +214,17 @@ const PaymentsModule = () => {
         });
       }
       
-      // Apply date filters
+      // Apply date filters — string comparison avoids timezone offset issues
       if (filterFechaDesde) {
         filteredPayments = filteredPayments.filter(p => {
-          const fecha = p.fecha_vencimiento || p.fecha_pago;
-          return fecha && new Date(fecha) >= new Date(filterFechaDesde);
+          const fecha = (p.fecha_pago || p.fecha_vencimiento || p.fecha || '').substring(0, 10);
+          return fecha >= filterFechaDesde;
         });
       }
       if (filterFechaHasta) {
         filteredPayments = filteredPayments.filter(p => {
-          const fecha = p.fecha_vencimiento || p.fecha_pago;
-          return fecha && new Date(fecha) <= new Date(filterFechaHasta);
+          const fecha = (p.fecha_pago || p.fecha_vencimiento || p.fecha || '').substring(0, 10);
+          return fecha <= filterFechaHasta;
         });
       }
       
@@ -1907,6 +1907,7 @@ const PaymentsModule = () => {
                 <TableHead>Categoría</TableHead>
                 <TableHead>Concepto</TableHead>
                 <TableHead>Beneficiario</TableHead>
+                <TableHead>Cuenta</TableHead>
                 <TableHead>Monto</TableHead>
                 <TableHead>Estatus</TableHead>
                 <TableHead className="text-center">Acciones</TableHead>
@@ -1915,7 +1916,7 @@ const PaymentsModule = () => {
             <TableBody>
               {payments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-[#94A3B8] py-8">
+                  <TableCell colSpan={11} className="text-center text-[#94A3B8] py-8">
                     No hay pagos registrados. Crea el primero.
                   </TableCell>
                 </TableRow>
@@ -2029,10 +2030,22 @@ const PaymentsModule = () => {
                     </TableCell>
                     <TableCell className="max-w-[150px] truncate text-sm">{payment.concepto}</TableCell>
                     <TableCell className="text-sm">{payment.beneficiario || '-'}</TableCell>
+                    <TableCell className="text-xs text-gray-500">
+                      {payment.cuenta_bancaria || payment.alegra_bank_account || '-'}
+                    </TableCell>
                     <TableCell className={`mono font-semibold ${
                       payment.tipo === 'cobro' ? 'text-green-600' : 'text-red-600'
                     }`}>
-                      {payment.tipo === 'cobro' ? '+' : '-'}${payment.monto.toLocaleString('es-MX', {minimumFractionDigits: 2})} {payment.moneda}
+                      {payment.tipo === 'cobro' ? '+' : '-'}
+                      {payment.moneda === 'USD' && payment.monto_original
+                        ? `$${payment.monto_original.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD`
+                        : `$${(payment.monto || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} ${payment.moneda || 'MXN'}`
+                      }
+                      {payment.moneda === 'USD' && payment.monto_original && (
+                        <div className="text-xs text-gray-400 font-normal">
+                          = ${(payment.monto || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       {/* Use estado_real (computed from bank transaction) if available */}

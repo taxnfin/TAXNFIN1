@@ -3003,7 +3003,8 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
                         if date_to and fecha_raw > date_to:
                             continue
 
-                        tipo = 'deposito' if (t.get('type') or '') == 'in' else 'retiro'
+                        tipo_raw = str(t.get('type') or t.get('transactionType') or '').upper()
+                        tipo = 'deposito' if tipo_raw in ('IN', 'INCOME', 'CREDIT', 'DEPOSIT', 'DEPOSITO') else 'retiro'
 
                         client_obj = t.get('client') or {}
                         contacto   = client_obj.get('name', '') if isinstance(client_obj, dict) else ''
@@ -3027,6 +3028,7 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
                             'fecha':              fecha_raw,
                             'fecha_movimiento':   fecha_raw,
                             'tipo':               tipo,
+                            'tipo_movimiento':    'credito' if tipo == 'deposito' else 'debito',
                             'monto':              monto_mxn,
                             'monto_original':     monto_original,
                             'moneda':             moneda,
