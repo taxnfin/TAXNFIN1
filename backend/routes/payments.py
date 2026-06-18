@@ -1,5 +1,7 @@
 """Payment routes with full CFDI reversal logic"""
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from typing import Dict, List, Optional
 from datetime import datetime, timezone, timedelta
 import logging
@@ -876,7 +878,7 @@ async def get_payments_with_reconciliation_status(
         key=lambda p: str(p.get('fecha_pago') or p.get('fecha_vencimiento') or ''),
         reverse=True
     )
-    return payments[:limit]
+    return JSONResponse(content=jsonable_encoder(payments[:limit]))
 
 
 @router.post("/cleanup-duplicates")
