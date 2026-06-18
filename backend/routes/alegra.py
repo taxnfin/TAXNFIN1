@@ -1313,6 +1313,19 @@ async def debug_cfdis(
          'monto_cobrado': 1, 'total': 1, 'fecha_emision': 1}
     ).limit(3).to_list(3)
 
+    muestra_pendientes = await db.cfdis.find(
+        {
+            'company_id': {'$regex': '^89cda61e'},
+            'source': 'alegra',
+            'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
+            'tipo_cfdi': 'ingreso',
+        },
+        {'_id': 0, 'total': 1, 'monto': 1, 'monto_cobrado': 1,
+         'subtotal': 1, 'saldo': 1, 'balance': 1, 'amount': 1,
+         'estado_conciliacion': 1, 'tipo_cfdi': 1, 'estatus': 1,
+         'fecha_emision': 1, 'receptor_nombre': 1}
+    ).limit(3).to_list(3)
+
     return {
         'company_id':          company_id,
         'total_cfdis_alegra':  total,
@@ -1323,6 +1336,7 @@ async def debug_cfdis(
             {'tipo': r.get('_id'), 'count': r['count']} for r in por_tipo
         ],
         'ejemplos_monto_cobrado_gt0': ejemplos_cobrado,
+        'muestra_pendientes': muestra_pendientes,
     }
 
 
