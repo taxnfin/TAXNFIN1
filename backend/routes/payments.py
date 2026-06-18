@@ -812,6 +812,56 @@ async def get_payments_with_reconciliation_status(
             if isinstance(p.get(field), str) and p[field]:
                 p[field] = datetime.fromisoformat(p[field].replace('Z', '+00:00'))
 
+    # ── Enriquecer fecha_pago real para payments Alegra desde bank_transactions ──
+    alegra_depositos = [
+        t for t in bank_txns
+        if t.get('source') == 'alegra'
+        and t.get('tipo') in ('deposito', 'ingreso', 'credito')
+    ]
+    depositos_por_contacto: dict = {}
+    for bt in alegra_depositos:
+        key = (bt.get('contacto') or '').lower().strip()
+        if key:
+            depositos_por_contacto.setdefault(key, []).append(bt)
+    depositos_por_folio: dict = {}
+    for bt in alegra_depositos:
+        for folio in (bt.get('facturas_ligadas') or []):
+            folio_str = str(folio).strip()
+            if folio_str:
+                depositos_por_folio.setdefault(folio_str, []).append(bt)
+
+    for p in payments:
+        if p.get('source') != 'alegra' or p.get('tipo') != 'cobro':
+            continue
+        concepto = str(p.get('concepto') or '').strip()
+        beneficiario = (p.get('beneficiario') or '').lower().strip()
+        fecha_pago_raw = p.get('fecha_pago')
+        fecha_pago_str = str(fecha_pago_raw)[:10] if fecha_pago_raw else ''
+        if not fecha_pago_str or fecha_pago_str == 'None':
+            continue
+        try:
+            fecha_ref = datetime.strptime(fecha_pago_str, '%Y-%m-%d')
+            fecha_min = (fecha_ref - timedelta(days=60)).strftime('%Y-%m-%d')
+            fecha_max = (fecha_ref + timedelta(days=60)).strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+
+        candidatos = []
+        if concepto:
+            candidatos += depositos_por_folio.get(concepto, [])
+        if beneficiario:
+            candidatos += depositos_por_contacto.get(beneficiario, [])
+
+        for bt in candidatos:
+            bt_fecha = str(bt.get('fecha') or bt.get('fecha_movimiento') or '')[:10]
+            if fecha_min <= bt_fecha <= fecha_max:
+                bt_fecha_real = bt.get('fecha') or bt.get('fecha_movimiento')
+                p['fecha_pago_real'] = bt_fecha_real
+                p['fecha_pago'] = bt_fecha_real
+                if not p.get('cuenta_bancaria'):
+                    p['cuenta_bancaria'] = bt.get('cuenta_bancaria', '')
+                break
+
     # ── Merge movimientos reales de db.bank_transactions source='alegra' ──
     bt_query: dict = {'company_id': company_id, 'source': 'alegra', 'es_real': True}
     if tipo:
