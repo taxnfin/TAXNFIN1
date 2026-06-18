@@ -2854,23 +2854,31 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
     """Background task: pagina GET /conciliations (transactions incluidas en el listado)
     y guarda movimientos en db.bank_transactions. Sin llamadas extra por conciliación."""
     # Resolver company_id completo
+    # FIX 4: projection incluye credenciales para resolverlas en un solo find_one
     company_full = await db.companies.find_one(
-        {'id': {'$regex': f'^{company_id}'}}, {'_id': 0, 'id': 1}
+        {'id': {'$regex': f'^{company_id}'}},
+        {'_id': 0, 'id': 1, 'alegra_email': 1, 'alegra_token': 1}
     )
     if company_full:
         company_id = company_full['id']
+        if not company.get('alegra_email'):
+            company = dict(company)
+            company['alegra_email'] = company_full.get('alegra_email')
+        if not company.get('alegra_token'):
+            company['alegra_token'] = company_full.get('alegra_token')
     logger.info(f"[Alegra conciliations] Iniciando sync para company_id={company_id}")
 
     email = company.get('alegra_email')
     token = company.get('alegra_token')
-    if not email or not token:
-        # Intentar desde la DB
-        comp_db = await db.companies.find_one({'id': company_id}, {'_id': 0, 'alegra_email': 1, 'alegra_token': 1})
-        if comp_db:
-            email = email or comp_db.get('alegra_email')
-            token = token or comp_db.get('alegra_token')
+    # FIX 1: actualizar sync_status a 'error' antes del return
     if not email or not token:
         logger.error(f"[Alegra conciliations] Sin credenciales para {company_id}")
+        await db.sync_status.update_one(
+            {'company_id': company_id, 'type': 'alegra_conciliations'},
+            {'$set': {'status': 'error', 'error_message': 'Sin credenciales Alegra',
+                      'updated_at': datetime.now(timezone.utc).isoformat()}},
+            upsert=True
+        )
         return
 
     stats = {'conciliaciones': 0, 'movimientos': 0, 'created': 0, 'updated': 0, 'errors': 0}
@@ -2910,20 +2918,24 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
             batch_raw = await alegra_request('GET', 'conciliations', email, token, params=params)
             await asyncio.sleep(0.3)
 
-            if not batch_raw:
-                logger.info(f"[Alegra conciliations] page {page_num}: vacío, fin")
-                break
-            if isinstance(batch_raw, dict):
-                batch = batch_raw.get('data') or batch_raw.get('items') or batch_raw.get('list') or []
-                logger.info(f"[Alegra conciliations] page {page_num}: dict keys={list(batch_raw.keys())}, items={len(batch)}")
-            elif isinstance(batch_raw, list):
+            # FIX 2: log crudo para diagnosticar formato real de la API
+            logger.info(f"[Alegra conciliations] batch_raw type={type(batch_raw).__name__} "
+                        f"keys={list(batch_raw.keys()) if isinstance(batch_raw, dict) else 'es_lista'} "
+                        f"len={len(batch_raw) if isinstance(batch_raw, (list, dict)) else 'N/A'}")
+
+            # FIX 3: lista directa primero (Alegra devuelve lista, no dict con 'data')
+            if isinstance(batch_raw, list):
                 batch = batch_raw
                 logger.info(f"[Alegra conciliations] page {page_num}: lista items={len(batch)}")
+            elif isinstance(batch_raw, dict):
+                batch = batch_raw.get('data') or batch_raw.get('items') or batch_raw.get('list') or []
+                logger.info(f"[Alegra conciliations] page {page_num}: dict keys={list(batch_raw.keys())}, items={len(batch)}")
             else:
                 logger.warning(f"[Alegra conciliations] page {page_num}: tipo inesperado {type(batch_raw)}")
                 break
 
             if not batch:
+                logger.warning(f"[Alegra conciliations] batch vacío en start={start}, terminando paginación")
                 break
             all_conciliations.extend(batch)
             logger.info(f"[Alegra conciliations] acumulado: {len(all_conciliations)}")
