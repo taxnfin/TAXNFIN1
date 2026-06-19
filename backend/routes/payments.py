@@ -787,6 +787,7 @@ async def get_payments_with_reconciliation_status(
 
     if usa_alegra:
         # ── Fuente principal: db.bank_transactions source='alegra' ──
+        # fix: regex company_id - 2026-06-18-v2
         bt_query: dict = {'company_id': {'$regex': f'^{company_id[:8]}'}, 'source': 'alegra', 'es_real': True}
         if tipo == 'cobro':
             bt_query['tipo'] = {'$in': ['deposito', 'ingreso', 'credito']}
