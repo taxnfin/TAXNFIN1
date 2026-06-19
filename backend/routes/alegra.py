@@ -3392,6 +3392,10 @@ async def _run_enrich_contacts(company_id: str):
 
                     for doc in conc_docs:
                         alegra_id = str(doc.get('alegra_id', '') or '')
+                        if enriched == 0 and skipped < 20:
+                            sample_keys = list(txn_index.keys())[:5]
+                            logger.info(f"[enrich-debug] conc_id={conc_id} keys_en_index={sample_keys}")
+                            logger.info(f"[enrich-debug] buscando alegra_id={alegra_id}")
                         t = txn_index.get(alegra_id)
                         if not t:
                             skipped += 1
