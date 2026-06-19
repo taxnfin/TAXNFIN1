@@ -3032,14 +3032,18 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
                 # Paginar transactions de cada conciliación (límite API: 30 por página)
                 all_transactions = []
                 start_txn = 0
-                while True:
+                max_pages = 10
+                page_num = 0
+                seen_transaction_ids = set()
+                while page_num < max_pages:
+                    page_num += 1
                     detail = await alegra_request('GET', f'conciliations/{conc_id}', email, token,
                                                   params={'fields': 'transactions,movements,entries',
                                                           'start': start_txn, 'limit': 30})
                     await asyncio.sleep(0.2)
 
                     if not isinstance(detail, dict):
-                        if start_txn == 0:
+                        if page_num == 1:
                             logger.warning(f"[Alegra conciliations] conc {conc_id}: respuesta inválida tipo={type(detail)}")
                         break
                     if detail.get('error'):
@@ -3053,24 +3057,24 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
                             batch_txns.extend(items)
                             logger.info(f"[Alegra conciliations] conc {conc_id} start={start_txn} field={field}: {len(items)} items")
 
-                    if not batch_txns:
+                    new_txns = [t for t in batch_txns if str(t.get('id', '')) not in seen_transaction_ids]
+                    for t in new_txns:
+                        seen_transaction_ids.add(str(t.get('id', '')))
+
+                    if not new_txns:
                         break
 
-                    all_transactions.extend(batch_txns)
+                    all_transactions.extend(new_txns)
 
                     if len(batch_txns) < 30:
                         break
 
                     start_txn += 30
 
-                seen_ids = set()
-                unique_transactions = []
-                for t in all_transactions:
-                    tid = str(t.get('id', ''))
-                    if tid not in seen_ids:
-                        seen_ids.add(tid)
-                        unique_transactions.append(t)
-                transactions = unique_transactions
+                if page_num >= max_pages:
+                    logger.warning(f"[Alegra conciliations] conc {conc_id}: límite de {max_pages} páginas alcanzado")
+
+                transactions = all_transactions
 
                 logger.info(f"[Alegra conciliations] conc {conc_id} ({concil_idx+1}/{total_concs}): "
                             f"cuenta='{account_name}' moneda={moneda} txns={len(transactions)}")
