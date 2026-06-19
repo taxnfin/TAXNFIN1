@@ -3426,6 +3426,17 @@ async def enrich_contacts_status():
     return {'status': record.get('status'), 'stats': record.get('stats'), 'updated_at': record.get('updated_at')}
 
 
+@router.post("/fix-moneda-original")
+async def fix_moneda_original():
+    """Retroactivamente marca moneda_original='USD' en docs con tipo_cambio > 1 y moneda='MXN'."""
+    company_id = "89cda61e-c9c3-4470-992b-48d3015e5cbd"
+    result = await db.bank_transactions.update_many(
+        {'company_id': company_id, 'source': 'alegra', 'moneda': 'MXN', 'tipo_cambio': {'$gt': 1}},
+        {'$set': {'moneda_original': 'USD'}}
+    )
+    return {'updated': result.modified_count}
+
+
 @router.delete("/bank-transactions/clear")
 async def clear_alegra_bank_transactions(
     request: Request,
