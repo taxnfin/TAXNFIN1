@@ -3032,7 +3032,7 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
                 # Paginar transactions de cada conciliación (límite API: 30 por página)
                 all_transactions = []
                 start_txn = 0
-                max_pages = 10
+                max_pages = 50  # máximo 1500 transactions por conciliación
                 page_num = 0
                 seen_transaction_ids = set()
                 while page_num < max_pages:
@@ -3073,6 +3073,8 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
 
                 if page_num >= max_pages:
                     logger.warning(f"[Alegra conciliations] conc {conc_id}: límite de {max_pages} páginas alcanzado")
+
+                logger.info(f"[Alegra conciliations] conc {conc_id}: {page_num} páginas, {len(all_transactions)} transactions totales")
 
                 transactions = all_transactions
 
