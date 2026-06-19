@@ -3302,6 +3302,14 @@ async def debug_bank_transactions(
         filter_global, {"_id": 0, "company_id": 1, "tipo": 1, "fecha": 1, "monto": 1}
     ).limit(2).to_list(2)
 
+    busqueda_enero_cobros = await db.bank_transactions.find({
+        'company_id': {'$regex': '^89cda61e'},
+        'source': 'alegra',
+        'tipo': {'$in': ['deposito', 'ingreso', 'in']},
+        'fecha': {'$regex': '^2026-01'},
+    }, {'_id': 0, 'fecha': 1, 'contacto': 1, 'monto': 1, 'moneda': 1,
+        'tipo': 1, 'alegra_id': 1, 'cuenta_bancaria': 1}).to_list(100)
+
     return {
         "con_regex_89cda61e": {
             "total":            count_regex,
@@ -3320,6 +3328,7 @@ async def debug_bank_transactions(
             "company_ids": cids_global,
             "samples":     samples_global,
         },
+        "busqueda_enero_cobros": busqueda_enero_cobros,
     }
 
 
