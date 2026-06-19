@@ -785,19 +785,21 @@ async def get_payments_with_reconciliation_status(
 
     payments: list = []
 
+    COBRO_TIPOS = {'deposito', 'ingreso', 'credito', 'in'}
+    PAGO_TIPOS  = {'retiro', 'egreso', 'debito', 'out'}
+
     if usa_alegra:
         # ── Fuente principal: db.bank_transactions source='alegra' ──
-        # fix: regex company_id - 2026-06-18-v2
         bt_query: dict = {'company_id': {'$regex': f'^{company_id[:8]}'}, 'source': 'alegra', 'es_real': True}
         if tipo == 'cobro':
-            bt_query['tipo'] = {'$in': ['deposito', 'ingreso', 'credito']}
+            bt_query['tipo'] = {'$in': list(COBRO_TIPOS)}
         elif tipo == 'pago':
-            bt_query['tipo'] = {'$in': ['retiro', 'egreso', 'debito']}
+            bt_query['tipo'] = {'$in': list(PAGO_TIPOS)}
 
         logger.info(f"[Payments BT] bt_query={bt_query} fecha_desde={fecha_desde} fecha_hasta={fecha_hasta}")
         bank_txns_alegra = await db.bank_transactions.find(
             bt_query, {'_id': 0}
-        ).sort('fecha', -1).to_list(10000)
+        ).sort('fecha', -1).to_list(20000)
 
         # Filtrar por fecha en Python — compatible con campo string o datetime
         if fecha_desde:
@@ -807,11 +809,24 @@ async def get_payments_with_reconciliation_status(
             bank_txns_alegra = [t for t in bank_txns_alegra
                                 if str(t.get('fecha', ''))[:10] <= fecha_hasta]
 
-        logger.info(f"[Payments BT] bank_txns encontrados: {len(bank_txns_alegra)}")
+        # Deduplicar por alegra_id — conservar el más reciente (mayor updated_at)
+        seen_alegra_ids: dict = {}
+        for t in bank_txns_alegra:
+            aid = t.get('alegra_id')
+            if not aid:
+                continue
+            prev = seen_alegra_ids.get(aid)
+            if prev is None or str(t.get('updated_at', '')) > str(prev.get('updated_at', '')):
+                seen_alegra_ids[aid] = t
+        # Docs sin alegra_id se incluyen siempre
+        no_aid = [t for t in bank_txns_alegra if not t.get('alegra_id')]
+        bank_txns_alegra = list(seen_alegra_ids.values()) + no_aid
+
+        logger.info(f"[Payments BT] bank_txns después de dedup: {len(bank_txns_alegra)}")
 
         for t in bank_txns_alegra:
-            tipo_bt = t.get('tipo', '')
-            tipo_pay = 'cobro' if tipo_bt in ('deposito', 'ingreso', 'credito') else 'pago'
+            tipo_bt = t.get('tipo', '').lower()
+            tipo_pay = 'cobro' if tipo_bt in COBRO_TIPOS else 'pago'
             fecha = t.get('fecha') or t.get('fecha_movimiento', '')
             payments.append({
                 'id':                      t.get('id') or f"bt-{t.get('alegra_id', '')}",
