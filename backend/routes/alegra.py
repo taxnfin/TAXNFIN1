@@ -3103,8 +3103,9 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
                         tipo_raw = str(t.get('type') or t.get('transactionType') or '').upper()
                         tipo = 'deposito' if tipo_raw in ('IN', 'INCOME', 'CREDIT', 'DEPOSIT', 'DEPOSITO') else 'retiro'
 
-                        client_obj = t.get('client') or {}
-                        contacto   = client_obj.get('name', '') if isinstance(client_obj, dict) else ''
+                        client_obj = t.get('client') or t.get('contact') or {}
+                        contacto   = (client_obj.get('name', '') if isinstance(client_obj, dict) else str(client_obj or '')) \
+                                     or str(t.get('thirdParty') or '')
 
                         num_template = t.get('numberTemplate') or {}
                         numero = str(num_template.get('number', '') or '') if isinstance(num_template, dict) else ''
@@ -3335,6 +3336,87 @@ async def debug_conciliation(
         results['opcion_4_fields_transactions'] = {'error': str(e)}
 
     return results
+
+
+@router.post("/enrich-contacts")
+async def enrich_contacts(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Enriquece bank_transactions de Alegra que tienen contacto vacío usando la API de Alegra."""
+    company_id = await get_active_company_id(request, current_user)
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0})
+    if not company or not company.get('alegra_connected'):
+        raise HTTPException(status_code=400, detail="Alegra no configurado")
+
+    email = company.get('alegra_email')
+    token = company.get('alegra_token')
+
+    # 1. Buscar docs con contacto vacío o ausente
+    empty_filter = {
+        'company_id': company_id,
+        'source': 'alegra',
+        '$or': [{'contacto': ''}, {'contacto': {'$exists': False}}],
+    }
+    docs = await db.bank_transactions.find(empty_filter, {'_id': 0}).to_list(5000)
+    if not docs:
+        return {'enriched': 0, 'skipped': 0}
+
+    # 2. Agrupar por conciliation_id para minimizar llamadas a la API
+    by_conc: dict = {}
+    for doc in docs:
+        cid = str(doc.get('conciliation_id', '') or '')
+        if cid:
+            by_conc.setdefault(cid, []).append(doc)
+
+    enriched = 0
+    skipped = 0
+
+    for conc_id, conc_docs in by_conc.items():
+        try:
+            detail = await alegra_request('GET', f'conciliations/{conc_id}', email, token,
+                                          params={'fields': 'transactions,movements,entries'})
+            await asyncio.sleep(0.3)
+
+            if not isinstance(detail, dict):
+                skipped += len(conc_docs)
+                continue
+
+            # Indexar transactions de la conciliación por id
+            txn_index = {}
+            for field in ['transactions', 'movements', 'entries', 'items']:
+                items = detail.get(field, [])
+                if isinstance(items, list):
+                    for t in items:
+                        tid = str(t.get('id', ''))
+                        if tid:
+                            txn_index[tid] = t
+
+            for doc in conc_docs:
+                alegra_id = str(doc.get('alegra_id', '') or '')
+                t = txn_index.get(alegra_id)
+                if not t:
+                    skipped += 1
+                    continue
+
+                client_obj = t.get('client') or t.get('contact') or {}
+                contacto = (client_obj.get('name', '') if isinstance(client_obj, dict) else str(client_obj or '')) \
+                           or str(t.get('thirdParty') or '')
+
+                if contacto:
+                    await db.bank_transactions.update_one(
+                        {'company_id': company_id, 'alegra_id': alegra_id, 'source': 'alegra'},
+                        {'$set': {'contacto': contacto, 'descripcion': contacto}}
+                    )
+                    enriched += 1
+                else:
+                    skipped += 1
+
+        except Exception as e:
+            logger.error(f"[enrich-contacts] Error en conc {conc_id}: {e}")
+            skipped += len(conc_docs)
+
+    return {'enriched': enriched, 'skipped': skipped}
 
 
 @router.delete("/bank-transactions/clear")
