@@ -3344,9 +3344,20 @@ async def _run_enrich_contacts(company_id: str):
     try:
         docs = await db.bank_transactions.find(
             {'company_id': company_id, 'source': 'alegra',
-             '$or': [{'contacto': ''}, {'contacto': {'$exists': False}}]},
-            {'_id': 0, 'alegra_id': 1, 'descripcion': 1}
+             '$or': [
+                 {'contacto': ''},
+                 {'contacto': None},
+                 {'contacto': {'$exists': False}},
+                 {'nombre': ''},
+                 {'nombre': {'$exists': False}},
+             ]},
+            {'_id': 0, 'alegra_id': 1, 'descripcion': 1, 'contacto': 1, 'nombre': 1}
         ).to_list(10000)
+
+        logger.info(f"[enrich-debug] docs encontrados con contacto vacío: {len(docs)}")
+        if docs:
+            logger.info(f"[enrich-debug] ejemplo doc: descripcion='{docs[0].get('descripcion')}' contacto='{docs[0].get('contacto')}'")
+
 
         enriched = 0
         skipped = 0
