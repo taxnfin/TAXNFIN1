@@ -4,6 +4,7 @@ Syncs customers, vendors, invoices, bills, and payments with Alegra accounting s
 for cash flow management purposes.
 """
 import os
+import json
 import asyncio
 import base64
 import uuid
@@ -3395,6 +3396,8 @@ async def _run_enrich_contacts(company_id: str):
                         if not t:
                             skipped += 1
                             continue
+                        if enriched == 0 and skipped < 5:
+                            logger.info(f"[enrich-debug] transaction completa: {json.dumps(t, default=str)}")
                         client_obj = t.get('client') or t.get('contact') or {}
                         contacto = (client_obj.get('name', '') if isinstance(client_obj, dict) else str(client_obj or '')) \
                                    or str(t.get('thirdParty') or '')
