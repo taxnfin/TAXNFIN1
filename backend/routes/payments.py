@@ -779,7 +779,7 @@ async def get_payments_with_reconciliation_status(
 
     # ── Detectar si la empresa usa Alegra como fuente principal ──
     alegra_count = await db.bank_transactions.count_documents(
-        {'company_id': company_id, 'source': 'alegra'}, limit=1
+        {'company_id': {'$regex': f'^{company_id[:8]}'}, 'source': 'alegra'}, limit=1
     )
     usa_alegra = alegra_count > 0
 
@@ -787,7 +787,7 @@ async def get_payments_with_reconciliation_status(
 
     if usa_alegra:
         # ── Fuente principal: db.bank_transactions source='alegra' ──
-        bt_query: dict = {'company_id': company_id, 'source': 'alegra', 'es_real': True}
+        bt_query: dict = {'company_id': {'$regex': f'^{company_id[:8]}'}, 'source': 'alegra', 'es_real': True}
         if tipo == 'cobro':
             bt_query['tipo'] = {'$in': ['deposito', 'ingreso', 'credito']}
         elif tipo == 'pago':
