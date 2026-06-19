@@ -836,6 +836,7 @@ async def get_payments_with_reconciliation_status(
                 'monto':                   t.get('monto', 0),
                 'monto_original':          t.get('monto_original', t.get('monto', 0)),
                 'moneda':                  t.get('moneda', 'MXN'),
+                'moneda_original':         t.get('moneda_original', t.get('moneda', 'MXN')),
                 'tipo_cambio':             t.get('tipo_cambio', 1),
                 'fecha_pago':              fecha,
                 'fecha_vencimiento':       fecha,
