@@ -3338,82 +3338,131 @@ async def debug_conciliation(
     return results
 
 
-@router.post("/enrich-contacts")
-async def enrich_contacts():
-    """Enriquece bank_transactions de Alegra que tienen contacto vacío usando la API de Alegra."""
-    company_id = "89cda61e-c9c3-4470-992b-48d3015e5cbd"
-    company = await db.companies.find_one({'id': company_id}, {'_id': 0})
-    if not company or not company.get('alegra_connected'):
-        raise HTTPException(status_code=400, detail="Alegra no configurado")
+async def _run_enrich_contacts(company_id: str):
+    """Background task: enriquece contacto vacío en bank_transactions de Alegra."""
+    try:
+        company = await db.companies.find_one({'id': company_id}, {'_id': 0})
+        if not company or not company.get('alegra_connected'):
+            await db.sync_status.update_one(
+                {'company_id': company_id, 'type': 'enrich_contacts'},
+                {'$set': {'status': 'error', 'stats': {'error': 'Alegra no configurado'},
+                          'updated_at': datetime.now(timezone.utc).isoformat()}},
+                upsert=True
+            )
+            return
 
-    email = company.get('alegra_email')
-    token = company.get('alegra_token')
+        email = company.get('alegra_email')
+        token = company.get('alegra_token')
 
-    # 1. Buscar docs con contacto vacío o ausente
-    empty_filter = {
-        'company_id': company_id,
-        'source': 'alegra',
-        '$or': [{'contacto': ''}, {'contacto': {'$exists': False}}],
-    }
-    docs = await db.bank_transactions.find(empty_filter, {'_id': 0}).to_list(5000)
-    if not docs:
-        return {'enriched': 0, 'skipped': 0}
+        empty_filter = {
+            'company_id': company_id,
+            'source': 'alegra',
+            '$or': [{'contacto': ''}, {'contacto': {'$exists': False}}],
+        }
+        docs = await db.bank_transactions.find(empty_filter, {'_id': 0}).to_list(5000)
 
-    # 2. Agrupar por conciliation_id para minimizar llamadas a la API
-    by_conc: dict = {}
-    for doc in docs:
-        cid = str(doc.get('conciliation_id', '') or '')
-        if cid:
-            by_conc.setdefault(cid, []).append(doc)
+        by_conc: dict = {}
+        for doc in docs:
+            cid = str(doc.get('conciliation_id', '') or '')
+            if cid:
+                by_conc.setdefault(cid, []).append(doc)
 
-    enriched = 0
-    skipped = 0
+        enriched = 0
+        skipped = 0
+        processed = 0
 
-    for conc_id, conc_docs in by_conc.items():
-        try:
-            detail = await alegra_request('GET', f'conciliations/{conc_id}', email, token,
-                                          params={'fields': 'transactions,movements,entries'})
-            await asyncio.sleep(0.3)
+        for conc_id, conc_docs in by_conc.items():
+            try:
+                detail = await alegra_request('GET', f'conciliations/{conc_id}', email, token,
+                                              params={'fields': 'transactions,movements,entries'})
+                await asyncio.sleep(0.3)
 
-            if not isinstance(detail, dict):
-                skipped += len(conc_docs)
-                continue
-
-            # Indexar transactions de la conciliación por id
-            txn_index = {}
-            for field in ['transactions', 'movements', 'entries', 'items']:
-                items = detail.get(field, [])
-                if isinstance(items, list):
-                    for t in items:
-                        tid = str(t.get('id', ''))
-                        if tid:
-                            txn_index[tid] = t
-
-            for doc in conc_docs:
-                alegra_id = str(doc.get('alegra_id', '') or '')
-                t = txn_index.get(alegra_id)
-                if not t:
-                    skipped += 1
-                    continue
-
-                client_obj = t.get('client') or t.get('contact') or {}
-                contacto = (client_obj.get('name', '') if isinstance(client_obj, dict) else str(client_obj or '')) \
-                           or str(t.get('thirdParty') or '')
-
-                if contacto:
-                    await db.bank_transactions.update_one(
-                        {'company_id': company_id, 'alegra_id': alegra_id, 'source': 'alegra'},
-                        {'$set': {'contacto': contacto, 'descripcion': contacto}}
-                    )
-                    enriched += 1
+                if not isinstance(detail, dict):
+                    skipped += len(conc_docs)
                 else:
-                    skipped += 1
+                    txn_index = {}
+                    for field in ['transactions', 'movements', 'entries', 'items']:
+                        items = detail.get(field, [])
+                        if isinstance(items, list):
+                            for t in items:
+                                tid = str(t.get('id', ''))
+                                if tid:
+                                    txn_index[tid] = t
 
-        except Exception as e:
-            logger.error(f"[enrich-contacts] Error en conc {conc_id}: {e}")
-            skipped += len(conc_docs)
+                    for doc in conc_docs:
+                        alegra_id = str(doc.get('alegra_id', '') or '')
+                        t = txn_index.get(alegra_id)
+                        if not t:
+                            skipped += 1
+                            continue
+                        client_obj = t.get('client') or t.get('contact') or {}
+                        contacto = (client_obj.get('name', '') if isinstance(client_obj, dict) else str(client_obj or '')) \
+                                   or str(t.get('thirdParty') or '')
+                        if contacto:
+                            await db.bank_transactions.update_one(
+                                {'company_id': company_id, 'alegra_id': alegra_id, 'source': 'alegra'},
+                                {'$set': {'contacto': contacto, 'descripcion': contacto}}
+                            )
+                            enriched += 1
+                        else:
+                            skipped += 1
 
-    return {'enriched': enriched, 'skipped': skipped}
+            except Exception as e:
+                logger.error(f"[enrich-contacts] Error en conc {conc_id}: {e}")
+                skipped += len(conc_docs)
+
+            processed += len(conc_docs)
+            if processed % 10 == 0:
+                await db.sync_status.update_one(
+                    {'company_id': company_id, 'type': 'enrich_contacts'},
+                    {'$set': {'status': 'running',
+                              'stats': {'enriched': enriched, 'skipped': skipped, 'processed': processed},
+                              'updated_at': datetime.now(timezone.utc).isoformat()}},
+                    upsert=True
+                )
+
+        await db.sync_status.update_one(
+            {'company_id': company_id, 'type': 'enrich_contacts'},
+            {'$set': {'status': 'completed',
+                      'stats': {'enriched': enriched, 'skipped': skipped, 'processed': processed},
+                      'updated_at': datetime.now(timezone.utc).isoformat()}},
+            upsert=True
+        )
+        logger.info(f"[enrich-contacts] Completado: enriched={enriched} skipped={skipped}")
+
+    except Exception as e:
+        logger.error(f"[enrich-contacts] Error fatal: {e}", exc_info=True)
+        await db.sync_status.update_one(
+            {'company_id': company_id, 'type': 'enrich_contacts'},
+            {'$set': {'status': 'error', 'stats': {'error': str(e)},
+                      'updated_at': datetime.now(timezone.utc).isoformat()}},
+            upsert=True
+        )
+
+
+@router.post("/enrich-contacts")
+async def enrich_contacts(background_tasks: BackgroundTasks):
+    """Lanza en background el enriquecimiento de contactos vacíos en bank_transactions."""
+    company_id = "89cda61e-c9c3-4470-992b-48d3015e5cbd"
+    await db.sync_status.update_one(
+        {'company_id': company_id, 'type': 'enrich_contacts'},
+        {'$set': {'status': 'running', 'stats': {}, 'updated_at': datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    background_tasks.add_task(_run_enrich_contacts, company_id)
+    return {'status': 'iniciado', 'message': 'Enriqueciendo contactos en background'}
+
+
+@router.get("/enrich-contacts/status")
+async def enrich_contacts_status():
+    """Retorna el progreso del enriquecimiento de contactos."""
+    company_id = "89cda61e-c9c3-4470-992b-48d3015e5cbd"
+    record = await db.sync_status.find_one(
+        {'company_id': company_id, 'type': 'enrich_contacts'}, {'_id': 0}
+    )
+    if not record:
+        return {'status': 'never_run'}
+    return {'status': record.get('status'), 'stats': record.get('stats'), 'updated_at': record.get('updated_at')}
 
 
 @router.delete("/bank-transactions/clear")
