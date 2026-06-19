@@ -800,9 +800,11 @@ async def get_payments_with_reconciliation_status(
             else:
                 bt_query['fecha'] = {'$lte': fecha_hasta}
 
+        logger.info(f"[Payments BT] bt_query={bt_query} fecha_desde={fecha_desde} fecha_hasta={fecha_hasta}")
         bank_txns_alegra = await db.bank_transactions.find(
             bt_query, {'_id': 0}
         ).sort('fecha', -1).limit(limit).to_list(limit)
+        logger.info(f"[Payments BT] bank_txns encontrados: {len(bank_txns_alegra)}")
 
         for t in bank_txns_alegra:
             tipo_bt = t.get('tipo', '')
