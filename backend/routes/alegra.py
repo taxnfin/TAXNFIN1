@@ -3352,10 +3352,7 @@ async def clear_alegra_bank_transactions(
 
 
 @router.get("/debug/bank-txn-sample")
-async def debug_bank_txn_sample(
-    request: Request,
-    current_user: Dict = Depends(get_current_user),
-):
+async def debug_bank_txn_sample():
     """Diagnóstico temporal: muestra los primeros 3 documentos de bank_transactions para Alegra."""
     docs = await db.bank_transactions.find(
         {"company_id": "89cda61e-c9c3-4470-992b-48d3015e5cbd", "source": "alegra"},
