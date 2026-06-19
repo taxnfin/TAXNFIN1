@@ -3029,29 +3029,43 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
                 if not conc_id:
                     continue
 
-                # Llamada individual SIN ?fields — la API devuelve transactions por defecto
-                detail = await alegra_request('GET', f'conciliations/{conc_id}', email, token,
-                                              params={'fields': 'transactions,movements,entries'})
-                await asyncio.sleep(0.3)
+                # Paginar transactions de cada conciliación (límite API: 30 por página)
+                all_transactions = []
+                start_txn = 0
+                while True:
+                    detail = await alegra_request('GET', f'conciliations/{conc_id}', email, token,
+                                                  params={'fields': 'transactions,movements,entries',
+                                                          'start': start_txn, 'limit': 30})
+                    await asyncio.sleep(0.2)
 
-                if not detail or not isinstance(detail, dict):
-                    logger.warning(f"[Alegra conciliations] conc {conc_id}: respuesta inválida tipo={type(detail)}")
-                    continue
-                if detail.get('error'):
-                    logger.error(f"[Alegra conciliations] API error en conc {conc_id}: {detail}")
-                    continue
+                    if not isinstance(detail, dict):
+                        if start_txn == 0:
+                            logger.warning(f"[Alegra conciliations] conc {conc_id}: respuesta inválida tipo={type(detail)}")
+                        break
+                    if detail.get('error'):
+                        logger.error(f"[Alegra conciliations] API error en conc {conc_id}: {detail}")
+                        break
 
-                transactions = []
-                if isinstance(detail, dict):
+                    batch_txns = []
                     for field in ['transactions', 'movements', 'entries', 'items']:
                         items = detail.get(field, [])
                         if isinstance(items, list) and items:
-                            transactions.extend(items)
-                            logger.info(f"[Alegra conciliations] conc {conc_id} field={field}: {len(items)} items")
+                            batch_txns.extend(items)
+                            logger.info(f"[Alegra conciliations] conc {conc_id} start={start_txn} field={field}: {len(items)} items")
+
+                    if not batch_txns:
+                        break
+
+                    all_transactions.extend(batch_txns)
+
+                    if len(batch_txns) < 30:
+                        break
+
+                    start_txn += 30
 
                 seen_ids = set()
                 unique_transactions = []
-                for t in transactions:
+                for t in all_transactions:
                     tid = str(t.get('id', ''))
                     if tid not in seen_ids:
                         seen_ids.add(tid)
