@@ -108,7 +108,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             continue
         tipo_raw = str(t.get('tipo', '') or '').lower()
         tipo = 'ingreso' if tipo_raw in ('deposito', 'ingreso', 'credito') else 'egreso'
-        nombre = t.get('descripcion') or t.get('contacto') or 'Mov. bancario Alegra'
+        nombre = t.get('contacto') or t.get('descripcion') or 'Movimiento bancario'
         processed_bank_txns.append({
             'fecha': fecha,
             'monto': monto,

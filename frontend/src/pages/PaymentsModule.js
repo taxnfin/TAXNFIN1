@@ -52,6 +52,8 @@ const PaymentsModule = () => {
   const [filterCategoria, setFilterCategoria] = useState('all');
   const [filterFechaDesde, setFilterFechaDesde] = useState('');
   const [filterFechaHasta, setFilterFechaHasta] = useState('');
+  const [filterMoneda, setFilterMoneda] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, payment: null });
   const [bankTransactions, setBankTransactions] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
@@ -921,6 +923,21 @@ const PaymentsModule = () => {
       setSelectedBankMovements([]);
     }
   };
+
+  const tableFiltered = payments.filter(p => {
+    if (activeTab === 'cobrar' && p.tipo !== 'cobro') return false;
+    if (activeTab === 'pagar'  && p.tipo !== 'pago')  return false;
+    if (filterTipo !== 'all' && p.tipo !== filterTipo) return false;
+    if (filterEsReal === 'real'       && p.es_real !== true)  return false;
+    if (filterEsReal === 'proyeccion' && p.es_real !== false) return false;
+    if (filterCategoria === 'sin_categoria') { if (p.category_id) return false; }
+    else if (filterCategoria !== 'all') { if (p.category_id !== filterCategoria) return false; }
+    if (filterMoneda !== 'all' && (p.moneda || 'MXN') !== filterMoneda) return false;
+    return true;
+  });
+  const totalPages = Math.max(1, Math.ceil(tableFiltered.length / 50));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedPayments = tableFiltered.slice((safePage - 1) * 50, safePage * 50);
 
   return (
     <div className="p-8 space-y-6" data-testid="payments-page">
@@ -1815,6 +1832,19 @@ const PaymentsModule = () => {
               </Select>
             </div>
             <div className="space-y-1">
+              <Label className="text-xs">Moneda</Label>
+              <Select value={filterMoneda} onValueChange={(v) => { setFilterMoneda(v); setCurrentPage(1); }}>
+                <SelectTrigger className="w-28">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="MXN">MXN</SelectItem>
+                  <SelectItem value="USD">USD</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
               <Label className="text-xs">Desde</Label>
               <Input
                 type="date"
@@ -1836,8 +1866,10 @@ const PaymentsModule = () => {
               setFilterTipo('all');
               setFilterEstatus('all');
               setFilterCategoria('all');
+              setFilterMoneda('all');
               setFilterFechaDesde('');
               setFilterFechaHasta('');
+              setCurrentPage(1);
             }}>
               Limpiar Filtros
             </Button>
@@ -1852,11 +1884,7 @@ const PaymentsModule = () => {
             <div>
               <CardTitle>Cobranza y Pagos</CardTitle>
               <CardDescription>
-                {payments.filter(p => {
-                  if (activeTab === 'cobrar') return p.tipo === 'cobro';
-                  if (activeTab === 'pagar') return p.tipo === 'pago';
-                  return true;
-                }).length} registros
+                {tableFiltered.length} registros
               </CardDescription>
             </div>
             {/* Tabs */}
@@ -1868,7 +1896,7 @@ const PaymentsModule = () => {
               ].map(tab => (
                 <button
                   key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
+                  onClick={() => { setActiveTab(tab.key); setCurrentPage(1); }}
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                     activeTab === tab.key
                       ? 'bg-white text-[#0F172A] shadow-sm'
@@ -1933,19 +1961,7 @@ const PaymentsModule = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                payments.filter(p => {
-                  // Tab filter
-                  if (activeTab === 'cobrar' && p.tipo !== 'cobro') return false;
-                  if (activeTab === 'pagar'  && p.tipo !== 'pago')  return false;
-                  // Existing filters
-                  if (filterTipo !== 'all' && p.tipo !== filterTipo) return false;
-                  if (filterEsReal === 'real') return p.es_real === true;
-                  if (filterEsReal === 'proyeccion') return p.es_real === false;
-                  // Category filter
-                  if (filterCategoria === 'sin_categoria') return !p.category_id;
-                  if (filterCategoria !== 'all') return p.category_id === filterCategoria;
-                  return true;
-                }).map((payment) => {
+                paginatedPayments.map((payment) => {
                   // Find category and subcategory names
                   const category = categories.find(c => (c.code || c.id) === payment.category_id);
                   const categoryName = category?.nombre || payment.category_name || '';
@@ -2126,6 +2142,31 @@ const PaymentsModule = () => {
               )}
             </TableBody>
           </Table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-2 py-3 border-t border-[#E2E8F0]">
+              <span className="text-xs text-[#64748B]">
+                Página {safePage} de {totalPages} · {tableFiltered.length} registros
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={safePage <= 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                >
+                  Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={safePage >= totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                >
+                  Siguiente
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
