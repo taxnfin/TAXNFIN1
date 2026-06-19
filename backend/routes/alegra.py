@@ -3340,75 +3340,41 @@ async def debug_conciliation(
 
 
 async def _run_enrich_contacts(company_id: str):
-    """Background task: enriquece contacto vacío en bank_transactions de Alegra."""
+    """Background task: copia descripcion → contacto en bank_transactions de Alegra (sin llamadas externas)."""
     try:
-        company = await db.companies.find_one({'id': company_id}, {'_id': 0})
-        if not company or not company.get('alegra_connected'):
-            await db.sync_status.update_one(
-                {'company_id': company_id, 'type': 'enrich_contacts'},
-                {'$set': {'status': 'error', 'stats': {'error': 'Alegra no configurado'},
-                          'updated_at': datetime.now(timezone.utc).isoformat()}},
-                upsert=True
-            )
-            return
-
-        email = company.get('alegra_email')
-        token = company.get('alegra_token')
-
-        empty_filter = {
-            'company_id': company_id,
-            'source': 'alegra',
-            '$or': [{'contacto': ''}, {'contacto': {'$exists': False}}],
-        }
-        docs = await db.bank_transactions.find(empty_filter, {'_id': 0}).to_list(5000)
-
-        by_conc: dict = {}
-        for doc in docs:
-            cid = str(doc.get('conciliation_id', '') or '')
-            if cid:
-                by_conc.setdefault(cid, []).append(doc)
+        docs = await db.bank_transactions.find(
+            {'company_id': company_id, 'source': 'alegra',
+             '$or': [{'contacto': ''}, {'contacto': {'$exists': False}}]},
+            {'_id': 0, 'alegra_id': 1, 'descripcion': 1}
+        ).to_list(10000)
 
         enriched = 0
         skipped = 0
-        processed = 0
 
-        for conc_id, conc_docs in list(by_conc.items())[:2]:  # solo 2 conciliaciones
-            try:
-                detail = await alegra_request('GET', f'conciliations/{conc_id}', email, token,
-                                              params={'fields': 'transactions,movements,entries'})
-                await asyncio.sleep(0.3)
+        for i, doc in enumerate(docs):
+            desc = str(doc.get('descripcion') or '')
+            if desc and not desc.startswith('Movimiento Alegra'):
+                await db.bank_transactions.update_one(
+                    {'company_id': company_id, 'alegra_id': doc.get('alegra_id'), 'source': 'alegra'},
+                    {'$set': {'contacto': desc}}
+                )
+                enriched += 1
+            else:
+                skipped += 1
 
-                # Log completo de lo que devuelve Alegra
-                logger.info(f"[enrich-debug] conc_id={conc_id}")
-                logger.info(f"[enrich-debug] tipo de detail: {type(detail)}")
-                if isinstance(detail, dict):
-                    logger.info(f"[enrich-debug] keys del response: {list(detail.keys())}")
-                    for field in ['transactions', 'movements', 'entries', 'items']:
-                        val = detail.get(field)
-                        logger.info(f"[enrich-debug] detail['{field}'] = {type(val)} len={len(val) if isinstance(val, list) else 'N/A'}")
-                        if isinstance(val, list) and len(val) > 0:
-                            logger.info(f"[enrich-debug] primer item de '{field}': {json.dumps(val[0], default=str)[:500]}")
-                else:
-                    logger.info(f"[enrich-debug] detail completo: {str(detail)[:500]}")
-
-                skipped += len(conc_docs)
-
-            except Exception as e:
-                logger.error(f"[enrich-debug] Exception: {e}")
-                skipped += len(conc_docs)
-
-        # Terminar aquí para el debug
-        await db.sync_status.update_one(
-            {'company_id': company_id, 'type': 'enrich_contacts'},
-            {'$set': {'status': 'completed', 'stats': {'enriched': enriched, 'skipped': skipped, 'processed': enriched + skipped}}},
-            upsert=True
-        )
-        return
+            if (i + 1) % 50 == 0:
+                await db.sync_status.update_one(
+                    {'company_id': company_id, 'type': 'enrich_contacts'},
+                    {'$set': {'status': 'running',
+                              'stats': {'enriched': enriched, 'skipped': skipped, 'processed': i + 1},
+                              'updated_at': datetime.now(timezone.utc).isoformat()}},
+                    upsert=True
+                )
 
         await db.sync_status.update_one(
             {'company_id': company_id, 'type': 'enrich_contacts'},
             {'$set': {'status': 'completed',
-                      'stats': {'enriched': enriched, 'skipped': skipped, 'processed': processed},
+                      'stats': {'enriched': enriched, 'skipped': skipped, 'processed': len(docs)},
                       'updated_at': datetime.now(timezone.utc).isoformat()}},
             upsert=True
         )
