@@ -3310,6 +3310,19 @@ async def debug_bank_transactions(
     }, {'_id': 0, 'fecha': 1, 'contacto': 1, 'monto': 1, 'moneda': 1,
         'tipo': 1, 'alegra_id': 1, 'cuenta_bancaria': 1}).to_list(100)
 
+    enero_2026_detalle = await db.bank_transactions.aggregate([
+        {'$match': {
+            'company_id': {'$regex': '^89cda61e'},
+            'source': 'alegra',
+            'fecha': {'$regex': '^2026-01'}
+        }},
+        {'$group': {
+            '_id': '$tipo',
+            'count': {'$sum': 1},
+            'contactos': {'$push': '$contacto'}
+        }}
+    ]).to_list(20)
+
     return {
         "con_regex_89cda61e": {
             "total":            count_regex,
@@ -3329,6 +3342,7 @@ async def debug_bank_transactions(
             "samples":     samples_global,
         },
         "busqueda_enero_cobros": busqueda_enero_cobros,
+        "enero_2026_detalle": enero_2026_detalle,
     }
 
 
