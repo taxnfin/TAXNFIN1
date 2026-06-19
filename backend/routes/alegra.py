@@ -3271,6 +3271,43 @@ async def debug_conciliation(
     except Exception as e:
         results['opcion_3_bank_account_transactions'] = {'error': str(e)}
 
+    await asyncio.sleep(0.3)
+
+    # Opción 4: GET conciliations/{id}?fields=transactions — desglose detallado
+    try:
+        r4 = await alegra_request(
+            'GET', f'conciliations/{conciliation_id}', email, token,
+            params={'fields': 'transactions'}
+        )
+        txns4 = r4.get('transactions', []) if isinstance(r4, dict) else []
+        if not isinstance(txns4, list):
+            txns4 = []
+        txns_in  = [t for t in txns4 if str(t.get('type', '') or t.get('transactionType', '')).lower() in ('in', 'income', 'ingreso', 'deposito')]
+        txns_out = [t for t in txns4 if str(t.get('type', '') or t.get('transactionType', '')).lower() in ('out', 'expense', 'egreso', 'retiro')]
+        results['opcion_4_fields_transactions'] = {
+            'endpoint': f'GET /conciliations/{conciliation_id}?fields=transactions',
+            'all_keys': list(r4.keys()) if isinstance(r4, dict) else None,
+            'total_transactions': len(txns4),
+            'count_type_in': len(txns_in),
+            'count_type_out': len(txns_out),
+            'count_type_other': len(txns4) - len(txns_in) - len(txns_out),
+            'types_found': list({str(t.get('type', '') or t.get('transactionType', '')) for t in txns4}),
+            'transactions_in': [
+                {
+                    'id': t.get('id'),
+                    'date': t.get('date'),
+                    'amount': t.get('amount'),
+                    'type': t.get('type') or t.get('transactionType'),
+                    'contacto': (t.get('client') or t.get('contact') or {}).get('name') if isinstance(t.get('client') or t.get('contact'), dict) else t.get('client') or t.get('contact'),
+                    'numero': (t.get('numberTemplate') or {}).get('number') if isinstance(t.get('numberTemplate'), dict) else t.get('numberTemplate'),
+                }
+                for t in txns_in
+            ],
+            'raw': r4,
+        }
+    except Exception as e:
+        results['opcion_4_fields_transactions'] = {'error': str(e)}
+
     return results
 
 
