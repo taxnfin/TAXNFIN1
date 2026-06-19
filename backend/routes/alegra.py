@@ -3041,9 +3041,22 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
                     logger.error(f"[Alegra conciliations] API error en conc {conc_id}: {detail}")
                     continue
 
-                transactions = detail.get('transactions') or []
-                if not isinstance(transactions, list):
-                    transactions = []
+                transactions = []
+                if isinstance(detail, dict):
+                    for field in ['transactions', 'movements', 'entries', 'items']:
+                        items = detail.get(field, [])
+                        if isinstance(items, list) and items:
+                            transactions.extend(items)
+                            logger.info(f"[Alegra conciliations] conc {conc_id} field={field}: {len(items)} items")
+
+                seen_ids = set()
+                unique_transactions = []
+                for t in transactions:
+                    tid = str(t.get('id', ''))
+                    if tid not in seen_ids:
+                        seen_ids.add(tid)
+                        unique_transactions.append(t)
+                transactions = unique_transactions
 
                 logger.info(f"[Alegra conciliations] conc {conc_id} ({concil_idx+1}/{total_concs}): "
                             f"cuenta='{account_name}' moneda={moneda} txns={len(transactions)}")
