@@ -346,23 +346,24 @@ const Dashboard = () => {
     num_payments: week.num_payments || 0,
     varianza: week.varianza_display ?? week.varianza ?? 0,
     varianza_pct: week.varianza_pct || 0,
-    is_past: week.is_past,
-    is_current: week.is_current
+    is_past: week.es_real ?? false,
+    is_current: week.is_current ?? false,
+    es_real: week.es_real ?? false,
   }));
 
   // En 13S los datos traen 8 semanas pasadas extra (para KPIs y semáforos),
   // pero los gráficos solo muestran desde la semana actual hacia adelante.
   // KPIs, semáforos y recomendaciones siguen usando chartData completo.
   const displayChartData = rangoActivo === '13w'
-    ? chartData.filter(w => !w.is_past)
+    ? chartData.filter(w => !w.es_real)
     : chartData;
 
   const kpis = dashboardData?.kpis || {};
 
   // Saldo Final Proyectado: saldo_actual (ya incluye semana actual real) + flujos futuros.
   // NO se suma currentWeek.flujo_neto: esos pagos reales ya están en saldo_actual.
-  const currentWeek = displayChartData.find(w => w.is_current);
-  const futureWeeks = displayChartData.filter(w => !w.is_past && !w.is_current);
+  const currentWeek = displayChartData.find(w => w.es_real);
+  const futureWeeks = displayChartData.filter(w => !w.es_real);
   const saldoFinalProyectado = saldoInicial
     + futureWeeks.reduce((sum, w) => sum + w.flujo_neto, 0);
 
@@ -378,7 +379,7 @@ const Dashboard = () => {
   const totalIngresos = dashboardData?.total_ingresos || 0;
   const totalEgresos = dashboardData?.total_egresos || 0;
   
-  const recentWeeks = chartData.filter(w => w.is_past || w.is_current).slice(-4);
+  const recentWeeks = chartData.filter(w => w.es_real).slice(-4);
   const trend = recentWeeks.length >= 2 ? {
     direction: recentWeeks[recentWeeks.length - 1].flujo_neto > recentWeeks[0].flujo_neto ? 'up' : 
                recentWeeks[recentWeeks.length - 1].flujo_neto < recentWeeks[0].flujo_neto ? 'down' : 'stable',
@@ -408,7 +409,7 @@ const Dashboard = () => {
   // Estado verde/amarillo/rojo de las áreas clave. Todos los cálculos sobre
   // semanas con datos reales (is_past/is_current); 'neutral' = sin datos.
   const semaforos = (() => {
-    const reales = chartData.filter(w => w.is_past || w.is_current);
+    const reales = chartData.filter(w => w.es_real);
     const items = [];
 
     // 1. LIQUIDEZ — runway = saldo actual real / burn rate semanal
@@ -1053,7 +1054,7 @@ const Dashboard = () => {
                     // Saldo actual real = saldo final de la ÚLTIMA semana con datos reales
                     // (is_past/is_current — no proyectadas). Burn rate = egresos promedio
                     // de esas mismas semanas reales.
-                    const semanasReales = chartData.filter(w => w.is_past || w.is_current);
+                    const semanasReales = chartData.filter(w => w.es_real);
                     const saldoActual = semanasReales.length > 0
                       ? semanasReales[semanasReales.length - 1].saldo_final
                       : saldoInicial; // fallback si la ventana no incluye semanas reales
@@ -1088,7 +1089,7 @@ const Dashboard = () => {
                   {(() => {
                     // Mismo cálculo que usa RUNWAY: egresos promedio de las semanas
                     // con datos reales (is_past/is_current), sin diluir por futuras vacías
-                    const semanasReales = chartData.filter(w => w.is_past || w.is_current);
+                    const semanasReales = chartData.filter(w => w.es_real);
                     const burnRateSemanal = semanasReales.length > 0
                       ? semanasReales.reduce((sum, w) => sum + (w.egresos || 0), 0) / semanasReales.length
                       : 0;
@@ -1130,7 +1131,7 @@ const Dashboard = () => {
                   {(() => {
                     // Solo semanas futuras (proyectadas) — mismo criterio que ¿Qué Hacer Ahora?
                     const minWeek = chartData
-                      .filter(w => !w.is_past && !w.is_current)
+                      .filter(w => !w.es_real)
                       .reduce((min, w, i) =>
                         (!min || w.saldo_final < min.saldo_final) ? {...w, idx: i} : min, null);
                     return minWeek ? (
@@ -1162,7 +1163,7 @@ const Dashboard = () => {
                 const recommendations = [];
                 // Semana crítica = la semana FUTURA (proyectada) con menor saldo;
                 // las pasadas ya ocurrieron y no son accionables
-                const semanasFuturas = chartData.filter(w => !w.is_past && !w.is_current);
+                const semanasFuturas = chartData.filter(w => !w.es_real);
                 const minWeek = semanasFuturas.reduce((min, w) =>
                   (!min || w.saldo_final < min.saldo_final) ? w : min, null);
 
