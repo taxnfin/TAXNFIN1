@@ -932,7 +932,7 @@ const PaymentsModule = () => {
     if (filterEsReal === 'proyeccion' && p.es_real !== false) return false;
     if (filterCategoria === 'sin_categoria') { if (p.category_id) return false; }
     else if (filterCategoria !== 'all') { if (p.category_id !== filterCategoria) return false; }
-    if (filterMoneda !== 'all' && (p.moneda || 'MXN') !== filterMoneda) return false;
+    if (filterMoneda !== 'all' && (p.moneda_original || p.moneda || 'MXN') !== filterMoneda) return false;
     return true;
   });
   const totalPages = Math.max(1, Math.ceil(tableFiltered.length / 50));
@@ -2065,11 +2065,11 @@ const PaymentsModule = () => {
                       payment.tipo === 'cobro' ? 'text-green-600' : 'text-red-600'
                     }`}>
                       {payment.tipo === 'cobro' ? '+' : '-'}
-                      {payment.moneda === 'USD' && payment.monto_original
+                      {(payment.moneda_original === 'USD' || payment.moneda === 'USD') && payment.monto_original
                         ? `$${payment.monto_original.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD`
-                        : `$${(payment.monto || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} ${payment.moneda || 'MXN'}`
+                        : `$${(payment.monto || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} ${(payment.moneda_original || payment.moneda || 'MXN')}`
                       }
-                      {payment.moneda === 'USD' && payment.monto_original && (
+                      {(payment.moneda_original === 'USD' || payment.moneda === 'USD') && payment.monto_original && (
                         <div className="text-xs text-gray-400 font-normal">
                           = ${(payment.monto || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
                         </div>
