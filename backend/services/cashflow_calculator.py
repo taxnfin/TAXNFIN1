@@ -196,7 +196,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             if fi <= bt['fecha'] <= ff:
                 item = {
                     'id': bt['id'],
-                    'concepto': bt.get('contacto') or bt.get('descripcion') or bt.get('nombre', 'Movimiento bancario'),
+                    'concepto': bt.get('nombre') or 'Movimiento bancario',
                     'monto': bt['monto'],
                     'fecha': bt['fecha'],
                     'categoria': 'banco_alegra',
