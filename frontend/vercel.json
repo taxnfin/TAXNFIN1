@@ -1,5 +1,8 @@
-{
-  "installCommand": "npm install --legacy-peer-deps",
-  "buildCommand": "DISABLE_ESLINT_PLUGIN=true npm run build",
-  "outputDirectory": "build"
+﻿{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://taxnfin1-production.up.railway.app/api/:path*"
+    }
+  ]
 }
