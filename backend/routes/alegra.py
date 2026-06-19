@@ -3117,12 +3117,21 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
                             if isinstance(a, dict) and a.get('type') in ('invoice', 'bill')
                         ]
 
-                        if moneda == 'MXN' and exchange_rate_conc > 1:
-                            tipo_cambio = exchange_rate_conc
+                        currency_obj = t.get('currency') or {}
+                        moneda_tx = currency_obj.get('code', '') if isinstance(currency_obj, dict) else ''
+                        exchange_rate_tx = float(currency_obj.get('exchangeRate', 0) or 0) if isinstance(currency_obj, dict) else 0
+
+                        if moneda_tx == 'USD' and moneda == 'MXN':
+                            moneda_original = 'USD'
+                            tipo_cambio = exchange_rate_tx if exchange_rate_tx > 1 else exchange_rate_conc or get_tc(fecha_raw)
+                            monto_mxn = round(monto_original * tipo_cambio, 2)
                         else:
-                            tipo_cambio = get_tc(fecha_raw) if moneda == 'USD' else 1.0
-                        monto_mxn = round(monto_original * tipo_cambio, 2)
-                        moneda_original = 'USD' if (moneda == 'MXN' and exchange_rate_conc > 1) else moneda
+                            if moneda == 'MXN' and exchange_rate_conc > 1:
+                                tipo_cambio = exchange_rate_conc
+                            else:
+                                tipo_cambio = get_tc(fecha_raw) if moneda == 'USD' else 1.0
+                            monto_mxn = round(monto_original * tipo_cambio, 2)
+                            moneda_original = 'USD' if (moneda == 'MXN' and exchange_rate_conc > 1) else moneda
 
                         doc = {
                             'alegra_id':          mov_id,
