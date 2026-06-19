@@ -3428,13 +3428,22 @@ async def enrich_contacts_status():
 
 @router.post("/fix-moneda-original")
 async def fix_moneda_original():
-    """Retroactivamente marca moneda_original='USD' en docs con tipo_cambio > 1 y moneda='MXN'."""
+    """Diagnóstico: cuenta y muestra docs con moneda='MXN', cuenta_bancaria='BAJIO MXN', monto < 10000."""
     company_id = "89cda61e-c9c3-4470-992b-48d3015e5cbd"
-    result = await db.bank_transactions.update_many(
-        {'company_id': company_id, 'source': 'alegra', 'moneda': 'MXN', 'tipo_cambio': {'$gt': 1}},
-        {'$set': {'moneda_original': 'USD'}}
-    )
-    return {'updated': result.modified_count}
+    filtro = {
+        'company_id': company_id,
+        'source': 'alegra',
+        'moneda': 'MXN',
+        'cuenta_bancaria': 'BAJIO MXN',
+        'monto': {'$lt': 10000},
+    }
+    conteo = await db.bank_transactions.count_documents(filtro)
+    samples = await db.bank_transactions.find(
+        filtro,
+        {'_id': 0, 'alegra_id': 1, 'monto': 1, 'monto_original': 1,
+         'moneda': 1, 'moneda_original': 1, 'tipo_cambio': 1, 'cuenta_bancaria': 1}
+    ).limit(3).to_list(3)
+    return {'conteo': conteo, 'samples': samples}
 
 
 @router.delete("/bank-transactions/clear")
