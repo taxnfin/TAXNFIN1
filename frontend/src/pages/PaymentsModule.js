@@ -1955,7 +1955,7 @@ const PaymentsModule = () => {
                   return (
                   <TableRow key={payment.id} className={payment.es_real === false ? 'bg-blue-50/30' : ''}>
                     <TableCell className="mono text-sm">
-                      {(payment.fecha_pago ? format(new Date(payment.fecha_pago), 'dd/MM/yyyy') : payment.fecha ? format(new Date(payment.fecha), 'dd/MM/yyyy') : 'Sin fecha')}
+                      {(payment.fecha_pago ? format(new Date(String(payment.fecha_pago).substring(0,10) + 'T12:00:00'), 'dd/MM/yyyy') : payment.fecha ? format(new Date(String(payment.fecha).substring(0,10) + 'T12:00:00'), 'dd/MM/yyyy') : 'Sin fecha')}
                       {payment.domiciliacion_activa && (
                         <span className="ml-2 text-xs px-1 py-0.5 bg-blue-100 text-blue-800 rounded">DOM</span>
                       )}
@@ -2307,11 +2307,11 @@ const PaymentsModule = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-gray-500">Fecha Vencimiento</p>
-                  <p className="font-medium">{(selectedPayment.fecha_vencimiento ? format(new Date(selectedPayment.fecha_vencimiento), 'dd/MM/yyyy HH:mm') : selectedPayment.fecha ? format(new Date(selectedPayment.fecha), 'dd/MM/yyyy') : 'Sin fecha')}</p>
+                  <p className="font-medium">{(selectedPayment.fecha_vencimiento ? format(new Date(String(selectedPayment.fecha_vencimiento).substring(0,10) + 'T12:00:00'), 'dd/MM/yyyy') : selectedPayment.fecha ? format(new Date(String(selectedPayment.fecha).substring(0,10) + 'T12:00:00'), 'dd/MM/yyyy') : 'Sin fecha')}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Fecha de Pago</p>
-                  <p className="font-medium">{selectedPayment.fecha_pago ? format(new Date(selectedPayment.fecha_pago), 'dd/MM/yyyy') : 'Pendiente'}</p>
+                  <p className="font-medium">{selectedPayment.fecha_pago ? format(new Date(String(selectedPayment.fecha_pago).substring(0,10) + 'T12:00:00'), 'dd/MM/yyyy') : 'Pendiente'}</p>
                 </div>
               </div>
               <div>
