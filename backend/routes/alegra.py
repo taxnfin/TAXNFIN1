@@ -3372,61 +3372,38 @@ async def _run_enrich_contacts(company_id: str):
         skipped = 0
         processed = 0
 
-        for conc_id, conc_docs in by_conc.items():
+        for conc_id, conc_docs in list(by_conc.items())[:2]:  # solo 2 conciliaciones
             try:
                 detail = await alegra_request('GET', f'conciliations/{conc_id}', email, token,
                                               params={'fields': 'transactions,movements,entries'})
                 await asyncio.sleep(0.3)
 
-                if not isinstance(detail, dict):
-                    skipped += len(conc_docs)
-                else:
-                    txn_index = {}
+                # Log completo de lo que devuelve Alegra
+                logger.info(f"[enrich-debug] conc_id={conc_id}")
+                logger.info(f"[enrich-debug] tipo de detail: {type(detail)}")
+                if isinstance(detail, dict):
+                    logger.info(f"[enrich-debug] keys del response: {list(detail.keys())}")
                     for field in ['transactions', 'movements', 'entries', 'items']:
-                        items = detail.get(field, [])
-                        if isinstance(items, list):
-                            for t in items:
-                                tid = str(t.get('id', ''))
-                                if tid:
-                                    txn_index[tid] = t
+                        val = detail.get(field)
+                        logger.info(f"[enrich-debug] detail['{field}'] = {type(val)} len={len(val) if isinstance(val, list) else 'N/A'}")
+                        if isinstance(val, list) and len(val) > 0:
+                            logger.info(f"[enrich-debug] primer item de '{field}': {json.dumps(val[0], default=str)[:500]}")
+                else:
+                    logger.info(f"[enrich-debug] detail completo: {str(detail)[:500]}")
 
-                    for doc in conc_docs:
-                        alegra_id = str(doc.get('alegra_id', '') or '')
-                        if enriched == 0 and skipped < 20:
-                            sample_keys = list(txn_index.keys())[:5]
-                            logger.info(f"[enrich-debug] conc_id={conc_id} keys_en_index={sample_keys}")
-                            logger.info(f"[enrich-debug] buscando alegra_id={alegra_id}")
-                        t = txn_index.get(alegra_id)
-                        if not t:
-                            skipped += 1
-                            continue
-                        if enriched == 0 and skipped < 5:
-                            logger.info(f"[enrich-debug] transaction completa: {json.dumps(t, default=str)}")
-                        client_obj = t.get('client') or t.get('contact') or {}
-                        contacto = (client_obj.get('name', '') if isinstance(client_obj, dict) else str(client_obj or '')) \
-                                   or str(t.get('thirdParty') or '')
-                        if contacto:
-                            await db.bank_transactions.update_one(
-                                {'company_id': company_id, 'alegra_id': alegra_id, 'source': 'alegra'},
-                                {'$set': {'contacto': contacto, 'descripcion': contacto}}
-                            )
-                            enriched += 1
-                        else:
-                            skipped += 1
-
-            except Exception as e:
-                logger.error(f"[enrich-contacts] Error en conc {conc_id}: {e}")
                 skipped += len(conc_docs)
 
-            processed += len(conc_docs)
-            if processed % 10 == 0:
-                await db.sync_status.update_one(
-                    {'company_id': company_id, 'type': 'enrich_contacts'},
-                    {'$set': {'status': 'running',
-                              'stats': {'enriched': enriched, 'skipped': skipped, 'processed': processed},
-                              'updated_at': datetime.now(timezone.utc).isoformat()}},
-                    upsert=True
-                )
+            except Exception as e:
+                logger.error(f"[enrich-debug] Exception: {e}")
+                skipped += len(conc_docs)
+
+        # Terminar aquí para el debug
+        await db.sync_status.update_one(
+            {'company_id': company_id, 'type': 'enrich_contacts'},
+            {'$set': {'status': 'completed', 'stats': {'enriched': enriched, 'skipped': skipped, 'processed': enriched + skipped}}},
+            upsert=True
+        )
+        return
 
         await db.sync_status.update_one(
             {'company_id': company_id, 'type': 'enrich_contacts'},
