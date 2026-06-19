@@ -3021,9 +3021,10 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
         for concil_idx, conc in enumerate(all_conciliations):
             conc_id = str(conc.get('id', ''))
             # Extraer metadata de cuenta del listado
-            account_obj  = conc.get('account') or {}
-            account_name = account_obj.get('name', '') if isinstance(account_obj, dict) else ''
-            moneda       = 'USD' if 'USD' in account_name.upper() else 'MXN'
+            account_obj       = conc.get('account') or {}
+            account_name      = account_obj.get('name', '') if isinstance(account_obj, dict) else ''
+            moneda            = 'USD' if 'USD' in account_name.upper() else 'MXN'
+            exchange_rate_conc = float(conc.get('exchangeRate', 0) or 0)
 
             try:
                 if not conc_id:
@@ -3114,8 +3115,12 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
                             if isinstance(a, dict) and a.get('type') in ('invoice', 'bill')
                         ]
 
-                        tipo_cambio = get_tc(fecha_raw) if moneda == 'USD' else 1.0
-                        monto_mxn   = round(monto_original * tipo_cambio, 2)
+                        if moneda == 'MXN' and exchange_rate_conc > 1:
+                            tipo_cambio = exchange_rate_conc
+                        else:
+                            tipo_cambio = get_tc(fecha_raw) if moneda == 'USD' else 1.0
+                        monto_mxn = round(monto_original * tipo_cambio, 2)
+                        moneda_original = 'USD' if (moneda == 'MXN' and exchange_rate_conc > 1) else moneda
 
                         doc = {
                             'alegra_id':          mov_id,
@@ -3128,6 +3133,7 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
                             'monto':              monto_mxn,
                             'monto_original':     monto_original,
                             'moneda':             moneda,
+                            'moneda_original':    moneda_original,
                             'tipo_cambio':        tipo_cambio,
                             'descripcion':        numero or contacto or f'Movimiento Alegra {mov_id}',
                             'numero_movimiento':  numero,
