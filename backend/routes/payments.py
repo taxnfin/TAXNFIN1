@@ -792,18 +792,20 @@ async def get_payments_with_reconciliation_status(
             bt_query['tipo'] = {'$in': ['deposito', 'ingreso', 'credito']}
         elif tipo == 'pago':
             bt_query['tipo'] = {'$in': ['retiro', 'egreso', 'debito']}
-        if fecha_desde:
-            bt_query['fecha'] = {'$gte': fecha_desde}
-        if fecha_hasta:
-            if 'fecha' in bt_query:
-                bt_query['fecha']['$lte'] = fecha_hasta
-            else:
-                bt_query['fecha'] = {'$lte': fecha_hasta}
 
         logger.info(f"[Payments BT] bt_query={bt_query} fecha_desde={fecha_desde} fecha_hasta={fecha_hasta}")
         bank_txns_alegra = await db.bank_transactions.find(
             bt_query, {'_id': 0}
-        ).sort('fecha', -1).limit(limit).to_list(limit)
+        ).sort('fecha', -1).to_list(10000)
+
+        # Filtrar por fecha en Python — compatible con campo string o datetime
+        if fecha_desde:
+            bank_txns_alegra = [t for t in bank_txns_alegra
+                                if str(t.get('fecha', ''))[:10] >= fecha_desde]
+        if fecha_hasta:
+            bank_txns_alegra = [t for t in bank_txns_alegra
+                                if str(t.get('fecha', ''))[:10] <= fecha_hasta]
+
         logger.info(f"[Payments BT] bank_txns encontrados: {len(bank_txns_alegra)}")
 
         for t in bank_txns_alegra:
