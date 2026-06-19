@@ -3393,6 +3393,12 @@ async def debug_bank_transactions(
         }}
     ]).to_list(20)
 
+    ai_supply = await db.bank_transactions.find_one({
+        'company_id': {'$regex': '^89cda61e'},
+        'contacto': {'$regex': 'AI SUPPLY', '$options': 'i'},
+        'source': 'alegra'
+    }, {'_id': 0})
+
     return {
         "con_regex_89cda61e": {
             "total":            count_regex,
@@ -3413,6 +3419,7 @@ async def debug_bank_transactions(
         },
         "busqueda_enero_cobros": busqueda_enero_cobros,
         "enero_2026_detalle": enero_2026_detalle,
+        "ai_supply": ai_supply,
     }
 
 
