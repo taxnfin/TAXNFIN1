@@ -1,8 +1,12 @@
 ﻿{
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://taxnfin1-production.up.railway.app/api/$1"
+      "src": "/api/(.*)",
+      "dest": "https://taxnfin1-production.up.railway.app/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
