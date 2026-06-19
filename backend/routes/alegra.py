@@ -3339,12 +3339,9 @@ async def debug_conciliation(
 
 
 @router.post("/enrich-contacts")
-async def enrich_contacts(
-    request: Request,
-    current_user: Dict = Depends(get_current_user),
-):
+async def enrich_contacts():
     """Enriquece bank_transactions de Alegra que tienen contacto vacío usando la API de Alegra."""
-    company_id = await get_active_company_id(request, current_user)
+    company_id = "89cda61e-c9c3-4470-992b-48d3015e5cbd"
     company = await db.companies.find_one({'id': company_id}, {'_id': 0})
     if not company or not company.get('alegra_connected'):
         raise HTTPException(status_code=400, detail="Alegra no configurado")
