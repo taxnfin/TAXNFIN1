@@ -1029,7 +1029,36 @@ async def recategorize_payment(
             "$or": [{"id": data.payment_id}, {"contalink_id": data.payment_id}],
             "company_id": company_id
         })
+    # Fallback: buscar en bank_transactions (pagos Alegra)
     if not payment_doc:
+        try:
+            bt_doc = await db.bank_transactions.find_one({"_id": ObjectId(data.payment_id), "company_id": company_id})
+        except Exception:
+            bt_doc = None
+        if not bt_doc:
+            bt_doc = await db.bank_transactions.find_one({
+                "id": data.payment_id,
+                "company_id": company_id,
+            })
+        if bt_doc:
+            await db.bank_transactions.update_one(
+                {"_id": bt_doc["_id"]},
+                {
+                    "$set": {
+                        "category_id":    data.category_id,
+                        "category_name":  cat_doc["nombre"],
+                        "categorized_by": "manual",
+                        "categorized_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                }
+            )
+            return {
+                "success":       True,
+                "payment_id":    data.payment_id,
+                "category_code": data.category_id,
+                "category_name": cat_doc["nombre"],
+                "collection":    "bank_transactions",
+            }
         raise HTTPException(status_code=404, detail="Pago no encontrado")
 
     result = await db.payments.update_one(
