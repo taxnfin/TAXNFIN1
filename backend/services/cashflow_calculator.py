@@ -96,7 +96,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         'source': 'alegra',
         'es_real': True,
     }, {'_id': 0, 'tipo': 1, 'monto': 1, 'fecha': 1, 'fecha_movimiento': 1,
-        'descripcion': 1, 'contacto': 1, 'cuenta_bancaria': 1, 'id': 1}).to_list(5000)
+        'descripcion': 1, 'contacto': 1, 'cuenta_bancaria': 1, 'id': 1, 'category_name': 1}).to_list(5000)
 
     processed_bank_txns = []
     for t in bank_txns_alegra:
@@ -116,6 +116,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             'nombre': nombre,
             'cuenta_bancaria': t.get('cuenta_bancaria', ''),
             'id': t.get('id', ''),
+            'category_name': t.get('category_name', ''),
             'es_real': True,
         })
 
