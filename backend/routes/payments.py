@@ -845,6 +845,7 @@ async def get_payments_with_reconciliation_status(
                 'alegra_bank_account':     t.get('cuenta_bancaria', ''),
                 'facturas_ligadas':        t.get('facturas_ligadas', []),
                 'categorias':              t.get('categorias', []),
+                'category_id':             t.get('category_id', t.get('categorias', [None])[0] if t.get('categorias') else None),
                 'estatus':                 'completado',
                 'es_real':                 True,
                 'source':                  'alegra',

@@ -1046,6 +1046,7 @@ async def recategorize_payment(
                 {
                     "$set": {
                         "category_id":    data.category_id,
+                        "categorias":     [data.category_id],
                         "category_name":  cat_doc["nombre"],
                         "categorized_by": "manual",
                         "categorized_at": datetime.now(timezone.utc).isoformat(),
