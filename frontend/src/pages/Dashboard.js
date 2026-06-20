@@ -319,7 +319,7 @@ const Dashboard = () => {
   const saldoActualDisplay = dashboardData?.saldo_actual || 0;   // ya en moneda de visualización
   const saldoBackendS1 = dashboardData?.saldo_bancos || 0;       // base del gráfico (apertura)
   const saldoBancosActualDisplay = fxRateDisplay > 0 ? saldoBancosActual / fxRateDisplay : saldoBancosActual;
-  const saldoInicial = saldoConfig.mode === 'manual' ? (Number(saldoConfig.valor) || 0) : saldoActualDisplay;
+  const saldoInicial = saldoConfig.mode === 'manual' ? (Number(saldoConfig.valor) || 0) : saldoBancosActual;
   // delta ≠ 0 en modo auto cuando saldo_actual > saldo_bancos (e.g. $8M - $2M = $6M)
   const saldoDelta = saldoInicial - saldoBackendS1;
 
