@@ -722,7 +722,18 @@ const Dashboard = () => {
                   <Pencil size={12} />
                 </button>
               </span>
-              <Building2 className="h-4 w-4" />
+              <button
+                onClick={() => {
+                  const cfg = { mode: 'auto', valor: 0 };
+                  setSaldoConfig(cfg);
+                  localStorage.setItem('dashboardSaldoInicial', JSON.stringify(cfg));
+                }}
+                className="text-gray-400 hover:text-blue-600 transition-colors"
+                title="Usar saldo real de cuentas bancarias"
+                data-testid="saldo-desde-bancos-btn"
+              >
+                <Building2 className="h-4 w-4" />
+              </button>
             </CardTitle>
           </CardHeader>
           <CardContent>
