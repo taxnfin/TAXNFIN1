@@ -388,12 +388,18 @@ async def get_dashboard_from_payments(
                 '_from_alegra': True,
             })
 
+    logger.info(f"[dashboard-debug] payments de db.payments: {len(all_payments)}")
+    logger.info(f"[dashboard-debug] company alegra_connected: {company_doc}")
+
     # Filter to valid payments (reconciled or without bank_transaction_id)
     payments = [p for p in all_payments
                 if not p.get('bank_transaction_id')
                 or p.get('bank_transaction_id') in reconciled_ids
                 or p.get('_from_alegra') == True]
-    
+
+    logger.info(f"[dashboard-debug] payments después de filtro: {len(payments)}")
+    logger.info(f"[dashboard-debug] sample payment: {payments[0] if payments else 'VACÍO'}")
+
     # If filtering by bank account, only include payments for that account
     if bank_account_id:
         payments = [p for p in payments if p.get('bank_transaction_id') and bank_txn_to_account.get(p['bank_transaction_id']) == bank_account_id]
