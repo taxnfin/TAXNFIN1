@@ -33,6 +33,7 @@ const BankModule = () => {
   const [bankAccounts, setBankAccounts] = useState([]);
   const [accountsSummary, setAccountsSummary] = useState(null);
   const [cashflowTransactions, setCashflowTransactions] = useState([]);
+  const [fxRates, setFxRates] = useState({ USD: 17.5, EUR: 20.0 });
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
@@ -67,18 +68,21 @@ const BankModule = () => {
 
   const loadData = async () => {
     try {
-      const [bankTxnRes, reconRes, accountsRes, summaryRes, cashflowTxnRes] = await Promise.all([
+      const [bankTxnRes, reconRes, accountsRes, summaryRes, cashflowTxnRes, fxRes] = await Promise.all([
         api.get('/bank-transactions?limit=100'),
         api.get('/reconciliations?limit=100'),
         api.get('/bank-accounts'),
         api.get('/bank-accounts/summary'),
-        api.get('/transactions?limit=100')
+        api.get('/transactions?limit=100'),
+        api.get('/fx-rates/latest').catch(() => ({ data: {} })),
       ]);
       setBankTransactions(bankTxnRes.data);
       setReconciliations(reconRes.data);
       setBankAccounts(accountsRes.data);
       setAccountsSummary(summaryRes.data);
       setCashflowTransactions(cashflowTxnRes.data);
+      const fx = fxRes.data || {};
+      setFxRates({ USD: fx.USD || 17.5, EUR: fx.EUR || 20.0 });
     } catch (error) {
       toast.error('Error cargando datos');
     } finally {
@@ -516,6 +520,11 @@ const BankModule = () => {
                         </TableCell>
                         <TableCell className="mono font-semibold text-[#0F172A]">
                           ${(acc.saldo_inicial || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                          {acc.moneda === 'USD' && (
+                            <div className="text-xs text-gray-400 font-normal">
+                              ≈ MX${((acc.saldo_inicial || 0) * (fxRates.USD || 17.5)).toLocaleString('es-MX', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="text-center">
                           <div className="flex justify-center gap-1">
