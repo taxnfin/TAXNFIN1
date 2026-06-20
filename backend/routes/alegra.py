@@ -3677,19 +3677,24 @@ async def sync_bank_accounts_from_alegra(
         numero_cuenta = str(cuenta.get('id', ''))
         nombre = cuenta.get('name', '')
         moneda = 'USD' if 'USD' in nombre.upper() else 'MXN'
-        doc = {
-            'company_id': company_id,
-            'nombre': nombre,
-            'numero_cuenta': numero_cuenta,
-            'banco': nombre,
-            'moneda': moneda,
-            'saldo_inicial': float(cuenta.get('initialBalance', 0) or 0),
-            'activo': True,
-            'created_at': datetime.now(timezone.utc).isoformat(),
-        }
         result = await db.bank_accounts.update_one(
             {'company_id': company_id, 'numero_cuenta': numero_cuenta},
-            {'$set': doc, '$setOnInsert': {'id': str(uuid.uuid4())}},
+            {
+                '$set': {
+                    'nombre': nombre,
+                    'banco': nombre,
+                    'moneda': moneda,
+                    'activo': True,
+                    'updated_at': datetime.now(timezone.utc).isoformat(),
+                },
+                '$setOnInsert': {
+                    'id': str(uuid.uuid4()),
+                    'company_id': company_id,
+                    'numero_cuenta': numero_cuenta,
+                    'saldo_inicial': float(cuenta.get('initialBalance', 0) or 0),
+                    'created_at': datetime.now(timezone.utc).isoformat(),
+                },
+            },
             upsert=True,
         )
         if result.upserted_id or result.modified_count:
