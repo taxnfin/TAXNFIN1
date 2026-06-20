@@ -385,10 +385,14 @@ async def get_dashboard_from_payments(
                 'estatus': 'completado',
                 'bank_transaction_id': bt.get('id'),
                 'beneficiario': bt.get('contacto') or bt.get('descripcion', ''),
+                '_from_alegra': True,
             })
 
     # Filter to valid payments (reconciled or without bank_transaction_id)
-    payments = [p for p in all_payments if not p.get('bank_transaction_id') or p.get('bank_transaction_id') in reconciled_ids]
+    payments = [p for p in all_payments
+                if not p.get('bank_transaction_id')
+                or p.get('bank_transaction_id') in reconciled_ids
+                or p.get('_from_alegra') == True]
     
     # If filtering by bank account, only include payments for that account
     if bank_account_id:
