@@ -805,17 +805,20 @@ const PaymentsModule = () => {
     setAutoCategorizing(true);
     try {
       const res = await api.post('/cashflow-sync/auto-categorize?limit=100');
-      const { updated, processed, errors } = res.data;
-      if (updated > 0) {
-        toast.success(`✅ ${updated} de ${processed} pagos categorizados con IA`);
-        setPayments([]); // Forzar re-render limpio
-        await loadData();
-        await loadCategories(); // Asegurar que el select tiene las opciones actualizadas
-      } else {
-        toast.info('No hay pagos sin categoría o ya están todos categorizados');
+      if (res.data.status === 'iniciado') {
+        toast.success('✅ Categorizando en background...');
+        return;
       }
-      if (errors?.length > 0) {
-        toast.warning(`${errors.length} errores al categorizar`);
+      if (res.data.updated > 0) {
+        toast.success(`✅ ${res.data.updated} de ${res.data.processed} pagos categorizados con IA`);
+        setPayments([]);
+        await loadData();
+        await loadCategories();
+      } else {
+        toast.info('Todos los pagos ya tienen categoría');
+      }
+      if (res.data.errors?.length > 0) {
+        toast.warning(`${res.data.errors.length} errores al categorizar`);
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error en auto-categorización');
@@ -1948,12 +1951,15 @@ const PaymentsModule = () => {
               setSyncingCategories(true);
               try {
                 const res = await api.post('/cashflow-sync/auto-categorize?limit=50');
-                const { updated, processed } = res.data;
-                if (updated > 0) {
-                  toast.success(`✅ ${updated} de ${processed} pagos categorizados con IA`);
+                if (res.data.status === 'iniciado') {
+                  toast.success('✅ Categorizando en background...');
+                  return;
+                }
+                if (res.data.updated > 0) {
+                  toast.success(`✅ ${res.data.updated} de ${res.data.processed} pagos categorizados con IA`);
                   loadData();
                 } else {
-                  toast.info('Todos los pagos ya tienen categoría asignada');
+                  toast.info('Todos los pagos ya tienen categoría');
                 }
               } catch (error) {
                 console.error('Error sincronizando categorías:', error);
