@@ -1002,6 +1002,7 @@ async def recategorize_payment(
     Corrección manual de categoría para un pago específico.
     El usuario puede corregir lo que asignó la IA.
     """
+    logger.info(f"[recategorize] payment_id={data.payment_id}")
     company_id = await get_active_company_id(request, current_user)
 
     # Buscar categoría
