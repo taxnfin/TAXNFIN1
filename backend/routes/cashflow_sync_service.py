@@ -742,7 +742,7 @@ async def _run_auto_categorize_inner(company_id: str, BATCH_SIZE: int, MAX_BATCH
     total_processed = 0
     all_errors:  list = []
     all_results: list = []
-    by_col = {"payments": 0, "cfdis": 0, "cashflow_movements": 0}
+    by_col = {"payments": 0, "cfdis": 0, "cashflow_movements": 0, "bank_transactions": 0}
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
@@ -763,6 +763,18 @@ async def _run_auto_categorize_inner(company_id: str, BATCH_SIZE: int, MAX_BATCH
         payments_raw  = await db.payments.find(pay_q).limit(BATCH_SIZE).to_list(BATCH_SIZE)
         cfdis_raw     = await db.cfdis.find(cfdi_q).limit(BATCH_SIZE).to_list(BATCH_SIZE)
         movements_raw = await db.cashflow_movements.find(mov_q).limit(BATCH_SIZE).to_list(BATCH_SIZE)
+
+        # Agregar bank_transactions de Alegra sin categoría
+        bt_q = {
+            "company_id": company_id,
+            "source": "alegra",
+            "$or": [
+                {"category_id": None},
+                {"category_id": {"$exists": False}},
+                {"category_id": ""},
+            ],
+        }
+        bt_raw = await db.bank_transactions.find(bt_q).limit(BATCH_SIZE).to_list(BATCH_SIZE)
 
         # 2b. Construir lista unificada
         all_items = []
@@ -792,6 +804,19 @@ async def _run_auto_categorize_inner(company_id: str, BATCH_SIZE: int, MAX_BATCH
                 "concepto":     m.get("descripcion") or "",
                 "beneficiario": m.get("referencia") or "",
                 "monto": m.get("monto", 0), "moneda": "MXN",
+            })
+        for bt in bt_raw:
+            tipo_bt = bt.get("tipo", "").lower()
+            tipo = "cobro" if tipo_bt in {"deposito", "ingreso", "credito", "in"} else "pago"
+            # Usa el id string como clave — bank_transactions no se actualiza por ObjectId
+            bt_id = bt.get("id", str(bt["_id"]))
+            all_items.append({
+                "_oid": bt["_id"], "_oid_str": bt_id, "_col": "bank_transactions",
+                "_bt_id": bt_id,
+                "tipo": tipo,
+                "concepto":     bt.get("contacto") or bt.get("descripcion") or "",
+                "beneficiario": bt.get("contacto") or "",
+                "monto": bt.get("monto", 0), "moneda": bt.get("moneda", "MXN"),
             })
 
         if not all_items:
@@ -892,11 +917,36 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
                 cat_doc       = cat_by_code.get(fallback_code, cat_doc)
                 category_code = fallback_code
 
-            coll = col_map.get(item["_col"])
-            if coll is None:
-                continue
-
             try:
+                if item["_col"] == "bank_transactions":
+                    # bank_transactions usa campo 'id' (string), no ObjectId
+                    result = await db.bank_transactions.update_one(
+                        {"id": item["_bt_id"], "company_id": company_id},
+                        {
+                            "$set": {
+                                "category_id":    category_code,
+                                "categorias":     [category_code],
+                                "category_name":  cat_doc["nombre"],
+                                "categorized_by": "ai",
+                                "categorized_at": datetime.now(timezone.utc).isoformat(),
+                            }
+                        }
+                    )
+                    if result.modified_count > 0:
+                        updated += 1
+                        by_col["bank_transactions"] += 1
+                        all_results.append({
+                            "id": oid_str, "collection": "bank_transactions",
+                            "category_code": category_code, "category_name": cat_doc["nombre"],
+                        })
+                    else:
+                        all_errors.append(f"No se pudo guardar bank_transaction {oid_str}")
+                    continue
+
+                coll = col_map.get(item["_col"])
+                if coll is None:
+                    continue
+
                 result = await coll.update_one(
                     {"_id": item["_oid"], "company_id": company_id},
                     {
