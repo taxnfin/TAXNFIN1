@@ -719,9 +719,9 @@ const BankModule = () => {
                           <TableCell className={`text-right mono font-semibold ${
                             txn.tipo_movimiento === 'credito' ? 'text-green-600' : 'text-red-600'
                           }`}>
-                            {txn.tipo_movimiento === 'credito' ? '+' : '-'}${Math.abs(txn.monto).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                            {txn.tipo_movimiento === 'credito' ? '+' : '-'}${Math.abs(txn.monto || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
                           </TableCell>
-                          <TableCell className="text-right mono">${txn.saldo.toLocaleString('es-MX', {minimumFractionDigits: 2})}</TableCell>
+                          <TableCell className="text-right mono">${(txn.saldo || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}</TableCell>
                           <TableCell className="text-center">
                             {txn.conciliado ? (
                               <span className="flex items-center justify-center gap-1 text-green-600">
