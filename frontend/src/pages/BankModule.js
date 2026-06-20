@@ -788,8 +788,8 @@ const BankModule = () => {
                             {txn.tipo_movimiento}
                           </span>
                         </TableCell>
-                        <TableCell className="mono font-semibold">${txn.monto.toLocaleString('es-MX', {minimumFractionDigits: 2})}</TableCell>
-                        <TableCell className="mono">${txn.saldo.toLocaleString('es-MX', {minimumFractionDigits: 2})}</TableCell>
+                        <TableCell className="mono font-semibold">${(txn.monto || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}</TableCell>
+                        <TableCell className="mono">${(txn.saldo || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}</TableCell>
                         <TableCell>
                           {txn.conciliado ? (
                             <CheckCircle className="text-[#10B981]" size={20} />
