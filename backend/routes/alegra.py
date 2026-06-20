@@ -3109,7 +3109,9 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
 
                         client_obj = t.get('client') or t.get('contact') or {}
                         contacto   = (client_obj.get('name', '') if isinstance(client_obj, dict) else str(client_obj or '')) \
-                                     or str(t.get('thirdParty') or '')
+                                     or str(t.get('thirdParty') or '') \
+                                     or str(t.get('description') or '') \
+                                     or str(t.get('anotation') or '')
 
                         num_template = t.get('numberTemplate') or {}
                         numero = str(num_template.get('number', '') or '') if isinstance(num_template, dict) else ''
