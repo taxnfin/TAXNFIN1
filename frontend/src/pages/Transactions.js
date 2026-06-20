@@ -784,17 +784,19 @@ const AgingModule = () => {
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-1 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                  onClick={() => handleSincronizarMontos(tipo)}
-                  disabled={syncingProy}
-                  data-testid={`sync-montos-${tipo}`}
-                >
-                  <RefreshCw size={12} className={syncingProy ? 'animate-spin' : ''} />
-                  {syncingProy ? 'Sincronizando...' : 'Sincronizar con Aging'}
-                </Button>
+                {!getERPEndpoints().usaAlegra && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                    onClick={() => handleSincronizarMontos(tipo)}
+                    disabled={syncingProy}
+                    data-testid={`sync-montos-${tipo}`}
+                  >
+                    <RefreshCw size={12} className={syncingProy ? 'animate-spin' : ''} />
+                    {syncingProy ? 'Sincronizando...' : 'Sincronizar con Aging'}
+                  </Button>
+                )}
                 <label className="text-xs font-medium text-gray-600 whitespace-nowrap">Semana</label>
                 <Select
                   value={filtroActivo}
@@ -1506,16 +1508,20 @@ const AgingModule = () => {
             <Download size={14} />
             Exportar Excel
           </Button>
-          <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 text-sm border border-green-300 rounded-md hover:bg-green-50 text-green-700">
-            <input type="file" accept=".xls,.xlsx" className="hidden" onChange={e => handleUploadExcel(e, 'cxc')} />
-            {uploadingCxC ? <RefreshCw size={14} className="animate-spin" /> : <FileText size={14} />}
-            {uploadingCxC ? 'Subiendo...' : 'Excel CxC'}
-          </label>
-          <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 text-sm border border-red-300 rounded-md hover:bg-red-50 text-red-700">
-            <input type="file" accept=".xls,.xlsx" className="hidden" onChange={e => handleUploadExcel(e, 'cxp')} />
-            {uploadingCxP ? <RefreshCw size={14} className="animate-spin" /> : <FileText size={14} />}
-            {uploadingCxP ? 'Subiendo...' : 'Excel CxP'}
-          </label>
+          {!getERPEndpoints().usaAlegra && (
+            <>
+              <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 text-sm border border-green-300 rounded-md hover:bg-green-50 text-green-700">
+                <input type="file" accept=".xls,.xlsx" className="hidden" onChange={e => handleUploadExcel(e, 'cxc')} />
+                {uploadingCxC ? <RefreshCw size={14} className="animate-spin" /> : <FileText size={14} />}
+                {uploadingCxC ? 'Subiendo...' : 'Excel CxC'}
+              </label>
+              <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 text-sm border border-red-300 rounded-md hover:bg-red-50 text-red-700">
+                <input type="file" accept=".xls,.xlsx" className="hidden" onChange={e => handleUploadExcel(e, 'cxp')} />
+                {uploadingCxP ? <RefreshCw size={14} className="animate-spin" /> : <FileText size={14} />}
+                {uploadingCxP ? 'Subiendo...' : 'Excel CxP'}
+              </label>
+            </>
+          )}
           <Button 
             variant="outline" 
             className="gap-2" 
