@@ -699,7 +699,7 @@ const BankModule = () => {
                       const account = bankAccounts.find(a => a.id === txn.bank_account_id);
                       return (
                         <TableRow key={txn.id}>
-                          <TableCell className="mono text-sm">{format(new Date(txn.fecha_movimiento), 'dd/MM/yyyy')}</TableCell>
+                          <TableCell className="mono text-sm">{txn.fecha_movimiento ? format(new Date(txn.fecha_movimiento), 'dd/MM/yyyy') : '-'}</TableCell>
                           <TableCell>
                             <span className="text-xs bg-[#F1F5F9] px-2 py-1 rounded">
                               {account?.banco || 'N/A'}
