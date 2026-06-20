@@ -364,7 +364,29 @@ async def get_dashboard_from_payments(
     bank_txn_to_account = {t['id']: t.get('bank_account_id') for t in bank_txns}
     
     all_payments = await db.payments.find({'company_id': company_id, 'estatus': 'completado'}, {'_id': 0}).to_list(5000)
-    
+
+    # Si la empresa usa Alegra, incluir bank_transactions como pagos
+    company_doc = await db.companies.find_one({'id': company_id}, {'_id': 0, 'alegra_connected': 1})
+    if company_doc and company_doc.get('alegra_connected'):
+        bank_txns_alegra = await db.bank_transactions.find(
+            {'company_id': company_id, 'source': 'alegra', 'es_real': True},
+            {'_id': 0, 'id': 1, 'tipo': 1, 'monto': 1, 'moneda': 1,
+             'moneda_original': 1, 'monto_original': 1, 'fecha': 1,
+             'contacto': 1, 'descripcion': 1, 'cuenta_bancaria': 1}
+        ).to_list(10000)
+
+        for bt in bank_txns_alegra:
+            all_payments.append({
+                'company_id': company_id,
+                'tipo': 'cobro' if bt.get('tipo') == 'deposito' else 'pago',
+                'monto': bt.get('monto', 0),
+                'moneda': bt.get('moneda_original') or bt.get('moneda', 'MXN'),
+                'fecha_pago': bt.get('fecha'),
+                'estatus': 'completado',
+                'bank_transaction_id': bt.get('id'),
+                'beneficiario': bt.get('contacto') or bt.get('descripcion', ''),
+            })
+
     # Filter to valid payments (reconciled or without bank_transaction_id)
     payments = [p for p in all_payments if not p.get('bank_transaction_id') or p.get('bank_transaction_id') in reconciled_ids]
     
