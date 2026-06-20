@@ -11,7 +11,7 @@ ERPs soportados:
   - QuickBooks 🔜 próximamente (OAuth2)
   - SAP B1     🔜 próximamente (Service Layer)
 """
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from typing import Dict, List, Optional
 from datetime import datetime, timezone, timedelta
@@ -677,28 +677,30 @@ class CategorizationOverride(BaseModel):
     category_id:  str
 
 
-@router.post("/auto-categorize")
-async def auto_categorize_payments(
-    request: Request,
-    current_user: Dict = Depends(get_current_user),
-    limit: int = 50,
-    solo_sin_categoria: bool = True,
-):
-    """
-    Categoriza con IA los documentos sin categoría de tres colecciones:
-    db.payments, db.cfdis y db.cashflow_movements.
+async def _run_auto_categorize(company_id: str, limit: int = 50, solo_sin_categoria: bool = True):
+    """Background task: categoriza con IA los documentos sin categoría."""
+    BATCH_SIZE  = min(limit, 50)
+    MAX_BATCHES = 10
 
-    Procesa en lotes de 50 por colección y repite hasta que no queden
-    documentos sin categoría (máximo 10 lotes = 500 documentos por colección).
-    Sin filtro de fecha — cubre todo el historial.
-    """
+    await db.sync_status.update_one(
+        {"company_id": company_id, "type": "auto_categorize"},
+        {"$set": {"status": "running", "stats": {}, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    try:
+        await _run_auto_categorize_inner(company_id, BATCH_SIZE, MAX_BATCHES, solo_sin_categoria)
+    except Exception as e:
+        logger.error(f"[auto_categorize] Error inesperado: {e}")
+        await db.sync_status.update_one(
+            {"company_id": company_id, "type": "auto_categorize"},
+            {"$set": {"status": "error", "stats": {"error_message": str(e)}, "updated_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+
+
+async def _run_auto_categorize_inner(company_id: str, BATCH_SIZE: int, MAX_BATCHES: int, solo_sin_categoria: bool):
     import httpx, os, json
     from bson import ObjectId
-
-    BATCH_SIZE  = min(limit, 50)   # 50 items por colección por llamada a Claude
-    MAX_BATCHES = 10               # máximo 10 lotes = 500 por colección por request
-
-    company_id = await get_active_company_id(request, current_user)
 
     # 1. Cargar categorías disponibles (una sola vez, fuera del loop)
     custom_cats = await db.cashflow_categories.find(
@@ -931,15 +933,62 @@ Responde ÚNICAMENTE con un JSON array sin texto adicional ni backticks:
             f"auto_categorize lote {batch_num+1}: company={company_id} "
             f"items={len(all_items)} updated={updated}"
         )
+        await db.sync_status.update_one(
+            {"company_id": company_id, "type": "auto_categorize"},
+            {"$set": {
+                "status": "running",
+                "stats": {"processed": total_processed, "updated": total_updated, "batch": batch_num + 1},
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
 
-    return {
-        "success":   True,
-        "processed": total_processed,
-        "updated":   total_updated,
-        "batches":   batch_num + 1 if total_processed > 0 else 0,
+    final_stats = {
+        "processed":     total_processed,
+        "updated":       total_updated,
+        "batches":       batch_num + 1 if total_processed > 0 else 0,
         "by_collection": by_col,
-        "errors":    all_errors,
-        "results":   all_results,
+        "errors":        all_errors,
+    }
+    final_status = "error" if all_errors and total_updated == 0 else "completed"
+    await db.sync_status.update_one(
+        {"company_id": company_id, "type": "auto_categorize"},
+        {"$set": {"status": final_status, "stats": final_stats, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    logger.info(f"[auto_categorize] Completado: company={company_id} updated={total_updated} processed={total_processed}")
+
+
+@router.post("/auto-categorize")
+async def auto_categorize_payments(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    current_user: Dict = Depends(get_current_user),
+    limit: int = 50,
+    solo_sin_categoria: bool = True,
+):
+    """Inicia categorización con IA en background. Consulta /auto-categorize/status para progreso."""
+    company_id = await get_active_company_id(request, current_user)
+    background_tasks.add_task(_run_auto_categorize, company_id, limit, solo_sin_categoria)
+    return {"status": "iniciado", "message": "Categorizando en background", "updated": 0, "processed": 0}
+
+
+@router.get("/auto-categorize/status")
+async def get_auto_categorize_status(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Estado del último auto-categorize en background."""
+    company_id = await get_active_company_id(request, current_user)
+    record = await db.sync_status.find_one(
+        {"company_id": company_id, "type": "auto_categorize"}, {"_id": 0}
+    )
+    if not record:
+        return {"status": "never_run"}
+    return {
+        "status":     record.get("status"),
+        "stats":      record.get("stats", {}),
+        "updated_at": record.get("updated_at"),
     }
 
 
