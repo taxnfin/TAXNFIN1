@@ -3705,3 +3705,14 @@ async def sync_bank_accounts_from_alegra(
         nombres.append(nombre)
 
     return {'synced': synced, 'accounts': nombres}
+
+
+@router.post("/recategorize-payment")
+async def recategorize_payment_alegra(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    from routes.cashflow_sync_service import recategorize_payment, CategorizationOverride
+    body = await request.json()
+    data = CategorizationOverride(**body)
+    return await recategorize_payment(data, request, current_user)

@@ -2050,7 +2050,7 @@ const PaymentsModule = () => {
                             try {
                               // Usar _id de MongoDB como identificador universal (funciona para Contalink, Alegra y manuales)
                               const paymentId = payment._id || payment.id || payment.contalink_id;
-                              await api.post(`/cashflow-sync/recategorize`, {
+                              await api.post(`/alegra/recategorize-payment`, {
                                 payment_id: paymentId,
                                 category_id: catId,
                               });
