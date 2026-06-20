@@ -532,6 +532,12 @@ async def get_dashboard_from_payments(
         week_payments = [p for p in payments if p.get('fecha_pago')]
         week_payments = [p for p in week_payments if week_start <= datetime.fromisoformat(p['fecha_pago'].replace('Z', '+00:00').split('+')[0]) < week_end]
 
+        if i == 0:  # solo para la primera semana
+            logger.info(f"[dash-fecha] week_start={week_start} week_end={week_end} total_payments={len(payments)} week_payments={len(week_payments)}")
+            if payments:
+                p = payments[0]
+                logger.info(f"[dash-fecha] sample fecha_pago='{p.get('fecha_pago')}' tipo='{p.get('tipo')}'")
+
         # Calculate totals excluding USD operations
         ingresos = 0
         egresos = 0
