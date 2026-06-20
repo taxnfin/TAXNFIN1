@@ -3651,3 +3651,49 @@ async def get_alegra_payables(
         'vencidas': len(vencidas),
         'monto_vencido': round(sum(float(b.get('total', 0)) for b in vencidas), 2),
     }
+
+
+@router.post("/sync/bank-accounts")
+async def sync_bank_accounts_from_alegra(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Importa cuentas bancarias de Alegra a db.bank_accounts via upsert."""
+    company_id = await get_active_company_id(request, current_user)
+    company = await db.companies.find_one({'id': company_id}, {'_id': 0})
+    if not company or not company.get('alegra_connected'):
+        raise HTTPException(status_code=400, detail='Alegra no está conectado')
+
+    email = company.get('alegra_email')
+    token = company.get('alegra_token')
+
+    cuentas = await alegra_request('GET', 'bank-accounts', email, token)
+    if not cuentas or not isinstance(cuentas, list):
+        raise HTTPException(status_code=400, detail='No se pudieron obtener cuentas bancarias de Alegra')
+
+    synced = 0
+    nombres = []
+    for cuenta in cuentas:
+        numero_cuenta = str(cuenta.get('id', ''))
+        nombre = cuenta.get('name', '')
+        moneda = 'USD' if 'USD' in nombre.upper() else 'MXN'
+        doc = {
+            'company_id': company_id,
+            'nombre': nombre,
+            'numero_cuenta': numero_cuenta,
+            'banco': nombre,
+            'moneda': moneda,
+            'saldo_inicial': float(cuenta.get('initialBalance', 0) or 0),
+            'activo': True,
+            'created_at': datetime.now(timezone.utc).isoformat(),
+        }
+        result = await db.bank_accounts.update_one(
+            {'company_id': company_id, 'numero_cuenta': numero_cuenta},
+            {'$set': doc, '$setOnInsert': {'id': str(uuid.uuid4())}},
+            upsert=True,
+        )
+        if result.upserted_id or result.modified_count:
+            synced += 1
+        nombres.append(nombre)
+
+    return {'synced': synced, 'accounts': nombres}
