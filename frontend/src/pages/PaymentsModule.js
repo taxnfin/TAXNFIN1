@@ -98,6 +98,10 @@ const PaymentsModule = () => {
   const [customers, setCustomers] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [categories, setCategories] = useState([]); // For export with category names
+  const [showNewCatModal, setShowNewCatModal] = useState(false);
+  const [newCatNombre, setNewCatNombre] = useState('');
+  const [newCatTipo, setNewCatTipo] = useState('egreso');
+  const [savingCat, setSavingCat] = useState(false);
   const [pendingCfdis, setPendingCfdis] = useState([]);
   const [selectedParty, setSelectedParty] = useState('');
   const [selectedCfdis, setSelectedCfdis] = useState([]); // Multiple selection
@@ -259,6 +263,23 @@ const PaymentsModule = () => {
       setCategories(res.data);
     } catch (error) {
       console.error('Error loading categories:', error);
+    }
+  };
+
+  const handleSaveNewCategory = async () => {
+    if (!newCatNombre.trim()) return;
+    setSavingCat(true);
+    try {
+      await api.post('/cashflow-sync/categories', { nombre: newCatNombre.trim(), tipo: newCatTipo });
+      toast.success('Categoría creada');
+      setShowNewCatModal(false);
+      setNewCatNombre('');
+      setNewCatTipo('egreso');
+      await loadCategories();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al crear categoría');
+    } finally {
+      setSavingCat(false);
     }
   };
 
@@ -1804,7 +1825,18 @@ const PaymentsModule = () => {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Categoría</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Categoría</Label>
+                <button
+                  type="button"
+                  className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-0.5 leading-none"
+                  onClick={() => setShowNewCatModal(true)}
+                  data-testid="nueva-categoria-btn"
+                >
+                  <Plus size={10} />
+                  Nueva
+                </button>
+              </div>
               <Select value={filterCategoria} onValueChange={setFilterCategoria}>
                 <SelectTrigger className="w-48">
                   <SelectValue />
@@ -2972,6 +3004,49 @@ const PaymentsModule = () => {
                 Cerrar
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal — Nueva categoría */}
+      <Dialog open={showNewCatModal} onOpenChange={setShowNewCatModal}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Nueva categoría</DialogTitle>
+            <DialogDescription>Agrega una categoría personalizada al catálogo.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label htmlFor="cat-nombre">Nombre</Label>
+              <Input
+                id="cat-nombre"
+                placeholder="Ej. Honorarios externos"
+                value={newCatNombre}
+                onChange={e => setNewCatNombre(e.target.value)}
+                data-testid="nueva-cat-nombre"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="cat-tipo">Tipo</Label>
+              <select
+                id="cat-tipo"
+                className="w-full border rounded-md px-3 py-2 text-sm"
+                value={newCatTipo}
+                onChange={e => setNewCatTipo(e.target.value)}
+                data-testid="nueva-cat-tipo"
+              >
+                <option value="ingreso">Ingreso</option>
+                <option value="egreso">Egreso</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNewCatModal(false)} disabled={savingCat}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveNewCategory} disabled={savingCat || !newCatNombre.trim()} data-testid="nueva-cat-guardar">
+              {savingCat ? 'Guardando...' : 'Guardar'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
