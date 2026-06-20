@@ -2932,6 +2932,9 @@ async def _run_conciliations_sync(company_id: str, company: dict, date_from: str
             company['alegra_token'] = company_full.get('alegra_token')
     logger.info(f"[Alegra conciliations] Iniciando sync para company_id={company_id}")
 
+    if not date_from:
+        date_from = '2026-01-01'
+
     email = company.get('alegra_email')
     token = company.get('alegra_token')
     logger.info(f"[Alegra conciliations] company_id resuelto: {company_id}")
