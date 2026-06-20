@@ -3712,7 +3712,11 @@ async def recategorize_payment_alegra(
     request: Request,
     current_user: Dict = Depends(get_current_user),
 ):
-    from routes.cashflow_sync_service import recategorize_payment, CategorizationOverride
-    body = await request.json()
-    data = CategorizationOverride(**body)
-    return await recategorize_payment(data, request, current_user)
+    try:
+        from routes.cashflow_sync_service import recategorize_payment, CategorizationOverride
+        body = await request.json()
+        data = CategorizationOverride(**body)
+        return await recategorize_payment(data, request, current_user)
+    except Exception as e:
+        logger.error(f"[recategorize-payment] error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
