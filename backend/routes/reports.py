@@ -545,7 +545,7 @@ async def get_dashboard_from_payments(
         compra_usd = 0
 
         for p in week_payments:
-            monto_mxn = convert_to_mxn(p.get('monto', 0), p.get('moneda', 'MXN'))
+            monto_mxn = p.get('monto_mxn') or convert_to_mxn(p.get('monto', 0), p.get('moneda', 'MXN'))
             cat_id = p.get('category_id')
 
             if cat_id == venta_usd_id:
