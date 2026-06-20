@@ -346,10 +346,10 @@ const Dashboard = () => {
     num_payments: week.num_payments || 0,
     varianza: week.varianza_display ?? week.varianza ?? 0,
     varianza_pct: week.varianza_pct || 0,
-    is_past: week.es_real ?? false,
+    is_past: week.es_real ?? week.is_past ?? false,
     is_current: week.is_current ?? false,
-    es_real: week.es_real ?? false,
-    es_current: !week.es_real && (week.total_ingresos > 0 || week.total_egresos > 0),
+    es_real: week.es_real ?? week.is_past ?? false,
+    es_current: week.is_current ?? (!(week.es_real ?? week.is_past) && (week.ingresos > 0 || week.egresos > 0)),
   }));
 
   // En 13S los datos traen 8 semanas pasadas extra (para KPIs y semáforos),
