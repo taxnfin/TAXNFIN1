@@ -1347,10 +1347,10 @@ const CashflowProjections = () => {
       
       // First try: Use item's direct emisor/receptor data (from CFDI processing)
       if (tipo === 'ingreso') {
-        tercero = item.nombre || item.receptor || item.beneficiario || '';
+        tercero = item.nombre || item.concepto || item.receptor || item.beneficiario || '';
         terceroTipo = 'cliente';
       } else {
-        tercero = item.nombre || item.emisor || item.beneficiario || '';
+        tercero = item.nombre || item.concepto || item.emisor || item.beneficiario || '';
         terceroTipo = 'proveedor';
       }
       
