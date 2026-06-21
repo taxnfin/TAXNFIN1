@@ -728,7 +728,11 @@ const BankModule = () => {
                           <TableCell className={`text-right mono font-semibold ${
                             txn.tipo_movimiento === 'credito' ? 'text-green-600' : 'text-red-600'
                           }`}>
-                            {txn.tipo_movimiento === 'credito' ? '+' : '-'}${Math.abs(txn.monto || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                            {txn.tipo_movimiento === 'credito' ? '+' : '-'}
+                            {txn.moneda_original === 'USD' && txn.monto_original
+                              ? <span>${txn.monto_original.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD<br/>= ${Math.abs(txn.monto || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN</span>
+                              : `$${Math.abs(txn.monto || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN`
+                            }
                           </TableCell>
                           <TableCell className="text-right mono">${(txn.saldo || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}</TableCell>
                           <TableCell className="text-center">
@@ -797,7 +801,12 @@ const BankModule = () => {
                             {txn.tipo_movimiento}
                           </span>
                         </TableCell>
-                        <TableCell className="mono font-semibold">${(txn.monto || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}</TableCell>
+                        <TableCell className="mono font-semibold">
+                          {txn.moneda_original === 'USD' && txn.monto_original
+                            ? <span>${txn.monto_original.toLocaleString('es-MX', {minimumFractionDigits: 2})} USD<br/>= ${(txn.monto || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN</span>
+                            : `$${(txn.monto || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN`
+                          }
+                        </TableCell>
                         <TableCell className="mono">${(txn.saldo || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}</TableCell>
                         <TableCell>
                           {txn.conciliado ? (
