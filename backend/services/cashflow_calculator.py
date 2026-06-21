@@ -68,7 +68,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         'estatus': 'completado',
         'es_real': True,
     }, {'_id': 0, 'tipo': 1, 'monto': 1, 'fecha_pago': 1,
-        'concepto': 1, 'beneficiario': 1, 'id': 1}).to_list(5000)
+        'concepto': 1, 'beneficiario': 1, 'nombre': 1, 'id': 1}).to_list(5000)
 
     processed_payments = []
     for p in payments_reales:
