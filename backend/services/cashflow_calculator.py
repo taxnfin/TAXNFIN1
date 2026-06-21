@@ -79,7 +79,12 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         if monto <= 0:
             continue
         tipo = str(p.get('tipo', '') or '').lower()
-        nombre = p.get('concepto') or p.get('beneficiario') or 'Sin nombre'
+        concepto_raw = p.get('concepto', '')
+        beneficiario_raw = p.get('beneficiario', '')
+        if concepto_raw and not concepto_raw.startswith('Factura') and not concepto_raw.startswith('CUSTINVC'):
+            nombre = concepto_raw
+        else:
+            nombre = beneficiario_raw or concepto_raw or 'Sin nombre'
         processed_payments.append({
             'fecha': fecha,
             'monto': monto,
