@@ -208,6 +208,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
                 item = {
                     'id': bt['id'],
                     'concepto': bt.get('nombre') or bt.get('cuenta_bancaria') or 'Movimiento bancario',
+                    'nombre': bt.get('nombre') or bt.get('cuenta_bancaria') or 'Movimiento bancario',
                     'monto': bt['monto'],
                     'fecha': bt['fecha'],
                     'categoria': bt.get('category_name') or ('cobro_alegra' if bt.get('tipo') == 'ingreso' else 'banco_alegra'),
@@ -324,6 +325,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             for bt in processed_bank_txns:
                 if fi_s <= bt['fecha'] <= ff_s:
                     item = {'id': bt['id'], 'concepto': bt.get('nombre') or bt.get('cuenta_bancaria') or 'Movimiento bancario',
+                            'nombre': bt.get('nombre') or bt.get('cuenta_bancaria') or 'Movimiento bancario',
                             'monto': bt['monto'], 'fecha': bt['fecha'],
                             'categoria': bt.get('category_name') or ('cobro_alegra' if bt.get('tipo') == 'ingreso' else 'banco_alegra'),
                             'es_real': True}
