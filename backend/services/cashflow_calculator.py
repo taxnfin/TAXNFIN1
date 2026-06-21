@@ -120,6 +120,10 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             'es_real': True,
         })
 
+    if processed_bank_txns:
+        sample = processed_bank_txns[0]
+        logger.info(f"[cashflow-debug] sample bt: nombre='{sample.get('nombre')}' cuenta='{sample.get('cuenta_bancaria')}'")
+
     # ── Fuente 2: Proyecciones manuales de CxC/CxP ───────────────
     proyecciones = await db.cxc_proyecciones.find(
         {'company_id': company_id},
