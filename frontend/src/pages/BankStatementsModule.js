@@ -2176,16 +2176,24 @@ const BankStatementsModule = () => {
                         <TableCell className={`text-right font-mono font-semibold ${
                           isDeposito(txn) ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          <div>
-                            {isDeposito(txn) ? '+' : '-'}
-                            ${Math.abs(txn.monto).toLocaleString('es-MX', {minimumFractionDigits: 2})}
-                            <span className="text-xs ml-1">{txn.moneda || account?.moneda || 'MXN'}</span>
-                          </div>
-                          {(txn.moneda || account?.moneda) !== 'MXN' && (txn.moneda || account?.moneda) && (
-                            <div className="text-xs text-gray-400 font-normal">
-                              ≈ ${convertToMXN(txn.monto, txn.moneda || account?.moneda).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
-                            </div>
-                          )}
+                          {(() => {
+                            const montoDisplay = (txn.moneda_original === 'USD' && txn.monto_original)
+                              ? txn.monto_original
+                              : txn.monto;
+                            const monedaDisplay = txn.moneda_original || txn.moneda || account?.moneda || 'MXN';
+                            return <>
+                              <div>
+                                {isDeposito(txn) ? '+' : '-'}
+                                ${Math.abs(montoDisplay).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                                <span className="text-xs ml-1">{monedaDisplay}</span>
+                              </div>
+                              {monedaDisplay !== 'MXN' && (
+                                <div className="text-xs text-gray-400 font-normal">
+                                  ≈ ${convertToMXN(txn.monto, txn.moneda || account?.moneda).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+                                </div>
+                              )}
+                            </>;
+                          })()}
                         </TableCell>
                         <TableCell className="text-right font-mono">
                           ${(txn.saldo || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
