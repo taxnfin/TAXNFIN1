@@ -784,19 +784,17 @@ const AgingModule = () => {
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                {!getERPEndpoints().usaAlegra && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                    onClick={() => handleSincronizarMontos(tipo)}
-                    disabled={syncingProy}
-                    data-testid={`sync-montos-${tipo}`}
-                  >
-                    <RefreshCw size={12} className={syncingProy ? 'animate-spin' : ''} />
-                    {syncingProy ? 'Sincronizando...' : 'Sincronizar con Aging'}
-                  </Button>
-                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                  onClick={() => handleSincronizarMontos(tipo)}
+                  disabled={syncingProy}
+                  data-testid={`sync-montos-${tipo}`}
+                >
+                  <RefreshCw size={12} className={syncingProy ? 'animate-spin' : ''} />
+                  {syncingProy ? 'Sincronizando...' : 'Sincronizar con Aging'}
+                </Button>
                 <label className="text-xs font-medium text-gray-600 whitespace-nowrap">Semana</label>
                 <Select
                   value={filtroActivo}
