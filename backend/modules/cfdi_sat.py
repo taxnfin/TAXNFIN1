@@ -1056,18 +1056,25 @@ class SATSyncService:
 
     async def sync_constancia(self, company_id: str) -> Dict:
         """Descarga la Constancia de Situación Fiscal y la guarda en MongoDB."""
+        print(f"[CONSTANCIA] sync_constancia() company_id={company_id}", flush=True)
         creds = await self.credential_manager.get_credentials(company_id)
         if not creds:
+            print(f"[CONSTANCIA] Sin credenciales para company_id={company_id}", flush=True)
             return {'success': False, 'error': 'No hay credenciales SAT configuradas'}
 
+        print(f"[CONSTANCIA] Credenciales OK, RFC={creds['rfc']} — iniciando login SAT...", flush=True)
         client = SATPortalClient()
         try:
             login_res = await client.login(creds['rfc'], creds['ciec'])
+            print(f"[CONSTANCIA] Login resultado: {login_res}", flush=True)
             if not login_res.get('success'):
                 return {'success': False, 'error': login_res.get('error')}
 
+            print(f"[CONSTANCIA] Login OK — llamando get_constancia_fiscal(rfc={creds['rfc']})...", flush=True)
             result = await client.get_constancia_fiscal(creds['rfc'])
+            print(f"[CONSTANCIA] get_constancia_fiscal resultado: success={result.get('success')} error={result.get('error')}", flush=True)
             if result.get('success'):
+                print(f"[CONSTANCIA] Guardando PDF en db.sat_constancia...", flush=True)
                 await self.db.sat_constancia.update_one(
                     {'company_id': company_id},
                     {'$set': {
@@ -1079,6 +1086,7 @@ class SATSyncService:
                     }},
                     upsert=True,
                 )
+                print(f"[CONSTANCIA] PDF guardado correctamente.", flush=True)
             return result
         finally:
             client.close()

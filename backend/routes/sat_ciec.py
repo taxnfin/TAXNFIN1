@@ -228,18 +228,24 @@ async def get_extras(request: Request, current_user: Dict = Depends(get_current_
 # ── Constancia de Situación Fiscal ───────────────────────────────────────────
 
 async def _run_sync_constancia(sync_id: str, company_id: str):
+    import traceback
+    print(f"[CONSTANCIA] Iniciando sync_id={sync_id} company_id={company_id}", flush=True)
     await db.sat_constancia_sync.update_one(
         {'sync_id': sync_id},
         {'$set': {'status': 'running', 'updated_at': datetime.now(timezone.utc)}},
         upsert=True,
     )
     try:
+        print(f"[CONSTANCIA] Llamando SATSyncService.sync_constancia...", flush=True)
         result = await SATSyncService(db).sync_constancia(company_id=company_id)
+        print(f"[CONSTANCIA] Resultado: {result}", flush=True)
         await db.sat_constancia_sync.update_one(
             {'sync_id': sync_id},
             {'$set': {'status': 'done', 'result': result, 'updated_at': datetime.now(timezone.utc)}},
         )
     except Exception as e:
+        print(f"[CONSTANCIA] ERROR: {e}", flush=True)
+        print(traceback.format_exc(), flush=True)
         await db.sat_constancia_sync.update_one(
             {'sync_id': sync_id},
             {'$set': {'status': 'error',
