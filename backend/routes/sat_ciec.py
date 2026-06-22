@@ -6,6 +6,7 @@ import uuid
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
 from modules.cfdi_sat import SATCredentialManager, SATSyncService
+from modules.syntage_client import SyntageClient
 import logging
 
 logger = logging.getLogger(__name__)
@@ -287,3 +288,94 @@ async def get_constancia(request: Request, current_user: Dict = Depends(get_curr
     return doc
 
 
+# ── Syntage API: Constancia y Opinión de Cumplimiento ────────────────────────
+
+@router.post("/sat/syntage/sync")
+async def syntage_sync(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Registra credenciales en Syntage y obtiene Constancia + Opinión de Cumplimiento."""
+    company_id = await get_active_company_id(request, current_user)
+    creds = await SATCredentialManager(db).get_credentials(company_id)
+    if not creds:
+        return {"success": False, "error": "CIEC no configurada"}
+    rfc = creds["rfc"]
+    ciec = creds["ciec"]
+    client = SyntageClient()
+    try:
+        cred_result = await client.create_credential(rfc, ciec)
+        print(f"[SYNTAGE] create_credential result: {cred_result}", flush=True)
+
+        entity = await client.get_entity_by_rfc(rfc)
+        if not entity:
+            return {"success": False, "error": "No se encontró entity en Syntage para este RFC"}
+        entity_id = entity["id"]
+        print(f"[SYNTAGE] entity_id: {entity_id}", flush=True)
+
+        await db.sat_syntage_config.update_one(
+            {"company_id": company_id},
+            {"$set": {
+                "company_id": company_id,
+                "entity_id": entity_id,
+                "rfc": rfc,
+                "updated_at": datetime.now(timezone.utc),
+            }},
+            upsert=True,
+        )
+
+        tax_status = await client.get_tax_status(entity_id)
+        tax_compliance = await client.get_tax_compliance(entity_id)
+        print(f"[SYNTAGE] tax_status: {tax_status}", flush=True)
+        print(f"[SYNTAGE] tax_compliance: {tax_compliance}", flush=True)
+
+        await db.sat_syntage_data.update_one(
+            {"company_id": company_id},
+            {"$set": {
+                "company_id": company_id,
+                "entity_id": entity_id,
+                "rfc": rfc,
+                "tax_status": tax_status,
+                "tax_compliance": tax_compliance,
+                "updated_at": datetime.now(timezone.utc),
+            }},
+            upsert=True,
+        )
+        return {
+            "success": True,
+            "entity_id": entity_id,
+            "tax_status": tax_status,
+            "tax_compliance": tax_compliance,
+        }
+    except Exception as e:
+        print(f"[SYNTAGE] ERROR: {e}", flush=True)
+        return {"success": False, "error": str(e)}
+
+
+@router.get("/sat/syntage/status")
+async def syntage_status(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Devuelve los datos de Syntage guardados (Constancia + Opinión)."""
+    company_id = await get_active_company_id(request, current_user)
+    data = await db.sat_syntage_data.find_one({"company_id": company_id}, {"_id": 0})
+    if not data:
+        return {"connected": False}
+    return {"connected": True, **data}
+
+
+@router.get("/sat/syntage/tax-status/pdf")
+async def syntage_tax_status_pdf(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Descarga la Constancia de Situación Fiscal en PDF desde Syntage."""
+    from fastapi.responses import Response
+    company_id = await get_active_company_id(request, current_user)
+    config = await db.sat_syntage_config.find_one({"company_id": company_id}, {"_id": 0})
+    if not config:
+        return {"error": "No hay entity_id configurado. Ejecuta sync primero."}
+    entity_id = config["entity_id"]
+    client = SyntageClient()
+    try:
+        pdf_bytes = await client.get_tax_status_pdf(entity_id)
+        filename = f"Constancia_{config['rfc']}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+    except Exception as e:
+        return {"error": str(e)}

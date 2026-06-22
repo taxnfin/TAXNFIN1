@@ -172,6 +172,8 @@ const Integrations = () => {
   const [ciecExtras, setCiecExtras] = useState(null);
   const [syncingExtras, setSyncingExtras] = useState(false);
   const [downloadingConstancia, setDownloadingConstancia] = useState(false);
+  const [syntageData, setSyntageData] = useState(null);
+  const [syncingSyntage, setSyncingSyntage] = useState(false);
 
   const loadCiecStatus = async () => {
     try {
@@ -188,7 +190,14 @@ const Integrations = () => {
     } catch { }
   };
 
-  useEffect(() => { loadCiecStatus(); loadCiecExtras(); }, []);
+  const loadSyntageData = async () => {
+    try {
+      const res = await api.get('/sat/syntage/status');
+      if (res.data.connected) setSyntageData(res.data);
+    } catch { }
+  };
+
+  useEffect(() => { loadCiecStatus(); loadCiecExtras(); loadSyntageData(); }, []);
 
   const handleTest = async (rfc, ciec) => {
     setCiecLoading(true);
@@ -305,6 +314,35 @@ const Integrations = () => {
     finally { setSyncingExtras(false); }
   };
 
+  const handleSyntageSync = async () => {
+    setSyncingSyntage(true);
+    try {
+      const res = await api.post('/sat/syntage/sync');
+      if (res.data.success) {
+        setSyntageData(res.data);
+        toast.success('Datos SAT obtenidos correctamente desde Syntage');
+      } else {
+        toast.error(res.data.error || 'Error al sincronizar con Syntage');
+      }
+    } catch { toast.error('Error al conectar con Syntage'); }
+    finally { setSyncingSyntage(false); }
+  };
+
+  const handleDescargarConstanciaSyntage = async () => {
+    try {
+      const res = await api.get('/sat/syntage/tax-status/pdf', { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Constancia_${syntageData?.rfc || 'SAT'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Constancia descargada');
+    } catch { toast.error('Error al descargar PDF de Constancia'); }
+  };
+
   const handleDelete = async () => {
     if (!window.confirm('¿Eliminar credenciales CIEC? Esta acción no se puede deshacer.')) return;
     try {
@@ -352,6 +390,73 @@ const Integrations = () => {
                 : <CiecForm onTest={handleTest} onSave={handleSave} loading={ciecLoading} />
               }
             </div>
+
+            {/* ── Sección Syntage ── */}
+            {ciecStatus === 'configured' && (
+              <div className="border border-gray-200 rounded-xl p-6 bg-white shadow-sm">
+                <div className="flex items-start justify-between gap-4 mb-5">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center flex-shrink-0">
+                      <span className="text-white text-base">📋</span>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-[#0F172A] text-base">Datos SAT vía Syntage</h3>
+                      <p className="text-sm text-gray-500 mt-0.5">Constancia de Situación Fiscal y Opinión de Cumplimiento directamente del SAT.</p>
+                    </div>
+                  </div>
+                  <button onClick={handleSyntageSync} disabled={syncingSyntage}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+                    {syncingSyntage ? <RefreshCw size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                    {syncingSyntage ? 'Sincronizando...' : 'Sincronizar con Syntage'}
+                  </button>
+                </div>
+                {syntageData ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-gray-50 rounded-lg border border-gray-200 px-4 py-3">
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Constancia de Situación Fiscal</p>
+                        <p className="text-sm font-semibold text-[#0F172A]">
+                          {syntageData.tax_status?.['hydra:member']?.[0]?.status
+                            || syntageData.tax_status?.status
+                            || 'Disponible'}
+                        </p>
+                        {syntageData.updated_at && (
+                          <p className="text-[10px] text-gray-400 mt-1">
+                            Actualizado: {new Date(syntageData.updated_at).toLocaleString('es-MX')}
+                          </p>
+                        )}
+                      </div>
+                      <div className={`rounded-lg border px-4 py-3 ${
+                        (syntageData.tax_compliance?.['hydra:member']?.[0]?.status || syntageData.tax_compliance?.status || '').toLowerCase().includes('positiv')
+                          ? 'bg-green-50 border-green-200'
+                          : (syntageData.tax_compliance?.['hydra:member']?.[0]?.status || syntageData.tax_compliance?.status || '').toLowerCase().includes('negativ')
+                          ? 'bg-red-50 border-red-200'
+                          : 'bg-gray-50 border-gray-200'
+                      }`}>
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Opinión de Cumplimiento</p>
+                        <p className={`text-sm font-semibold capitalize ${
+                          (syntageData.tax_compliance?.['hydra:member']?.[0]?.status || syntageData.tax_compliance?.status || '').toLowerCase().includes('positiv')
+                            ? 'text-green-700'
+                            : (syntageData.tax_compliance?.['hydra:member']?.[0]?.status || syntageData.tax_compliance?.status || '').toLowerCase().includes('negativ')
+                            ? 'text-red-700'
+                            : 'text-[#0F172A]'
+                        }`}>
+                          {syntageData.tax_compliance?.['hydra:member']?.[0]?.status
+                            || syntageData.tax_compliance?.status
+                            || '—'}
+                        </p>
+                      </div>
+                    </div>
+                    <button onClick={handleDescargarConstanciaSyntage}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-indigo-200 text-indigo-600 text-xs font-medium rounded-lg hover:bg-indigo-50 transition-colors">
+                      <Download size={13} /> Descargar PDF Constancia
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 text-center py-4">Haz clic en "Sincronizar con Syntage" para obtener los datos.</p>
+                )}
+              </div>
+            )}
           </div>
         )}
         {activeTab === 'alegra' && <AlegraIntegration />}
