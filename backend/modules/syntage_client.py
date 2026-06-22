@@ -21,6 +21,9 @@ class SyntageClient:
                 headers=self.headers,
                 json={"rfc": rfc, "password": ciec, "type": "ciec"},
             )
+            print(f"[SYNTAGE] create_credential status: {r.status_code}", flush=True)
+            print(f"[SYNTAGE] create_credential response: {r.text[:500]}", flush=True)
+            print(f"[SYNTAGE] headers enviados: {self.headers}", flush=True)
             r.raise_for_status()
             return r.json()
 
