@@ -170,19 +170,49 @@ async def get_sync_status(request: Request,
 
 # ── Extras: Opinión, Buzón ────────────────────────────────────────────────────
 
+async def _run_sync_extras(sync_id: str, company_id: str):
+    await db.sat_extras_sync.update_one(
+        {'sync_id': sync_id},
+        {'$set': {'status': 'running', 'updated_at': datetime.now(timezone.utc)}},
+        upsert=True,
+    )
+    try:
+        result = await SATSyncService(db).sync_extras(company_id=company_id)
+        await db.sat_extras_sync.update_one(
+            {'sync_id': sync_id},
+            {'$set': {'status': 'done', 'result': result, 'updated_at': datetime.now(timezone.utc)}},
+        )
+    except Exception as e:
+        await db.sat_extras_sync.update_one(
+            {'sync_id': sync_id},
+            {'$set': {'status': 'error',
+                      'result': {'success': False, 'error': str(e)},
+                      'updated_at': datetime.now(timezone.utc)}},
+        )
+
+
 @router.post("/sat/ciec/sync-extras")
 async def sync_extras(request: Request, background_tasks: BackgroundTasks,
                       current_user: Dict = Depends(get_current_user)):
-    """
-    Consulta Opinión de Cumplimiento (32-D) y Buzón Tributario en background.
-    """
+    """Consulta Opinión de Cumplimiento (32-D) y Buzón Tributario en background."""
     company_id = await get_active_company_id(request, current_user)
     creds = await SATCredentialManager(db).get_credentials(company_id)
     if not creds:
         return {'status': 'error', 'message': 'CIEC no configurada'}
 
-    background_tasks.add_task(SATSyncService(db).sync_extras, company_id=company_id)
-    return {'status': 'started', 'message': 'Consultando Opinión de Cumplimiento y Buzón Tributario...'}
+    sync_id = str(uuid.uuid4())
+    background_tasks.add_task(_run_sync_extras, sync_id, company_id)
+    return {'status': 'started', 'sync_id': sync_id}
+
+
+@router.get("/sat/ciec/sync-extras-status/{sync_id}")
+async def get_sync_extras_status(sync_id: str, request: Request,
+                                 current_user: Dict = Depends(get_current_user)):
+    """Polling del resultado de sync-extras."""
+    record = await db.sat_extras_sync.find_one({'sync_id': sync_id}, {'_id': 0})
+    if not record:
+        return {'status': 'not_found'}
+    return {'status': record.get('status'), 'result': record.get('result')}
 
 
 @router.get("/sat/ciec/extras")

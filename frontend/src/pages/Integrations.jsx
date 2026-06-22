@@ -227,9 +227,29 @@ const Integrations = () => {
   const handleSyncExtras = async () => {
     setSyncingExtras(true);
     try {
-      await api.post('/sat/ciec/sync-extras');
-      toast.success('Opinión, buzón y declaraciones descargados');
-      await loadCiecExtras();
+      const startRes = await api.post('/sat/ciec/sync-extras');
+      if (startRes.data.status === 'error') {
+        toast.error(startRes.data.message || 'Error al descargar documentos SAT');
+        return;
+      }
+      const syncId = startRes.data.sync_id;
+      for (let i = 0; i < 40; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        try {
+          const poll = await api.get(`/sat/ciec/sync-extras-status/${syncId}`);
+          const { status } = poll.data;
+          if (status === 'done') {
+            toast.success('Opinión, buzón y declaraciones descargados');
+            await loadCiecExtras();
+            return;
+          }
+          if (status === 'error') {
+            toast.error(poll.data.result?.error || 'Error al descargar documentos SAT');
+            return;
+          }
+        } catch { /* red inestable, seguir intentando */ }
+      }
+      toast.error('Tiempo de espera agotado (2 minutos)');
     } catch { toast.error('Error al descargar documentos SAT'); }
     finally { setSyncingExtras(false); }
   };
