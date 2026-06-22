@@ -2120,6 +2120,7 @@ async def get_alegra_cxc(
         'tipo_cfdi':          'ingreso',
         'estatus':            {'$ne': 'cancelado'},
         'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
+        'fecha_emision':      {'$gte': '2026-01-01'},
     }, {'_id': 0}).to_list(5000)
     logger.info(f"[CxC] raw_count={len(invoices)}")
 
@@ -2131,7 +2132,7 @@ async def get_alegra_cxc(
     for inv in invoices:
         total_inv = float(inv.get('total', 0) or 0)
         cobrado   = float(inv.get('monto_cobrado', 0) or 0)
-        saldo     = round(total_inv - cobrado, 2)
+        saldo     = inv.get('saldo_pendiente') if inv.get('saldo_pendiente') is not None else round(total_inv - cobrado, 2)
         if saldo < 0.01:
             skip_saldo += 1
             continue
