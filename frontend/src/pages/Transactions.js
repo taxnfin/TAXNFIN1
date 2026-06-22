@@ -57,6 +57,7 @@ const AgingModule = () => {
   const [categorias, setCategorias] = useState({});       // { "NOMBRE_tipo": { code, name } }
   const [catalogoCategorias, setCatalogoCategorias] = useState([]); // [{id, nombre, tipo, code}] para Alegra
   const [autoCategorizing, setAutoCategorizing] = useState(false);
+  const [currentPage, setCurrentPage] = useState({ cxc: 1, cxp: 1 });
 
   useEffect(() => {
     loadData();
@@ -659,6 +660,11 @@ const AgingModule = () => {
     const filteredCfdis = applyFilters(allCfdis, tipo, filters);
     const currencies = tipo === 'cxc' ? cxcCurrencies : cxpCurrencies;
     const isFiltered = hasActiveFilters(tipo);
+    const ITEMS_PER_PAGE = 50;
+    const sortedCfdis = [...filteredCfdis].sort((a, b) => b.diasVencido - a.diasVencido);
+    const totalPages = Math.ceil(sortedCfdis.length / ITEMS_PER_PAGE);
+    const page = currentPage[tipo];
+    const pagedCfdis = sortedCfdis.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
     
     // Recalculate totals based on filtered data
     const filteredTotalMXN = filteredCfdis.reduce((sum, cfdi) => sum + cfdi.pendienteMXN, 0);
@@ -1285,7 +1291,7 @@ const AgingModule = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredCfdis.sort((a, b) => b.diasVencido - a.diasVencido).map(cfdi => {
+                  pagedCfdis.map(cfdi => {
                     const bucket = getAgingBucket(cfdi, tipo);
                     const bucketInfo = buckets[bucket];
                     const pagado = tipo === 'cxc' ? (cfdi.monto_cobrado || 0) : (cfdi.monto_pagado || 0);
@@ -1436,6 +1442,29 @@ const AgingModule = () => {
               </TableBody>
             </Table>
           </CardContent>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t text-xs text-gray-600">
+              <span>
+                Página {page} de {totalPages} · {filteredCfdis.length} registros
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setCurrentPage(prev => ({ ...prev, [tipo]: Math.max(1, prev[tipo] - 1) }))}
+                  disabled={page === 1}
+                  className="px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Anterior
+                </button>
+                <button
+                  onClick={() => setCurrentPage(prev => ({ ...prev, [tipo]: Math.min(totalPages, prev[tipo] + 1) }))}
+                  disabled={page === totalPages}
+                  className="px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
+          )}
         </Card>
       </div>
     );
