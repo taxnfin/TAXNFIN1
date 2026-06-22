@@ -460,6 +460,8 @@ async def sync_alegra_invoices(
             total = float(invoice.get('total', 0) or 0)
             total_paid = float(invoice.get('totalPaid', 0) or 0)
             balance = float(invoice.get('balance', total - total_paid) or 0)
+            saldo_real = round(total - total_paid, 2)
+            balance_final = min(balance, saldo_real) if balance > saldo_real else balance
             
             # Determine status
             inv_status = invoice.get('status', 'open')
@@ -593,7 +595,7 @@ async def sync_alegra_invoices(
                 'estado_conciliacion': estado_conciliacion,
                 'monto_cobrado': inv_cobrado,  # In original currency
                 'monto_cobrado_mxn': round(inv_cobrado * tipo_cambio, 2),  # Reference in MXN
-                'saldo_pendiente': round(balance, 2),
+                'saldo_pendiente': round(balance_final, 2),
                 'monto_pagado': 0,
                 'referencia': folio_alegra,  # Full folio CUSTINVC859
                 'folio_alegra': folio_alegra,
