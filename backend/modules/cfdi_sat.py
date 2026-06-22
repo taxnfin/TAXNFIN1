@@ -828,42 +828,108 @@ class SATPortalClient:
 
     async def get_constancia_fiscal(self, rfc: str) -> Dict:
         """
-        Descarga la Constancia de Situación Fiscal (CIF) del portal SAT autenticado.
-        Requiere sesión activa (logged_in=True).
+        Descarga la Constancia de Situación Fiscal (CIF) usando la sesión CIEC activa.
+        Navega al portal SIAT autenticado; incluye diagnóstico completo en el resultado.
         """
         import base64
         from selenium.webdriver.common.by import By
+
         if not self.logged_in:
             return {'success': False, 'error': 'No autenticado'}
+
+        CIF_URL = "https://siat.sat.gob.mx/app/qe/OrientaQE/LandingCIF.jsf"
+        FALLBACK_URL = (
+            "https://cfdiau.sat.gob.mx/nidp/app/login"
+            "?id=SATUPCFDItoSAT-int-chain&sid=0&option=credential&sid=0"
+        )
+
         try:
-            self.driver.get(SAT_CIF_URL)
+            print(f"[CONSTANCIA] Navegando a {CIF_URL}", flush=True)
+            self.driver.get(CIF_URL)
             await asyncio.sleep(5)
 
+            current_url = self.driver.current_url
+            page_title  = self.driver.title
+            print(f"[CONSTANCIA] URL actual: {current_url} | Título: {page_title}", flush=True)
+
+            # Si redirigió a login, intentar con la URL de autenticación alternativa
+            if 'login' in current_url.lower() or 'nidp' in current_url.lower():
+                print(f"[CONSTANCIA] Detectado redirect a login, intentando URL alternativa...", flush=True)
+                self.driver.get(FALLBACK_URL)
+                await asyncio.sleep(5)
+                current_url = self.driver.current_url
+                page_title  = self.driver.title
+                print(f"[CONSTANCIA] Tras fallback — URL: {current_url} | Título: {page_title}", flush=True)
+
+            page_source = self.driver.page_source
+            snippet     = page_source[:2000]
+
+            # ── Buscar botón/link en orden de prioridad ───────────────────────
+            KEYWORDS = ['constancia', 'generar', 'descargar', 'cif', 'situación fiscal',
+                        'situacion fiscal']
             btn = None
-            for by, sel in [
-                (By.XPATH,       "//a[contains(translate(text(),'constanciagenerar','CONSTANCIAGENERAR'),'CONSTANCIA') or contains(translate(text(),'constanciagenerar','CONSTANCIAGENERAR'),'GENERAR') or contains(translate(text(),'constanciagenerar','CONSTANCIAGENERAR'),'DESCARGAR')]"),
-                (By.XPATH,       "//button[contains(translate(text(),'constanciagenerar','CONSTANCIAGENERAR'),'CONSTANCIA') or contains(translate(text(),'constanciagenerar','CONSTANCIAGENERAR'),'GENERAR')]"),
-                (By.XPATH,       "//input[@value='Generar' or @value='Descargar' or @value='Constancia']"),
-                (By.CSS_SELECTOR,"a[href*='constancia'], a[href*='pdf'], button[id*='constancia'], a[id*='constancia']"),
-                (By.XPATH,       "//a[contains(@href,'pdf')] | //a[contains(@onclick,'pdf')]"),
-            ]:
+            selectors = [
+                (By.CSS_SELECTOR, "input[value*='Constancia'], input[value*='constancia']"),
+                (By.CSS_SELECTOR, "input[value*='Generar'], input[value*='generar']"),
+                (By.CSS_SELECTOR, "input[value*='Descargar'], input[value*='descargar']"),
+                (By.XPATH,        "//*[self::button or self::a or self::input]"
+                                  "[contains(translate(normalize-space(.),"
+                                  "'ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÑÜ',"
+                                  "'abcdefghijklmnopqrstuvwxyzáéíóúñü'),'constancia')]"),
+                (By.XPATH,        "//*[self::button or self::a or self::input]"
+                                  "[contains(translate(normalize-space(.),"
+                                  "'ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÑÜ',"
+                                  "'abcdefghijklmnopqrstuvwxyzáéíóúñü'),'generar')]"),
+                (By.XPATH,        "//*[self::button or self::a or self::input]"
+                                  "[contains(translate(normalize-space(.),"
+                                  "'ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÑÜ',"
+                                  "'abcdefghijklmnopqrstuvwxyzáéíóúñü'),'cif')]"),
+                (By.CSS_SELECTOR, "input[type='submit']"),
+                (By.CSS_SELECTOR, "button[type='submit']"),
+            ]
+            for by, sel in selectors:
                 try:
-                    btn = self.driver.find_element(by, sel)
+                    el = self.driver.find_element(by, sel)
+                    btn = el
+                    print(f"[CONSTANCIA] Botón encontrado con selector: {sel} — texto: {el.text!r} valor: {el.get_attribute('value')!r}", flush=True)
                     break
                 except Exception:
                     continue
 
             if not btn:
                 self._screenshot('cif_no_btn')
-                return {'success': False, 'error': 'No se encontró el botón para generar la Constancia Fiscal en el portal SAT'}
+                # Loguear todos los botones/links visibles como ayuda diagnóstica
+                try:
+                    all_btns = self.driver.find_elements(By.XPATH, "//*[self::button or self::a or self::input[@type='submit' or @type='button']]")
+                    btn_texts = [f"{el.tag_name}|{el.text!r}|{el.get_attribute('value')!r}" for el in all_btns[:30]]
+                    print(f"[CONSTANCIA] Botones encontrados en la página: {btn_texts}", flush=True)
+                except Exception:
+                    pass
+                return {
+                    'success': False,
+                    'error': 'No se encontró botón para generar la Constancia Fiscal',
+                    'page_title': page_title,
+                    'page_url': current_url,
+                    'page_source_snippet': snippet,
+                }
 
             btn.click()
-            await asyncio.sleep(8)
+            print(f"[CONSTANCIA] Clic hecho, esperando 10s para descarga...", flush=True)
+            await asyncio.sleep(10)
 
             pdf_files = glob.glob(os.path.join(self.download_dir, '*.pdf'))
+            print(f"[CONSTANCIA] PDFs en download_dir: {pdf_files}", flush=True)
             if not pdf_files:
                 self._screenshot('cif_no_pdf')
-                return {'success': False, 'error': 'No se descargó ningún PDF de Constancia Fiscal'}
+                current_url2 = self.driver.current_url
+                snippet2     = self.driver.page_source[:2000]
+                return {
+                    'success': False,
+                    'error': 'No se descargó ningún PDF de Constancia Fiscal',
+                    'page_title': self.driver.title,
+                    'page_url': current_url2,
+                    'page_source_snippet': snippet2,
+                }
 
             pdf_path = pdf_files[0]
             filename = f'Constancia_{rfc}.pdf'
@@ -872,12 +938,23 @@ class SATPortalClient:
             os.remove(pdf_path)
 
             pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
-            logger.info(f"[SAT] Constancia Fiscal descargada para RFC={rfc}, size={len(pdf_bytes)} bytes")
+            logger.info(f"[SAT] Constancia Fiscal descargada RFC={rfc} size={len(pdf_bytes)}B")
+            print(f"[CONSTANCIA] PDF listo: {filename} ({len(pdf_bytes)} bytes)", flush=True)
             return {'success': True, 'pdf_base64': pdf_base64, 'filename': filename}
 
         except Exception as e:
             logger.error(f"[SAT] Error descargando Constancia Fiscal: {e}")
-            return {'success': False, 'error': str(e)}
+            print(f"[CONSTANCIA] Excepción en get_constancia_fiscal: {e}", flush=True)
+            try:
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'page_title': self.driver.title,
+                    'page_url': self.driver.current_url,
+                    'page_source_snippet': self.driver.page_source[:2000],
+                }
+            except Exception:
+                return {'success': False, 'error': str(e)}
 
 
 # ─── CFDI XML Parser ─────────────────────────────────────────────────────────
