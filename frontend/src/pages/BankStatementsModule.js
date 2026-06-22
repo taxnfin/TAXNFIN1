@@ -2189,7 +2189,10 @@ const BankStatementsModule = () => {
                               </div>
                               {monedaDisplay !== 'MXN' && (
                                 <div className="text-xs text-gray-400 font-normal">
-                                  ≈ ${convertToMXN(txn.monto, txn.moneda || account?.moneda).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
+                                  ≈ ${(txn.moneda_original === 'USD' && txn.monto_original
+                                    ? txn.monto
+                                    : convertToMXN(txn.monto, txn.moneda || account?.moneda)
+                                  ).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
                                 </div>
                               )}
                             </>;
