@@ -108,7 +108,8 @@ const CiecForm = ({ onTest, onSave, loading }) => {
       <div className="flex gap-2 pt-1">
         <button onClick={handleTest} disabled={loading || !isValid}
           className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-          <Wifi size={14} />{loading ? 'Probando...' : 'Probar conexión'}
+          {loading ? <RefreshCw size={14} className="animate-spin" /> : <Wifi size={14} />}
+          {loading ? 'Conectando con el SAT...' : 'Probar conexión'}
         </button>
         <button onClick={() => onSave(rfc, ciec)} disabled={loading || !isValid}
           className="flex items-center gap-2 px-4 py-2.5 bg-[#0F172A] text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
@@ -139,8 +140,19 @@ const Integrations = () => {
   const handleTest = async (rfc, ciec) => {
     setCiecLoading(true);
     try {
-      const res = await api.post('/sat/ciec/test-connection', { rfc, ciec }, { timeout: 90000 });
-      return res.data;
+      const startRes = await api.post('/sat/ciec/test-connection', { rfc, ciec });
+      if (startRes.data.status === 'error') return startRes.data;
+      const testId = startRes.data.test_id;
+      for (let i = 0; i < 40; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        try {
+          const poll = await api.get(`/sat/ciec/test-status/${testId}`);
+          const { status, result } = poll.data;
+          if (status === 'done') return result;
+          if (status === 'error') return result || { success: false, error: 'Error en la conexión' };
+        } catch { /* red inestable, seguir intentando */ }
+      }
+      return { success: false, error: 'Tiempo de espera agotado (2 minutos)' };
     } catch { return { success: false, error: 'Error de conexión con el servidor' }; }
     finally { setCiecLoading(false); }
   };
