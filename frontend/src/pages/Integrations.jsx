@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import SATIntegration from '@/components/SATIntegration';
 import AlegraIntegration from '@/components/AlegraIntegration';
 import ContalinkIntegration from './ContalinkIntegration';
-import { Building2, Cloud, Link2, Eye, EyeOff, RefreshCw, Trash2, Wifi, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { Building2, Cloud, Link2, Eye, EyeOff, RefreshCw, Trash2, Wifi, CheckCircle, AlertCircle, Clock, Download } from 'lucide-react';
 import api from '@/api/axios';
 import { toast } from 'sonner';
 
@@ -12,7 +12,7 @@ const TABS = [
   { key: 'contalink', label: 'Contalink',             icon: Link2,     color: 'text-blue-700' },
 ];
 
-const CiecStatusCard = ({ data, onSync, onDelete, loading }) => {
+const CiecStatusCard = ({ data, onSync, onDelete, loading, onSyncExtras, syncingExtras, extras }) => {
   const lastSync = data?.last_sync ? new Date(data.last_sync) : null;
   const formattedSync = lastSync
     ? lastSync.toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -34,6 +34,11 @@ const CiecStatusCard = ({ data, onSync, onDelete, loading }) => {
             className="flex items-center gap-1.5 px-3 py-1.5 bg-[#10B981] text-white text-xs font-medium rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors">
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             {loading ? 'Iniciando...' : 'Sincronizar CFDIs'}
+          </button>
+          <button onClick={onSyncExtras} disabled={syncingExtras || loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors">
+            {syncingExtras ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
+            {syncingExtras ? 'Descargando...' : 'Descargar documentos SAT'}
           </button>
           <button onClick={onDelete}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 text-red-500 text-xs font-medium rounded-lg hover:bg-red-50 transition-colors">
@@ -59,6 +64,39 @@ const CiecStatusCard = ({ data, onSync, onDelete, loading }) => {
           </p>
         </div>
       </div>
+      {extras && (
+        <div className="mt-4 border-t border-green-100 pt-4 space-y-3">
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Documentos SAT descargados</p>
+          <div className="grid grid-cols-1 gap-2">
+            {extras.opinion_cumplimiento && (
+              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs border ${extras.opinion_cumplimiento.status === 'positiva' ? 'bg-green-50 border-green-200 text-green-700' : extras.opinion_cumplimiento.status === 'negativa' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                {extras.opinion_cumplimiento.status === 'positiva' ? <CheckCircle size={13} /> : <AlertCircle size={13} />}
+                <span className="font-medium">Opinión de Cumplimiento:</span>
+                <span className="capitalize">{extras.opinion_cumplimiento.status ?? '—'}</span>
+              </div>
+            )}
+            {extras.buzon_mensajes?.length > 0 && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs border bg-blue-50 border-blue-200 text-blue-700">
+                <CheckCircle size={13} />
+                <span className="font-medium">Buzón Tributario:</span>
+                <span>{extras.buzon_mensajes.length} mensaje(s) descargado(s)</span>
+              </div>
+            )}
+            {extras.declaraciones_pendientes?.length > 0 && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs border bg-amber-50 border-amber-200 text-amber-700">
+                <AlertCircle size={13} />
+                <span className="font-medium">Declaraciones pendientes:</span>
+                <span>{extras.declaraciones_pendientes.length} obligación(es)</span>
+              </div>
+            )}
+            {extras.updated_at && (
+              <p className="text-[10px] text-gray-400 flex items-center gap-1">
+                <Clock size={10} /> Actualizado: {new Date(extras.updated_at).toLocaleString('es-MX')}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -126,6 +164,8 @@ const Integrations = () => {
   const [ciecStatus, setCiecStatus] = useState('not_configured');
   const [ciecData, setCiecData] = useState(null);
   const [ciecLoading, setCiecLoading] = useState(false);
+  const [ciecExtras, setCiecExtras] = useState(null);
+  const [syncingExtras, setSyncingExtras] = useState(false);
 
   const loadCiecStatus = async () => {
     try {
@@ -135,7 +175,14 @@ const Integrations = () => {
     } catch { }
   };
 
-  useEffect(() => { loadCiecStatus(); }, []);
+  const loadCiecExtras = async () => {
+    try {
+      const res = await api.get('/sat/ciec/extras');
+      setCiecExtras(res.data);
+    } catch { }
+  };
+
+  useEffect(() => { loadCiecStatus(); loadCiecExtras(); }, []);
 
   const handleTest = async (rfc, ciec) => {
     setCiecLoading(true);
@@ -175,6 +222,16 @@ const Integrations = () => {
       toast.success('Sincronización iniciada — espera 2-5 minutos');
     } catch { toast.error('Error al iniciar sincronización'); }
     finally { setCiecLoading(false); }
+  };
+
+  const handleSyncExtras = async () => {
+    setSyncingExtras(true);
+    try {
+      await api.post('/sat/ciec/sync-extras');
+      toast.success('Opinión, buzón y declaraciones descargados');
+      await loadCiecExtras();
+    } catch { toast.error('Error al descargar documentos SAT'); }
+    finally { setSyncingExtras(false); }
   };
 
   const handleDelete = async () => {
@@ -220,7 +277,7 @@ const Integrations = () => {
                 </div>
               </div>
               {ciecStatus === 'configured'
-                ? <CiecStatusCard data={ciecData} onSync={handleSync} onDelete={handleDelete} loading={ciecLoading} />
+                ? <CiecStatusCard data={ciecData} onSync={handleSync} onDelete={handleDelete} loading={ciecLoading} onSyncExtras={handleSyncExtras} syncingExtras={syncingExtras} extras={ciecExtras} />
                 : <CiecForm onTest={handleTest} onSave={handleSave} loading={ciecLoading} />
               }
             </div>
