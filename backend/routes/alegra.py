@@ -2120,7 +2120,6 @@ async def get_alegra_cxc(
         'tipo_cfdi':          'ingreso',
         'estatus':            {'$ne': 'cancelado'},
         'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
-        'fecha_emision':      {'$gte': '2026-01-01'},
     }, {'_id': 0}).to_list(5000)
     logger.info(f"[CxC] raw_count={len(invoices)}")
 
