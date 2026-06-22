@@ -343,19 +343,38 @@ async def sincronizar_montos_con_aging(
         raise HTTPException(status_code=400, detail="tipo debe ser 'cxc' o 'cxp'")
     company_id = await get_active_company_id(request, current_user)
 
-    cache = await db.contalink_cache.find_one({"key": f"{tipo}_{company_id}_latest"})
-    facturas = (cache or {}).get("data", {}).get("facturas", [])
-    if not facturas:
-        raise HTTPException(status_code=404,
-            detail="No hay datos de Aging en caché para sincronizar. Sube primero el Excel.")
+    company_doc = await db.companies.find_one({"id": company_id}, {"_id": 0})
+    usa_alegra = (company_doc or {}).get("alegra_connected", False)
 
-    # Pendiente actual por nombre (las filas de Contalink son una por proveedor/cliente)
     pend_map: Dict[str, float] = {}
-    for f in facturas:
-        nombre = (f.get("nombre") or f.get("cliente_nombre") or f.get("proveedor_nombre") or "").strip()
-        if not nombre:
-            continue
-        pend_map[nombre] = pend_map.get(nombre, 0.0) + float(f.get("saldo_pendiente") or f.get("total") or 0)
+    if usa_alegra:
+        tipo_cfdi = "ingreso" if tipo == "cxc" else "egreso"
+        raw_facturas = await db.cfdis.find({
+            "company_id": company_id,
+            "source": "alegra",
+            "tipo_cfdi": tipo_cfdi,
+            "estado_conciliacion": {"$in": ["pendiente", "parcial"]},
+        }, {"_id": 0}).to_list(5000)
+        for f in raw_facturas:
+            nombre = (
+                (f.get("receptor_nombre") if tipo == "cxc" else f.get("emisor_nombre")) or ""
+            ).strip()
+            if not nombre:
+                continue
+            pend_map[nombre] = pend_map.get(nombre, 0.0) + float(f.get("saldo_pendiente") or f.get("total") or 0)
+    else:
+        cache = await db.contalink_cache.find_one({"key": f"{tipo}_{company_id}_latest"})
+        facturas = (cache or {}).get("data", {}).get("facturas", [])
+        if not facturas:
+            raise HTTPException(status_code=404,
+                detail="No hay datos de Aging en caché para sincronizar. Sube primero el Excel.")
+
+        # Pendiente actual por nombre (las filas de Contalink son una por proveedor/cliente)
+        for f in facturas:
+            nombre = (f.get("nombre") or f.get("cliente_nombre") or f.get("proveedor_nombre") or "").strip()
+            if not nombre:
+                continue
+            pend_map[nombre] = pend_map.get(nombre, 0.0) + float(f.get("saldo_pendiente") or f.get("total") or 0)
 
     docs = await db.cxc_proyecciones.find(
         {"company_id": company_id, "tipo": tipo, "semana": {"$ne": None}}, {"_id": 0}
