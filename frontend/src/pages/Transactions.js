@@ -55,6 +55,7 @@ const AgingModule = () => {
   const [historialSync, setHistorialSync] = useState([]);  // histórico de diferencias (cxc_proyecciones_hist)
   const [semanasModelo, setSemanasModelo] = useState([]); // semanas proyectadas del modelo
   const [categorias, setCategorias] = useState({});       // { "NOMBRE_tipo": { code, name } }
+  const [catalogoCategorias, setCatalogoCategorias] = useState([]); // [{id, nombre, tipo, code}] para Alegra
   const [autoCategorizing, setAutoCategorizing] = useState(false);
 
   useEffect(() => {
@@ -71,7 +72,9 @@ const AgingModule = () => {
         api.get('/fx-rates/latest'),
         api.get('/cxc-proyecciones').catch(() => ({ data: [] })),
         api.get('/cxc-proyecciones/semanas-modelo').catch(() => ({ data: [] })),
-        api.get('/contalink/categorias-cxc').catch(() => ({ data: { categorias_guardadas: [] } })),
+        getERPEndpoints().usaAlegra
+          ? api.get('/cashflow-sync/categories').catch(() => ({ data: [] }))
+          : api.get('/contalink/categorias-cxc').catch(() => ({ data: { categorias_guardadas: [] } })),
         api.get('/cxc-proyecciones/historial-sync').catch(() => ({ data: [] })),
       ]);
 
@@ -129,10 +132,15 @@ const AgingModule = () => {
 
       // Construir mapa de categorías: { "NOMBRE_tipo": { code, name } }
       const catMap = {};
-      const catData = catRes.data?.categorias_guardadas || [];
-      catData.forEach(c => {
-        catMap[`${c.nombre}_${c.tipo}`] = { code: c.category_code, name: c.category_name };
-      });
+      if (getERPEndpoints().usaAlegra) {
+        const catList = Array.isArray(catRes.data) ? catRes.data : [];
+        setCatalogoCategorias(catList);
+      } else {
+        const catData = catRes.data?.categorias_guardadas || [];
+        catData.forEach(c => {
+          catMap[`${c.nombre}_${c.tipo}`] = { code: c.category_code, name: c.category_name };
+        });
+      }
       setCategorias(catMap);
 
       const rawRates = fxRes.data?.rates;
@@ -1299,9 +1307,13 @@ const AgingModule = () => {
                           {(() => {
                             const key = `${getPartyName(cfdi, tipo)}_${tipo}`;
                             const catActual = categorias[key];
-                            const catalogo = tipo === 'cxc'
-                              ? ['ING-001:Ventas de productos','ING-002:Prestación de servicios','ING-003:Honorarios profesionales','ING-004:Arrendamiento cobrado','ING-005:Cobro de anticipos','ING-007:Intereses cobrados','ING-099:Otros ingresos']
-                              : ['EGR-001:Nómina y salarios','EGR-002:IMSS / INFONAVIT','EGR-003:ISR','EGR-004:IVA','EGR-005:Renta','EGR-006:Proveedores materia prima','EGR-007:Servicios','EGR-008:Telefonía e internet','EGR-009:Publicidad','EGR-010:Honorarios externos','EGR-011:Viáticos','EGR-012:Seguros','EGR-013:Mantenimiento','EGR-015:Software','EGR-016:Crédito bancario','EGR-017:Intereses pagados','EGR-018:Comisiones bancarias','EGR-020:Activo fijo','EGR-099:Otros egresos'];
+                            const catalogo = getERPEndpoints().usaAlegra
+                              ? catalogoCategorias
+                                  .filter(c => tipo === 'cxc' ? c.tipo === 'ingreso' : c.tipo === 'egreso')
+                                  .map(c => `${c.code}:${c.nombre}`)
+                              : tipo === 'cxc'
+                                ? ['ING-001:Ventas de productos','ING-002:Prestación de servicios','ING-003:Honorarios profesionales','ING-004:Arrendamiento cobrado','ING-005:Cobro de anticipos','ING-007:Intereses cobrados','ING-099:Otros ingresos']
+                                : ['EGR-001:Nómina y salarios','EGR-002:IMSS / INFONAVIT','EGR-003:ISR','EGR-004:IVA','EGR-005:Renta','EGR-006:Proveedores materia prima','EGR-007:Servicios','EGR-008:Telefonía e internet','EGR-009:Publicidad','EGR-010:Honorarios externos','EGR-011:Viáticos','EGR-012:Seguros','EGR-013:Mantenimiento','EGR-015:Software','EGR-016:Crédito bancario','EGR-017:Intereses pagados','EGR-018:Comisiones bancarias','EGR-020:Activo fijo','EGR-099:Otros egresos'];
                             return (
                               <select
                                 value={catActual?.code || ''}
