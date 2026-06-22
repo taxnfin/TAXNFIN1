@@ -7,6 +7,7 @@ from core.database import db
 from core.auth import get_current_user, get_active_company_id
 from modules.cfdi_sat import SATCredentialManager, SATSyncService
 from modules.syntage_client import SyntageClient
+from modules.belvo_client import BelvoClient
 import logging
 
 logger = logging.getLogger(__name__)
@@ -371,6 +372,93 @@ async def syntage_tax_status_pdf(request: Request, current_user: Dict = Depends(
     client = SyntageClient()
     try:
         pdf_bytes = await client.get_tax_status_pdf(entity_id)
+        filename = f"Constancia_{config['rfc']}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ── Belvo API: Constancia y Opinión de Cumplimiento ──────────────────────────
+
+@router.post("/sat/belvo/sync")
+async def belvo_sync(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Crea link SAT en Belvo y obtiene Constancia + Opinión de Cumplimiento."""
+    company_id = await get_active_company_id(request, current_user)
+    creds = await SATCredentialManager(db).get_credentials(company_id)
+    if not creds:
+        return {"success": False, "error": "CIEC no configurada"}
+    rfc = creds["rfc"]
+    ciec = creds["ciec"]
+    client = BelvoClient()
+    try:
+        link_result = await client.create_link(rfc, ciec)
+        link_id = link_result.get("id") or link_result.get("link")
+        print(f"[BELVO] link_id: {link_id}", flush=True)
+        if not link_id:
+            return {"success": False, "error": f"No se obtuvo link_id de Belvo: {link_result}"}
+
+        await db.sat_belvo_config.update_one(
+            {"company_id": company_id},
+            {"$set": {
+                "company_id": company_id,
+                "link_id": link_id,
+                "rfc": rfc,
+                "updated_at": datetime.now(timezone.utc),
+            }},
+            upsert=True,
+        )
+
+        tax_status = await client.get_tax_status(link_id)
+        tax_compliance = await client.get_tax_compliance(link_id)
+
+        await db.sat_belvo_data.update_one(
+            {"company_id": company_id},
+            {"$set": {
+                "company_id": company_id,
+                "link_id": link_id,
+                "rfc": rfc,
+                "tax_status": tax_status,
+                "tax_compliance": tax_compliance,
+                "updated_at": datetime.now(timezone.utc),
+            }},
+            upsert=True,
+        )
+        return {
+            "success": True,
+            "link_id": link_id,
+            "tax_status": tax_status,
+            "tax_compliance": tax_compliance,
+        }
+    except Exception as e:
+        print(f"[BELVO] ERROR: {e}", flush=True)
+        return {"success": False, "error": str(e)}
+
+
+@router.get("/sat/belvo/status")
+async def belvo_status(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Devuelve los datos de Belvo guardados (Constancia + Opinión)."""
+    company_id = await get_active_company_id(request, current_user)
+    data = await db.sat_belvo_data.find_one({"company_id": company_id}, {"_id": 0})
+    if not data:
+        return {"connected": False}
+    return {"connected": True, **data}
+
+
+@router.get("/sat/belvo/tax-status/pdf")
+async def belvo_tax_status_pdf(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Descarga la Constancia de Situación Fiscal en PDF desde Belvo."""
+    from fastapi.responses import Response
+    company_id = await get_active_company_id(request, current_user)
+    config = await db.sat_belvo_config.find_one({"company_id": company_id}, {"_id": 0})
+    if not config:
+        return {"error": "No hay link_id configurado. Ejecuta sync primero."}
+    client = BelvoClient()
+    try:
+        pdf_bytes = await client.get_tax_status_pdf(config["link_id"])
         filename = f"Constancia_{config['rfc']}.pdf"
         return Response(
             content=pdf_bytes,

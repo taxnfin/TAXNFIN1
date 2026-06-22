@@ -174,6 +174,8 @@ const Integrations = () => {
   const [downloadingConstancia, setDownloadingConstancia] = useState(false);
   const [syntageData, setSyntageData] = useState(null);
   const [syncingSyntage, setSyncingSyntage] = useState(false);
+  const [belvoData, setBelvoData] = useState(null);
+  const [syncingBelvo, setSyncingBelvo] = useState(false);
 
   const loadCiecStatus = async () => {
     try {
@@ -197,7 +199,14 @@ const Integrations = () => {
     } catch { }
   };
 
-  useEffect(() => { loadCiecStatus(); loadCiecExtras(); loadSyntageData(); }, []);
+  const loadBelvoData = async () => {
+    try {
+      const res = await api.get('/sat/belvo/status');
+      if (res.data.connected) setBelvoData(res.data);
+    } catch { }
+  };
+
+  useEffect(() => { loadCiecStatus(); loadCiecExtras(); loadSyntageData(); loadBelvoData(); }, []);
 
   const handleTest = async (rfc, ciec) => {
     setCiecLoading(true);
@@ -343,6 +352,35 @@ const Integrations = () => {
     } catch { toast.error('Error al descargar PDF de Constancia'); }
   };
 
+  const handleBelvoSync = async () => {
+    setSyncingBelvo(true);
+    try {
+      const res = await api.post('/sat/belvo/sync', {}, { timeout: 90000 });
+      if (res.data.success) {
+        setBelvoData(res.data);
+        toast.success('Datos SAT obtenidos correctamente desde Belvo');
+      } else {
+        toast.error(res.data.error || 'Error al sincronizar con Belvo');
+      }
+    } catch { toast.error('Error al conectar con Belvo'); }
+    finally { setSyncingBelvo(false); }
+  };
+
+  const handleDescargarConstanciaBelvo = async () => {
+    try {
+      const res = await api.get('/sat/belvo/tax-status/pdf', { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Constancia_${belvoData?.rfc || 'SAT'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Constancia descargada');
+    } catch { toast.error('Error al descargar PDF de Constancia'); }
+  };
+
   const handleDelete = async () => {
     if (!window.confirm('¿Eliminar credenciales CIEC? Esta acción no se puede deshacer.')) return;
     try {
@@ -390,6 +428,77 @@ const Integrations = () => {
                 : <CiecForm onTest={handleTest} onSave={handleSave} loading={ciecLoading} />
               }
             </div>
+
+            {/* ── Sección Belvo ── */}
+            {ciecStatus === 'configured' && (
+              <div className="border border-gray-200 rounded-xl p-6 bg-white shadow-sm">
+                <div className="flex items-start justify-between gap-4 mb-5">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
+                      <span className="text-white text-base">🏛️</span>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-[#0F172A] text-base">Documentos SAT vía Belvo</h3>
+                      <p className="text-sm text-gray-500 mt-0.5">Constancia de Situación Fiscal y Opinión de Cumplimiento 32-D directamente del SAT.</p>
+                    </div>
+                  </div>
+                  <button onClick={handleBelvoSync} disabled={syncingBelvo}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                    {syncingBelvo ? <RefreshCw size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                    {syncingBelvo ? 'Conectando...' : 'Conectar SAT con Belvo'}
+                  </button>
+                </div>
+                {belvoData ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-gray-50 rounded-lg border border-gray-200 px-4 py-3">
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Constancia de Situación Fiscal</p>
+                        <p className="text-sm font-semibold text-[#0F172A]">
+                          {belvoData.tax_status?.results?.[0]?.status_of_taxpayer
+                            || belvoData.tax_status?.results?.[0]?.rfc
+                            || 'Disponible'}
+                        </p>
+                        <p className="text-[10px] text-gray-500 mt-0.5 font-mono">
+                          {belvoData.tax_status?.results?.[0]?.rfc || belvoData.rfc}
+                        </p>
+                        {belvoData.updated_at && (
+                          <p className="text-[10px] text-gray-400 mt-1">
+                            Actualizado: {new Date(belvoData.updated_at).toLocaleString('es-MX')}
+                          </p>
+                        )}
+                      </div>
+                      <div className={`rounded-lg border px-4 py-3 ${
+                        (belvoData.tax_compliance?.results?.[0]?.status || '').toLowerCase().includes('positiv')
+                          ? 'bg-green-50 border-green-200'
+                          : (belvoData.tax_compliance?.results?.[0]?.status || '').toLowerCase().includes('negativ')
+                          ? 'bg-red-50 border-red-200'
+                          : 'bg-gray-50 border-gray-200'
+                      }`}>
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Opinión de Cumplimiento</p>
+                        <p className={`text-sm font-semibold capitalize ${
+                          (belvoData.tax_compliance?.results?.[0]?.status || '').toLowerCase().includes('positiv')
+                            ? 'text-green-700'
+                            : (belvoData.tax_compliance?.results?.[0]?.status || '').toLowerCase().includes('negativ')
+                            ? 'text-red-700'
+                            : 'text-[#0F172A]'
+                        }`}>
+                          {belvoData.tax_compliance?.results?.[0]?.status || '—'}
+                        </p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          {belvoData.tax_compliance?.results?.[0]?.compliance_type || ''}
+                        </p>
+                      </div>
+                    </div>
+                    <button onClick={handleDescargarConstanciaBelvo}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-50 transition-colors">
+                      <Download size={13} /> Descargar PDF Constancia
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 text-center py-4">Haz clic en "Conectar SAT con Belvo" para obtener los documentos.</p>
+                )}
+              </div>
+            )}
 
             {/* ── Sección Syntage ── */}
             {ciecStatus === 'configured' && (
