@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, Request, BackgroundTasks
 from typing import Dict
 from datetime import datetime, timezone
+import uuid
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
 from modules.cfdi_sat import SATCredentialManager, SATSyncService
@@ -51,16 +52,49 @@ async def delete_ciec_credentials(request: Request,
 
 # ── Test de conexión ──────────────────────────────────────────────────────────
 
+async def _run_test_connection(test_id: str, rfc: str, ciec: str):
+    await db.sat_ciec_test.update_one(
+        {'test_id': test_id},
+        {'$set': {'status': 'running', 'updated_at': datetime.now(timezone.utc)}},
+        upsert=True,
+    )
+    try:
+        result = await SATSyncService(db).validate_credentials(rfc, ciec)
+        await db.sat_ciec_test.update_one(
+            {'test_id': test_id},
+            {'$set': {'status': 'done', 'result': result, 'updated_at': datetime.now(timezone.utc)}},
+        )
+    except Exception as e:
+        await db.sat_ciec_test.update_one(
+            {'test_id': test_id},
+            {'$set': {'status': 'error',
+                      'result': {'success': False, 'error': str(e)},
+                      'updated_at': datetime.now(timezone.utc)}},
+        )
+
+
 @router.post("/sat/ciec/test-connection")
 async def test_ciec_connection(request: Request, data: dict,
+                               background_tasks: BackgroundTasks,
                                current_user: Dict = Depends(get_current_user)):
-    """Prueba login al portal SAT SIN guardar las credenciales."""
+    """Prueba login al portal SAT SIN guardar las credenciales (background)."""
     rfc  = data.get('rfc', '').strip().upper()
     ciec = data.get('ciec', '').strip()
     if not rfc or not ciec:
         return {'status': 'error', 'message': 'RFC y CIEC requeridos'}
-    result = await SATSyncService(db).validate_credentials(rfc, ciec)
-    return result
+    test_id = str(uuid.uuid4())
+    background_tasks.add_task(_run_test_connection, test_id, rfc, ciec)
+    return {'status': 'started', 'test_id': test_id}
+
+
+@router.get("/sat/ciec/test-status/{test_id}")
+async def get_test_connection_status(test_id: str, request: Request,
+                                     current_user: Dict = Depends(get_current_user)):
+    """Polling del resultado de test-connection."""
+    record = await db.sat_ciec_test.find_one({'test_id': test_id}, {'_id': 0})
+    if not record:
+        return {'status': 'not_found'}
+    return {'status': record.get('status'), 'result': record.get('result')}
 
 
 # ── Sync CFDIs ────────────────────────────────────────────────────────────────

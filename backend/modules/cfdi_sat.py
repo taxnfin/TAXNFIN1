@@ -160,7 +160,7 @@ class SATPortalClient:
                 svc = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
 
             self.driver = webdriver.Chrome(service=svc, options=opts)
-            self.driver.set_page_load_timeout(30)
+            self.driver.set_page_load_timeout(120)
             self.driver.implicitly_wait(8)
             return True
         except Exception as e:
