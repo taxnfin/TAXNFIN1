@@ -225,3 +225,59 @@ async def get_extras(request: Request, current_user: Dict = Depends(get_current_
     return doc
 
 
+# ── Constancia de Situación Fiscal ───────────────────────────────────────────
+
+async def _run_sync_constancia(sync_id: str, company_id: str):
+    await db.sat_constancia_sync.update_one(
+        {'sync_id': sync_id},
+        {'$set': {'status': 'running', 'updated_at': datetime.now(timezone.utc)}},
+        upsert=True,
+    )
+    try:
+        result = await SATSyncService(db).sync_constancia(company_id=company_id)
+        await db.sat_constancia_sync.update_one(
+            {'sync_id': sync_id},
+            {'$set': {'status': 'done', 'result': result, 'updated_at': datetime.now(timezone.utc)}},
+        )
+    except Exception as e:
+        await db.sat_constancia_sync.update_one(
+            {'sync_id': sync_id},
+            {'$set': {'status': 'error',
+                      'result': {'success': False, 'error': str(e)},
+                      'updated_at': datetime.now(timezone.utc)}},
+        )
+
+
+@router.post("/sat/ciec/constancia")
+async def sync_constancia(request: Request, background_tasks: BackgroundTasks,
+                          current_user: Dict = Depends(get_current_user)):
+    """Descarga la Constancia de Situación Fiscal en background."""
+    company_id = await get_active_company_id(request, current_user)
+    creds = await SATCredentialManager(db).get_credentials(company_id)
+    if not creds:
+        return {'status': 'error', 'message': 'CIEC no configurada'}
+    sync_id = str(uuid.uuid4())
+    background_tasks.add_task(_run_sync_constancia, sync_id, company_id)
+    return {'status': 'started', 'sync_id': sync_id}
+
+
+@router.get("/sat/ciec/constancia-status/{sync_id}")
+async def get_constancia_status(sync_id: str, request: Request,
+                                current_user: Dict = Depends(get_current_user)):
+    """Polling del resultado de descarga de Constancia Fiscal."""
+    record = await db.sat_constancia_sync.find_one({'sync_id': sync_id}, {'_id': 0})
+    if not record:
+        return {'status': 'not_found'}
+    return {'status': record.get('status'), 'result': record.get('result')}
+
+
+@router.get("/sat/ciec/constancia")
+async def get_constancia(request: Request, current_user: Dict = Depends(get_current_user)):
+    """Devuelve la Constancia de Situación Fiscal guardada."""
+    company_id = await get_active_company_id(request, current_user)
+    doc = await db.sat_constancia.find_one({'company_id': company_id}, {'_id': 0, 'pdf_base64': 0})
+    if not doc:
+        return {'status': 'no_data', 'message': 'Sin constancia. Ejecuta la descarga primero.'}
+    return doc
+
+

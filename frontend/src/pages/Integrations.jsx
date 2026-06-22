@@ -12,7 +12,7 @@ const TABS = [
   { key: 'contalink', label: 'Contalink',             icon: Link2,     color: 'text-blue-700' },
 ];
 
-const CiecStatusCard = ({ data, onSync, onDelete, loading, onSyncExtras, syncingExtras, extras }) => {
+const CiecStatusCard = ({ data, onSync, onDelete, loading, onSyncExtras, syncingExtras, extras, onDescargarConstancia, downloadingConstancia }) => {
   const lastSync = data?.last_sync ? new Date(data.last_sync) : null;
   const formattedSync = lastSync
     ? lastSync.toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -39,6 +39,11 @@ const CiecStatusCard = ({ data, onSync, onDelete, loading, onSyncExtras, syncing
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors">
             {syncingExtras ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
             {syncingExtras ? 'Descargando...' : 'Descargar documentos SAT'}
+          </button>
+          <button onClick={onDescargarConstancia} disabled={downloadingConstancia || loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-indigo-200 text-indigo-600 text-xs font-medium rounded-lg hover:bg-indigo-50 disabled:opacity-50 transition-colors">
+            {downloadingConstancia ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
+            {downloadingConstancia ? 'Generando...' : 'Descargar Constancia'}
           </button>
           <button onClick={onDelete}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 text-red-500 text-xs font-medium rounded-lg hover:bg-red-50 transition-colors">
@@ -166,6 +171,7 @@ const Integrations = () => {
   const [ciecLoading, setCiecLoading] = useState(false);
   const [ciecExtras, setCiecExtras] = useState(null);
   const [syncingExtras, setSyncingExtras] = useState(false);
+  const [downloadingConstancia, setDownloadingConstancia] = useState(false);
 
   const loadCiecStatus = async () => {
     try {
@@ -222,6 +228,51 @@ const Integrations = () => {
       toast.success('Sincronización iniciada — espera 2-5 minutos');
     } catch { toast.error('Error al iniciar sincronización'); }
     finally { setCiecLoading(false); }
+  };
+
+  const handleDescargarConstancia = async () => {
+    setDownloadingConstancia(true);
+    try {
+      const startRes = await api.post('/sat/ciec/constancia');
+      if (startRes.data.status === 'error') {
+        toast.error(startRes.data.message || 'Error al descargar Constancia Fiscal');
+        return;
+      }
+      const syncId = startRes.data.sync_id;
+      for (let i = 0; i < 40; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        try {
+          const poll = await api.get(`/sat/ciec/constancia-status/${syncId}`);
+          const { status, result } = poll.data;
+          if (status === 'done') {
+            if (result?.success && result?.pdf_base64) {
+              const byteChars = atob(result.pdf_base64);
+              const byteArr = new Uint8Array(byteChars.length);
+              for (let j = 0; j < byteChars.length; j++) byteArr[j] = byteChars.charCodeAt(j);
+              const blob = new Blob([byteArr], { type: 'application/pdf' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = result.filename || 'Constancia_Fiscal.pdf';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              toast.success('Constancia Fiscal descargada');
+            } else {
+              toast.error(result?.error || 'Error al generar la Constancia Fiscal');
+            }
+            return;
+          }
+          if (status === 'error') {
+            toast.error(result?.error || 'Error al descargar Constancia Fiscal');
+            return;
+          }
+        } catch { /* red inestable, seguir intentando */ }
+      }
+      toast.error('Tiempo de espera agotado (2 minutos)');
+    } catch { toast.error('Error al descargar Constancia Fiscal'); }
+    finally { setDownloadingConstancia(false); }
   };
 
   const handleSyncExtras = async () => {
@@ -297,7 +348,7 @@ const Integrations = () => {
                 </div>
               </div>
               {ciecStatus === 'configured'
-                ? <CiecStatusCard data={ciecData} onSync={handleSync} onDelete={handleDelete} loading={ciecLoading} onSyncExtras={handleSyncExtras} syncingExtras={syncingExtras} extras={ciecExtras} />
+                ? <CiecStatusCard data={ciecData} onSync={handleSync} onDelete={handleDelete} loading={ciecLoading} onSyncExtras={handleSyncExtras} syncingExtras={syncingExtras} extras={ciecExtras} onDescargarConstancia={handleDescargarConstancia} downloadingConstancia={downloadingConstancia} />
                 : <CiecForm onTest={handleTest} onSave={handleSave} loading={ciecLoading} />
               }
             </div>

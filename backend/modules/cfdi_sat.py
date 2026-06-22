@@ -25,7 +25,7 @@ SAT_RECEPTOR_URL   = "https://portalcfdi.facturaelectronica.sat.gob.mx/ConsultaR
 SAT_EMISOR_URL     = "https://portalcfdi.facturaelectronica.sat.gob.mx/ConsultaEmisor.aspx"
 SAT_DECLARACIONES  = "https://www.sat.gob.mx/declaraciones-y-pagos/contribuyentes/persona-moral"
 SAT_BUZONTRIB      = "https://buzontributario.sat.gob.mx/"
-SAT_CIF_URL        = "https://www.sat.gob.mx/consultas/61783/consulta-tu-cedula-de-identificacion-fiscal"
+SAT_CIF_URL        = "https://rfc.siat.sat.gob.mx/PTSC/RFC/menu/index.jsf"
 
 
 def get_encryption_key():
@@ -826,6 +826,59 @@ class SATPortalClient:
             logger.error(f"[SAT] Error Buzón Tributario: {e}")
             return []
 
+    async def get_constancia_fiscal(self, rfc: str) -> Dict:
+        """
+        Descarga la Constancia de Situación Fiscal (CIF) del portal SAT autenticado.
+        Requiere sesión activa (logged_in=True).
+        """
+        import base64
+        from selenium.webdriver.common.by import By
+        if not self.logged_in:
+            return {'success': False, 'error': 'No autenticado'}
+        try:
+            self.driver.get(SAT_CIF_URL)
+            await asyncio.sleep(5)
+
+            btn = None
+            for by, sel in [
+                (By.XPATH,       "//a[contains(translate(text(),'constanciagenerar','CONSTANCIAGENERAR'),'CONSTANCIA') or contains(translate(text(),'constanciagenerar','CONSTANCIAGENERAR'),'GENERAR') or contains(translate(text(),'constanciagenerar','CONSTANCIAGENERAR'),'DESCARGAR')]"),
+                (By.XPATH,       "//button[contains(translate(text(),'constanciagenerar','CONSTANCIAGENERAR'),'CONSTANCIA') or contains(translate(text(),'constanciagenerar','CONSTANCIAGENERAR'),'GENERAR')]"),
+                (By.XPATH,       "//input[@value='Generar' or @value='Descargar' or @value='Constancia']"),
+                (By.CSS_SELECTOR,"a[href*='constancia'], a[href*='pdf'], button[id*='constancia'], a[id*='constancia']"),
+                (By.XPATH,       "//a[contains(@href,'pdf')] | //a[contains(@onclick,'pdf')]"),
+            ]:
+                try:
+                    btn = self.driver.find_element(by, sel)
+                    break
+                except Exception:
+                    continue
+
+            if not btn:
+                self._screenshot('cif_no_btn')
+                return {'success': False, 'error': 'No se encontró el botón para generar la Constancia Fiscal en el portal SAT'}
+
+            btn.click()
+            await asyncio.sleep(8)
+
+            pdf_files = glob.glob(os.path.join(self.download_dir, '*.pdf'))
+            if not pdf_files:
+                self._screenshot('cif_no_pdf')
+                return {'success': False, 'error': 'No se descargó ningún PDF de Constancia Fiscal'}
+
+            pdf_path = pdf_files[0]
+            filename = f'Constancia_{rfc}.pdf'
+            with open(pdf_path, 'rb') as f:
+                pdf_bytes = f.read()
+            os.remove(pdf_path)
+
+            pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
+            logger.info(f"[SAT] Constancia Fiscal descargada para RFC={rfc}, size={len(pdf_bytes)} bytes")
+            return {'success': True, 'pdf_base64': pdf_base64, 'filename': filename}
+
+        except Exception as e:
+            logger.error(f"[SAT] Error descargando Constancia Fiscal: {e}")
+            return {'success': False, 'error': str(e)}
+
 
 # ─── CFDI XML Parser ─────────────────────────────────────────────────────────
 
@@ -997,6 +1050,35 @@ class SATSyncService:
                 }},
                 upsert=True
             )
+            return result
+        finally:
+            client.close()
+
+    async def sync_constancia(self, company_id: str) -> Dict:
+        """Descarga la Constancia de Situación Fiscal y la guarda en MongoDB."""
+        creds = await self.credential_manager.get_credentials(company_id)
+        if not creds:
+            return {'success': False, 'error': 'No hay credenciales SAT configuradas'}
+
+        client = SATPortalClient()
+        try:
+            login_res = await client.login(creds['rfc'], creds['ciec'])
+            if not login_res.get('success'):
+                return {'success': False, 'error': login_res.get('error')}
+
+            result = await client.get_constancia_fiscal(creds['rfc'])
+            if result.get('success'):
+                await self.db.sat_constancia.update_one(
+                    {'company_id': company_id},
+                    {'$set': {
+                        'company_id': company_id,
+                        'rfc': creds['rfc'],
+                        'pdf_base64': result['pdf_base64'],
+                        'filename': result['filename'],
+                        'fecha_descarga': datetime.now(timezone.utc).isoformat(),
+                    }},
+                    upsert=True,
+                )
             return result
         finally:
             client.close()
