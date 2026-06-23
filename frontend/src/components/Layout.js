@@ -79,7 +79,14 @@ const LIGHT = {
 };
 
 // â”€â”€â”€ Nav structure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const buildNav = (isAdmin, isCFO) => [
+const buildNav = (isAdmin, isCFO) => {
+  if (isAdmin) {
+    return [{
+      section: '',
+      items: [{ name: 'Panel Admin', href: '/admin', icon: Shield, badge: 'ADMIN', badgeStyle: 'admin' }],
+    }];
+  }
+  return [
   {
     section: 'Principal',
     items: [
@@ -161,13 +168,8 @@ const buildNav = (isAdmin, isCFO) => [
         items: [{ name: 'Usuarios', href: '/usuarios', icon: Users }],
       }]
     : []),
-  ...(isAdmin
-    ? [{
-        section: '',
-        items: [{ name: 'Panel Admin', href: '/admin', icon: Shield, badge: 'ADMIN', badgeStyle: 'admin' }],
-      }]
-    : []),
-];
+  ];
+};
 
 // â”€â”€â”€ Badge styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const BADGE = {

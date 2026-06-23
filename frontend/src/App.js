@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
@@ -38,6 +38,14 @@ const AdminRoute = ({ user, children }) => {
     return <Navigate to="/" replace />;
   }
   return children;
+};
+
+// Bloquea el acceso de admin a rutas financieras — redirige a /admin
+const NonAdminRoute = ({ user }) => {
+  if (user?.role === 'admin' && user?.email === PLATFORM_ADMIN_EMAIL) {
+    return <Navigate to="/admin" replace />;
+  }
+  return <Outlet />;
 };
 
 function App() {
@@ -156,29 +164,33 @@ function App() {
               )
             }
           >
-            <Route index element={<Dashboard />} />
-            <Route path="transactions" element={<Transactions />} />
-            <Route path="cfdi" element={<CFDIModule />} />
-            <Route path="bank" element={<BankModule />} />
-            <Route path="bank-statements" element={<BankStatementsModule />} />
-            <Route path="payments" element={<PaymentsModule />} />
-            <Route path="fx-rates" element={<FXRatesModule />} />
-            <Route path="categories" element={<CategoriesModule />} />
-            <Route path="catalogs" element={<Catalogs />} />
-            <Route path="reports" element={<Reports />} />
-            <Route path="board-report" element={<BoardReport />} />
-            <Route path="projections" element={<CashflowProjections />} />
-            <Route path="treasury" element={<TreasuryDecisions />} />
-            <Route path="financial-metrics" element={<FinancialMetrics />} />
-            <Route path="diot" element={<DIOTModule />} />
-            <Route path="advanced" element={<AdvancedFeatures />} />
+            {/* Admin-only route */}
             <Route path="admin" element={<AdminRoute user={user}><AdminPanel /></AdminRoute>} />
-            <Route path="audit-logs" element={<AuditLogsPage />} />
-            <Route path="integrations" element={<Integrations />} />
-            <Route path="contalink-financial" element={<ContalinkFinancialImport />} />
-            <Route path="financiamiento" element={<Financiamiento />} />
-            <Route path="consejo-estrategico" element={<ConsejoEstrategico />} />
+            {/* Financial routes — redirect to /admin if user is platform admin */}
+            <Route element={<NonAdminRoute user={user} />}>
+              <Route index element={<Dashboard />} />
+              <Route path="transactions" element={<Transactions />} />
+              <Route path="cfdi" element={<CFDIModule />} />
+              <Route path="bank" element={<BankModule />} />
+              <Route path="bank-statements" element={<BankStatementsModule />} />
+              <Route path="payments" element={<PaymentsModule />} />
+              <Route path="fx-rates" element={<FXRatesModule />} />
+              <Route path="categories" element={<CategoriesModule />} />
+              <Route path="catalogs" element={<Catalogs />} />
+              <Route path="reports" element={<Reports />} />
+              <Route path="board-report" element={<BoardReport />} />
+              <Route path="projections" element={<CashflowProjections />} />
+              <Route path="treasury" element={<TreasuryDecisions />} />
+              <Route path="financial-metrics" element={<FinancialMetrics />} />
+              <Route path="diot" element={<DIOTModule />} />
+              <Route path="advanced" element={<AdvancedFeatures />} />
+              <Route path="audit-logs" element={<AuditLogsPage />} />
+              <Route path="integrations" element={<Integrations />} />
+              <Route path="contalink-financial" element={<ContalinkFinancialImport />} />
+              <Route path="financiamiento" element={<Financiamiento />} />
+              <Route path="consejo-estrategico" element={<ConsejoEstrategico />} />
               <Route path="usuarios" element={<Usuarios />} />
+            </Route>
           </Route>
         </Routes>
       </BrowserRouter>
