@@ -132,9 +132,6 @@ export default function ConsejoEstrategico() {
               Analiza cualquier decisión desde 5 perspectivas independientes
             </p>
           </div>
-          <span className="text-xs bg-violet-500/15 text-violet-300 border border-violet-500/30 px-3 py-1 rounded-full font-mono">
-            Powered by Claude AI
-          </span>
         </div>
 
         {/* Input */}
