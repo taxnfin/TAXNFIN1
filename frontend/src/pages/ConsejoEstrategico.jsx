@@ -65,12 +65,31 @@ export default function ConsejoEstrategico() {
   const [historial, setHistorial] = useState([]);
   const [historialOpen, setHistorialOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState('');
 
   useEffect(() => {
     api.get('/ia/consejo-estrategico/historial')
       .then(r => setHistorial(r.data.historial || []))
       .catch(() => {});
   }, []);
+
+  const LOADING_MSGS = [
+    'Consultando al Contrarian y Pensador de Primeros Principios...',
+    'Analizando con el Expansionista y el Outsider...',
+    'El Ejecutor está definiendo el plan de acción...',
+    'El Presidente del Consejo está sintetizando las perspectivas...',
+  ];
+
+  useEffect(() => {
+    if (!loading) { setLoadingMsg(''); return; }
+    setLoadingMsg(LOADING_MSGS[0]);
+    let idx = 1;
+    const timer = setInterval(() => {
+      setLoadingMsg(LOADING_MSGS[Math.min(idx, LOADING_MSGS.length - 1)]);
+      idx++;
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [loading]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -79,7 +98,7 @@ export default function ConsejoEstrategico() {
     setError('');
     setRespuesta(null);
     try {
-      const r = await api.post('/ia/consejo-estrategico', { pregunta }, { timeout: 120000 });
+      const r = await api.post('/ia/consejo-estrategico', { pregunta }, { timeout: 180000 });
       if (r.data.success) {
         setRespuesta(r.data.respuesta);
         setHistorial(prev => [{
@@ -174,8 +193,8 @@ export default function ConsejoEstrategico() {
                 Nueva consulta
               </button>
             )}
-            {loading && (
-              <span className="text-xs text-slate-500">El análisis tarda 30–60 segundos</span>
+            {loading && loadingMsg && (
+              <span className="text-xs text-slate-400 italic">{loadingMsg}</span>
             )}
           </div>
         </form>
