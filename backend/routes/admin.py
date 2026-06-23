@@ -253,6 +253,19 @@ async def eliminar_despacho(
     return {"success": True}
 
 
+# ── GET /admin/fix-admin-role (temporary) ─────────────────────────────────────
+
+@router.get("/fix-admin-role")
+async def fix_admin_role():
+    """Temporary endpoint to fix hola@taxnfin.com role to admin"""
+    result = await db.users.update_one(
+        {"email": "hola@taxnfin.com"},
+        {"$set": {"role": "admin"}}
+    )
+    user = await db.users.find_one({"email": "hola@taxnfin.com"}, {"_id": 0, "email": 1, "role": 1, "nombre": 1})
+    return {"modified": result.modified_count, "user": user}
+
+
 # ── POST /admin/setup-platform-admin (one-time, no auth) ──────────────────────
 
 @router.get("/setup-platform-admin")
