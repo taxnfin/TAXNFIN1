@@ -253,6 +253,46 @@ async def eliminar_despacho(
     return {"success": True}
 
 
+# ── GET /admin/debug-cxc (temporary diagnostic) ───────────────────────────────
+
+@router.get("/debug-cxc")
+async def debug_cxc(company_id: str = "89cda61e"):
+    pipeline = [
+        {"$match": {
+            "company_id": {"$regex": company_id},
+            "source": "alegra",
+            "tipo_cfdi": "ingreso",
+            "estatus": {"$nin": ["cancelado", "cancelled"]}
+        }},
+        {"$group": {
+            "_id": "$estado_conciliacion",
+            "count": {"$sum": 1},
+            "total": {"$sum": "$total"},
+            "monto_cobrado": {"$sum": "$monto_cobrado"},
+            "saldo_pendiente_sum": {"$sum": "$saldo_pendiente"}
+        }}
+    ]
+    result = await db.cfdis.aggregate(pipeline).to_list(20)
+
+    # Sample 3 invoices
+    samples = await db.cfdis.find(
+        {"company_id": {"$regex": company_id}, "source": "alegra", "tipo_cfdi": "ingreso"},
+        {"_id": 0, "uuid": 1, "total": 1, "monto_cobrado": 1, "saldo_pendiente": 1, "estado_conciliacion": 1, "estatus": 1}
+    ).limit(3).to_list(3)
+
+    # Total count
+    total_docs = await db.cfdis.count_documents({
+        "company_id": {"$regex": company_id},
+        "source": "alegra"
+    })
+
+    return {
+        "total_docs_alegra": total_docs,
+        "por_estado_conciliacion": result,
+        "sample_facturas": samples
+    }
+
+
 # ── GET /admin/reset-admin-password (temporary) ───────────────────────────────
 
 @router.get("/reset-admin-password")
