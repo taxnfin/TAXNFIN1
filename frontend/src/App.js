@@ -24,6 +24,7 @@ import Integrations from './pages/Integrations';
 import ContalinkFinancialImport from './components/ContalinkFinancialImport';
 import Financiamiento from './pages/Financiamiento';
 import ConsejoEstrategico from './pages/ConsejoEstrategico';
+import Usuarios from './pages/Usuarios';
 import AccountSuspended from './pages/AccountSuspended';
 import Layout from './components/Layout';
 import { Toaster } from './components/ui/sonner';
@@ -177,6 +178,7 @@ function App() {
             <Route path="contalink-financial" element={<ContalinkFinancialImport />} />
             <Route path="financiamiento" element={<Financiamiento />} />
             <Route path="consejo-estrategico" element={<ConsejoEstrategico />} />
+              <Route path="usuarios" element={<Usuarios />} />
           </Route>
         </Routes>
       </BrowserRouter>

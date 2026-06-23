@@ -60,6 +60,7 @@ from routes.cashflow_kpi import router as cashflow_kpi_router
 from routes.financiamiento import router as financiamiento_router
 from routes.sat_ciec import router as sat_ciec_router
 from routes.consejo_estrategico import router as consejo_estrategico_router
+from routes.usuarios import router as usuarios_router
 
 # ===== REGISTER ROUTERS =====
 api_router.include_router(auth_router)
@@ -103,6 +104,7 @@ api_router.include_router(cashflow_kpi_router)
 api_router.include_router(financiamiento_router)
 api_router.include_router(sat_ciec_router)
 api_router.include_router(consejo_estrategico_router)
+api_router.include_router(usuarios_router)
 
 # ===== MIDDLEWARE =====
 app.add_middleware(

@@ -29,6 +29,7 @@ import {
   Moon,
   BookUser,
   Scale,
+  Users,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import {
@@ -77,7 +78,7 @@ const LIGHT = {
 };
 
 // â”€â”€â”€ Nav structure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const buildNav = (isAdmin) => [
+const buildNav = (isAdmin, isCFO) => [
   {
     section: 'Principal',
     items: [
@@ -153,6 +154,12 @@ const buildNav = (isAdmin) => [
       { name: 'CatÃ¡logo', href: '/catalogs', icon: BookUser },
     ],
   },
+  ...(isCFO
+    ? [{
+        section: 'Equipo',
+        items: [{ name: 'Usuarios', href: '/usuarios', icon: Users }],
+      }]
+    : []),
   ...(isAdmin
     ? [{
         section: '',
@@ -173,6 +180,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
   const location = useLocation();
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = storedUser?.role === 'admin';
+  const isCFO = storedUser?.role === 'cfo' || isAdmin;
 
   // Theme
   const [dark, setDark] = useState(() => {
@@ -186,7 +194,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
   }, [dark]);
 
   // Open sections (collapsible groups)
-  const nav = buildNav(isAdmin);
+  const nav = buildNav(isAdmin, isCFO);
 
   const getDefaultOpen = () => {
     const open = {};

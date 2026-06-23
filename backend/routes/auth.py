@@ -155,7 +155,9 @@ async def register(user_data: UserCreate):
         email=user_data.email,
         nombre=user_data.nombre,
         role=role,
-        company_id=company_id
+        company_id=company_id,
+        company_ids=[company_id],
+        empresas_asignadas=[company_id],
     )
     
     doc = user.model_dump()

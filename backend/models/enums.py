@@ -3,9 +3,10 @@ from enum import Enum
 
 
 class UserRole(str, Enum):
-    ADMIN = "admin"
-    CFO = "cfo"
-    VIEWER = "viewer"
+    ADMIN    = "admin"
+    CFO      = "cfo"
+    CONTADOR = "contador"
+    VIEWER   = "viewer"
 
 
 class TransactionType(str, Enum):

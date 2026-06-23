@@ -13,8 +13,11 @@ class User(BaseModel):
     email: EmailStr
     nombre: str
     role: UserRole = UserRole.VIEWER
-    company_id: str                          # empresa principal (backwards compatible)
-    company_ids: List[str] = Field(default_factory=list)  # NUEVO: todas sus empresas
+    company_id: str                                                  # empresa principal (backwards compat)
+    company_ids: List[str] = Field(default_factory=list)             # todas sus empresas
+    empresas_asignadas: List[str] = Field(default_factory=list)      # asignadas por el CFO
+    invited_by: Optional[str] = None                                 # user_id del CFO que invitó
+    must_change_password: bool = False
     activo: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
