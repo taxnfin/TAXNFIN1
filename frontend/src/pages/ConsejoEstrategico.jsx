@@ -344,6 +344,25 @@ export default function ConsejoEstrategico() {
                 Nueva consulta
               </button>
             )}
+            <button
+              data-testid="consejo-pdf"
+              type="button"
+              onClick={handlePDF}
+              disabled={generatingPDF || !respuesta}
+              style={{
+                background: (!respuesta || generatingPDF) ? '#E2E8F0' : GOLD,
+                border: 'none',
+                borderRadius: '4px',
+                padding: '9px 16px',
+                fontSize: '13px',
+                color: (!respuesta || generatingPDF) ? '#94A3B8' : '#FFFFFF',
+                fontWeight: 600,
+                cursor: (!respuesta || generatingPDF) ? 'not-allowed' : 'pointer',
+                transition: 'background 0.15s',
+              }}
+            >
+              {generatingPDF ? 'Generando PDF...' : '📄 Descargar PDF'}
+            </button>
 
             {loading && loadingMsg && (
               <span style={{ fontSize: '12px', color: '#64748B', fontStyle: 'italic' }}>
@@ -391,23 +410,7 @@ export default function ConsejoEstrategico() {
                 >
                   {copied ? '✓ Copiado' : 'Copiar análisis'}
                 </button>
-                <button
-                  data-testid="consejo-pdf"
-                  onClick={handlePDF}
-                  disabled={generatingPDF}
-                  style={{
-                    background: generatingPDF ? '#94A3B8' : GOLD,
-                    border: 'none',
-                    borderRadius: '4px',
-                    padding: '6px 12px',
-                    fontSize: '12px',
-                    color: '#FFFFFF',
-                    fontWeight: 600,
-                    cursor: generatingPDF ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {generatingPDF ? 'Generando...' : '📄 Descargar PDF'}
-                </button>
+
               </div>
             </div>
 
