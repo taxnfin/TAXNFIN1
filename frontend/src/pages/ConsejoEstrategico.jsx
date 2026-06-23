@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axios';
+import ReactMarkdown from 'react-markdown';
 
 const ASESORES = [
   { emoji: '🔴', key: 'CONTRARIAN',            label: 'El Contrarian',               border: 'border-red-500',    bg: 'bg-red-500/5'    },
@@ -34,9 +35,9 @@ function parseRespuesta(texto) {
 function SeccionCard({ seccion }) {
   return (
     <div className={`rounded-sm border-l-4 ${seccion.border} ${seccion.bg} p-4`}>
-      <pre className="whitespace-pre-wrap font-sans text-sm text-slate-200 leading-relaxed">
-        {seccion.contenido}
-      </pre>
+      <div className="prose prose-sm prose-invert max-w-none text-slate-200">
+        <ReactMarkdown>{seccion.contenido}</ReactMarkdown>
+      </div>
     </div>
   );
 }
@@ -78,7 +79,7 @@ export default function ConsejoEstrategico() {
     setError('');
     setRespuesta(null);
     try {
-      const r = await api.post('/ia/consejo-estrategico', { pregunta });
+      const r = await api.post('/ia/consejo-estrategico', { pregunta }, { timeout: 120000 });
       if (r.data.success) {
         setRespuesta(r.data.respuesta);
         setHistorial(prev => [{
@@ -207,9 +208,9 @@ export default function ConsejoEstrategico() {
               ? parsed.secciones.map(s => <SeccionCard key={s.key} seccion={s} />)
               : (
                 <div className="rounded-sm border border-slate-700 p-4">
-                  <pre className="whitespace-pre-wrap font-sans text-sm text-slate-200 leading-relaxed">
-                    {respuesta}
-                  </pre>
+                  <div className="prose prose-sm prose-invert max-w-none text-slate-200">
+                    <ReactMarkdown>{respuesta}</ReactMarkdown>
+                  </div>
                 </div>
               )
             }
@@ -217,9 +218,9 @@ export default function ConsejoEstrategico() {
             {/* Presidente del Consejo */}
             {parsed.presidente && (
               <div className="rounded-sm border border-slate-500 bg-slate-800 p-5">
-                <pre className="whitespace-pre-wrap font-sans text-sm text-white leading-relaxed">
-                  {parsed.presidente}
-                </pre>
+                <div className="prose prose-sm prose-invert max-w-none text-white">
+                <ReactMarkdown>{parsed.presidente}</ReactMarkdown>
+              </div>
               </div>
             )}
           </div>
