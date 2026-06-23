@@ -329,11 +329,11 @@ const Integrations = () => {
       const res = await api.post('/sat/syntage/sync');
       if (res.data.success) {
         setSyntageData(res.data);
-        toast.success('Datos SAT obtenidos correctamente desde Syntage');
+        toast.success('Datos SAT obtenidos correctamente');
       } else {
-        toast.error(res.data.error || 'Error al sincronizar con Syntage');
+        toast.error(res.data.error || 'Error al obtener datos fiscales SAT');
       }
-    } catch { toast.error('Error al conectar con Syntage'); }
+    } catch { toast.error('Error al obtener datos fiscales SAT'); }
     finally { setSyncingSyntage(false); }
   };
 
@@ -358,11 +358,11 @@ const Integrations = () => {
       const res = await api.post('/sat/belvo/sync', {}, { timeout: 90000 });
       if (res.data.success) {
         setBelvoData(res.data);
-        toast.success('Datos SAT obtenidos correctamente desde Belvo');
+        toast.success('Datos SAT obtenidos correctamente');
       } else {
-        toast.error(res.data.error || 'Error al sincronizar con Belvo');
+        toast.error(res.data.error || 'Error al obtener documentos SAT');
       }
-    } catch { toast.error('Error al conectar con Belvo'); }
+    } catch { toast.error('Error al obtener documentos SAT'); }
     finally { setSyncingBelvo(false); }
   };
 
@@ -438,14 +438,14 @@ const Integrations = () => {
                       <span className="text-white text-base">🏛️</span>
                     </div>
                     <div>
-                      <h3 className="font-semibold text-[#0F172A] text-base">Documentos SAT vía Belvo</h3>
+                      <h3 className="font-semibold text-[#0F172A] text-base">Documentos SAT</h3>
                       <p className="text-sm text-gray-500 mt-0.5">Constancia de Situación Fiscal y Opinión de Cumplimiento 32-D directamente del SAT.</p>
                     </div>
                   </div>
                   <button onClick={handleBelvoSync} disabled={syncingBelvo}
                     className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
                     {syncingBelvo ? <RefreshCw size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-                    {syncingBelvo ? 'Conectando...' : 'Conectar SAT con Belvo'}
+                    {syncingBelvo ? 'Sincronizando...' : 'Sincronizar Documentos SAT'}
                   </button>
                 </div>
                 {belvoData ? (
@@ -495,7 +495,7 @@ const Integrations = () => {
                     </button>
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-400 text-center py-4">Haz clic en "Conectar SAT con Belvo" para obtener los documentos.</p>
+                  <p className="text-sm text-gray-400 text-center py-4">Haz clic en "Sincronizar Documentos SAT" para obtener los documentos.</p>
                 )}
               </div>
             )}
@@ -509,14 +509,14 @@ const Integrations = () => {
                       <span className="text-white text-base">📋</span>
                     </div>
                     <div>
-                      <h3 className="font-semibold text-[#0F172A] text-base">Datos SAT vía Syntage</h3>
+                      <h3 className="font-semibold text-[#0F172A] text-base">Datos Fiscales SAT</h3>
                       <p className="text-sm text-gray-500 mt-0.5">Constancia de Situación Fiscal y Opinión de Cumplimiento directamente del SAT.</p>
                     </div>
                   </div>
                   <button onClick={handleSyntageSync} disabled={syncingSyntage}
                     className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">
                     {syncingSyntage ? <RefreshCw size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-                    {syncingSyntage ? 'Sincronizando...' : 'Sincronizar con Syntage'}
+                    {syncingSyntage ? 'Actualizando...' : 'Actualizar Datos SAT'}
                   </button>
                 </div>
                 {syntageData ? (
@@ -562,7 +562,7 @@ const Integrations = () => {
                     </button>
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-400 text-center py-4">Haz clic en "Sincronizar con Syntage" para obtener los datos.</p>
+                  <p className="text-sm text-gray-400 text-center py-4">Haz clic en "Actualizar Datos SAT" para obtener los datos.</p>
                 )}
               </div>
             )}
