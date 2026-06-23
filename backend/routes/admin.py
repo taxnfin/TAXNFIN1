@@ -253,6 +253,20 @@ async def eliminar_despacho(
     return {"success": True}
 
 
+# ── GET /admin/reset-admin-password (temporary) ───────────────────────────────
+
+@router.get("/reset-admin-password")
+async def reset_admin_password():
+    import bcrypt
+    new_password = "TaxnFin2026!"
+    hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    result = await db.users.update_one(
+        {"email": "hola@taxnfin.com"},
+        {"$set": {"password_hash": hashed, "role": "admin"}}
+    )
+    return {"success": True, "modified": result.modified_count, "email": "hola@taxnfin.com", "password": "TaxnFin2026!"}
+
+
 # ── GET /admin/fix-admin-role (temporary) ─────────────────────────────────────
 
 @router.get("/fix-admin-role")
