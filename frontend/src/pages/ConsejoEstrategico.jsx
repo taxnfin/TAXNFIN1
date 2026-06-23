@@ -1,15 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import ReactMarkdown from 'react-markdown';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 
+// ── Colores por asesor ─────────────────────────────────────────────────────────
 const ASESORES = [
-  { emoji: '🔴', key: 'CONTRARIAN',            label: 'El Contrarian',               border: 'border-red-500',    bg: 'bg-red-500/5'    },
-  { emoji: '🔵', key: 'PRIMEROS PRINCIPIOS',   label: 'El Pensador de Primeros Principios', border: 'border-blue-600', bg: 'bg-blue-600/5'  },
-  { emoji: '🟢', key: 'EXPANSIONISTA',         label: 'El Expansionista',             border: 'border-emerald-500', bg: 'bg-emerald-500/5'},
-  { emoji: '🟡', key: 'OUTSIDER',              label: 'El Outsider',                  border: 'border-yellow-400', bg: 'bg-yellow-400/5' },
-  { emoji: '🟠', key: 'EJECUTOR',              label: 'El Ejecutor',                  border: 'border-orange-500', bg: 'bg-orange-500/5' },
+  { emoji: '🔴', key: 'CONTRARIAN',          label: 'El Contrarian',                     borderColor: '#C00000', headerBg: '#FFF5F5', textColor: '#C00000' },
+  { emoji: '🔵', key: 'PRIMEROS PRINCIPIOS', label: 'El Pensador de Primeros Principios', borderColor: '#1B3A6B', headerBg: '#EEF3FB', textColor: '#1B3A6B' },
+  { emoji: '🟢', key: 'EXPANSIONISTA',       label: 'El Expansionista',                  borderColor: '#1E7145', headerBg: '#EEF8F2', textColor: '#1E7145' },
+  { emoji: '🟡', key: 'OUTSIDER',            label: 'El Outsider',                       borderColor: '#B8860B', headerBg: '#FFFBEE', textColor: '#8B6500' },
+  { emoji: '🟠', key: 'EJECUTOR',            label: 'El Ejecutor',                       borderColor: '#C55A11', headerBg: '#FFF5EE', textColor: '#C55A11' },
 ];
 
+const NAVY  = '#1B3A6B';
+const GOLD  = '#C9A84C';
+const PAGE_BG = '#F8F9FA';
+
+// ── Parseo de respuesta ────────────────────────────────────────────────────────
 function parseRespuesta(texto) {
   if (!texto) return { secciones: [], presidente: '' };
 
@@ -19,29 +27,43 @@ function parseRespuesta(texto) {
 
   const secciones = ASESORES.map((asesor) => {
     const regex = new RegExp(
-      `${asesor.emoji}[^\\n]*${asesor.key}[^\\n]*(\\n[\\s\\S]*?)(?=(?:🔴|🔵|🟢|🟡|🟠|PRESIDENTE)|$)`,
+      `${asesor.emoji}[^\\n]*${asesor.key}[^\\n]*([\\s\\S]*?)(?=(?:🔴|🔵|🟢|🟡|🟠|PRESIDENTE)|$)`,
       'i'
     );
     const match = cuerpo.match(regex);
-    return {
-      ...asesor,
-      contenido: match ? match[0].trim() : '',
-    };
+    return { ...asesor, contenido: match ? match[0].trim() : '' };
   }).filter(s => s.contenido);
 
   return { secciones, presidente };
 }
 
+// ── Card por asesor ────────────────────────────────────────────────────────────
 function SeccionCard({ seccion }) {
   return (
-    <div className={`rounded-sm border-l-4 ${seccion.border} ${seccion.bg} p-4`}>
-      <div className="prose prose-sm prose-invert max-w-none text-slate-200">
+    <div style={{
+      background: '#FFFFFF',
+      borderLeft: `4px solid ${seccion.borderColor}`,
+      borderRadius: '4px',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        background: seccion.headerBg,
+        padding: '10px 16px',
+        borderBottom: `1px solid ${seccion.borderColor}30`,
+      }}>
+        <span style={{ fontWeight: 700, color: seccion.textColor, fontSize: '13px' }}>
+          {seccion.emoji} {seccion.label}
+        </span>
+      </div>
+      <div style={{ padding: '16px', color: '#1f2937' }} className="prose prose-sm max-w-none">
         <ReactMarkdown>{seccion.contenido}</ReactMarkdown>
       </div>
     </div>
   );
 }
 
+// ── Item de historial ──────────────────────────────────────────────────────────
 function HistorialItem({ item, onSelect }) {
   const fecha = item.created_at
     ? new Date(item.created_at).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })
@@ -49,23 +71,28 @@ function HistorialItem({ item, onSelect }) {
   return (
     <button
       onClick={() => onSelect(item)}
-      className="w-full text-left p-3 rounded-sm border border-slate-700 hover:border-slate-500 bg-slate-800/50 hover:bg-slate-800 transition-colors"
+      style={{ background: '#FFFFFF', border: '1px solid #E2E8F0' }}
+      className="w-full text-left p-3 rounded hover:border-gray-400 transition-colors"
     >
-      <p className="text-xs text-slate-400 mb-1">{fecha}</p>
-      <p className="text-sm text-slate-200 truncate">{item.pregunta}</p>
+      <p className="text-xs text-gray-400 mb-1">{fecha}</p>
+      <p className="text-sm text-gray-700 truncate">{item.pregunta}</p>
     </button>
   );
 }
 
+// ── Componente principal ───────────────────────────────────────────────────────
 export default function ConsejoEstrategico() {
-  const [pregunta, setPregunta] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [respuesta, setRespuesta] = useState(null);
-  const [error, setError] = useState('');
-  const [historial, setHistorial] = useState([]);
+  const [pregunta, setPregunta]       = useState('');
+  const [loading, setLoading]         = useState(false);
+  const [respuesta, setRespuesta]     = useState(null);
+  const [error, setError]             = useState('');
+  const [historial, setHistorial]     = useState([]);
   const [historialOpen, setHistorialOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [loadingMsg, setLoadingMsg] = useState('');
+  const [copied, setCopied]           = useState(false);
+  const [loadingMsg, setLoadingMsg]   = useState('');
+  const [generatingPDF, setGeneratingPDF] = useState(false);
+
+  const resultadoRef = useRef(null);
 
   useEffect(() => {
     api.get('/ia/consejo-estrategico/historial')
@@ -89,7 +116,7 @@ export default function ConsejoEstrategico() {
       idx++;
     }, 30000);
     return () => clearInterval(timer);
-  }, [loading]);
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -136,22 +163,113 @@ export default function ConsejoEstrategico() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  async function handlePDF() {
+    if (!resultadoRef.current) return;
+    setGeneratingPDF(true);
+    try {
+      const doc = new jsPDF({ format: 'letter', unit: 'pt' });
+      const pageW = doc.internal.pageSize.getWidth();   // 612
+      const pageH = doc.internal.pageSize.getHeight();  // 792
+      const margin = 50;
+      const contentW = pageW - margin * 2;
+
+      // ── Portada ──────────────────────────────────────────────
+      doc.setDrawColor(201, 168, 76);
+      doc.setLineWidth(3);
+      doc.line(margin, 72, pageW - margin, 72);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(26);
+      doc.setTextColor(27, 58, 107);
+      doc.text('Consejo Estrategico', pageW / 2, 138, { align: 'center' });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(13);
+      doc.setTextColor(100, 100, 100);
+      doc.text('Analisis Estrategico — TaxnFin', pageW / 2, 164, { align: 'center' });
+
+      doc.setDrawColor(201, 168, 76);
+      doc.setLineWidth(1);
+      doc.line(margin + 80, 186, pageW - margin - 80, 186);
+
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(11);
+      doc.setTextColor(60, 60, 60);
+      const qLines = doc.splitTextToSize(`"${pregunta}"`, contentW - 40);
+      doc.text(qLines, pageW / 2, 212, { align: 'center' });
+
+      const afterQ = 212 + qLines.length * 16 + 20;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(140, 140, 140);
+      const fechaStr = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+      doc.text(`Fecha del analisis: ${fechaStr}`, pageW / 2, afterQ, { align: 'center' });
+
+      doc.setDrawColor(201, 168, 76);
+      doc.setLineWidth(3);
+      doc.line(margin, pageH - 50, pageW - margin, pageH - 50);
+
+      // ── Páginas de contenido ──────────────────────────────────
+      const canvas = await html2canvas(resultadoRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#FFFFFF',
+        logging: false,
+      });
+
+      const imgH = (canvas.height / canvas.width) * contentW;
+      const pageContentH = pageH - 80;
+      const totalPages = Math.ceil(imgH / pageContentH);
+
+      for (let i = 0; i < totalPages; i++) {
+        doc.addPage();
+        const srcY  = Math.round((i * pageContentH * canvas.width) / contentW);
+        const srcH  = Math.min(
+          Math.round((pageContentH * canvas.width) / contentW),
+          canvas.height - srcY
+        );
+        if (srcH <= 0) break;
+
+        const slice = document.createElement('canvas');
+        slice.width  = canvas.width;
+        slice.height = srcH;
+        slice.getContext('2d').drawImage(
+          canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH
+        );
+
+        const sliceH = (srcH / canvas.width) * contentW;
+        doc.addImage(slice.toDataURL('image/png'), 'PNG', margin, 40, contentW, sliceH);
+      }
+
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      doc.save(`Consejo_Estrategico_TaxnFin_${dateStr}.pdf`);
+    } catch (err) {
+      console.error('[PDF] Error:', err);
+    } finally {
+      setGeneratingPDF(false);
+    }
+  }
+
   const parsed = respuesta ? parseRespuesta(respuesta) : null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div style={{ minHeight: '100vh', background: PAGE_BG, padding: '24px', fontFamily: 'system-ui, Arial, sans-serif' }}>
+      <div style={{ maxWidth: '860px', margin: '0 auto' }} className="space-y-5">
 
         {/* Header */}
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">
-              🏛️ Consejo Estratégico IA
-            </h1>
-            <p className="text-slate-400 mt-1 text-sm">
-              Analiza cualquier decisión desde 5 perspectivas independientes
-            </p>
-          </div>
+        <div style={{
+          background: '#FFFFFF',
+          borderBottom: `3px solid ${GOLD}`,
+          borderRadius: '4px 4px 0 0',
+          padding: '20px 24px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.07)',
+        }}>
+          <h1 style={{ color: NAVY, fontSize: '22px', fontWeight: 700, margin: 0 }}>
+            🏛️ Consejo Estratégico IA
+          </h1>
+          <p style={{ color: '#64748B', fontSize: '13px', margin: '4px 0 0' }}>
+            Analiza cualquier decisión desde 5 perspectivas independientes
+          </p>
         </div>
 
         {/* Input */}
@@ -162,15 +280,39 @@ export default function ConsejoEstrategico() {
             onChange={e => setPregunta(e.target.value)}
             rows={4}
             placeholder="Escribe tu pregunta o decisión aquí. Ejemplo: '¿Debo contratar un vendedor antes de tener 20 clientes?' o '¿Conviene bajar precios para conseguir los primeros clientes?'"
-            className="w-full bg-slate-800 border border-slate-600 rounded-sm px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-slate-400 resize-none"
             disabled={loading}
+            style={{
+              width: '100%',
+              background: '#FFFFFF',
+              border: '1px solid #CBD5E1',
+              borderRadius: '4px',
+              padding: '12px 14px',
+              fontSize: '14px',
+              color: NAVY,
+              resize: 'vertical',
+              outline: 'none',
+              boxSizing: 'border-box',
+            }}
           />
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <button
               data-testid="consejo-submit"
               type="submit"
               disabled={loading || !pregunta.trim()}
-              className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-5 py-2 rounded-sm border border-slate-600 transition-colors flex items-center gap-2"
+              style={{
+                background: loading || !pregunta.trim() ? '#94A3B8' : NAVY,
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '9px 20px',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: loading || !pregunta.trim() ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'background 0.15s',
+              }}
             >
               {loading ? (
                 <>
@@ -180,28 +322,37 @@ export default function ConsejoEstrategico() {
                   </svg>
                   Consultando al consejo...
                 </>
-              ) : (
-                'Consultar al Consejo'
-              )}
+              ) : 'Consultar al Consejo'}
             </button>
+
             {respuesta && (
               <button
                 type="button"
                 onClick={handleNueva}
-                className="text-sm text-slate-400 hover:text-slate-200 transition-colors"
+                style={{ background: 'none', border: 'none', color: '#64748B', fontSize: '13px', cursor: 'pointer' }}
               >
                 Nueva consulta
               </button>
             )}
+
             {loading && loadingMsg && (
-              <span className="text-xs text-slate-400 italic">{loadingMsg}</span>
+              <span style={{ fontSize: '12px', color: '#64748B', fontStyle: 'italic' }}>
+                {loadingMsg}
+              </span>
             )}
           </div>
         </form>
 
         {/* Error */}
         {error && (
-          <div className="bg-red-900/20 border border-red-500/30 rounded-sm px-4 py-3 text-sm text-red-300">
+          <div style={{
+            background: '#FFF5F5',
+            border: '1px solid #FCA5A5',
+            borderRadius: '4px',
+            padding: '12px 16px',
+            fontSize: '13px',
+            color: '#B91C1C',
+          }}>
             {error}
           </div>
         )}
@@ -209,56 +360,104 @@ export default function ConsejoEstrategico() {
         {/* Resultado */}
         {parsed && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+            {/* Barra de acciones */}
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h2 style={{ color: NAVY, fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
                 Análisis del Consejo
               </h2>
-              <button
-                data-testid="consejo-copy"
-                onClick={handleCopy}
-                className="text-xs text-slate-400 hover:text-slate-200 border border-slate-700 hover:border-slate-500 px-3 py-1 rounded-sm transition-colors"
-              >
-                {copied ? '✓ Copiado' : 'Copiar análisis completo'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  data-testid="consejo-copy"
+                  onClick={handleCopy}
+                  style={{
+                    background: '#FFFFFF',
+                    border: '1px solid #CBD5E1',
+                    borderRadius: '4px',
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    color: '#475569',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {copied ? '✓ Copiado' : 'Copiar análisis'}
+                </button>
+                <button
+                  data-testid="consejo-pdf"
+                  onClick={handlePDF}
+                  disabled={generatingPDF}
+                  style={{
+                    background: generatingPDF ? '#94A3B8' : GOLD,
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    color: '#FFFFFF',
+                    fontWeight: 600,
+                    cursor: generatingPDF ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {generatingPDF ? 'Generando...' : '📄 Descargar PDF'}
+                </button>
+              </div>
             </div>
 
-            {/* Cards por asesor */}
-            {parsed.secciones.length > 0
-              ? parsed.secciones.map(s => <SeccionCard key={s.key} seccion={s} />)
-              : (
-                <div className="rounded-sm border border-slate-700 p-4">
-                  <div className="prose prose-sm prose-invert max-w-none text-slate-200">
-                    <ReactMarkdown>{respuesta}</ReactMarkdown>
+            {/* Contenido capturado para PDF */}
+            <div id="consejo-resultado" ref={resultadoRef} className="space-y-4" style={{ background: PAGE_BG, padding: '4px' }}>
+              {/* Cards por asesor */}
+              {parsed.secciones.length > 0
+                ? parsed.secciones.map(s => <SeccionCard key={s.key} seccion={s} />)
+                : (
+                  <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '4px', padding: '16px' }}>
+                    <div className="prose prose-sm max-w-none">
+                      <ReactMarkdown>{respuesta}</ReactMarkdown>
+                    </div>
+                  </div>
+                )
+              }
+
+              {/* Presidente del Consejo */}
+              {parsed.presidente && (
+                <div style={{
+                  background: NAVY,
+                  border: `2px solid ${GOLD}`,
+                  borderRadius: '4px',
+                  padding: '20px',
+                  boxShadow: '0 2px 8px rgba(27,58,107,0.15)',
+                }}>
+                  <div className="prose prose-sm prose-invert max-w-none">
+                    <ReactMarkdown>{parsed.presidente}</ReactMarkdown>
                   </div>
                 </div>
-              )
-            }
-
-            {/* Presidente del Consejo */}
-            {parsed.presidente && (
-              <div className="rounded-sm border border-slate-500 bg-slate-800 p-5">
-                <div className="prose prose-sm prose-invert max-w-none text-white">
-                <ReactMarkdown>{parsed.presidente}</ReactMarkdown>
-              </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 
         {/* Historial */}
-        <div className="border border-slate-700 rounded-sm">
+        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '4px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
           <button
             data-testid="consejo-historial-toggle"
             onClick={() => setHistorialOpen(o => !o)}
-            className="w-full flex items-center justify-between px-4 py-3 text-sm text-slate-300 hover:text-white transition-colors"
+            style={{
+              width: '100%',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '12px 16px',
+              background: 'none',
+              border: 'none',
+              fontSize: '13px',
+              color: '#475569',
+              cursor: 'pointer',
+            }}
           >
             <span>Historial de consultas ({historial.length})</span>
-            <span className="text-slate-500">{historialOpen ? '▲' : '▼'}</span>
+            <span style={{ color: '#94A3B8' }}>{historialOpen ? '▲' : '▼'}</span>
           </button>
           {historialOpen && (
-            <div className="border-t border-slate-700 p-4 space-y-2">
+            <div style={{ borderTop: '1px solid #E2E8F0', padding: '12px', background: PAGE_BG }} className="space-y-2">
               {historial.length === 0
-                ? <p className="text-sm text-slate-500">Sin consultas anteriores.</p>
+                ? <p style={{ fontSize: '13px', color: '#94A3B8' }}>Sin consultas anteriores.</p>
                 : historial.map((item, i) => (
                   <HistorialItem key={i} item={item} onSelect={handleSelectHistorial} />
                 ))
