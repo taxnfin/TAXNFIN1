@@ -1,4 +1,4 @@
-import httpx
+﻿import httpx
 import os
 
 BELVO_BASE_URL = os.getenv("BELVO_BASE_URL", "https://sandbox.belvo.com")
@@ -18,14 +18,14 @@ class BelvoClient:
         }
 
     async def create_link(self, rfc: str, ciec: str) -> dict:
-        """Crear link SAT con CIEC — registra el contribuyente en Belvo."""
+        """Crear link SAT con CIEC â€” registra el contribuyente en Belvo."""
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.post(
                 f"{self.base_url}/api/links/",
                 auth=self.auth,
                 headers=self.headers,
                 json={
-                    "institution": "sat_mx_fiscal",
+                    "institution": "sat_mx_fiscal_mx",
                     "username": rfc,
                     "password": ciec,
                     "fetch_resources": ["TAX_STATUS", "TAX_COMPLIANCE_STATUS"],
@@ -37,7 +37,7 @@ class BelvoClient:
             return r.json()
 
     async def get_tax_status(self, link_id: str) -> dict:
-        """Constancia de Situación Fiscal."""
+        """Constancia de SituaciÃ³n Fiscal."""
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.get(
                 f"{self.base_url}/api/tax-status/?link={link_id}",
@@ -50,7 +50,7 @@ class BelvoClient:
             return r.json()
 
     async def get_tax_compliance(self, link_id: str) -> dict:
-        """Opinión de Cumplimiento 32-D."""
+        """OpiniÃ³n de Cumplimiento 32-D."""
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.get(
                 f"{self.base_url}/api/tax-compliance-status/?link={link_id}",
