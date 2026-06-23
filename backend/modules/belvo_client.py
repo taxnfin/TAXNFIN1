@@ -9,6 +9,9 @@ BELVO_SECRET_PASSWORD = os.getenv("BELVO_SECRET_PASSWORD", "")
 
 class BelvoClient:
     def __init__(self):
+        print(f"[BELVO] SECRET_ID primeros 8 chars: {os.getenv('BELVO_SECRET_ID', 'VACIO')[:8]}", flush=True)
+        print(f"[BELVO] SECRET_PASSWORD primeros 8 chars: {os.getenv('BELVO_SECRET_PASSWORD', 'VACIO')[:8]}", flush=True)
+        print(f"[BELVO] BASE_URL: {os.getenv('BELVO_BASE_URL', 'VACIO')}", flush=True)
         self.base_url = BELVO_BASE_URL
         credentials = f"{BELVO_SECRET_ID}:{BELVO_SECRET_PASSWORD}"
         encoded = base64.b64encode(credentials.encode()).decode()
