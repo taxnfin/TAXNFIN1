@@ -1,8 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../api/axios';
 import ReactMarkdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
 
 // ── Colores por asesor ─────────────────────────────────────────────────────────
 const ASESORES = [
@@ -13,18 +12,34 @@ const ASESORES = [
   { emoji: '🟠', key: 'EJECUTOR',            label: 'El Ejecutor',                       borderColor: '#C55A11', headerBg: '#FFF5EE', textColor: '#C55A11' },
 ];
 
-const NAVY  = '#1B3A6B';
-const GOLD  = '#C9A84C';
+const NAVY    = '#1B3A6B';
+const GOLD    = '#C9A84C';
 const PAGE_BG = '#F8F9FA';
 
-// ── Parseo de respuesta ────────────────────────────────────────────────────────
+// ── Definiciones para PDF ──────────────────────────────────────────────────────
+const PDF_ASESORES = [
+  { emoji: '🔴', key: 'CONTRARIAN',          label: 'El Contrarian',                     bg: [255, 235, 235], fg: [192, 0, 0]   },
+  { emoji: '🔵', key: 'PRIMEROS PRINCIPIOS', label: 'El Pensador de Primeros Principios', bg: [235, 243, 255], fg: [27, 58, 107]  },
+  { emoji: '🟢', key: 'EXPANSIONISTA',       label: 'El Expansionista',                  bg: [235, 248, 240], fg: [30, 113, 69]  },
+  { emoji: '🟡', key: 'OUTSIDER',            label: 'El Outsider',                       bg: [255, 251, 230], fg: [139, 101, 0]  },
+  { emoji: '🟠', key: 'EJECUTOR',            label: 'El Ejecutor',                       bg: [255, 243, 232], fg: [197, 90, 17]  },
+];
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function stripMarkdown(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/gs, '$1')
+    .replace(/\*(.+?)\*/gs, '$1')
+    .replace(/^#{1,3}\s+/gm, '')
+    .replace(/`(.+?)`/g, '$1')
+    .trim();
+}
+
 function parseRespuesta(texto) {
   if (!texto) return { secciones: [], presidente: '' };
-
   const presidenteMatch = texto.match(/PRESIDENTE DEL CONSEJO([\s\S]*?)$/i);
   const presidente = presidenteMatch ? presidenteMatch[0].trim() : '';
   const cuerpo = presidenteMatch ? texto.slice(0, presidenteMatch.index) : texto;
-
   const secciones = ASESORES.map((asesor) => {
     const regex = new RegExp(
       `${asesor.emoji}[^\\n]*${asesor.key}[^\\n]*([\\s\\S]*?)(?=(?:🔴|🔵|🟢|🟡|🟠|PRESIDENTE)|$)`,
@@ -33,7 +48,6 @@ function parseRespuesta(texto) {
     const match = cuerpo.match(regex);
     return { ...asesor, contenido: match ? match[0].trim() : '' };
   }).filter(s => s.contenido);
-
   return { secciones, presidente };
 }
 
@@ -82,17 +96,15 @@ function HistorialItem({ item, onSelect }) {
 
 // ── Componente principal ───────────────────────────────────────────────────────
 export default function ConsejoEstrategico() {
-  const [pregunta, setPregunta]       = useState('');
-  const [loading, setLoading]         = useState(false);
-  const [respuesta, setRespuesta]     = useState(null);
-  const [error, setError]             = useState('');
-  const [historial, setHistorial]     = useState([]);
+  const [pregunta, setPregunta]           = useState('');
+  const [loading, setLoading]             = useState(false);
+  const [respuesta, setRespuesta]         = useState(null);
+  const [error, setError]                 = useState('');
+  const [historial, setHistorial]         = useState([]);
   const [historialOpen, setHistorialOpen] = useState(false);
-  const [copied, setCopied]           = useState(false);
-  const [loadingMsg, setLoadingMsg]   = useState('');
+  const [copied, setCopied]               = useState(false);
+  const [loadingMsg, setLoadingMsg]       = useState('');
   const [generatingPDF, setGeneratingPDF] = useState(false);
-
-  const resultadoRef = useRef(null);
 
   useEffect(() => {
     api.get('/ia/consejo-estrategico/historial')
@@ -173,82 +185,126 @@ export default function ConsejoEstrategico() {
     }
   }
 
-  async function handlePDF() {
-    if (!resultadoRef.current) return;
+  function generarPDF() {
+    if (!respuesta) return;
     setGeneratingPDF(true);
-    try {
-      const doc = new jsPDF({ format: 'letter', unit: 'pt' });
-      const pageW = doc.internal.pageSize.getWidth();   // 612
-      const pageH = doc.internal.pageSize.getHeight();  // 792
-      const margin = 50;
-      const contentW = pageW - margin * 2;
 
-      // ── Portada ──────────────────────────────────────────────
-      doc.setDrawColor(201, 168, 76);
-      doc.setLineWidth(3);
-      doc.line(margin, 72, pageW - margin, 72);
+    try {
+      const doc     = new jsPDF('p', 'mm', 'letter');
+      const C_NAVY  = [27,  58,  107];
+      const C_GOLD  = [201, 168, 76];
+      const C_GRIS  = [89,  89,  89];
+      const C_WHITE = [255, 255, 255];
+      const PW      = 216;   // page width mm
+      const PH      = 279;   // page height mm
+      const ML      = 15;    // margin left
+      const MR      = 15;    // margin right
+      const UW      = PW - ML - MR;  // usable width = 186mm
+      const MAX_Y   = 260;
+
+      // ── Portada ────────────────────────────────────────────────
+      doc.setFillColor(...C_NAVY);
+      doc.rect(0, 0, PW, PH, 'F');
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(26);
-      doc.setTextColor(27, 58, 107);
-      doc.text('Consejo Estrategico', pageW / 2, 138, { align: 'center' });
+      doc.setFontSize(14);
+      doc.setTextColor(...C_GOLD);
+      doc.text('CONSEJO ESTRATEGICO', PW / 2, 80, { align: 'center' });
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(22);
+      doc.setTextColor(...C_WHITE);
+      doc.text('Analisis Estrategico - TaxnFin', PW / 2, 100, { align: 'center' });
+
+      doc.setDrawColor(...C_GOLD);
+      doc.setLineWidth(0.5);
+      doc.line(ML + 20, 115, PW - MR - 20, 115);
 
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(13);
-      doc.setTextColor(100, 100, 100);
-      doc.text('Analisis Estrategico — TaxnFin', pageW / 2, 164, { align: 'center' });
-
-      doc.setDrawColor(201, 168, 76);
-      doc.setLineWidth(1);
-      doc.line(margin + 80, 186, pageW - margin - 80, 186);
+      doc.setFontSize(10);
+      doc.setTextColor(200, 200, 200);
+      doc.text('Pregunta analizada:', PW / 2, 130, { align: 'center' });
 
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(11);
-      doc.setTextColor(60, 60, 60);
-      const qLines = doc.splitTextToSize(`"${pregunta}"`, contentW - 40);
-      doc.text(qLines, pageW / 2, 212, { align: 'center' });
+      doc.setTextColor(...C_WHITE);
+      const qLines = doc.splitTextToSize(`"${pregunta}"`, UW - 20);
+      doc.text(qLines, PW / 2, 140, { align: 'center' });
 
-      const afterQ = 212 + qLines.length * 16 + 20;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
-      doc.setTextColor(140, 140, 140);
+      doc.setTextColor(180, 180, 180);
       const fechaStr = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
-      doc.text(`Fecha del analisis: ${fechaStr}`, pageW / 2, afterQ, { align: 'center' });
+      doc.text(fechaStr, PW / 2, 200, { align: 'center' });
 
-      doc.setDrawColor(201, 168, 76);
-      doc.setLineWidth(3);
-      doc.line(margin, pageH - 50, pageW - margin, pageH - 50);
+      doc.setDrawColor(...C_GOLD);
+      doc.setLineWidth(0.5);
+      doc.line(ML + 20, 260, PW - MR - 20, 260);
 
-      // ── Páginas de contenido ──────────────────────────────────
-      const canvas = await html2canvas(resultadoRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#FFFFFF',
-        logging: false,
-      });
+      // ── Páginas de contenido ───────────────────────────────────
+      doc.addPage();
+      let y = 20;
 
-      const imgH = (canvas.height / canvas.width) * contentW;
-      const pageContentH = pageH - 80;
-      const totalPages = Math.ceil(imgH / pageContentH);
+      function checkBreak(needed = 10) {
+        if (y + needed > MAX_Y) {
+          doc.addPage();
+          y = 20;
+        }
+      }
 
-      for (let i = 0; i < totalPages; i++) {
-        doc.addPage();
-        const srcY  = Math.round((i * pageContentH * canvas.width) / contentW);
-        const srcH  = Math.min(
-          Math.round((pageContentH * canvas.width) / contentW),
-          canvas.height - srcY
+      function renderSeccion(label, contenido, bgColor, fgColor, isPresidente = false) {
+        const clean = stripMarkdown(contenido);
+        const lines = doc.splitTextToSize(clean, UW - 4);
+
+        checkBreak(8 + 5);  // header + at least one line
+
+        // Header bar
+        doc.setFillColor(...bgColor);
+        doc.rect(ML, y, UW, 8, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(...fgColor);
+        doc.text(label, ML + 3, y + 5.5);
+        y += 9;
+
+        // Content lines
+        doc.setFont('helvetica', isPresidente ? 'bold' : 'normal');
+        doc.setFontSize(10);
+
+        for (const line of lines) {
+          checkBreak(6);
+          if (isPresidente) {
+            doc.setFillColor(...C_NAVY);
+            doc.rect(ML, y - 4, UW, 5.5, 'F');
+            doc.setTextColor(...C_WHITE);
+          } else {
+            doc.setTextColor(40, 40, 40);
+          }
+          doc.text(line, ML + 2, y);
+          y += 5;
+        }
+        y += 4;
+      }
+
+      // Parsear secciones
+      const presidenteMatch = respuesta.match(/PRESIDENTE DEL CONSEJO([\s\S]*?)$/i);
+      const presidente      = presidenteMatch ? presidenteMatch[0].trim() : '';
+      const cuerpo          = presidenteMatch ? respuesta.slice(0, presidenteMatch.index) : respuesta;
+
+      for (const def of PDF_ASESORES) {
+        const regex = new RegExp(
+          `${def.emoji}[^\\n]*${def.key}[^\\n]*([\\s\\S]*?)(?=(?:🔴|🔵|🟢|🟡|🟠|PRESIDENTE)|$)`,
+          'i'
         );
-        if (srcH <= 0) break;
+        const match = cuerpo.match(regex);
+        if (match) {
+          renderSeccion(`${def.emoji} ${def.label}`, match[0].trim(), def.bg, def.fg);
+        }
+      }
 
-        const slice = document.createElement('canvas');
-        slice.width  = canvas.width;
-        slice.height = srcH;
-        slice.getContext('2d').drawImage(
-          canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH
-        );
-
-        const sliceH = (srcH / canvas.width) * contentW;
-        doc.addImage(slice.toDataURL('image/png'), 'PNG', margin, 40, contentW, sliceH);
+      if (presidente) {
+        checkBreak(15);
+        renderSeccion('PRESIDENTE DEL CONSEJO', presidente, C_NAVY, C_WHITE, true);
       }
 
       const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -393,7 +449,7 @@ export default function ConsejoEstrategico() {
                 </button>
                 <button
                   data-testid="consejo-pdf"
-                  onClick={handlePDF}
+                  onClick={generarPDF}
                   disabled={generatingPDF}
                   style={{
                     background: generatingPDF ? '#94A3B8' : GOLD,
@@ -408,39 +464,35 @@ export default function ConsejoEstrategico() {
                 >
                   {generatingPDF ? 'Generando...' : '📄 Descargar PDF'}
                 </button>
-
               </div>
             </div>
 
-            {/* Contenido capturado para PDF */}
-            <div id="consejo-resultado" ref={resultadoRef} className="space-y-4" style={{ background: PAGE_BG, padding: '4px' }}>
-              {/* Cards por asesor */}
-              {parsed.secciones.length > 0
-                ? parsed.secciones.map(s => <SeccionCard key={s.key} seccion={s} />)
-                : (
-                  <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '4px', padding: '16px' }}>
-                    <div className="prose prose-sm max-w-none">
-                      <ReactMarkdown>{respuesta}</ReactMarkdown>
-                    </div>
-                  </div>
-                )
-              }
-
-              {/* Presidente del Consejo */}
-              {parsed.presidente && (
-                <div style={{
-                  background: NAVY,
-                  border: `2px solid ${GOLD}`,
-                  borderRadius: '4px',
-                  padding: '20px',
-                  boxShadow: '0 2px 8px rgba(27,58,107,0.15)',
-                }}>
-                  <div className="prose prose-sm prose-invert max-w-none">
-                    <ReactMarkdown>{parsed.presidente}</ReactMarkdown>
+            {/* Cards por asesor */}
+            {parsed.secciones.length > 0
+              ? parsed.secciones.map(s => <SeccionCard key={s.key} seccion={s} />)
+              : (
+                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '4px', padding: '16px' }}>
+                  <div className="prose prose-sm max-w-none">
+                    <ReactMarkdown>{respuesta}</ReactMarkdown>
                   </div>
                 </div>
-              )}
-            </div>
+              )
+            }
+
+            {/* Presidente del Consejo */}
+            {parsed.presidente && (
+              <div style={{
+                background: NAVY,
+                border: `2px solid ${GOLD}`,
+                borderRadius: '4px',
+                padding: '20px',
+                boxShadow: '0 2px 8px rgba(27,58,107,0.15)',
+              }}>
+                <div className="prose prose-sm prose-invert max-w-none">
+                  <ReactMarkdown>{parsed.presidente}</ReactMarkdown>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
