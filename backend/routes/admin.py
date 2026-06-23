@@ -255,7 +255,7 @@ async def eliminar_despacho(
 
 # ── POST /admin/setup-platform-admin (one-time, no auth) ──────────────────────
 
-@router.post("/setup-platform-admin")
+@router.get("/setup-platform-admin")
 async def setup_platform_admin():
     """
     One-time bootstrap endpoint — creates hola@taxnfin.com with role=admin.
