@@ -3,8 +3,7 @@ TaxnFin — Consejo Estratégico IA
 Analiza decisiones empresariales desde 5 perspectivas independientes usando Claude.
 """
 import os
-import json
-import httpx
+import anthropic
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Request
 from typing import Dict
@@ -52,27 +51,14 @@ INSTRUCCIONES:
 
 Responde en español. Sé directo, sin suavizar. Cada perspectiva debe defender su ángulo con convicción."""
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return {"success": False, "error": "ANTHROPIC_API_KEY no configurada"}
-
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": "claude-opus-4-6",
-                    "max_tokens": 6000,
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-            )
-        resp.raise_for_status()
-        respuesta = resp.json()["content"][0]["text"].strip()
+        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        message = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=6000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        respuesta = message.content[0].text
 
         await db.consejo_estrategico_historial.insert_one({
             "company_id": company_id,
@@ -83,12 +69,9 @@ Responde en español. Sé directo, sin suavizar. Cada perspectiva debe defender 
 
         return {"success": True, "respuesta": respuesta}
 
-    except httpx.HTTPError as e:
-        print(f"[CONSEJO] ERROR httpx: {e}", flush=True)
+    except Exception as e:
+        print(f"[CONSEJO] ERROR: {e}", flush=True)
         return {"success": False, "error": str(e)}
-    except (KeyError, IndexError, json.JSONDecodeError) as e:
-        print(f"[CONSEJO] ERROR parse: {e}", flush=True)
-        return {"success": False, "error": f"Respuesta inesperada de Claude: {str(e)}"}
 
 
 @router.get("/consejo-estrategico/historial")
