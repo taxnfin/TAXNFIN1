@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import {
@@ -28,6 +28,7 @@ import {
   Sun,
   Moon,
   BookUser,
+  Scale,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import {
@@ -38,7 +39,7 @@ import {
 } from './ui/dropdown-menu';
 import NotificationBell from './NotificationBell';
 
-// ─── Theme tokens ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Theme tokens â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const DARK = {
   bg:        '#0A1628',
   sidebar:   '#0D1B2A',
@@ -75,7 +76,7 @@ const LIGHT = {
   main:      '#F5F7FA',
 };
 
-// ─── Nav structure ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Nav structure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const buildNav = (isAdmin) => [
   {
     section: 'Principal',
@@ -109,7 +110,7 @@ const buildNav = (isAdmin) => [
         icon: BarChart3,
         sub: [
           { name: 'Reporte Board',        href: '/board-report' },
-          { name: 'Métricas financieras', href: '/financial-metrics' },
+          { name: 'MÃ©tricas financieras', href: '/financial-metrics' },
           { name: 'Decisiones / Alertas', href: '/treasury' },
         ],
       },
@@ -120,12 +121,19 @@ const buildNav = (isAdmin) => [
         badge: 'PRO',
         badgeStyle: 'pro',
       },
+      {
+        name: 'Consejo Estratégico',
+        href: '/consejo-estrategico',
+        icon: Scale,
+        badge: 'IA',
+        badgeStyle: 'pro',
+      },
     ],
   },
   {
     section: 'Financiamientos',
     items: [
-      { name: 'Simulador de Crédito', href: '/financiamiento', icon: DollarSign },
+      { name: 'Simulador de CrÃ©dito', href: '/financiamiento', icon: DollarSign },
     ],
   },
   {
@@ -138,11 +146,11 @@ const buildNav = (isAdmin) => [
         badgeStyle: 'mx',
         sub: [
           { name: 'CFDI',                               href: '/cfdi' },
-          { name: 'Integraciones (Alegra · Contalink)', href: '/integrations' },
+          { name: 'Integraciones (Alegra Â· Contalink)', href: '/integrations' },
           { name: 'Estados Financieros',                href: '/contalink-financial' },
         ],
       },
-      { name: 'Catálogo', href: '/catalogs', icon: BookUser },
+      { name: 'CatÃ¡logo', href: '/catalogs', icon: BookUser },
     ],
   },
   ...(isAdmin
@@ -153,14 +161,14 @@ const buildNav = (isAdmin) => [
     : []),
 ];
 
-// ─── Badge styles ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Badge styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const BADGE = {
   mx:  { bg: 'rgba(96,165,250,0.12)',  color: '#60A5FA' },
   pro: { bg: 'rgba(167,139,250,0.12)', color: '#A78BFA' },
   v2:  { bg: 'rgba(255,179,71,0.12)',  color: '#FFB347' },
 };
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange }) => {
   const location = useLocation();
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -208,7 +216,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
       ? isActive(item.href)
       : item.sub?.some((s) => isActive(s.href));
 
-  // ── Styles (inline, theme-aware) ──────────────────────────────────────────
+  // â”€â”€ Styles (inline, theme-aware) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const S = {
     shell: {
       display: 'flex', height: '100vh',
@@ -281,11 +289,11 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
     main: { flex: 1, overflowY: 'auto', background: t.main, transition: 'background 0.25s' },
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
     <div style={S.shell} data-testid="main-layout">
 
-      {/* ── SIDEBAR ── */}
+      {/* â”€â”€ SIDEBAR â”€â”€ */}
       <aside style={S.sidebar} data-testid="sidebar">
 
         {/* Header */}
@@ -457,7 +465,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
             </div>
             <div>
               <div style={{ fontSize: 12, fontWeight: 500, color: t.text1 }}>{user?.nombre}</div>
-              <div style={{ fontSize: 10, color: t.text3 }}>{user?.role} · MXN</div>
+              <div style={{ fontSize: 10, color: t.text3 }}>{user?.role} Â· MXN</div>
             </div>
           </div>
 
@@ -492,7 +500,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             <Tags size={13} color={t.text3} />
-            <span>Categorías &amp; Catálogos</span>
+            <span>CategorÃ­as &amp; CatÃ¡logos</span>
           </Link>
 
           {isAdmin && (
@@ -511,7 +519,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
             >
               <ScrollText size={13} color={t.text3} />
-              <span>Bitácora</span>
+              <span>BitÃ¡cora</span>
             </Link>
           )}
 
@@ -523,12 +531,12 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             <LogOut size={13} />
-            <span>Cerrar sesión</span>
+            <span>Cerrar sesiÃ³n</span>
           </div>
         </div>
       </aside>
 
-      {/* ── MAIN ── */}
+      {/* â”€â”€ MAIN â”€â”€ */}
       <main style={S.main}>
         <Outlet />
       </main>
