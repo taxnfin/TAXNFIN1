@@ -1,7 +1,7 @@
 ﻿import httpx
 import os
 
-BELVO_BASE_URL = os.getenv("BELVO_BASE_URL", "https://sandbox.belvo.com")
+BELVO_BASE_URL = os.getenv("BELVO_BASE_URL", "https://api.belvo.com")
 BELVO_SECRET_ID = os.getenv("BELVO_SECRET_ID", "")
 BELVO_SECRET_PASSWORD = os.getenv("BELVO_SECRET_PASSWORD", "")
 
@@ -25,7 +25,7 @@ class BelvoClient:
                 auth=self.auth,
                 headers=self.headers,
                 json={
-                    "institution": "sat_mx_fiscal_mx",
+                    "institution": "sat_mx_fiscal",
                     "username": rfc,
                     "password": ciec,
                     "fetch_resources": ["TAX_STATUS", "TAX_COMPLIANCE_STATUS"],
