@@ -272,7 +272,7 @@ async def toggle_company_hold(
     current_user: Dict = Depends(get_current_user)
 ):
     """Suspend or reactivate a company — super-admin only"""
-    if current_user.get('role') != 'admin' or current_user.get('email') != 'kvillafuerte@taxnfin.com':
+    if current_user.get('role') != 'admin' or current_user.get('email') != 'hola@taxnfin.com':
         raise HTTPException(status_code=403, detail="Solo el administrador puede suspender empresas")
 
     body = await request.json()
@@ -301,7 +301,7 @@ async def delete_company(
     current_user: Dict = Depends(get_current_user)
 ):
     """Delete a company and all its data — super-admin only"""
-    if current_user.get('role') != 'admin' or current_user.get('email') != 'kvillafuerte@taxnfin.com':
+    if current_user.get('role') != 'admin' or current_user.get('email') != 'hola@taxnfin.com':
         raise HTTPException(status_code=403, detail="Solo el administrador puede eliminar empresas")
 
     if company_id == current_user.get('company_id'):

@@ -32,7 +32,7 @@ import api from './api/axios';
 import './App.css';
 
 // Protege rutas solo para admin — doble candado: rol + email
-const PLATFORM_ADMIN_EMAIL = 'kvillafuerte@taxnfin.com';
+const PLATFORM_ADMIN_EMAIL = 'hola@taxnfin.com';
 const AdminRoute = ({ user, children }) => {
   if (!user || user.role !== 'admin' || user.email !== PLATFORM_ADMIN_EMAIL) {
     return <Navigate to="/" replace />;

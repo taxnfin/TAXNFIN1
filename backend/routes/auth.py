@@ -147,7 +147,7 @@ async def register(user_data: UserCreate):
         }
         await db.companies.insert_one(company_doc)
         # First user of a brand-new company becomes CFO (not admin)
-        # Only platform admin (kvillafuerte@taxnfin.com) should have admin role
+        # Only platform admin (hola@taxnfin.com) should have admin role
         role = UserRole.CFO
     
     password_hash = hash_password(user_data.password)

@@ -1,6 +1,6 @@
 """
 TaxnFin — Panel de Administración de Plataforma
-Solo accesible para kvillafuerte@taxnfin.com (role=admin).
+Solo accesible para hola@taxnfin.com (role=admin).
 No expone ningún dato financiero de los clientes.
 """
 from datetime import datetime, timezone
@@ -12,7 +12,7 @@ from core.database import db
 
 router = APIRouter(prefix="/admin", tags=["Admin Plataforma"])
 
-PLATFORM_ADMIN_EMAIL = "kvillafuerte@taxnfin.com"
+PLATFORM_ADMIN_EMAIL = "hola@taxnfin.com"
 
 PLAN_PRICES_MXN = {
     "STARTER": 999,

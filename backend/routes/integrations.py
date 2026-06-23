@@ -282,7 +282,7 @@ async def disconnect_integration(integration_id: str, current_user: Dict = Depen
 
 # ===== ADMIN DASHBOARD =====
 
-PLATFORM_ADMIN_EMAIL = 'kvillafuerte@taxnfin.com'
+PLATFORM_ADMIN_EMAIL = 'hola@taxnfin.com'
 
 @router.get("/admin/all-companies")
 async def admin_get_all_companies(current_user: Dict = Depends(get_current_user)):

@@ -68,7 +68,7 @@ async def get_active_company_id(request: Request, current_user: Dict = Depends(g
     Falls back to user's primary company_id.
     """
     # Platform admin must not access client financial data
-    _PLATFORM_ADMIN = 'kvillafuerte@taxnfin.com'
+    _PLATFORM_ADMIN = 'hola@taxnfin.com'
     if current_user.get('email') == _PLATFORM_ADMIN:
         raise HTTPException(
             status_code=403,
@@ -86,7 +86,7 @@ async def get_active_company_id(request: Request, current_user: Dict = Depends(g
         if company:
             company_id = company['id']
 
-    PLATFORM_ADMIN_EMAIL = 'kvillafuerte@taxnfin.com'
+    PLATFORM_ADMIN_EMAIL = 'hola@taxnfin.com'
 
     if company_id:
         user_company_ids = current_user.get('company_ids', [current_user['company_id']])

@@ -13,7 +13,7 @@ from core.database import db
 
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
 
-PLATFORM_ADMIN_EMAIL = "kvillafuerte@taxnfin.com"
+PLATFORM_ADMIN_EMAIL = "hola@taxnfin.com"
 ASSIGNABLE_ROLES     = {"cfo", "contador", "viewer"}
 
 
