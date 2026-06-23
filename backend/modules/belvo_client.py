@@ -1,6 +1,5 @@
 import httpx
 import os
-import base64
 
 BELVO_BASE_URL = os.getenv("BELVO_BASE_URL", "https://sandbox.belvo.com")
 BELVO_SECRET_ID = os.getenv("BELVO_SECRET_ID", "")
@@ -13,10 +12,8 @@ class BelvoClient:
         print(f"[BELVO] SECRET_PASSWORD primeros 8 chars: {os.getenv('BELVO_SECRET_PASSWORD', 'VACIO')[:8]}", flush=True)
         print(f"[BELVO] BASE_URL: {os.getenv('BELVO_BASE_URL', 'VACIO')}", flush=True)
         self.base_url = BELVO_BASE_URL
-        credentials = f"{BELVO_SECRET_ID}:{BELVO_SECRET_PASSWORD}"
-        encoded = base64.b64encode(credentials.encode()).decode()
+        self.auth = (BELVO_SECRET_ID, BELVO_SECRET_PASSWORD)
         self.headers = {
-            "Authorization": f"Basic {encoded}",
             "Content-Type": "application/json",
         }
 
@@ -25,6 +22,7 @@ class BelvoClient:
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.post(
                 f"{self.base_url}/api/links/",
+                auth=self.auth,
                 headers=self.headers,
                 json={
                     "institution": "sat_mx_fiscal",
@@ -43,6 +41,7 @@ class BelvoClient:
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.get(
                 f"{self.base_url}/api/tax-status/?link={link_id}",
+                auth=self.auth,
                 headers=self.headers,
             )
             print(f"[BELVO] tax_status status: {r.status_code}", flush=True)
@@ -55,6 +54,7 @@ class BelvoClient:
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.get(
                 f"{self.base_url}/api/tax-compliance-status/?link={link_id}",
+                auth=self.auth,
                 headers=self.headers,
             )
             print(f"[BELVO] tax_compliance status: {r.status_code}", flush=True)
@@ -67,6 +67,7 @@ class BelvoClient:
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.get(
                 f"{self.base_url}/api/tax-status/?link={link_id}",
+                auth=self.auth,
                 headers={**self.headers, "Accept": "application/pdf"},
             )
             r.raise_for_status()
