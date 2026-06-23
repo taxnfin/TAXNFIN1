@@ -203,8 +203,14 @@ export default function ConsejoEstrategico() {
       const MAX_Y   = 260;
 
       // ── Portada ────────────────────────────────────────────────
-      doc.setFillColor(...C_NAVY);
+      // Fondo blanco
+      doc.setFillColor(255, 255, 255);
       doc.rect(0, 0, PW, PH, 'F');
+
+      // Línea dorada superior
+      doc.setDrawColor(...C_GOLD);
+      doc.setLineWidth(1.5);
+      doc.line(ML, 20, PW - MR, 20);
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(14);
@@ -213,7 +219,7 @@ export default function ConsejoEstrategico() {
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(22);
-      doc.setTextColor(...C_WHITE);
+      doc.setTextColor(...C_NAVY);
       doc.text('Analisis Estrategico - TaxnFin', PW / 2, 100, { align: 'center' });
 
       doc.setDrawColor(...C_GOLD);
@@ -222,24 +228,25 @@ export default function ConsejoEstrategico() {
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
-      doc.setTextColor(200, 200, 200);
+      doc.setTextColor(...C_GRIS);
       doc.text('Pregunta analizada:', PW / 2, 130, { align: 'center' });
 
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(11);
-      doc.setTextColor(...C_WHITE);
+      doc.setTextColor(40, 40, 40);
       const qLines = doc.splitTextToSize(`"${pregunta}"`, UW - 20);
       doc.text(qLines, PW / 2, 140, { align: 'center' });
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
-      doc.setTextColor(180, 180, 180);
+      doc.setTextColor(...C_GRIS);
       const fechaStr = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
       doc.text(fechaStr, PW / 2, 200, { align: 'center' });
 
+      // Línea dorada inferior
       doc.setDrawColor(...C_GOLD);
-      doc.setLineWidth(0.5);
-      doc.line(ML + 20, 260, PW - MR - 20, 260);
+      doc.setLineWidth(1.5);
+      doc.line(ML, 260, PW - MR, 260);
 
       // ── Páginas de contenido ───────────────────────────────────
       doc.addPage();
