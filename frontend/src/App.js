@@ -10,7 +10,7 @@ import BankStatementsModule from './pages/BankStatementsModule';
 import PaymentsModule from './pages/PaymentsModule';
 import Catalogs from './pages/Catalogs';
 import Reports from './pages/Reports';
-import AdminDashboard from './pages/AdminDashboard';
+import AdminPanel from './pages/AdminPanel';
 import AuditLogsPage from './pages/AuditLogsPage';
 import AdvancedFeatures from './pages/AdvancedFeatures';
 import FXRatesModule from './pages/FXRatesModule';
@@ -172,7 +172,7 @@ function App() {
             <Route path="financial-metrics" element={<FinancialMetrics />} />
             <Route path="diot" element={<DIOTModule />} />
             <Route path="advanced" element={<AdvancedFeatures />} />
-            <Route path="admin" element={<AdminRoute user={user}><AdminDashboard /></AdminRoute>} />
+            <Route path="admin" element={<AdminRoute user={user}><AdminPanel /></AdminRoute>} />
             <Route path="audit-logs" element={<AuditLogsPage />} />
             <Route path="integrations" element={<Integrations />} />
             <Route path="contalink-financial" element={<ContalinkFinancialImport />} />

@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
@@ -30,6 +30,7 @@ import {
   BookUser,
   Scale,
   Users,
+  Shield,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import {
@@ -163,16 +164,17 @@ const buildNav = (isAdmin, isCFO) => [
   ...(isAdmin
     ? [{
         section: '',
-        items: [{ name: 'Admin', href: '/admin', icon: Settings }],
+        items: [{ name: 'Panel Admin', href: '/admin', icon: Shield, badge: 'ADMIN', badgeStyle: 'admin' }],
       }]
     : []),
 ];
 
 // â”€â”€â”€ Badge styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const BADGE = {
-  mx:  { bg: 'rgba(96,165,250,0.12)',  color: '#60A5FA' },
-  pro: { bg: 'rgba(167,139,250,0.12)', color: '#A78BFA' },
-  v2:  { bg: 'rgba(255,179,71,0.12)',  color: '#FFB347' },
+  mx:    { bg: 'rgba(96,165,250,0.12)',  color: '#60A5FA' },
+  pro:   { bg: 'rgba(167,139,250,0.12)', color: '#A78BFA' },
+  v2:    { bg: 'rgba(255,179,71,0.12)',  color: '#FFB347' },
+  admin: { bg: 'rgba(239,68,68,0.12)',   color: '#EF4444' },
 };
 
 // â”€â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -181,6 +183,7 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = storedUser?.role === 'admin';
   const isCFO = storedUser?.role === 'cfo' || isAdmin;
+  const navigate = useNavigate();
 
   // Theme
   const [dark, setDark] = useState(() => {
@@ -192,6 +195,13 @@ const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange })
   useEffect(() => {
     localStorage.setItem('taxnfin-theme', dark ? 'dark' : 'light');
   }, [dark]);
+
+  // Platform admin cannot access financial routes — redirect to /admin
+  useEffect(() => {
+    if (isAdmin && location.pathname !== '/admin') {
+      navigate('/admin', { replace: true });
+    }
+  }, [isAdmin, location.pathname, navigate]);
 
   // Open sections (collapsible groups)
   const nav = buildNav(isAdmin, isCFO);

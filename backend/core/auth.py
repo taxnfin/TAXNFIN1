@@ -67,6 +67,14 @@ async def get_active_company_id(request: Request, current_user: Dict = Depends(g
     Verifies the user has access to that company.
     Falls back to user's primary company_id.
     """
+    # Platform admin must not access client financial data
+    _PLATFORM_ADMIN = 'kvillafuerte@taxnfin.com'
+    if current_user.get('email') == _PLATFORM_ADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail="El administrador de plataforma no tiene acceso a datos financieros de los clientes"
+        )
+
     company_id = request.headers.get('X-Company-ID') or request.headers.get('x-company-id')
 
     # Resolve 8-char UUID prefix to full UUID
