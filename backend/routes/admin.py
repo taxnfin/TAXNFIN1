@@ -3,11 +3,12 @@ TaxnFin — Panel de Administración de Plataforma
 Solo accesible para hola@taxnfin.com (role=admin).
 No expone ningún dato financiero de los clientes.
 """
+import uuid
 from datetime import datetime, timezone
 from typing import Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from core.auth import get_current_user
+from core.auth import get_current_user, hash_password
 from core.database import db
 
 router = APIRouter(prefix="/admin", tags=["Admin Plataforma"])
@@ -249,3 +250,44 @@ async def eliminar_despacho(
     )
 
     return {"success": True}
+
+
+# ── POST /admin/setup-platform-admin (one-time, no auth) ──────────────────────
+
+@router.post("/setup-platform-admin")
+async def setup_platform_admin():
+    """
+    One-time bootstrap endpoint — creates hola@taxnfin.com with role=admin.
+    Returns 409 if the user already exists, so it is safe to call multiple times.
+    Remove or disable this endpoint after first use.
+    """
+    existing = await db.users.find_one({"email": PLATFORM_ADMIN_EMAIL}, {"_id": 0, "id": 1})
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"El administrador {PLATFORM_ADMIN_EMAIL} ya existe (id={existing['id']}). Endpoint desactivado.",
+        )
+
+    TEMP_PASSWORD = "TaxnFin2026!"
+    user_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+
+    await db.users.insert_one({
+        "id":                 user_id,
+        "email":              PLATFORM_ADMIN_EMAIL,
+        "nombre":             "TaxnFin Admin",
+        "password_hash":      hash_password(TEMP_PASSWORD),
+        "role":               "admin",
+        "company_id":         user_id,
+        "company_ids":        [],
+        "empresas_asignadas": [],
+        "activo":             True,
+        "created_at":         now,
+    })
+
+    return {
+        "success":  True,
+        "message":  "Admin creado correctamente. Cambia la contraseña después del primer login.",
+        "email":    PLATFORM_ADMIN_EMAIL,
+        "password": TEMP_PASSWORD,
+    }
