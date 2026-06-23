@@ -85,3 +85,13 @@ async def consejo_historial(
         {"_id": 0},
     ).sort("created_at", -1).limit(10).to_list(10)
     return {"historial": historial}
+
+
+@router.delete("/consejo-estrategico/historial")
+async def borrar_historial(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    company_id = await get_active_company_id(request, current_user)
+    result = await db.consejo_estrategico_historial.delete_many({"company_id": company_id})
+    return {"deleted": result.deleted_count}

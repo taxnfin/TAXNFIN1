@@ -163,6 +163,16 @@ export default function ConsejoEstrategico() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  async function handleBorrarHistorial() {
+    if (!window.confirm('¿Borrar todo el historial de consultas?')) return;
+    try {
+      await api.delete('/ia/consejo-estrategico/historial');
+      setHistorial([]);
+    } catch {
+      // silently ignore
+    }
+  }
+
   async function handlePDF() {
     if (!resultadoRef.current) return;
     setGeneratingPDF(true);
@@ -452,7 +462,18 @@ export default function ConsejoEstrategico() {
             }}
           >
             <span>Historial de consultas ({historial.length})</span>
-            <span style={{ color: '#94A3B8' }}>{historialOpen ? '▲' : '▼'}</span>
+            <div className="flex items-center gap-2">
+              {historial.length > 0 && (
+                <span
+                  role="button"
+                  onClick={e => { e.stopPropagation(); handleBorrarHistorial(); }}
+                  style={{ fontSize: '11px', color: '#EF4444', cursor: 'pointer', padding: '2px 8px', border: '1px solid #FCA5A5', borderRadius: '4px' }}
+                >
+                  Borrar todo
+                </span>
+              )}
+              <span style={{ color: '#94A3B8' }}>{historialOpen ? '▲' : '▼'}</span>
+            </div>
           </button>
           {historialOpen && (
             <div style={{ borderTop: '1px solid #E2E8F0', padding: '12px', background: PAGE_BG }} className="space-y-2">
