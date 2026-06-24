@@ -463,17 +463,18 @@ async def sync_alegra_invoices(
             saldo_real = round(total - total_paid, 2)
             balance_final = min(balance, saldo_real) if balance > saldo_real else balance
             
-            # Determine status
+            # Determine status — alegra_status takes priority over balance arithmetic
             inv_status = invoice.get('status', 'open')
             inv_cobrado = round(total - balance, 2)
-            if inv_status in ('closed', 'paid') or balance <= 0:
+            if inv_status in ('closed', 'paid', 'void') or balance <= 0.01:
                 estado_conciliacion = 'conciliado'
-                # Si Alegra marca como paid/closed pero balance no refleja el pago, asumir cobro total
                 if inv_cobrado <= 0 and total > 0:
                     inv_cobrado = round(total, 2)
-            elif inv_cobrado > 0:
+            elif 0.01 < balance < total - 0.01:
+                # open, partially paid
                 estado_conciliacion = 'parcial'
             else:
+                # open, nothing paid yet
                 estado_conciliacion = 'pendiente'
             
             # Parse dates
@@ -1404,17 +1405,59 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 if past_range or len(batch) < 30:
                     break
                 start += 30
+            # Bug 1 fix: also fetch ALL open invoices without date filter to
+            # capture invoices created before the date_from window.
+            if date_from or date_to:
+                open_start = 0
+                open_pages = 0
+                while open_pages < 20:
+                    open_pages += 1
+                    open_batch = await alegra_request(
+                        'GET', 'invoices', email, token,
+                        params={'start': open_start, 'limit': 30,
+                                'status': 'open', 'order_field': 'id',
+                                'order_direction': 'ASC'}
+                    )
+                    await asyncio.sleep(0.3)
+                    if not open_batch or not isinstance(open_batch, list):
+                        break
+                    for inv in open_batch:
+                        if not any(x.get('id') == inv.get('id') for x in all_invoices):
+                            all_invoices.append(inv)
+                    if len(open_batch) < 30:
+                        break
+                    open_start += 30
+
             created = updated = 0
             for inv in all_invoices:
                 alegra_id = str(inv.get('id'))
                 inv_curr = inv.get('currency', {}) if isinstance(inv.get('currency'), dict) else {}
                 inv_tc = float(inv_curr.get('exchangeRate') or inv.get('exchangeRate') or 1)
                 inv_currency_code = inv_curr.get('code', 'MXN') or 'MXN'
+
+                # Bug 2 fix: compute estado_conciliacion correctly
+                _status  = inv.get('status', 'open')
+                _total   = float(inv.get('total', 0) or 0)
+                _balance = float(inv.get('balance', 0) or 0)
+                _cobrado = round(_total - _balance, 2)
+                if _status in ('closed', 'paid', 'void') or _balance <= 0.01:
+                    _estado = 'conciliado'
+                    if _cobrado <= 0 and _total > 0:
+                        _cobrado = _total
+                elif 0.01 < _balance < _total - 0.01:
+                    _estado = 'parcial'
+                else:
+                    _estado = 'pendiente'
+
                 doc = {**inv, 'company_id': company_id, 'alegra_id': alegra_id,
                        'source': 'alegra', 'tipo_cfdi': 'ingreso',
                        'tipo_cambio': inv_tc,
                        'moneda': inv_currency_code,
-                       'total_mxn': float(inv.get('total', 0) or 0) * inv_tc,
+                       'total_mxn': _total * inv_tc,
+                       'estado_conciliacion': _estado,
+                       'alegra_status': _status,
+                       'saldo_pendiente': round(_balance, 2),
+                       'monto_cobrado': round(_cobrado, 2),
                        'synced_at': datetime.now(timezone.utc).isoformat()}
                 res = await db.cfdis.update_one(
                     {'company_id': company_id, 'alegra_id': alegra_id},
@@ -2190,6 +2233,62 @@ async def get_alegra_cxc(
         'facturas':       facturas,
         'source':         'alegra_sync',
         'fetched_at':     datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.post("/fix-conciliacion-status")
+async def fix_conciliacion_status(
+    request: Request,
+    company_id: str = Query(None),
+    current_user: Dict = Depends(get_current_user),
+):
+    """Recorre facturas Alegra en MongoDB y corrige estado_conciliacion según alegra_status y balance."""
+    if not company_id:
+        company_id = await get_active_company_id(request, current_user)
+
+    # Resolve prefix to full UUID
+    company_doc = await db.companies.find_one(
+        {'id': {'$regex': f'^{company_id}'}}, {'_id': 0, 'id': 1}
+    )
+    if company_doc:
+        company_id = company_doc['id']
+
+    docs = await db.cfdis.find(
+        {'company_id': company_id, 'source': 'alegra', 'tipo_cfdi': 'ingreso'},
+        {'_id': 1, 'alegra_id': 1, 'alegra_status': 1, 'total': 1,
+         'saldo_pendiente': 1, 'monto_cobrado': 1, 'estado_conciliacion': 1}
+    ).to_list(5000)
+
+    fixed = 0
+    skipped = 0
+    for doc in docs:
+        _status  = doc.get('alegra_status') or 'open'
+        _total   = float(doc.get('total', 0) or 0)
+        _balance = float(doc.get('saldo_pendiente', 0) or 0)
+        _cobrado = float(doc.get('monto_cobrado', 0) or 0)
+
+        if _status in ('closed', 'paid', 'void') or _balance <= 0.01:
+            new_estado = 'conciliado'
+        elif 0.01 < _balance < _total - 0.01:
+            new_estado = 'parcial'
+        else:
+            new_estado = 'pendiente'
+
+        if new_estado != doc.get('estado_conciliacion'):
+            await db.cfdis.update_one(
+                {'_id': doc['_id']},
+                {'$set': {'estado_conciliacion': new_estado,
+                          'updated_at': datetime.now(timezone.utc).isoformat()}}
+            )
+            fixed += 1
+        else:
+            skipped += 1
+
+    return {
+        'company_id': company_id,
+        'total_revisadas': len(docs),
+        'corregidas': fixed,
+        'sin_cambio': skipped,
     }
 
 
