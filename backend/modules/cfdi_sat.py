@@ -362,22 +362,34 @@ class SATPortalClient:
 
     # ── Login ─────────────────────────────────────────────────────────────
 
-    def _wait_for_portal(self, timeout=30):
+    def _wait_for_portal(self, timeout=60):
         """Poll la URL actual hasta detectar éxito o agotar timeout.
         Retorna (True, url) si llegó al portal CFDI, (False, url) si no."""
         import time
-        success_keys  = ['consulta', 'receptor', 'emisor', 'contribuyente', 'portalcfdi']
-        login_keys    = ['cfdiau', 'nidp', 'wsfed', 'credential']
+        success_keys = [
+            'portalcfdi.facturaelectronica',  # match más específico primero
+            'consulta', 'receptor', 'emisor', 'contribuyente', 'portalcfdi',
+        ]
+        login_keys = ['cfdiau', 'nidp', 'wsfed', 'credential']
         start = time.time()
         while time.time() - start < timeout:
             url = self.driver.current_url.lower()
-            logger.info(f"[SAT] Polling login... URL={self.driver.current_url[:80]}")
+            try:
+                title = self.driver.title[:50]
+            except Exception:
+                title = '(error leyendo título)'
+            logger.info(f"[SAT] Polling... URL={self.driver.current_url[:80]} | Title={title}")
             if any(s in url for s in success_keys):
                 return True, url
             if any(s in url for s in login_keys) or 'sat.gob.mx' in url:
                 time.sleep(2)
                 continue
             time.sleep(2)
+        # Timeout — loggear page source para diagnóstico
+        try:
+            logger.info(f"[SAT] Page source tras timeout: {self.driver.page_source[:500]}")
+        except Exception:
+            pass
         return False, self.driver.current_url
 
     async def login(self, rfc: str, ciec: str) -> Dict:
@@ -559,7 +571,7 @@ class SATPortalClient:
 
                         # Si sigue en cfdiau, refresh único
                         if any(s in url for s in ['cfdiau', 'nidp', 'wsfed']):
-                            logger.info("[SAT] Sigue en cfdiau — intentando refresh")
+                            logger.info(f"[SAT] Haciendo refresh... URL actual={self.driver.current_url[:80]}")
                             self.driver.refresh()
                             await asyncio.sleep(10)
                             reached_r, _ur = self._wait_for_portal(timeout=10)
@@ -620,7 +632,7 @@ class SATPortalClient:
                 return {'success': True, 'message': f'Autenticación exitosa con SAT. RFC: {rfc}', 'rfc': rfc}
 
             if any(s in url for s in ['cfdiau', 'nidp', 'wsfed']):
-                logger.info("[SAT] Sigue en cfdiau tras polling — intentando refresh final")
+                logger.info(f"[SAT] Haciendo refresh... URL actual={self.driver.current_url[:80]}")
                 self.driver.refresh()
                 import time; time.sleep(10)
                 reached_r2, _ur2 = self._wait_for_portal(timeout=10)
