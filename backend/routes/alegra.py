@@ -1578,31 +1578,11 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 bill_curr = bill.get('currency', {}) if isinstance(bill.get('currency'), dict) else {}
                 bill_tc = float(bill_curr.get('exchangeRate') or bill.get('exchangeRate') or 1)
                 bill_currency_code = bill_curr.get('code', 'MXN') or 'MXN'
-
-                # Compute estado_conciliacion for bills (same logic as invoices)
-                _bstatus     = bill.get('status', 'open')
-                _btotal      = float(bill.get('total', 0) or 0)
-                _btotal_paid = float(bill.get('totalPaid', 0) or 0)
-                _bbalance    = float(bill.get('balance') or 0) or round(_btotal - _btotal_paid, 2)
-                _bpagado     = round(_btotal - _bbalance, 2)
-                if _bstatus in ('closed', 'paid', 'void') or _bbalance <= 0.01:
-                    _bestado = 'conciliado'
-                    if _bpagado <= 0 and _btotal > 0:
-                        _bpagado = _btotal
-                elif 0.01 < _bbalance < _btotal - 0.01:
-                    _bestado = 'parcial'
-                else:
-                    _bestado = 'pendiente'
-
                 doc = {**bill, 'company_id': company_id, 'alegra_id': alegra_id,
                        'source': 'alegra', 'tipo_cfdi': 'egreso',
                        'tipo_cambio': bill_tc,
                        'moneda': bill_currency_code,
-                       'total_mxn': _btotal * bill_tc,
-                       'estado_conciliacion': _bestado,
-                       'alegra_status': _bstatus,
-                       'saldo_pendiente': round(_bbalance, 2),
-                       'monto_pagado': round(_bpagado, 2),
+                       'total_mxn': float(bill.get('total', 0) or 0) * bill_tc,
                        'synced_at': datetime.now(timezone.utc).isoformat()}
                 res = await db.cfdis.update_one(
                     {'company_id': company_id, 'alegra_id': alegra_id},
@@ -2218,7 +2198,6 @@ async def get_alegra_cxc(
         'tipo_cfdi':          'ingreso',
         'estatus':            {'$ne': 'cancelado'},
         'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
-        'alegra_status':      {'$nin': ['closed', 'paid', 'void']},
     }, {'_id': 0}).to_list(5000)
     logger.info(f"[CxC] raw_count={len(invoices)}")
 
@@ -2429,75 +2408,6 @@ async def fix_conciliacion_status(
     }
 
 
-@router.post("/recalcular-bills")
-async def recalcular_bills(
-    request: Request,
-    company_id: str = Query(None),
-    current_user: Dict = Depends(get_current_user),
-):
-    """Recalcula estado_conciliacion y monto_pagado para todas las bills
-    Alegra usando la misma lógica de balance que invoices."""
-    if not company_id:
-        company_id = await get_active_company_id(request, current_user)
-
-    company_doc = await db.companies.find_one(
-        {'id': {'$regex': f'^{company_id}'}}, {'_id': 0, 'id': 1}
-    )
-    if company_doc:
-        company_id = company_doc['id']
-
-    docs = await db.cfdis.find(
-        {'company_id': company_id, 'source': 'alegra', 'tipo_cfdi': 'egreso'},
-        {'_id': 1, 'alegra_status': 1, 'total': 1, 'saldo_pendiente': 1,
-         'monto_pagado': 1, 'estado_conciliacion': 1}
-    ).to_list(5000)
-
-    corregidas = 0
-    sin_cambio = 0
-
-    for doc in docs:
-        _bstatus  = doc.get('alegra_status') or 'open'
-        _btotal   = float(doc.get('total', 0) or 0)
-        _bpagado  = float(doc.get('monto_pagado', 0) or 0)
-        _bsaldo   = float(doc.get('saldo_pendiente', 0) or 0)
-
-        # Recalculate: if saldo is 0 but status is open, saldo = total - pagado
-        new_saldo = _bsaldo if _bsaldo > 0.01 else round(_btotal - _bpagado, 2)
-
-        if _bstatus in ('closed', 'paid', 'void') or new_saldo <= 0.01:
-            new_estado = 'conciliado'
-            if _bpagado <= 0 and _btotal > 0:
-                _bpagado = _btotal
-            new_saldo = 0.0
-        elif 0.01 < new_saldo < _btotal - 0.01:
-            new_estado = 'parcial'
-        else:
-            new_estado = 'pendiente'
-
-        old_estado = doc.get('estado_conciliacion')
-        old_saldo  = doc.get('saldo_pendiente', 0)
-        if new_estado != old_estado or abs(float(old_saldo or 0) - new_saldo) > 0.01:
-            await db.cfdis.update_one(
-                {'_id': doc['_id']},
-                {'$set': {
-                    'estado_conciliacion': new_estado,
-                    'saldo_pendiente': round(new_saldo, 2),
-                    'monto_pagado': round(_bpagado, 2),
-                    'updated_at': datetime.now(timezone.utc).isoformat(),
-                }}
-            )
-            corregidas += 1
-        else:
-            sin_cambio += 1
-
-    return {
-        'company_id': company_id,
-        'total': len(docs),
-        'corregidas': corregidas,
-        'sin_cambio': sin_cambio,
-    }
-
-
 @router.get("/cxp")
 async def get_alegra_cxp(
     request: Request,
@@ -2518,7 +2428,6 @@ async def get_alegra_cxp(
         'tipo_cfdi':          'egreso',
         'estatus':            {'$ne': 'cancelado'},
         'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
-        'alegra_status':      {'$nin': ['closed', 'paid', 'void']},
     }, {'_id': 0}).to_list(5000)
     logger.info(f"[CxP] company_id={company_id} query ejecutado, results={len(bills)}")
 
@@ -2529,9 +2438,7 @@ async def get_alegra_cxp(
     for bill in bills:
         total_bill = float(bill.get('total', 0) or 0)
         pagado     = float(bill.get('monto_pagado', 0) or 0)
-        # Prefer stored saldo_pendiente; fallback to total - monto_pagado
-        stored_saldo = bill.get('saldo_pendiente')
-        saldo = float(stored_saldo) if stored_saldo is not None else round(total_bill - pagado, 2)
+        saldo      = round(total_bill - pagado, 2)
         if saldo < 0.01:
             continue
 
