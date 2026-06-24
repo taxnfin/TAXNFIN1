@@ -1405,28 +1405,30 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 if past_range or len(batch) < 30:
                     break
                 start += 30
-            # Bug 1 fix: also fetch ALL open invoices without date filter to
-            # capture invoices created before the date_from window.
-            if date_from or date_to:
-                open_start = 0
-                open_pages = 0
-                while open_pages < 20:
-                    open_pages += 1
-                    open_batch = await alegra_request(
-                        'GET', 'invoices', email, token,
-                        params={'start': open_start, 'limit': 30,
-                                'status': 'open', 'order_field': 'id',
-                                'order_direction': 'ASC'}
-                    )
-                    await asyncio.sleep(0.3)
-                    if not open_batch or not isinstance(open_batch, list):
-                        break
-                    for inv in open_batch:
-                        if not any(x.get('id') == inv.get('id') for x in all_invoices):
-                            all_invoices.append(inv)
-                    if len(open_batch) < 30:
-                        break
-                    open_start += 30
+            # Siempre traer TODAS las facturas open sin filtro de fechas
+            # para garantizar que se sincronizan aunque sean anteriores al date_from.
+            open_ids = {str(inv.get('id')) for inv in all_invoices}
+            open_start = 0
+            open_pages = 0
+            while open_pages < 50:
+                open_pages += 1
+                open_batch = await alegra_request(
+                    'GET', 'invoices', email, token,
+                    params={'start': open_start, 'limit': 30,
+                            'status': 'open', 'order_field': 'id',
+                            'order_direction': 'ASC'}
+                )
+                await asyncio.sleep(0.3)
+                if not open_batch or not isinstance(open_batch, list):
+                    break
+                for inv in open_batch:
+                    if str(inv.get('id')) not in open_ids:
+                        all_invoices.append(inv)
+                        open_ids.add(str(inv.get('id')))
+                if len(open_batch) < 30:
+                    break
+                open_start += 30
+            logger.info(f"[Alegra] Total invoices tras segundo pase open: {len(all_invoices)}")
 
             created = updated = 0
             for inv in all_invoices:
@@ -1507,6 +1509,35 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                                       'created_at': datetime.now(timezone.utc).isoformat()}},
                     upsert=True
                 )
+            # Auto-recalcular saldos para facturas open que quedaron con saldo=0
+            # (ocurre cuando Alegra devuelve balance=null en la respuesta paginada)
+            try:
+                recalc_docs = await db.cfdis.find(
+                    {'company_id': company_id, 'source': 'alegra', 'tipo_cfdi': 'ingreso',
+                     'alegra_status': 'open', 'estatus': {'$ne': 'cancelado'},
+                     '$or': [{'saldo_pendiente': {'$lte': 0.01}},
+                             {'saldo_pendiente': None},
+                             {'saldo_pendiente': {'$exists': False}}]},
+                    {'_id': 1, 'total': 1, 'monto_cobrado': 1}
+                ).to_list(2000)
+                recalc_fixed = 0
+                for rdoc in recalc_docs:
+                    _rt = float(rdoc.get('total', 0) or 0)
+                    _rc = float(rdoc.get('monto_cobrado', 0) or 0)
+                    _rs = round(_rt - _rc, 2)
+                    if _rs > 0.01:
+                        _re = 'pendiente' if _rs >= _rt * 0.99 else 'parcial'
+                        await db.cfdis.update_one(
+                            {'_id': rdoc['_id']},
+                            {'$set': {'saldo_pendiente': _rs, 'estado_conciliacion': _re,
+                                      'updated_at': datetime.now(timezone.utc).isoformat()}}
+                        )
+                        recalc_fixed += 1
+                if recalc_fixed:
+                    logger.info(f"[Alegra] Auto-recalculate: corregidas {recalc_fixed} facturas open con saldo=0")
+            except Exception as re:
+                logger.error(f"[Alegra] Error en auto-recalculate saldos: {re}")
+
             results['invoices'] = {'total': len(all_invoices), 'created': created, 'updated': updated}
         except Exception as e:
             results['invoices'] = {'error': str(e)}
