@@ -111,9 +111,17 @@ async def sync_ciec_cfdis(request: Request, data: dict,
     tipo: 'emitidos' | 'recibidos' | 'ambos'
     tipo_comprobante: 'I' | 'E' | 'P' | 'N' | '' (todos)
     """
-    company_id = await get_active_company_id(request, current_user)
+    try:
+        company_id = await get_active_company_id(request, current_user)
+    except Exception:
+        logger.exception("[SYNC] Error resolviendo company_id")
+        raise
+
+    logger.info(f"[SYNC] Iniciando sync para company_id={company_id}, user={current_user.get('email')}")
+
     creds = await SATCredentialManager(db).get_credentials(company_id)
     if not creds:
+        logger.warning(f"[SYNC] CIEC no configurada para company_id={company_id}")
         return {'status': 'error', 'message': 'CIEC no configurada'}
 
     now = datetime.now(timezone.utc)
@@ -151,15 +159,25 @@ async def sync_ciec_cfdis(request: Request, data: dict,
 
     tipo_comprobante = data.get('tipo_comprobante', '')  # '' = todos
 
-    background_tasks.add_task(
-        SATSyncService(db).sync_cfdis,
-        company_id=company_id,
-        fecha_inicio=fecha_inicio,
-        fecha_fin=fecha_fin,
-        incluir_emitidos=(tipo in ('emitidos', 'ambos')),
-        incluir_recibidos=(tipo in ('recibidos', 'ambos')),
-        tipo_comprobante=tipo_comprobante,
+    logger.info(
+        f"[SYNC] Encolando background task: tipo={tipo}, "
+        f"fecha_inicio={fecha_inicio.date()}, fecha_fin={fecha_fin.date()}, "
+        f"tipo_comprobante={tipo_comprobante or 'todos'}"
     )
+
+    try:
+        background_tasks.add_task(
+            SATSyncService(db).sync_cfdis,
+            company_id=company_id,
+            fecha_inicio=fecha_inicio,
+            fecha_fin=fecha_fin,
+            incluir_emitidos=(tipo in ('emitidos', 'ambos')),
+            incluir_recibidos=(tipo in ('recibidos', 'ambos')),
+            tipo_comprobante=tipo_comprobante,
+        )
+    except Exception:
+        logger.exception("[SYNC] Error en endpoint sat/ciec/sync al encolar tarea")
+        raise
 
     return {
         'status': 'started',
