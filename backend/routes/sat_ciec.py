@@ -1,7 +1,7 @@
 """SAT CIEC — Routes: RFC + Contraseña, descarga CFDIs, Opinión, Buzón"""
 from fastapi import APIRouter, Depends, Request, BackgroundTasks
 from typing import Dict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uuid
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
@@ -120,15 +120,34 @@ async def sync_ciec_cfdis(request: Request, data: dict,
     tipo = data.get('tipo', 'ambos')
 
     try:
-        fecha_inicio = datetime.fromisoformat(data['fecha_inicio']) if data.get('fecha_inicio') \
-            else datetime(now.year, now.month, 1, tzinfo=timezone.utc)
-    except Exception:
-        fecha_inicio = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
-
-    try:
         fecha_fin = datetime.fromisoformat(data['fecha_fin']) if data.get('fecha_fin') else now
     except Exception:
         fecha_fin = now
+
+    if data.get('fecha_inicio'):
+        try:
+            fecha_inicio = datetime.fromisoformat(data['fecha_inicio'])
+        except Exception:
+            fecha_inicio = datetime(now.year - 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        # Smart default: first sync gets 2 years of history; subsequent syncs
+        # overlap 30 days with the last downloaded CFDI to avoid gaps.
+        last_cfdi = await db.cfdis.find_one(
+            {'company_id': company_id, 'source': 'sat_ciec'},
+            {'fecha_emision': 1},
+            sort=[('fecha_emision', -1)]
+        )
+        if last_cfdi and last_cfdi.get('fecha_emision'):
+            try:
+                last_date = datetime.fromisoformat(
+                    str(last_cfdi['fecha_emision']).replace('Z', '+00:00')
+                )
+                fecha_inicio = last_date - timedelta(days=30)
+            except Exception:
+                fecha_inicio = datetime(now.year - 1, 1, 1, tzinfo=timezone.utc)
+        else:
+            # Primera vez — traer desde 1 enero del año anterior
+            fecha_inicio = datetime(now.year - 1, 1, 1, tzinfo=timezone.utc)
 
     tipo_comprobante = data.get('tipo_comprobante', '')  # '' = todos
 

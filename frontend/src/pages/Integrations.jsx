@@ -12,7 +12,7 @@ const TABS = [
   { key: 'contalink', label: 'Contalink',             icon: Link2,     color: 'text-blue-700' },
 ];
 
-const CiecStatusCard = ({ data, onSync, onDelete, loading, onSyncExtras, syncingExtras, extras, onDescargarConstancia, downloadingConstancia }) => {
+const CiecStatusCard = ({ data, onSync, onSyncHistorico, onDelete, loading, onSyncExtras, syncingExtras, extras, onDescargarConstancia, downloadingConstancia }) => {
   const lastSync = data?.last_sync ? new Date(data.last_sync) : null;
   const formattedSync = lastSync
     ? lastSync.toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -30,11 +30,17 @@ const CiecStatusCard = ({ data, onSync, onDelete, loading, onSyncExtras, syncing
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={onSync} disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#10B981] text-white text-xs font-medium rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors">
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-            {loading ? 'Iniciando...' : 'Sincronizar CFDIs'}
-          </button>
+          <div className="flex flex-col items-start gap-1">
+            <button onClick={onSync} disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#10B981] text-white text-xs font-medium rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors">
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+              {loading ? 'Iniciando...' : 'Sincronizar CFDIs'}
+            </button>
+            <button onClick={onSyncHistorico} disabled={loading}
+              className="text-[10px] text-green-700 underline underline-offset-2 hover:text-green-900 disabled:opacity-40 transition-colors pl-0.5">
+              Sync histórico (desde 2023)
+            </button>
+          </div>
           <button onClick={onSyncExtras} disabled={syncingExtras || loading}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors">
             {syncingExtras ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
@@ -248,6 +254,15 @@ const Integrations = () => {
     finally { setCiecLoading(false); }
   };
 
+  const handleSyncHistorico = async () => {
+    setCiecLoading(true);
+    try {
+      await api.post('/sat/ciec/sync', { tipo: 'ambos', fecha_inicio: '2023-01-01' });
+      toast.success('Sync histórico iniciado desde 2023-01-01 — puede tardar varios minutos');
+    } catch { toast.error('Error al iniciar sync histórico'); }
+    finally { setCiecLoading(false); }
+  };
+
   const handleDescargarConstancia = async () => {
     setDownloadingConstancia(true);
     try {
@@ -424,7 +439,7 @@ const Integrations = () => {
                 </div>
               </div>
               {ciecStatus === 'configured'
-                ? <CiecStatusCard data={ciecData} onSync={handleSync} onDelete={handleDelete} loading={ciecLoading} onSyncExtras={handleSyncExtras} syncingExtras={syncingExtras} extras={ciecExtras} onDescargarConstancia={handleDescargarConstancia} downloadingConstancia={downloadingConstancia} />
+                ? <CiecStatusCard data={ciecData} onSync={handleSync} onSyncHistorico={handleSyncHistorico} onDelete={handleDelete} loading={ciecLoading} onSyncExtras={handleSyncExtras} syncingExtras={syncingExtras} extras={ciecExtras} onDescargarConstancia={handleDescargarConstancia} downloadingConstancia={downloadingConstancia} />
                 : <CiecForm onTest={handleTest} onSave={handleSave} loading={ciecLoading} />
               }
             </div>
