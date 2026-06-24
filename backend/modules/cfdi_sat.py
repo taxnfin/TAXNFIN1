@@ -632,6 +632,27 @@ class SATPortalClient:
         wait = WebDriverWait(self.driver, 15)
 
         try:
+            # ── Activar sección de fechas (radio button) ──────────────────
+            # El formulario SAT requiere seleccionar "buscar por fecha" antes
+            # de que los inputs de fecha sean accesibles en el DOM.
+            try:
+                rdo = self.driver.find_element(By.ID, 'ctl00_MainContent_RdoFechas')
+                self.driver.execute_script("arguments[0].click();", rdo)
+                await asyncio.sleep(1.5)
+                print("[SAT-DEBUG] Clic en RdoFechas exitoso", flush=True)
+            except Exception as _e:
+                print(f"[SAT-DEBUG] RdoFechas no encontrado: {_e}", flush=True)
+
+            # Dump de inputs tras activar la sección de fechas
+            try:
+                _inputs_post_rdo = [
+                    el.get_attribute('id') or el.get_attribute('name') or '(sin id)'
+                    for el in self.driver.find_elements(By.TAG_NAME, 'input')
+                ]
+                print(f"[SAT-DEBUG] Campos tras RdoFechas: {_inputs_post_rdo}", flush=True)
+            except Exception as _e:
+                print(f"[SAT-DEBUG] Error listando inputs tras RdoFechas: {_e}", flush=True)
+
             # ── Fecha Inicio ──────────────────────────────────────────────
             fi_str = fecha_inicio.strftime('%d/%m/%Y')
             ff_str = fecha_fin.strftime('%d/%m/%Y')
