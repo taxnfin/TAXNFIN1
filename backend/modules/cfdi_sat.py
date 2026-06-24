@@ -620,6 +620,14 @@ class SATPortalClient:
         print(f"[SAT-DEBUG] {_label} Título: {self.driver.title}", flush=True)
         print(f"[SAT-DEBUG] {_label} Source: {self.driver.page_source[:1000]}", flush=True)
 
+        # RFC visible en la página (útil para confirmar sesión activa)
+        try:
+            _rfc_els = self.driver.find_elements(By.XPATH, '//*[contains(text(), "RFC")]')
+            _rfc_txt = _rfc_els[0].text if _rfc_els else 'no encontrado'
+        except Exception:
+            _rfc_txt = 'error leyendo RFC'
+        print(f"[SAT-DEBUG] RFC en sesión: {_rfc_txt}", flush=True)
+
         cfdis: List[Dict] = []
         wait = WebDriverWait(self.driver, 15)
 
@@ -637,21 +645,49 @@ class SATPortalClient:
                 'txtFechaFin', 'FechaFin',
             ]
 
+            _fi_found = None
             for fid in fi_ids:
                 try:
                     el = self.driver.find_element(By.ID, fid)
                     self.driver.execute_script("arguments[0].value = arguments[1]", el, fi_str)
+                    _fi_found = fid
                     break
                 except Exception:
                     continue
+            # Fallback: cualquier input[type=text] cuyo id/name contenga 'fecha'
+            if not _fi_found:
+                try:
+                    el = self.driver.find_element(
+                        By.XPATH,
+                        "//input[@type='text' and (contains(translate(@id,'FECHA','fecha'),'fecha') or contains(translate(@name,'FECHA','fecha'),'fecha'))][1]"
+                    )
+                    self.driver.execute_script("arguments[0].value = arguments[1]", el, fi_str)
+                    _fi_found = f"fallback:{el.get_attribute('id') or el.get_attribute('name')}"
+                except Exception:
+                    pass
+            print(f"[SAT-DEBUG] Campo fecha_inicio encontrado: {_fi_found}", flush=True)
 
+            _ff_found = None
             for fid in ff_ids:
                 try:
                     el = self.driver.find_element(By.ID, fid)
                     self.driver.execute_script("arguments[0].value = arguments[1]", el, ff_str)
+                    _ff_found = fid
                     break
                 except Exception:
                     continue
+            # Fallback: segundo input[type=text] con 'fecha'
+            if not _ff_found:
+                try:
+                    el = self.driver.find_element(
+                        By.XPATH,
+                        "(//input[@type='text' and (contains(translate(@id,'FECHA','fecha'),'fecha') or contains(translate(@name,'FECHA','fecha'),'fecha'))])[2]"
+                    )
+                    self.driver.execute_script("arguments[0].value = arguments[1]", el, ff_str)
+                    _ff_found = f"fallback:{el.get_attribute('id') or el.get_attribute('name')}"
+                except Exception:
+                    pass
+            print(f"[SAT-DEBUG] Campo fecha_fin encontrado: {_ff_found}", flush=True)
 
             await asyncio.sleep(0.5)
 
@@ -666,17 +702,32 @@ class SATPortalClient:
                 except Exception:
                     pass
 
-            # ── Estado del CFDI → Vigente ────────────────────────────────
+            # ── Estado del CFDI → todos (incluye vigentes y cancelados) ──
+            # Personas físicas pueden tener CFDIs cancelados igualmente útiles.
             try:
                 est_el = self.driver.find_element(
                     By.XPATH,
                     "//select[contains(@id,'EstadoComprobante') or contains(@name,'Estado')]"
                 )
-                Select(est_el).select_by_value('1')  # 1 = Vigente
+                try:
+                    Select(est_el).select_by_value('')   # '' = todos los estados
+                except Exception:
+                    Select(est_el).select_by_value('1')  # fallback: solo vigentes
             except Exception:
                 pass
 
             print(f"[SAT-DEBUG] Fecha inicio: {fecha_inicio} Fecha fin: {fecha_fin}", flush=True)
+
+            # Dump de todos los inputs visibles — clave para detectar diferencias
+            # entre el formulario de persona física vs moral
+            try:
+                _all_inputs = [
+                    el.get_attribute('id') or el.get_attribute('name') or '(sin id)'
+                    for el in self.driver.find_elements(By.TAG_NAME, 'input')
+                ]
+                print(f"[SAT-DEBUG] Campos del formulario disponibles: {_all_inputs}", flush=True)
+            except Exception as _e:
+                print(f"[SAT-DEBUG] Error listando inputs: {_e}", flush=True)
 
             # ── Botón Buscar ──────────────────────────────────────────────
             buscar_btn = None
