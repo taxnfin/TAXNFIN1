@@ -615,9 +615,10 @@ class SATPortalClient:
         self.driver.get(url)
         await asyncio.sleep(2)
 
-        print(f"[SAT-DEBUG] URL actual: {self.driver.current_url}", flush=True)
-        print(f"[SAT-DEBUG] Título página: {self.driver.title}", flush=True)
-        print(f"[SAT-DEBUG] Page source snippet: {self.driver.page_source[:500]}", flush=True)
+        _label = 'RECEPTOR' if tipo == 'recibidos' else 'EMISOR'
+        print(f"[SAT-DEBUG] {_label} URL actual: {self.driver.current_url}", flush=True)
+        print(f"[SAT-DEBUG] {_label} Título: {self.driver.title}", flush=True)
+        print(f"[SAT-DEBUG] {_label} Source: {self.driver.page_source[:1000]}", flush=True)
 
         cfdis: List[Dict] = []
         wait = WebDriverWait(self.driver, 15)
@@ -675,8 +676,7 @@ class SATPortalClient:
             except Exception:
                 pass
 
-            print(f"[SAT-DEBUG] Fecha inicio en campo: {fecha_inicio}", flush=True)
-            print(f"[SAT-DEBUG] Fecha fin en campo: {fecha_fin}", flush=True)
+            print(f"[SAT-DEBUG] Fecha inicio: {fecha_inicio} Fecha fin: {fecha_fin}", flush=True)
 
             # ── Botón Buscar ──────────────────────────────────────────────
             buscar_btn = None
@@ -699,6 +699,9 @@ class SATPortalClient:
 
             buscar_btn.click()
             await asyncio.sleep(4)
+
+            print(f"[SAT-DEBUG] Post-buscar URL: {self.driver.current_url}", flush=True)
+            print(f"[SAT-DEBUG] Post-buscar Source: {self.driver.page_source[:2000]}", flush=True)
 
         except Exception as e:
             logger.error(f"[SAT] Error llenando formulario {tipo}: {e}")
