@@ -1436,9 +1436,11 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 inv_currency_code = inv_curr.get('code', 'MXN') or 'MXN'
 
                 # Bug 2 fix: compute estado_conciliacion correctly
-                _status  = inv.get('status', 'open')
-                _total   = float(inv.get('total', 0) or 0)
-                _balance = float(inv.get('balance', 0) or 0)
+                _status     = inv.get('status', 'open')
+                _total      = float(inv.get('total', 0) or 0)
+                _total_paid = float(inv.get('totalPaid', 0) or 0)
+                # Alegra paginada puede devolver balance=null — fallback a total-totalPaid
+                _balance = float(inv.get('balance') or 0) or round(_total - _total_paid, 2)
                 _cobrado = round(_total - _balance, 2)
                 if _status in ('closed', 'paid', 'void') or _balance <= 0.01:
                     _estado = 'conciliado'
@@ -2233,6 +2235,75 @@ async def get_alegra_cxc(
         'facturas':       facturas,
         'source':         'alegra_sync',
         'fetched_at':     datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.post("/recalcular-saldos")
+async def recalcular_saldos(
+    request: Request,
+    company_id: str = Query(None),
+    current_user: Dict = Depends(get_current_user),
+):
+    """Recalcula saldo_pendiente y estado_conciliacion para facturas donde
+    balance llegó null desde Alegra (open + saldo=0 + cobrado=0)."""
+    if not company_id:
+        company_id = await get_active_company_id(request, current_user)
+
+    company_doc = await db.companies.find_one(
+        {'id': {'$regex': f'^{company_id}'}}, {'_id': 0, 'id': 1}
+    )
+    if company_doc:
+        company_id = company_doc['id']
+
+    docs = await db.cfdis.find(
+        {'company_id': company_id, 'source': 'alegra', 'tipo_cfdi': 'ingreso'},
+        {'_id': 1, 'alegra_status': 1, 'total': 1, 'saldo_pendiente': 1,
+         'monto_cobrado': 1, 'estado_conciliacion': 1}
+    ).to_list(5000)
+
+    corregidas = 0
+    sin_cambio = 0
+
+    for doc in docs:
+        _status  = doc.get('alegra_status') or 'open'
+        _total   = float(doc.get('total', 0) or 0)
+        _cobrado = float(doc.get('monto_cobrado', 0) or 0)
+        _saldo   = float(doc.get('saldo_pendiente', 0) or 0)
+
+        # Solo corregir si parece que balance llegó null: open, saldo=0, cobrado=0
+        needs_fix = (
+            _status == 'open'
+            and _saldo <= 0.01
+            and _cobrado <= 0.01
+            and _total > 0.01
+        )
+        if not needs_fix:
+            sin_cambio += 1
+            continue
+
+        new_saldo = round(_total - _cobrado, 2)
+        if new_saldo <= 0.01:
+            new_estado = 'conciliado'
+        elif 0.01 < new_saldo < _total - 0.01:
+            new_estado = 'parcial'
+        else:
+            new_estado = 'pendiente'
+
+        await db.cfdis.update_one(
+            {'_id': doc['_id']},
+            {'$set': {
+                'saldo_pendiente': new_saldo,
+                'estado_conciliacion': new_estado,
+                'updated_at': datetime.now(timezone.utc).isoformat(),
+            }}
+        )
+        corregidas += 1
+
+    return {
+        'company_id': company_id,
+        'total_revisadas': len(docs),
+        'corregidas': corregidas,
+        'sin_cambio': sin_cambio,
     }
 
 
