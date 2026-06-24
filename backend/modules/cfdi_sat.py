@@ -362,6 +362,24 @@ class SATPortalClient:
 
     # ── Login ─────────────────────────────────────────────────────────────
 
+    def _wait_for_portal(self, timeout=30):
+        """Poll la URL actual hasta detectar éxito o agotar timeout.
+        Retorna (True, url) si llegó al portal CFDI, (False, url) si no."""
+        import time
+        success_keys  = ['consulta', 'receptor', 'emisor', 'contribuyente', 'portalcfdi']
+        login_keys    = ['cfdiau', 'nidp', 'wsfed', 'credential']
+        start = time.time()
+        while time.time() - start < timeout:
+            url = self.driver.current_url.lower()
+            logger.info(f"[SAT] Polling login... URL={self.driver.current_url[:80]}")
+            if any(s in url for s in success_keys):
+                return True, url
+            if any(s in url for s in login_keys) or 'sat.gob.mx' in url:
+                time.sleep(2)
+                continue
+            time.sleep(2)
+        return False, self.driver.current_url
+
     async def login(self, rfc: str, ciec: str) -> Dict:
         """
         Login al Portal CFDI del SAT con RFC + CIEC.
@@ -392,7 +410,7 @@ class SATPortalClient:
                 else:
                     logger.warning("[SAT] No se pudo resolver CAPTCHA pre-submit, continuando de todas formas")
 
-            wait = WebDriverWait(self.driver, 20)
+            wait = WebDriverWait(self.driver, 40)
 
             # ── Paso 1: RFC ───────────────────────────────────────────────
             # El portal SAT 2024+ usa un input con id="rfc" dentro de un form
@@ -478,11 +496,18 @@ class SATPortalClient:
                         'error': 'No se encontró el botón de ingreso en el portal SAT.'}
 
             submit_btn.click()
-            await asyncio.sleep(4)
+            await asyncio.sleep(2)  # breve pausa antes de empezar el polling
 
-            # ── Paso 4: Verificar resultado ───────────────────────────────
+            # ── Paso 4: Polling post-submit (hasta 30s) ───────────────────
+            reached, _url_after = self._wait_for_portal(timeout=30)
             page = self.driver.page_source.lower()
             url  = self.driver.current_url.lower()
+
+            # Si llegó al portal directamente (sin captcha intermedio)
+            if reached:
+                self.logged_in = True
+                logger.info(f"[SAT] Login exitoso (sin captcha): {url}")
+                return {'success': True, 'message': f'Autenticación exitosa con SAT. RFC: {rfc}', 'rfc': rfc}
 
             error_phrases = [
                 'rfc o contraseña no válido', 'datos incorrectos',
@@ -521,15 +546,28 @@ class SATPortalClient:
                             btn = self.driver.find_element(By.XPATH,
                                 "//input[@type='submit'] | //button[@type='submit'] | //input[@id='submit']")
                             btn.click()
-                        await asyncio.sleep(8)
+                        await asyncio.sleep(2)
+                        reached1, _u1 = self._wait_for_portal(timeout=30)
                         page = self.driver.page_source.lower()
                         url  = self.driver.current_url.lower()
                         logger.info(f"[SAT] Post-submit-1 URL: {url}")
 
                         # ── Éxito en primer intento ───────────────────────────
-                        if any(x in url for x in ['consulta','receptor','emisor','contribuyente','portalcfdi']):
+                        if reached1:
                             self.logged_in = True
                             return {'success': True, 'message': f'Autenticación exitosa con SAT. RFC: {rfc}', 'rfc': rfc}
+
+                        # Si sigue en cfdiau, refresh único
+                        if any(s in url for s in ['cfdiau', 'nidp', 'wsfed']):
+                            logger.info("[SAT] Sigue en cfdiau — intentando refresh")
+                            self.driver.refresh()
+                            await asyncio.sleep(10)
+                            reached_r, _ur = self._wait_for_portal(timeout=10)
+                            if reached_r:
+                                self.logged_in = True
+                                return {'success': True, 'message': f'Autenticación exitosa con SAT (tras refresh). RFC: {rfc}', 'rfc': rfc}
+                            page = self.driver.page_source.lower()
+                            url  = self.driver.current_url.lower()
 
                         # ── Segundo CAPTCHA ───────────────────────────────────
                         if 'captcha' in page:
@@ -551,11 +589,12 @@ class SATPortalClient:
                                         break
                                     except Exception:
                                         continue
-                                await asyncio.sleep(8)
+                                await asyncio.sleep(2)
+                                reached2, _u2 = self._wait_for_portal(timeout=30)
                                 url2  = self.driver.current_url.lower()
                                 page2 = self.driver.page_source.lower()
                                 logger.info(f"[SAT] Post-submit-2 URL: {url2}")
-                                if any(x in url2 for x in ['consulta','receptor','emisor','contribuyente','portalcfdi']):
+                                if reached2:
                                     self.logged_in = True
                                     return {'success': True, 'message': f'Autenticación exitosa con SAT. RFC: {rfc}', 'rfc': rfc}
                                 if 'captcha' in page2:
@@ -572,14 +611,24 @@ class SATPortalClient:
                     return {'success': False,
                             'error': 'CAPTCHA detectado. Agrega TWOCAPTCHA_API_KEY en Railway Variables.'}
 
-            # Login exitoso si la URL cambió a consulta o al portal
-            success_indicators = ['consulta', 'receptor', 'emisor', 'contribuyente', 'portalcfdi']
-            if any(ind in url for ind in success_indicators) or 'portalcfdi' in url:
+            # Último intento: polling adicional + refresh si sigue en cfdiau
+            reached_final, _uf = self._wait_for_portal(timeout=30)
+            url = self.driver.current_url.lower()
+            if reached_final:
                 self.logged_in = True
-                logger.info(f"[SAT] Login exitoso: {url}")
+                logger.info(f"[SAT] Login exitoso (post-polling final): {url}")
                 return {'success': True, 'message': f'Autenticación exitosa con SAT. RFC: {rfc}', 'rfc': rfc}
 
-            # Si la URL no cambió significa posible error
+            if any(s in url for s in ['cfdiau', 'nidp', 'wsfed']):
+                logger.info("[SAT] Sigue en cfdiau tras polling — intentando refresh final")
+                self.driver.refresh()
+                import time; time.sleep(10)
+                reached_r2, _ur2 = self._wait_for_portal(timeout=10)
+                if reached_r2:
+                    self.logged_in = True
+                    logger.info(f"[SAT] Login exitoso (tras refresh final): {self.driver.current_url[:80]}")
+                    return {'success': True, 'message': f'Autenticación exitosa con SAT (tras refresh). RFC: {rfc}', 'rfc': rfc}
+
             self._screenshot('login_unknown')
             return {'success': False,
                     'error': 'No se pudo verificar el login. El portal SAT puede estar en mantenimiento.',
