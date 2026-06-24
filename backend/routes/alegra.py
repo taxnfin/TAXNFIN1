@@ -2244,8 +2244,8 @@ async def recalcular_saldos(
     company_id: str = Query(None),
     current_user: Dict = Depends(get_current_user),
 ):
-    """Recalcula saldo_pendiente y estado_conciliacion para facturas donde
-    balance llegó null desde Alegra (open + saldo=0 + cobrado=0)."""
+    """Recalcula saldo_pendiente y estado_conciliacion para facturas open
+    que tienen saldo_pendiente <= 0.01 (balance llegó null desde Alegra)."""
     if not company_id:
         company_id = await get_active_company_id(request, current_user)
 
@@ -2255,10 +2255,22 @@ async def recalcular_saldos(
     if company_doc:
         company_id = company_doc['id']
 
+    # Diagnóstico: cuántas open con saldo <= 0.01
+    afectadas_count = await db.cfdis.count_documents({
+        'company_id': company_id,
+        'source': 'alegra',
+        'tipo_cfdi': 'ingreso',
+        'alegra_status': 'open',
+        '$or': [{'saldo_pendiente': {'$lte': 0.01}}, {'saldo_pendiente': None},
+                {'saldo_pendiente': {'$exists': False}}],
+        'estatus': {'$ne': 'cancelado'},
+    })
+    logger.info(f"[recalcular-saldos] open con saldo<=0.01: {afectadas_count}")
+
     docs = await db.cfdis.find(
         {'company_id': company_id, 'source': 'alegra', 'tipo_cfdi': 'ingreso'},
-        {'_id': 1, 'alegra_status': 1, 'total': 1, 'saldo_pendiente': 1,
-         'monto_cobrado': 1, 'estado_conciliacion': 1}
+        {'_id': 1, 'alegra_status': 1, 'estatus': 1, 'total': 1,
+         'saldo_pendiente': 1, 'monto_cobrado': 1, 'estado_conciliacion': 1}
     ).to_list(5000)
 
     corregidas = 0
@@ -2266,15 +2278,16 @@ async def recalcular_saldos(
 
     for doc in docs:
         _status  = doc.get('alegra_status') or 'open'
+        _estatus = doc.get('estatus', '')
         _total   = float(doc.get('total', 0) or 0)
         _cobrado = float(doc.get('monto_cobrado', 0) or 0)
         _saldo   = float(doc.get('saldo_pendiente', 0) or 0)
 
-        # Solo corregir si parece que balance llegó null: open, saldo=0, cobrado=0
+        # Corregir: open, saldo mal (<=0.01), no cancelada, tiene total
         needs_fix = (
             _status == 'open'
             and _saldo <= 0.01
-            and _cobrado <= 0.01
+            and _estatus != 'cancelado'
             and _total > 0.01
         )
         if not needs_fix:
@@ -2283,11 +2296,12 @@ async def recalcular_saldos(
 
         new_saldo = round(_total - _cobrado, 2)
         if new_saldo <= 0.01:
+            # cobrado cubre todo — marcar conciliado aunque status=open
             new_estado = 'conciliado'
-        elif 0.01 < new_saldo < _total - 0.01:
-            new_estado = 'parcial'
-        else:
+        elif new_saldo >= _total * 0.99:
             new_estado = 'pendiente'
+        else:
+            new_estado = 'parcial'
 
         await db.cfdis.update_one(
             {'_id': doc['_id']},
