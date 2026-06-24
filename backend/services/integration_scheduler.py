@@ -155,38 +155,106 @@ async def sync_alegra_for_company(db, integration: dict):
     return {'status': 'success', 'results': results}
 
 
+async def sync_sat_ciec_for_company(db, cred: dict):
+    """Sync SAT CFDI data for a company that has an active CIEC credential."""
+    from modules.cfdi_sat import SATSyncService
+    from datetime import datetime, timezone, timedelta
+
+    company_id = cred['company_id']
+    rfc = cred.get('rfc', company_id[:8])
+
+    # Smart date: overlap 30 days from last downloaded CFDI, or 1 year back if first sync
+    now = datetime.now(timezone.utc)
+    last_cfdi = await db.cfdis.find_one(
+        {'company_id': company_id, 'source': 'sat_ciec'},
+        {'fecha_emision': 1},
+        sort=[('fecha_emision', -1)]
+    )
+    if last_cfdi and last_cfdi.get('fecha_emision'):
+        try:
+            last_date = datetime.fromisoformat(
+                str(last_cfdi['fecha_emision']).replace('Z', '+00:00')
+            )
+            fecha_inicio = last_date - timedelta(days=30)
+        except Exception:
+            fecha_inicio = datetime(now.year - 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        fecha_inicio = datetime(now.year - 1, 1, 1, tzinfo=timezone.utc)
+
+    logger.info(f"  SAT CIEC sync RFC={rfc} desde {fecha_inicio.date()} hasta {now.date()}")
+
+    try:
+        service = SATSyncService(db)
+        result = await service.sync_cfdis(
+            company_id=company_id,
+            fecha_inicio=fecha_inicio,
+            fecha_fin=now,
+            incluir_emitidos=True,
+            incluir_recibidos=True,
+            tipo_comprobante='',
+        )
+        return {'status': 'success', 'rfc': rfc, 'result': result}
+    except Exception as e:
+        logger.error(f"  SAT CIEC sync error RFC={rfc}: {e}")
+        return {'status': 'error', 'rfc': rfc, 'error': str(e)}
+
+
 async def run_all_syncs(db):
     """Run sync for all active integrations across all companies"""
     logger.info("=" * 50)
     logger.info("INTEGRATION SYNC - Starting automatic sync cycle")
     logger.info("=" * 50)
-    
+
+    # BUG A fix: also load active CIEC credentials from sat_credentials collection
     integrations = await db.integrations.find(
         {'$or': [{'is_active': True}, {'active': True}]},
         {'_id': 0}
     ).to_list(100)
-    
-    if not integrations:
-        logger.info("No active integrations to sync")
+
+    ciec_creds = await db.sat_credentials.find(
+        {'status': 'active'},
+        {'_id': 0, 'company_id': 1, 'rfc': 1, 'last_sync': 1}
+    ).to_list(200)
+
+    if not integrations and not ciec_creds:
+        logger.info("No active integrations or CIEC credentials to sync")
         return
-    
+
+    # Sync ERP integrations (Contalink, Alegra)
     for integration in integrations:
         itype = integration.get('integration_type', '')
-        iname = integration.get('label', integration.get('name', ''))
+        # BUG C fix: use rfc or company_id prefix when label/name are empty
+        iname = (
+            integration.get('label')
+            or integration.get('name')
+            or integration.get('rfc')
+            or integration['company_id'][:8]
+        )
         logger.info(f"Syncing {iname} ({itype}) for company {integration['company_id'][:8]}...")
-        
+
         try:
             if itype == 'contalink':
                 result = await sync_contalink_for_company(db, integration)
             elif itype == 'alegra':
                 result = await sync_alegra_for_company(db, integration)
             else:
+                # BUG B fix: only skip if genuinely no handler — not because of missing field
                 result = {'status': 'skipped', 'message': f'No sync handler for {itype}'}
-            
+
             logger.info(f"  Result: {result.get('status', 'unknown')}")
         except Exception as e:
             logger.error(f"  Error syncing {iname}: {e}")
-    
+
+    # BUG A fix: sync all companies with active CIEC credentials
+    for cred in ciec_creds:
+        rfc = cred.get('rfc', cred['company_id'][:8])
+        logger.info(f"Syncing SAT CIEC RFC={rfc} for company {cred['company_id'][:8]}...")
+        try:
+            result = await sync_sat_ciec_for_company(db, cred)
+            logger.info(f"  Result: {result.get('status', 'unknown')}")
+        except Exception as e:
+            logger.error(f"  Error syncing SAT CIEC RFC={rfc}: {e}")
+
     logger.info("INTEGRATION SYNC - Cycle complete")
 
 
