@@ -615,6 +615,10 @@ class SATPortalClient:
         self.driver.get(url)
         await asyncio.sleep(2)
 
+        print(f"[SAT-DEBUG] URL actual: {self.driver.current_url}", flush=True)
+        print(f"[SAT-DEBUG] Título página: {self.driver.title}", flush=True)
+        print(f"[SAT-DEBUG] Page source snippet: {self.driver.page_source[:500]}", flush=True)
+
         cfdis: List[Dict] = []
         wait = WebDriverWait(self.driver, 15)
 
@@ -670,6 +674,9 @@ class SATPortalClient:
                 Select(est_el).select_by_value('1')  # 1 = Vigente
             except Exception:
                 pass
+
+            print(f"[SAT-DEBUG] Fecha inicio en campo: {fecha_inicio}", flush=True)
+            print(f"[SAT-DEBUG] Fecha fin en campo: {fecha_fin}", flush=True)
 
             # ── Botón Buscar ──────────────────────────────────────────────
             buscar_btn = None
