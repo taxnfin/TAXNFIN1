@@ -257,39 +257,63 @@ async def eliminar_despacho(
 
 @router.get("/debug-cxc")
 async def debug_cxc(company_id: str = "89cda61e"):
-    pipeline = [
-        {"$match": {
-            "company_id": {"$regex": company_id},
-            "source": "alegra",
-            "tipo_cfdi": "ingreso",
-            "estatus": {"$nin": ["cancelado", "cancelled"]}
-        }},
-        {"$group": {
-            "_id": "$estado_conciliacion",
-            "count": {"$sum": 1},
-            "total": {"$sum": "$total"},
-            "monto_cobrado": {"$sum": "$monto_cobrado"},
-            "saldo_pendiente_sum": {"$sum": "$saldo_pendiente"}
-        }}
+    match_base = {"company_id": {"$regex": company_id}, "source": "alegra", "tipo_cfdi": "ingreso"}
+
+    # Total docs
+    total_docs = await db.cfdis.count_documents(match_base)
+
+    # Por estado_conciliacion
+    pipeline_estado = [
+        {"$match": match_base},
+        {"$group": {"_id": {"$ifNull": ["$estado_conciliacion", "null"]}, "count": {"$sum": 1}}}
     ]
-    result = await db.cfdis.aggregate(pipeline).to_list(20)
+    estado_raw = await db.cfdis.aggregate(pipeline_estado).to_list(20)
+    por_estado = {r["_id"]: r["count"] for r in estado_raw}
 
-    # Sample 3 invoices
-    samples = await db.cfdis.find(
-        {"company_id": {"$regex": company_id}, "source": "alegra", "tipo_cfdi": "ingreso"},
-        {"_id": 0, "uuid": 1, "total": 1, "monto_cobrado": 1, "saldo_pendiente": 1, "estado_conciliacion": 1, "estatus": 1}
-    ).limit(3).to_list(3)
+    # Por estatus
+    pipeline_estatus = [
+        {"$match": match_base},
+        {"$group": {"_id": {"$ifNull": ["$estatus", "null"]}, "count": {"$sum": 1}}}
+    ]
+    estatus_raw = await db.cfdis.aggregate(pipeline_estatus).to_list(20)
+    known = {"vigente", "cancelado", "pagado"}
+    por_estatus = {"activo": 0, "cancelado": 0, "pagado": 0, "otros": {}}
+    for r in estatus_raw:
+        k = r["_id"]
+        if k == "cancelado":
+            por_estatus["cancelado"] += r["count"]
+        elif k in ("pagado", "paid", "closed"):
+            por_estatus["pagado"] += r["count"]
+        elif k in ("vigente", "active", "open", None, "null"):
+            por_estatus["activo"] += r["count"]
+        else:
+            por_estatus["otros"][str(k)] = r["count"]
 
-    # Total count
-    total_docs = await db.cfdis.count_documents({
-        "company_id": {"$regex": company_id},
-        "source": "alegra"
+    # Saldo cero vs positivo
+    con_saldo_cero = await db.cfdis.count_documents({
+        **match_base,
+        "$or": [{"saldo_pendiente": {"$lte": 0.01}}, {"saldo_pendiente": None}, {"saldo_pendiente": {"$exists": False}}]
     })
+    con_saldo_positivo = await db.cfdis.count_documents({
+        **match_base,
+        "saldo_pendiente": {"$gt": 0.01}
+    })
+
+    # Muestra 5 docs
+    samples = await db.cfdis.find(
+        match_base,
+        {"_id": 0, "referencia": 1, "receptor_nombre": 1, "total": 1,
+         "saldo_pendiente": 1, "monto_cobrado": 1, "estado_conciliacion": 1,
+         "estatus": 1, "fecha_emision": 1, "moneda": 1, "alegra_status": 1}
+    ).limit(5).to_list(5)
 
     return {
         "total_docs_alegra": total_docs,
-        "por_estado_conciliacion": result,
-        "sample_facturas": samples
+        "por_estado_conciliacion": por_estado,
+        "por_estatus": por_estatus,
+        "con_saldo_cero": con_saldo_cero,
+        "con_saldo_positivo": con_saldo_positivo,
+        "muestra_5": samples
     }
 
 
