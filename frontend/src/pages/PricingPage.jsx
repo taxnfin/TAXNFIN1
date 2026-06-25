@@ -36,7 +36,7 @@ const PLANS = [
     color: '#6366F1',
     features: [
       'Todo lo de Basic',
-      'Hasta 5 empresas (modo despacho)',
+      'Hasta 5 empresas',
       'IA Ejecutiva',
       'Métricas DuPont, ROE, EBITDA',
       'Decisiones y Alertas automáticas',

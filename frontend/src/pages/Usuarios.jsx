@@ -219,8 +219,9 @@ export default function Usuarios() {
                 onChange={e => setForm(f => ({ ...f, rol: e.target.value }))}
                 style={{ border: '1px solid #CBD5E1', borderRadius: '4px', padding: '8px 12px', fontSize: '13px', color: NAVY, background: '#FFF', outline: 'none' }}
               >
-                <option value="contador">Contador — Empleado del despacho, acceso operativo</option>
-                <option value="viewer">Viewer — Cliente PyME, solo lectura</option>
+                <option value="cfo">CFO — Administrador total de la plataforma</option>
+                <option value="contador">Contador — Acceso operativo y carga de información</option>
+                <option value="viewer">Viewer — Solo lectura, ideal para socios o directivos</option>
               </select>
             </div>
 
