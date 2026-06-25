@@ -111,10 +111,25 @@ api_router.include_router(admin_router)
 api_router.include_router(audit_portal_router)
 
 # ===== MIDDLEWARE =====
+_DEFAULT_ORIGINS = [
+    "https://cashflow.taxnfin.com",
+    "https://www.cashflow.taxnfin.com",
+    "http://localhost:3000",
+    "http://localhost:3001",
+]
+_env_origins = os.environ.get('CORS_ORIGINS', '').strip()
+# allow_credentials=True is incompatible with allow_origins=['*'] per the CORS spec —
+# browsers reject credentialed responses when the server echoes '*'.
+# Always use an explicit list so the server can echo the requesting origin.
+if _env_origins and _env_origins != '*':
+    _allow_origins = [o.strip() for o in _env_origins.split(',') if o.strip()]
+else:
+    _allow_origins = _DEFAULT_ORIGINS
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=_allow_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
