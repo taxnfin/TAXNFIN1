@@ -1202,37 +1202,47 @@ class SATSyncService:
 
         client = SATPortalClient()
         try:
-            login_res = await client.login(creds['rfc'], creds['ciec'])
-            if not login_res.get('success'):
-                return {'success': False, 'error': login_res.get('error', 'Error de autenticación')}
+            async def _run_selenium():
+                login_res = await client.login(creds['rfc'], creds['ciec'])
+                if not login_res.get('success'):
+                    return {'success': False, 'error': login_res.get('error', 'Error de autenticación')}
 
-            for tipo, flag in [('recibidos', incluir_recibidos), ('emitidos', incluir_emitidos)]:
-                if not flag:
-                    continue
-                items = await client.download_cfdis(tipo, fecha_inicio, fecha_fin, tipo_comprobante)
-                results[tipo]['downloaded'] = len(items)
-                for item in items:
-                    try:
-                        saved = await self._save_cfdi(item, company_id,
-                                                       'recibido' if tipo == 'recibidos' else 'emitido')
-                        if saved == 'new':
-                            results[tipo]['new'] += 1
-                        elif saved == 'updated':
-                            results[tipo]['updated'] += 1
-                    except Exception as e:
-                        results[tipo]['errors'] += 1
-                        results['errors'].append(f"{tipo} {item.get('uuid','?')}: {e}")
+                for tipo, flag in [('recibidos', incluir_recibidos), ('emitidos', incluir_emitidos)]:
+                    if not flag:
+                        continue
+                    items = await client.download_cfdis(tipo, fecha_inicio, fecha_fin, tipo_comprobante)
+                    results[tipo]['downloaded'] = len(items)
+                    for item in items:
+                        try:
+                            saved = await self._save_cfdi(
+                                item, company_id,
+                                'recibido' if tipo == 'recibidos' else 'emitido'
+                            )
+                            if saved == 'new':
+                                results[tipo]['new'] += 1
+                            elif saved == 'updated':
+                                results[tipo]['updated'] += 1
+                        except Exception as e:
+                            results[tipo]['errors'] += 1
+                            results['errors'].append(f"{tipo} {item.get('uuid','?')}: {e}")
 
-            results['total_new']     = results['emitidos']['new']     + results['recibidos']['new']
-            results['total_updated'] = results['emitidos']['updated'] + results['recibidos']['updated']
+                results['total_new']     = results['emitidos']['new']     + results['recibidos']['new']
+                results['total_updated'] = results['emitidos']['updated'] + results['recibidos']['updated']
 
-            await self.credential_manager.update_last_sync(company_id, {
-                'total_new': results['total_new'],
-                'total_updated': results['total_updated'],
-                'errors_count': len(results['errors']),
-            })
-            return results
+                await self.credential_manager.update_last_sync(company_id, {
+                    'total_new': results['total_new'],
+                    'total_updated': results['total_updated'],
+                    'errors_count': len(results['errors']),
+                })
+                return results
 
+            return await asyncio.wait_for(_run_selenium(), timeout=90)
+
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"[SAT] sync_cfdis timeout (>90s) company_id={company_id} — cerrando Selenium"
+            )
+            return {'success': False, 'error': 'SAT sync cancelado por timeout global (90s)'}
         except Exception as e:
             logger.error(f"[SAT] sync_cfdis error: {e}")
             return {'success': False, 'error': str(e)}
