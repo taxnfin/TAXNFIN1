@@ -26,6 +26,9 @@ import Financiamiento from './pages/Financiamiento';
 import ConsejoEstrategico from './pages/ConsejoEstrategico';
 import Usuarios from './pages/Usuarios';
 import AccountSuspended from './pages/AccountSuspended';
+import AuditPortal from './pages/AuditPortal';
+import AuditEngagement from './pages/AuditEngagement';
+import AuditPublic from './pages/AuditPublic';
 import Layout from './components/Layout';
 import { Toaster } from './components/ui/sonner';
 import api from './api/axios';
@@ -148,6 +151,7 @@ function App() {
           <Route path="/login" element={user ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/account-suspended" element={<AccountSuspended />} />
+          <Route path="/audit/public/:linkPublico" element={<AuditPublic />} />
           <Route
             path="/"
             element={
@@ -190,6 +194,8 @@ function App() {
               <Route path="financiamiento" element={<Financiamiento />} />
               <Route path="consejo-estrategico" element={<ConsejoEstrategico />} />
               <Route path="usuarios" element={<Usuarios />} />
+              <Route path="audit" element={<AuditPortal />} />
+              <Route path="audit/:engagementId" element={<AuditEngagement />} />
             </Route>
           </Route>
         </Routes>

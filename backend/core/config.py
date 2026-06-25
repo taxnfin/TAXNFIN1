@@ -35,4 +35,10 @@ class Settings:
     AUTH0_CLIENT_SECRET: str = os.environ.get('AUTH0_CLIENT_SECRET', '')
     AUTH0_AUDIENCE: str = os.environ.get('AUTH0_AUDIENCE', '')
 
+    # Cloudflare R2 (S3-compatible)
+    R2_ACCESS_KEY_ID: str = os.environ.get('R2_ACCESS_KEY_ID', '')
+    R2_SECRET_ACCESS_KEY: str = os.environ.get('R2_SECRET_ACCESS_KEY', '')
+    R2_ENDPOINT: str = os.environ.get('R2_ENDPOINT', '')
+    R2_BUCKET_NAME: str = os.environ.get('R2_BUCKET_NAME', 'taxnfin-files')
+
 settings = Settings()

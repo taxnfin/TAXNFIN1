@@ -159,6 +159,7 @@ const buildNav = (isAdmin, isCFO) => {
           { name: 'Estados Financieros',                href: '/contalink-financial' },
         ],
       },
+      { name: 'Portal Auditoría', href: '/audit', icon: FolderOpen },
       { name: 'CatÃ¡logo', href: '/catalogs', icon: BookUser },
     ],
   },

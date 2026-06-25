@@ -62,6 +62,7 @@ from routes.sat_ciec import router as sat_ciec_router
 from routes.consejo_estrategico import router as consejo_estrategico_router
 from routes.usuarios import router as usuarios_router
 from routes.admin import router as admin_router
+from routes.audit_portal import router as audit_portal_router
 
 # ===== REGISTER ROUTERS =====
 api_router.include_router(auth_router)
@@ -107,6 +108,7 @@ api_router.include_router(sat_ciec_router)
 api_router.include_router(consejo_estrategico_router)
 api_router.include_router(usuarios_router)
 api_router.include_router(admin_router)
+api_router.include_router(audit_portal_router)
 
 # ===== MIDDLEWARE =====
 app.add_middleware(
