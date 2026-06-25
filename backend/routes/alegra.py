@@ -220,14 +220,21 @@ async def get_alegra_status(
     current_user: Dict = Depends(get_current_user)
 ):
     """Get Alegra connection status for the company"""
-    company_id = await get_active_company_id(request, current_user)
+    _not_configured = {"connected": False, "message": "No configurado"}
+    try:
+        company_id = await get_active_company_id(request, current_user)
+    except HTTPException:
+        return _not_configured
+
     company = await db.companies.find_one({'id': company_id}, {'_id': 0})
-    
+    if not company:
+        return _not_configured
+
     return {
         "connected": company.get('alegra_connected', False),
         "email": company.get('alegra_email'),
         "connected_at": company.get('alegra_connected_at'),
-        "last_sync": company.get('alegra_last_sync')
+        "last_sync": company.get('alegra_last_sync'),
     }
 
 

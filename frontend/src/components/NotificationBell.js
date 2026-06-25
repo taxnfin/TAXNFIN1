@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Bell, Check, CheckCheck, Trash2, AlertTriangle, Info, AlertCircle, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
@@ -14,12 +14,17 @@ const NotificationBell = () => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
+  const pollingActive = useRef(true);
 
   const fetchUnread = useCallback(async () => {
+    if (!pollingActive.current) return;
     try {
       const res = await api.get('/notifications/unread-count');
       setUnreadCount(res.data.count);
-    } catch {}
+    } catch (e) {
+      setUnreadCount(0);
+      pollingActive.current = false;
+    }
   }, []);
 
   const fetchNotifications = useCallback(async () => {
