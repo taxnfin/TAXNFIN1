@@ -17,7 +17,7 @@ router = APIRouter(prefix="/audit", tags=["Auditoría y Fiscal"])
 
 VALID_CATEGORIAS = [
     "General", "Fiscal/SAT", "Bancos", "Nómina",
-    "CxC", "CxP", "Inventario", "Contratos", "PP&E", "Otro",
+    "CxC", "CxP", "Inventario", "Contratos", "Activos Fijos", "Otro",
 ]
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
