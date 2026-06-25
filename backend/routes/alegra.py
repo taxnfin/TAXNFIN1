@@ -1579,11 +1579,30 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 bill_curr = bill.get('currency', {}) if isinstance(bill.get('currency'), dict) else {}
                 bill_tc = float(bill_curr.get('exchangeRate') or bill.get('exchangeRate') or 1)
                 bill_currency_code = bill_curr.get('code', 'MXN') or 'MXN'
+
+                _bill_total  = float(bill.get('total', 0) or 0)
+                _bill_paid   = float(bill.get('totalPaid', 0) or 0)
+                _bill_balance = float(bill.get('balance') or 0) or round(_bill_total - _bill_paid, 2)
+                _bill_status = bill.get('status', 'open')
+                if _bill_status in ('closed', 'paid', 'void') or _bill_balance <= 0.01:
+                    _bill_estado = 'conciliado'
+                    _bill_alegra_status = _bill_status if _bill_status in ('closed', 'paid', 'void') else 'closed'
+                elif 0.01 < _bill_balance < _bill_total - 0.01:
+                    _bill_estado = 'parcial'
+                    _bill_alegra_status = 'open'
+                else:
+                    _bill_estado = 'pendiente'
+                    _bill_alegra_status = 'open'
+
                 doc = {**bill, 'company_id': company_id, 'alegra_id': alegra_id,
                        'source': 'alegra', 'tipo_cfdi': 'egreso',
                        'tipo_cambio': bill_tc,
                        'moneda': bill_currency_code,
-                       'total_mxn': float(bill.get('total', 0) or 0) * bill_tc,
+                       'total_mxn': _bill_total * bill_tc,
+                       'alegra_status': _bill_alegra_status,
+                       'estado_conciliacion': _bill_estado,
+                       'saldo_pendiente': _bill_balance,
+                       'monto_pagado': _bill_paid,
                        'synced_at': datetime.now(timezone.utc).isoformat()}
                 res = await db.cfdis.update_one(
                     {'company_id': company_id, 'alegra_id': alegra_id},
@@ -2418,6 +2437,78 @@ async def fix_conciliacion_status(
     }
 
 
+@router.post("/recalcular-bills")
+async def recalcular_bills(
+    request: Request,
+    company_id: str = Query(None),
+    current_user: Dict = Depends(get_current_user),
+):
+    """Recalcula alegra_status, estado_conciliacion, saldo_pendiente y monto_pagado
+    para todas las bills de Alegra en MongoDB, usando totalPaid y balance ya guardados."""
+    if not company_id:
+        company_id = await get_active_company_id(request, current_user)
+
+    company_doc = await db.companies.find_one(
+        {'id': {'$regex': f'^{company_id}'}}, {'_id': 0, 'id': 1}
+    )
+    if company_doc:
+        company_id = company_doc['id']
+
+    docs = await db.cfdis.find(
+        {'company_id': company_id, 'source': 'alegra', 'tipo_cfdi': 'egreso'},
+        {'_id': 1, 'total': 1, 'totalPaid': 1, 'balance': 1, 'status': 1,
+         'alegra_status': 1, 'estado_conciliacion': 1, 'saldo_pendiente': 1, 'monto_pagado': 1}
+    ).to_list(5000)
+
+    corregidas = 0
+    sin_cambio = 0
+
+    for doc in docs:
+        _total   = float(doc.get('total', 0) or 0)
+        _paid    = float(doc.get('totalPaid', 0) or 0)
+        _balance = float(doc.get('balance') or 0) or round(_total - _paid, 2)
+        _status  = doc.get('status', 'open')
+
+        if _status in ('closed', 'paid', 'void') or _balance <= 0.01:
+            new_estado = 'conciliado'
+            new_alegra_status = _status if _status in ('closed', 'paid', 'void') else 'closed'
+        elif 0.01 < _balance < _total - 0.01:
+            new_estado = 'parcial'
+            new_alegra_status = 'open'
+        else:
+            new_estado = 'pendiente'
+            new_alegra_status = 'open'
+
+        changed = (
+            new_estado != doc.get('estado_conciliacion') or
+            new_alegra_status != doc.get('alegra_status') or
+            abs((_balance or 0) - float(doc.get('saldo_pendiente') or 0)) > 0.01 or
+            abs((_paid or 0) - float(doc.get('monto_pagado') or 0)) > 0.01
+        )
+        if changed:
+            await db.cfdis.update_one(
+                {'_id': doc['_id']},
+                {'$set': {
+                    'alegra_status':       new_alegra_status,
+                    'estado_conciliacion': new_estado,
+                    'saldo_pendiente':     _balance,
+                    'monto_pagado':        _paid,
+                    'updated_at':          datetime.now(timezone.utc).isoformat(),
+                }}
+            )
+            corregidas += 1
+        else:
+            sin_cambio += 1
+
+    logger.info(f"[recalcular-bills] company={company_id} corregidas={corregidas} de {len(docs)}")
+    return {
+        'company_id': company_id,
+        'total':      len(docs),
+        'corregidas': corregidas,
+        'sin_cambio': sin_cambio,
+    }
+
+
 @router.get("/cxp")
 async def get_alegra_cxp(
     request: Request,
@@ -2431,31 +2522,6 @@ async def get_alegra_cxp(
     if company_doc:
         company_id = company_doc['id']
     today = date.today()
-
-    sample = await db.cfdis.find_one({
-        'company_id': company_id,
-        'source': 'alegra',
-        'tipo_cfdi': 'egreso',
-    })
-    logger.info(f"[CxP DEBUG] Sample bill fields: {list(sample.keys()) if sample else 'none'}")
-    logger.info(f"[CxP DEBUG] Sample alegra_status: {sample.get('alegra_status') if sample else 'none'}")
-    logger.info(f"[CxP DEBUG] Sample estatus: {sample.get('estatus') if sample else 'none'}")
-    logger.info(f"[CxP DEBUG] Sample estado_conciliacion: {sample.get('estado_conciliacion') if sample else 'none'}")
-
-    count_filtered = await db.cfdis.count_documents({
-        'company_id':         company_id,
-        'source':             'alegra',
-        'tipo_cfdi':          'egreso',
-        'estatus':            {'$ne': 'cancelado'},
-        'alegra_status':      {'$nin': ['closed', 'paid', 'void']},
-        'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
-    })
-    count_total = await db.cfdis.count_documents({
-        'company_id': company_id,
-        'source': 'alegra',
-        'tipo_cfdi': 'egreso',
-    })
-    logger.info(f"[CxP DEBUG] Total bills egreso: {count_total}, tras filtro completo: {count_filtered}")
 
     bills = await db.cfdis.find({
         'company_id':         company_id,
