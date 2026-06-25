@@ -245,22 +245,11 @@ async def run_all_syncs(db):
         except Exception as e:
             logger.error(f"  Error syncing {iname}: {e}")
 
-    # BUG A fix: sync all companies with active CIEC credentials
+    # SAT CIEC deshabilitado en ciclo automático — Selenium consume ~600MB en Railway.
+    # El sync manual desde la UI sigue funcionando normalmente.
     for cred in ciec_creds:
         rfc = cred.get('rfc', cred['company_id'][:8])
-        logger.info(f"Syncing SAT CIEC RFC={rfc} for company {cred['company_id'][:8]}...")
-        try:
-            result = await asyncio.wait_for(
-                sync_sat_ciec_for_company(db, cred),
-                timeout=60,
-            )
-            logger.info(f"  Result: {result.get('status', 'unknown')}")
-        except asyncio.TimeoutError:
-            logger.warning(
-                f"  SAT CIEC sync RFC={rfc} cancelado por timeout (>60s) — servidor liberado"
-            )
-        except Exception as e:
-            logger.error(f"  Error syncing SAT CIEC RFC={rfc}: {e}")
+        logger.info(f"[SCHEDULER] SAT CIEC skipped en ciclo automático - solo sync manual (RFC={rfc})")
 
     logger.info("INTEGRATION SYNC - Cycle complete")
 
