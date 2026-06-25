@@ -2437,6 +2437,32 @@ async def fix_conciliacion_status(
     }
 
 
+@router.delete("/clear-data")
+async def clear_alegra_data(
+    request: Request,
+    company_id: str = Query(..., description="Company ID o prefijo de 8 chars"),
+    current_user: Dict = Depends(get_current_user),
+):
+    """Elimina TODOS los documentos source='alegra' de db.cfdis para la empresa.
+    Solo para hola@taxnfin.com. Endpoint temporal de limpieza."""
+    if current_user.get('email') != 'hola@taxnfin.com':
+        raise HTTPException(status_code=403, detail="Acceso restringido a administrador del sistema")
+
+    company_doc = await db.companies.find_one(
+        {'id': {'$regex': f'^{company_id}'}}, {'_id': 0, 'id': 1}
+    )
+    if not company_doc:
+        raise HTTPException(status_code=404, detail=f"Empresa no encontrada: {company_id}")
+    full_company_id = company_doc['id']
+
+    result = await db.cfdis.delete_many({
+        'company_id': full_company_id,
+        'source': 'alegra',
+    })
+    logger.info(f"[clear-data] company={full_company_id} eliminados={result.deleted_count}")
+    return {'company_id': full_company_id, 'eliminados': result.deleted_count}
+
+
 @router.post("/recalcular-bills")
 async def recalcular_bills(
     request: Request,
