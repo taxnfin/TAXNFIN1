@@ -98,8 +98,8 @@ const AgingModule = () => {
           emisor_nombre:    f.proveedor_nombre || f.nombre || '',
           emisor_rfc:       f.proveedor_rfc    || '',
           plazo:            0,
-          pendiente:        f.saldo_pendiente || f.total || 0,
-          pendienteMXN:     f.saldo_pendiente || f.total || 0,
+          pendiente:        (f.saldo_original != null ? f.saldo_original : f.saldo_pendiente) || f.total || 0,
+          pendienteMXN:     (f.saldo_mxn != null ? f.saldo_mxn : f.saldo_pendiente) || f.total || 0,
           // Desglose por bucket del Excel de Contalink (cuando existe):
           // permite repartir el saldo de un proveedor entre varias tarjetas de antigüedad
           desglose_aging: (f.por_vencer != null || f.vencido_1_30 != null || f.vencido_mas90 != null ||
@@ -405,9 +405,11 @@ const AgingModule = () => {
       // ya que las retenciones las retiene el receptor — no son deuda pendiente
       const retenciones = isIngreso ? 0 : ((cfdi.isr_retenido || 0) + (cfdi.iva_retenido || 0));
       const baseFactura = cfdi.total - retenciones;
-      const pendiente = baseFactura - (cfdi[amountField] || 0);
+      const pendiente = cfdi.pendiente > 0 ? cfdi.pendiente : baseFactura - (cfdi[amountField] || 0);
       const moneda = cfdi.moneda || 'MXN';
-      const pendienteMXN = convertToMXN(pendiente, moneda, cfdi.tipo_cambio);
+      const pendienteMXN = cfdi.pendienteMXN > 0
+        ? cfdi.pendienteMXN
+        : convertToMXN(pendiente, moneda, cfdi.tipo_cambio);
       const dueDate = getDueDate(cfdi, tipo);
       const diasVencido = getDaysOverdue(cfdi, tipo);
       const plazo = getPlazo(cfdi, tipo);

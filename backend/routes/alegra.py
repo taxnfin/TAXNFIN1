@@ -2242,6 +2242,7 @@ async def get_alegra_cxc(
             'fecha_emision':       str(inv.get('fecha_emision', ''))[:10],
             'fecha_vencimiento':   str(fecha_venc_raw)[:10] if fecha_venc_raw else '',
             'saldo_pendiente':     saldo_mxn,
+            'saldo_mxn':           saldo_mxn,
             'saldo_original':      round(float(saldo), 2),
             'total':               total_inv,
             'monto_cobrado':       cobrado,
@@ -2430,6 +2431,31 @@ async def get_alegra_cxp(
     if company_doc:
         company_id = company_doc['id']
     today = date.today()
+
+    sample = await db.cfdis.find_one({
+        'company_id': company_id,
+        'source': 'alegra',
+        'tipo_cfdi': 'egreso',
+    })
+    logger.info(f"[CxP DEBUG] Sample bill fields: {list(sample.keys()) if sample else 'none'}")
+    logger.info(f"[CxP DEBUG] Sample alegra_status: {sample.get('alegra_status') if sample else 'none'}")
+    logger.info(f"[CxP DEBUG] Sample estatus: {sample.get('estatus') if sample else 'none'}")
+    logger.info(f"[CxP DEBUG] Sample estado_conciliacion: {sample.get('estado_conciliacion') if sample else 'none'}")
+
+    count_filtered = await db.cfdis.count_documents({
+        'company_id':         company_id,
+        'source':             'alegra',
+        'tipo_cfdi':          'egreso',
+        'estatus':            {'$ne': 'cancelado'},
+        'alegra_status':      {'$nin': ['closed', 'paid', 'void']},
+        'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
+    })
+    count_total = await db.cfdis.count_documents({
+        'company_id': company_id,
+        'source': 'alegra',
+        'tipo_cfdi': 'egreso',
+    })
+    logger.info(f"[CxP DEBUG] Total bills egreso: {count_total}, tras filtro completo: {count_filtered}")
 
     bills = await db.cfdis.find({
         'company_id':         company_id,
