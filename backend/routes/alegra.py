@@ -1393,24 +1393,23 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 page_count += 1
                 params = {'start': start, 'limit': 30,
                           'order_field': 'date', 'order_direction': 'ASC'}
-                if date_from: params['date[from]'] = date_from
-                if date_to:   params['date[to]']   = date_to
+                # Alegra acepta date-start / date-end (con guión)
+                if date_from: params['date-start'] = date_from
+                if date_to:   params['date-end']   = date_to
                 batch = await alegra_request('GET', 'invoices', email, token, params=params)
                 await asyncio.sleep(0.3)
                 if not batch or not isinstance(batch, list):
                     break
                 filtered_inv = []
-                past_range = False
                 for inv in batch:
                     inv_date = (inv.get('date') or '')[:10]
-                    if date_from and inv_date < date_from:
+                    if date_from and inv_date and inv_date < date_from:
                         continue
-                    if date_to and inv_date > date_to:
-                        past_range = True
-                        break
+                    if date_to and inv_date and inv_date > date_to:
+                        continue
                     filtered_inv.append(inv)
                 all_invoices.extend(filtered_inv)
-                if past_range or len(batch) < 30:
+                if len(batch) < 30:
                     break
                 start += 30
             # Siempre traer TODAS las facturas open sin filtro de fechas
@@ -1560,24 +1559,23 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                 page_count += 1
                 params = {'start': start, 'limit': 30,
                           'order_field': 'date', 'order_direction': 'ASC'}
-                if date_from: params['date[from]'] = date_from
-                if date_to:   params['date[to]']   = date_to
+                # Alegra acepta date-start / date-end (con guión)
+                if date_from: params['date-start'] = date_from
+                if date_to:   params['date-end']   = date_to
                 batch = await alegra_request('GET', 'bills', email, token, params=params)
                 await asyncio.sleep(0.3)
                 if not batch or not isinstance(batch, list):
                     break
                 filtered_bill = []
-                past_range = False
                 for bill in batch:
                     bill_date = (bill.get('date') or '')[:10]
-                    if date_from and bill_date < date_from:
+                    if date_from and bill_date and bill_date < date_from:
                         continue
-                    if date_to and bill_date > date_to:
-                        past_range = True
-                        break
+                    if date_to and bill_date and bill_date > date_to:
+                        continue
                     filtered_bill.append(bill)
                 all_bills.extend(filtered_bill)
-                if past_range or len(batch) < 30:
+                if len(batch) < 30:
                     break
                 start += 30
             created = updated = 0
