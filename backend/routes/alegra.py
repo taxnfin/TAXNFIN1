@@ -19,6 +19,7 @@ load_dotenv()
 
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
+from services.fx import get_fx_rate_by_date
 
 import logging
 logger = logging.getLogger(__name__)
@@ -2201,6 +2202,9 @@ async def get_alegra_cxc(
     }, {'_id': 0}).to_list(5000)
     logger.info(f"[CxC] raw_count={len(invoices)}")
 
+    tc_usd = await get_fx_rate_by_date(company_id, 'USD')
+    tc_eur = await get_fx_rate_by_date(company_id, 'EUR')
+
     facturas = []
     aging = {'corriente': 0.0, 'vencido_30': 0.0, 'vencido_60': 0.0, 'vencido_90': 0.0, 'vencido_mas90': 0.0}
     total_pendiente = 0.0
@@ -2214,6 +2218,10 @@ async def get_alegra_cxc(
             skip_saldo += 1
             continue
 
+        moneda = inv.get('moneda', 'MXN')
+        tc = tc_usd if moneda == 'USD' else (tc_eur if moneda == 'EUR' else 1.0)
+        saldo_mxn = round(float(saldo) * tc, 2)
+
         fecha_venc_raw = inv.get('fecha_vencimiento') or inv.get('fecha_emision', '')
         dias_vencido = 0
         if fecha_venc_raw:
@@ -2223,8 +2231,8 @@ async def get_alegra_cxc(
                 pass
 
         bucket = _build_aging_bucket(dias_vencido)
-        aging[bucket] += saldo
-        total_pendiente += saldo
+        aging[bucket] += saldo_mxn
+        total_pendiente += saldo_mxn
 
         facturas.append({
             'uuid':                inv.get('uuid', ''),
@@ -2233,11 +2241,12 @@ async def get_alegra_cxc(
             'cliente_rfc':         inv.get('receptor_rfc', ''),
             'fecha_emision':       str(inv.get('fecha_emision', ''))[:10],
             'fecha_vencimiento':   str(fecha_venc_raw)[:10] if fecha_venc_raw else '',
-            'saldo_pendiente':     saldo,
+            'saldo_pendiente':     saldo_mxn,
+            'saldo_original':      round(float(saldo), 2),
             'total':               total_inv,
             'monto_cobrado':       cobrado,
-            'moneda':              inv.get('moneda', 'MXN'),
-            'tipo_cambio':         float(inv.get('tipo_cambio', 1) or 1),
+            'moneda':              moneda,
+            'tipo_cambio':         tc,
             'dias_vencido':        dias_vencido,
             'estado_conciliacion': inv.get('estado_conciliacion', 'pendiente'),
             'referencia':          inv.get('referencia', ''),
@@ -2427,6 +2436,7 @@ async def get_alegra_cxp(
         'source':             'alegra',
         'tipo_cfdi':          'egreso',
         'estatus':            {'$ne': 'cancelado'},
+        'alegra_status':      {'$nin': ['closed', 'paid', 'void']},
         'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
     }, {'_id': 0}).to_list(5000)
     logger.info(f"[CxP] company_id={company_id} query ejecutado, results={len(bills)}")
