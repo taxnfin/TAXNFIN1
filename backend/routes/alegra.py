@@ -2241,16 +2241,37 @@ async def get_alegra_cxc(
     skip_saldo = 0
 
     for inv in invoices:
-        total_inv = float(inv.get('total', 0) or 0)
-        cobrado   = float(inv.get('monto_cobrado', 0) or 0)
-        saldo     = inv.get('saldo_pendiente') if inv.get('saldo_pendiente') is not None else round(total_inv - cobrado, 2)
-        if saldo < 0.01:
+        # 'total' en MongoDB es en moneda ORIGINAL. Convertir a MXN usando TC.
+        total_orig = float(inv.get('total', 0) or 0)
+        moneda = inv.get('moneda', 'MXN') or 'MXN'
+        tc_inv = float(inv.get('tipo_cambio', 1) or 1)
+        # Prioridad: tipo_cambio guardado en el doc > rates del sistema
+        if moneda != 'MXN' and tc_inv > 1:
+            tc = tc_inv
+        elif moneda == 'USD':
+            tc = tc_usd
+        elif moneda == 'EUR':
+            tc = tc_eur
+        else:
+            tc = 1.0
+
+        total_inv_mxn = round(total_orig * tc, 2) if moneda != 'MXN' else total_orig
+
+        cobrado_orig = float(inv.get('monto_cobrado', 0) or 0)
+        cobrado_mxn  = round(cobrado_orig * tc, 2) if moneda != 'MXN' else cobrado_orig
+
+        # saldo_pendiente puede estar guardado — si existe, usar directo (ya calculado en sync)
+        saldo_guardado = inv.get('saldo_pendiente')
+        if saldo_guardado is not None:
+            saldo_orig = float(saldo_guardado)
+            saldo_mxn  = round(saldo_orig * tc, 2) if moneda != 'MXN' else saldo_orig
+        else:
+            saldo_orig = round(total_orig - cobrado_orig, 2)
+            saldo_mxn  = round(total_inv_mxn - cobrado_mxn, 2)
+
+        if saldo_mxn < 0.01:
             skip_saldo += 1
             continue
-
-        moneda = inv.get('moneda', 'MXN')
-        tc = tc_usd if moneda == 'USD' else (tc_eur if moneda == 'EUR' else 1.0)
-        saldo_mxn = round(float(saldo) * tc, 2)
 
         # Intentar todos los campos donde puede estar la fecha de vencimiento.
         # El sync guarda el raw JSON de Alegra ({**inv, ...}) que usa 'dueDate',
@@ -2282,14 +2303,15 @@ async def get_alegra_cxc(
             'fecha_vencimiento':   str(fecha_venc_raw)[:10] if fecha_venc_raw else '',
             'saldo_pendiente':     saldo_mxn,
             'saldo_mxn':           saldo_mxn,
-            'saldo_original':      round(float(saldo), 2),
-            'total':               total_inv,
-            'monto_cobrado':       cobrado,
+            'saldo_original':      saldo_orig,
+            'total':               total_inv_mxn,
+            'total_original':      total_orig,
+            'monto_cobrado':       cobrado_mxn,
             'moneda':              moneda,
             'tipo_cambio':         tc,
             'dias_vencido':        dias_vencido,
             'estado_conciliacion': inv.get('estado_conciliacion', 'pendiente'),
-            'referencia':          inv.get('referencia', ''),
+            'referencia':          inv.get('referencia', '') or inv.get('folio_alegra', ''),
         })
 
     logger.info(f"[CxC] después de filtros: {len(facturas)} facturas (skip_saldo={skip_saldo})")
@@ -2655,9 +2677,23 @@ async def get_alegra_cxp(
     total_pendiente = 0.0
 
     for bill in bills:
-        total_bill = float(bill.get('total', 0) or 0)
-        pagado     = float(bill.get('monto_pagado', 0) or 0)
-        saldo      = round(total_bill - pagado, 2)
+        moneda      = bill.get('moneda', 'MXN') or 'MXN'
+        tc          = float(bill.get('tipo_cambio', 1) or 1)
+
+        # 'total' en MongoDB está en moneda ORIGINAL (USD/EUR/MXN) — el sync
+        # hace {**bill} y Alegra devuelve totals en la moneda del documento.
+        # Convertir siempre a MXN para el aging y el total_pendiente.
+        total_orig  = float(bill.get('total', 0) or 0)
+        if moneda != 'MXN' and tc > 1:
+            total_mxn = round(total_orig * tc, 2)
+        else:
+            total_mxn = float(bill.get('total_mxn', 0) or 0) or total_orig
+
+        # monto_pagado también en moneda original → convertir
+        pagado_orig = float(bill.get('monto_pagado', 0) or 0)
+        pagado_mxn  = round(pagado_orig * tc, 2) if (moneda != 'MXN' and tc > 1) else pagado_orig
+
+        saldo = round(total_mxn - pagado_mxn, 2)
         if saldo < 0.01:
             continue
 
@@ -2685,18 +2721,21 @@ async def get_alegra_cxp(
         facturas.append({
             'uuid':                bill.get('uuid', ''),
             'alegra_id':           bill.get('alegra_id', ''),
-            'proveedor_nombre':    bill.get('emisor_nombre', '') or bill.get('provider', {}).get('name', '') if isinstance(bill.get('provider'), dict) else bill.get('emisor_nombre', ''),
+            'proveedor_nombre':    bill.get('emisor_nombre', '') or (bill.get('provider', {}).get('name', '') if isinstance(bill.get('provider'), dict) else ''),
             'proveedor_rfc':       bill.get('emisor_rfc', ''),
             'fecha_emision':       str(bill.get('fecha_emision') or bill.get('date', ''))[:10],
             'fecha_vencimiento':   str(fecha_venc_raw)[:10] if fecha_venc_raw else '',
-            'saldo_pendiente':     saldo,
-            'total':               total_bill,
-            'monto_pagado':        pagado,
-            'moneda':              bill.get('moneda', 'MXN'),
-            'tipo_cambio':         float(bill.get('tipo_cambio', 1) or 1),
+            'saldo_pendiente':     saldo,          # ya en MXN
+            'saldo_mxn':           saldo,
+            'saldo_original':      round(total_orig - pagado_orig, 2),
+            'total':               total_mxn,      # en MXN para que el frontend lo muestre bien
+            'total_original':      total_orig,
+            'monto_pagado':        pagado_mxn,
+            'moneda':              moneda,
+            'tipo_cambio':         tc,
             'dias_vencido':        dias_vencido,
             'estado_conciliacion': bill.get('estado_conciliacion', 'pendiente'),
-            'referencia':          bill.get('referencia', ''),
+            'referencia':          bill.get('referencia', '') or bill.get('folio_alegra', ''),
         })
 
     facturas.sort(key=lambda x: x['dias_vencido'], reverse=True)
