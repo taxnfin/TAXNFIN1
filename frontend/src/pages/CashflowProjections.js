@@ -53,6 +53,9 @@ const CashflowProjections = () => {
   const [companyConfig, setCompanyConfig] = useState({ inicio_semana: 1 });
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   
+  // Guardamos backendWeeks en state para poder re-usarlos al cambiar el filtro de fecha
+  const [backendWeeksCache, setBackendWeeksCache] = useState([]);
+  
   // User-selected starting date for the 18-week window (overrides auto-detection).
   // Empty string = automatic (default: 4 weeks before today, snapped to weekStart).
   const [customStartDate, setCustomStartDate] = useState(() => {
@@ -285,6 +288,7 @@ const CashflowProjections = () => {
       };
       
       const backendWeeks = backendWeeksRes.data || [];
+      setBackendWeeksCache(backendWeeks); // ← guardar para reuso al cambiar filtro
       const companyId = getActiveCompanyId();
       if (companyId) {
         try {
@@ -2051,7 +2055,7 @@ const CashflowProjections = () => {
                       allPayments,
                       val   // ← usar como customStart para anclar el modelo
                     );
-                    setWeeklyData(weeks);
+                    setWeeklyData(applyBackendData(weeks, backendWeeksCache));
                   }
                 }}
                 className="h-7 w-36 text-xs"
@@ -2081,7 +2085,7 @@ const CashflowProjections = () => {
                     allPayments,
                     customStartDate  // vuelve al anchor original
                   );
-                  setWeeklyData(weeks);
+                  setWeeklyData(applyBackendData(weeks, backendWeeksCache));
                 }}
               >
                 Ver solo futuras
