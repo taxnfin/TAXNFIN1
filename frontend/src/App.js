@@ -113,6 +113,11 @@ function App() {
   };
 
   const handleLogin = (userData, token) => {
+    // Limpiar localStorage viejo para no contaminar otras pestañas
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('selectedCompany');
+    // Guardar en sessionStorage (solo esta pestaña)
     sessionSet('token', token);
     sessionSet('user', JSON.stringify(userData));
     setUser(userData);

@@ -4,33 +4,21 @@
  * Usa sessionStorage para datos de sesión (token, user, selectedCompany)
  * para que cada pestaña del browser pueda tener una sesión independiente.
  * 
- * Fallback a localStorage si sessionStorage no está disponible.
+ * IMPORTANTE: NO hereda de localStorage — cada pestaña nueva debe hacer login.
+ * Esto permite tener múltiples cuentas abiertas simultáneamente en pestañas distintas.
  * 
  * Preferencias de usuario (tema, idioma, etc.) siguen en localStorage.
  */
 
-const SESSION_KEYS = ['token', 'user', 'selectedCompany'];
-
 /**
- * Lee un valor — busca primero en sessionStorage, luego en localStorage
- * (compatibilidad con sesiones previas guardadas en localStorage).
+ * Lee un valor de sessionStorage (solo de la pestaña actual).
+ * Si no existe, devuelve null — NO hace fallback a localStorage.
  */
 export function sessionGet(key) {
   try {
-    // Primero sessionStorage (sesión actual de la pestaña)
-    const val = sessionStorage.getItem(key);
-    if (val !== null) return val;
-    // Fallback: si existe en localStorage (sesión anterior), migrarlo
-    const legacy = localStorage.getItem(key);
-    if (legacy !== null && SESSION_KEYS.includes(key)) {
-      // Migrar a sessionStorage y limpiar localStorage para esta clave
-      sessionStorage.setItem(key, legacy);
-      // NO borramos de localStorage aquí para no romper otras pestañas abiertas
-      return legacy;
-    }
-    return null;
+    return sessionStorage.getItem(key);
   } catch {
-    return localStorage.getItem(key);
+    return null;
   }
 }
 
@@ -41,17 +29,16 @@ export function sessionSet(key, value) {
   try {
     sessionStorage.setItem(key, value);
   } catch {
-    localStorage.setItem(key, value);
+    // fallback silencioso
   }
 }
 
 /**
- * Elimina de sessionStorage (cierre de sesión de esta pestaña).
+ * Elimina de sessionStorage y localStorage (cierre de sesión).
  */
 export function sessionRemove(key) {
   try {
     sessionStorage.removeItem(key);
-    // También limpiar de localStorage por si quedó ahí
     localStorage.removeItem(key);
   } catch {
     localStorage.removeItem(key);
