@@ -57,6 +57,7 @@ const AgingModule = () => {
   const [categorias, setCategorias] = useState({});       // { "NOMBRE_tipo": { code, name } }
   const [catalogoCategorias, setCatalogoCategorias] = useState([]); // [{id, nombre, tipo, code}] para Alegra
   const [autoCategorizing, setAutoCategorizing] = useState(false);
+  const [autoAssigning, setAutoAssigning] = useState(false);
   const [currentPage, setCurrentPage] = useState({ cxc: 1, cxp: 1 });
 
   useEffect(() => {
@@ -235,6 +236,26 @@ const AgingModule = () => {
       toast.error(err.response?.data?.detail || 'Error en categorización IA');
     } finally {
       setAutoCategorizing(false);
+    }
+  };
+
+  const handleAutoAsignarSemanas = async () => {
+    setAutoAssigning(true);
+    try {
+      const { erp } = getERPEndpoints();
+      const source = erp === 'ninguno' ? '' : `&source=${erp}`;
+      const res = await api.post(`/cxc-proyecciones/auto-assign?solo_sin_asignar=true${source}`);
+      const { asignados, omitidos } = res.data;
+      if (asignados > 0) {
+        toast.success(`✅ ${asignados} clientes/proveedores asignados a semanas por fecha de vencimiento`);
+        await loadData();
+      } else {
+        toast.info(`Todos ya tienen semana asignada (${omitidos} omitidos)`);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error asignando semanas');
+    } finally {
+      setAutoAssigning(false);
     }
   };
 
@@ -1274,6 +1295,17 @@ const AgingModule = () => {
               >
                 <Tag size={14} />
                 {autoCategorizing ? 'Categorizando...' : 'Categorizar con IA'}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleAutoAsignarSemanas}
+                disabled={autoAssigning}
+                className="gap-1.5 text-blue-700 border-blue-300 hover:bg-blue-50"
+                title="Asigna automáticamente la semana de cobro/pago según la fecha de vencimiento. Si ya venció, la pone en la semana actual y el sistema la mueve cada semana hasta que se pague."
+              >
+                <RefreshCw size={14} className={autoAssigning ? 'animate-spin' : ''} />
+                {autoAssigning ? 'Asignando...' : 'Auto-asignar semanas'}
               </Button>
             </div>
           </CardHeader>

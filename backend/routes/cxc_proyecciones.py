@@ -447,11 +447,225 @@ async def get_historial_sync(
     tipo: Optional[str] = Query(None, description='Filtrar por "cxc" | "cxp"'),
     current_user: Dict = Depends(get_current_user),
 ):
-    """Histórico de diferencias registradas por las sincronizaciones:
-    qué se proyectó por semana vs qué dejó de estar pendiente (pagado estimado)."""
+    """Histórico de diferencias registradas por las sincronizaciones."""
     company_id = await get_active_company_id(request, current_user)
     q: Dict = {"company_id": company_id}
     if tipo:
         q["tipo"] = tipo
     docs = await db.cxc_proyecciones_hist.find(q, {"_id": 0}).sort("sync_at", -1).to_list(5000)
     return docs
+
+
+# ── POST /cxc-proyecciones/auto-assign ──────────────────────────────
+@router.post("/auto-assign")
+async def auto_assign_semanas(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    solo_sin_asignar: bool = Query(True, description="Solo asignar los que no tienen semana"),
+    source: Optional[str] = Query(None, description="'alegra' | 'contalink' | None = ambos"),
+):
+    """
+    Asigna automáticamente una semana de cobro/pago a cada cliente/proveedor
+    basándose en la fecha de vencimiento de sus facturas pendientes.
+
+    - Si la fecha de vencimiento ya pasó → asigna la semana ACTUAL
+      (el rolling automático la irá moviendo semana a semana hasta que se pague)
+    - Si la fecha es futura → asigna la semana que corresponde a esa fecha
+    - Máximo 52 semanas hacia adelante
+    """
+    company_id = await get_active_company_id(request, current_user)
+    company    = await db.companies.find_one({"id": company_id}, {"_id": 0})
+    week_start_day = int(company.get("inicio_semana", 1)) if company else 1
+    model_start, current_week_num = _compute_week_info(week_start_day)
+    today = date.today()
+    now   = datetime.now(timezone.utc)
+
+    # Semanas del modelo: S1..S52
+    def fecha_a_semana(fecha_venc: date) -> str:
+        """Convierte una fecha a etiqueta Sn. Si pasó, usa semana actual."""
+        if fecha_venc < today:
+            # Ya venció — asignar a semana actual para que el rolling la mueva
+            semana_num = current_week_num
+        else:
+            diff_days  = (fecha_venc - model_start.replace(year=fecha_venc.year)).days
+            # Recalcular con model_start del año correcto
+            ms = model_start
+            diff_days  = (fecha_venc - ms).days
+            semana_num = max(1, diff_days // 7 + 1)
+        semana_num = min(semana_num, 52)
+        return f"S{semana_num}"
+
+    # Traer CFDIs pendientes con fecha de vencimiento
+    filtro_base = {
+        "company_id": company_id,
+        "estado_conciliacion": {"$in": ["pendiente", "parcial", None]},
+    }
+    if source:
+        filtro_base["source"] = source
+
+    cxc_docs = await db.cfdis.find(
+        {**filtro_base, "tipo_cfdi": "ingreso"},
+        {"_id": 0, "receptor_nombre": 1, "cliente_nombre": 1,
+         "fecha_vencimiento": 1, "dueDate": 1, "total": 1,
+         "moneda": 1, "tipo_cambio": 1, "monto_cobrado": 1, "saldo_pendiente": 1}
+    ).to_list(2000)
+
+    cxp_docs = await db.cfdis.find(
+        {**filtro_base, "tipo_cfdi": "egreso"},
+        {"_id": 0, "emisor_nombre": 1, "proveedor_nombre": 1,
+         "fecha_vencimiento": 1, "dueDate": 1, "total": 1,
+         "moneda": 1, "tipo_cambio": 1, "monto_pagado": 1, "saldo_pendiente": 1}
+    ).to_list(2000)
+
+    # Si solo_sin_asignar, obtener los que ya tienen semana
+    ya_asignados: set = set()
+    if solo_sin_asignar:
+        existentes = await db.cxc_proyecciones.find(
+            {"company_id": company_id, "semana": {"$ne": None}},
+            {"_id": 0, "nombre": 1, "tipo": 1}
+        ).to_list(1000)
+        ya_asignados = {(d["nombre"], d["tipo"]) for d in existentes}
+
+    asignados = 0
+    omitidos  = 0
+
+    # Agrupar por nombre → fecha de vencimiento más próxima
+    def procesar_grupo(docs, tipo, nombre_field):
+        nonlocal asignados, omitidos
+        grupos: dict = {}
+        for doc in docs:
+            nombre = (doc.get(nombre_field) or doc.get("cliente_nombre") or
+                      doc.get("proveedor_nombre") or "").strip()
+            if not nombre:
+                continue
+            fv_raw = (doc.get("fecha_vencimiento") or doc.get("dueDate") or "")
+            fv_str = str(fv_raw)[:10] if fv_raw else ""
+            try:
+                fv = date.fromisoformat(fv_str) if fv_str else today
+            except ValueError:
+                fv = today
+            tc     = float(doc.get("tipo_cambio", 1) or 1)
+            moneda = doc.get("moneda", "MXN") or "MXN"
+            total  = float(doc.get("total", 0) or 0)
+            cobrado = float(doc.get("monto_cobrado") or doc.get("monto_pagado") or 0)
+            saldo  = float(doc.get("saldo_pendiente") or (total - cobrado))
+            saldo_mxn = round(saldo * tc, 2) if moneda != "MXN" else saldo
+
+            if nombre not in grupos:
+                grupos[nombre] = {"fecha_min": fv, "saldo_mxn": 0, "moneda": moneda}
+            # Usar la fecha de vencimiento más cercana al hoy (la más urgente)
+            if fv < grupos[nombre]["fecha_min"] or grupos[nombre]["fecha_min"] < today:
+                grupos[nombre]["fecha_min"] = fv
+            grupos[nombre]["saldo_mxn"] += saldo_mxn
+
+        for nombre, info in grupos.items():
+            if solo_sin_asignar and (nombre, tipo) in ya_asignados:
+                omitidos += 1
+                continue
+            semana = fecha_a_semana(info["fecha_min"])
+            doc_upd = {
+                "company_id": company_id,
+                "nombre":     nombre,
+                "tipo":       tipo,
+                "semana":     semana,
+                "monto":      round(info["saldo_mxn"], 2),
+                "moneda":     "MXN",
+                "auto_assigned": True,
+                "assigned_from_fecha": info["fecha_min"].isoformat(),
+                "updated_at": now,
+            }
+            import asyncio
+            # Usar update_one upsert para no bloquear — se hace de forma síncrona aquí
+            return grupos, doc_upd  # retornamos para hacer en loop
+
+    # Procesar CxC
+    grupos_cxc: dict = {}
+    for doc in cxc_docs:
+        nombre = (doc.get("receptor_nombre") or doc.get("cliente_nombre") or "").strip()
+        if not nombre:
+            continue
+        fv_raw = doc.get("fecha_vencimiento") or doc.get("dueDate") or ""
+        fv_str = str(fv_raw)[:10] if fv_raw else ""
+        try:
+            fv = date.fromisoformat(fv_str) if fv_str else today
+        except ValueError:
+            fv = today
+        tc     = float(doc.get("tipo_cambio", 1) or 1)
+        moneda = doc.get("moneda", "MXN") or "MXN"
+        total  = float(doc.get("total", 0) or 0)
+        cobrado = float(doc.get("monto_cobrado") or 0)
+        saldo  = float(doc.get("saldo_pendiente") or (total - cobrado))
+        saldo_mxn = round(saldo * tc, 2) if moneda != "MXN" else saldo
+        if nombre not in grupos_cxc:
+            grupos_cxc[nombre] = {"fecha_min": fv, "saldo_mxn": 0}
+        if fv < grupos_cxc[nombre]["fecha_min"]:
+            grupos_cxc[nombre]["fecha_min"] = fv
+        grupos_cxc[nombre]["saldo_mxn"] += saldo_mxn
+
+    for nombre, info in grupos_cxc.items():
+        if solo_sin_asignar and (nombre, "cxc") in ya_asignados:
+            omitidos += 1
+            continue
+        semana = fecha_a_semana(info["fecha_min"])
+        await db.cxc_proyecciones.update_one(
+            {"company_id": company_id, "nombre": nombre, "tipo": "cxc"},
+            {"$set": {
+                "company_id": company_id, "nombre": nombre, "tipo": "cxc",
+                "semana": semana, "monto": round(info["saldo_mxn"], 2), "moneda": "MXN",
+                "auto_assigned": True,
+                "assigned_from_fecha": info["fecha_min"].isoformat(),
+                "updated_at": now,
+            }},
+            upsert=True,
+        )
+        asignados += 1
+
+    # Procesar CxP
+    grupos_cxp: dict = {}
+    for doc in cxp_docs:
+        nombre = (doc.get("emisor_nombre") or doc.get("proveedor_nombre") or "").strip()
+        if not nombre:
+            continue
+        fv_raw = doc.get("fecha_vencimiento") or doc.get("dueDate") or ""
+        fv_str = str(fv_raw)[:10] if fv_raw else ""
+        try:
+            fv = date.fromisoformat(fv_str) if fv_str else today
+        except ValueError:
+            fv = today
+        tc     = float(doc.get("tipo_cambio", 1) or 1)
+        moneda = doc.get("moneda", "MXN") or "MXN"
+        total  = float(doc.get("total", 0) or 0)
+        pagado = float(doc.get("monto_pagado") or 0)
+        saldo  = float(doc.get("saldo_pendiente") or (total - pagado))
+        saldo_mxn = round(saldo * tc, 2) if moneda != "MXN" else saldo
+        if nombre not in grupos_cxp:
+            grupos_cxp[nombre] = {"fecha_min": fv, "saldo_mxn": 0}
+        if fv < grupos_cxp[nombre]["fecha_min"]:
+            grupos_cxp[nombre]["fecha_min"] = fv
+        grupos_cxp[nombre]["saldo_mxn"] += saldo_mxn
+
+    for nombre, info in grupos_cxp.items():
+        if solo_sin_asignar and (nombre, "cxp") in ya_asignados:
+            omitidos += 1
+            continue
+        semana = fecha_a_semana(info["fecha_min"])
+        await db.cxc_proyecciones.update_one(
+            {"company_id": company_id, "nombre": nombre, "tipo": "cxp"},
+            {"$set": {
+                "company_id": company_id, "nombre": nombre, "tipo": "cxp",
+                "semana": semana, "monto": round(info["saldo_mxn"], 2), "moneda": "MXN",
+                "auto_assigned": True,
+                "assigned_from_fecha": info["fecha_min"].isoformat(),
+                "updated_at": now,
+            }},
+            upsert=True,
+        )
+        asignados += 1
+
+    logger.info(f"[auto-assign] company={company_id} asignados={asignados} omitidos={omitidos}")
+    return {
+        "success":   True,
+        "asignados": asignados,
+        "omitidos":  omitidos,
+        "message":   f"{asignados} clientes/proveedores asignados a semanas según fecha de vencimiento",
+    }
