@@ -659,6 +659,46 @@ async def delete_all_reconciliations(request: Request, current_user: Dict = Depe
     }
 
 
+@router.get("/diagnostico")
+async def diagnostico_reconciliations(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Diagnóstico: muestra estructura real de reconciliaciones en MongoDB."""
+    company_id = await get_active_company_id(request, current_user)
+
+    total_recons = await db.reconciliations.count_documents({'company_id': company_id})
+    total_txn_conciliadas = await db.bank_transactions.count_documents(
+        {'company_id': company_id, 'conciliado': True}
+    )
+    total_txn_sin_tercero = await db.bank_transactions.count_documents(
+        {'company_id': company_id, 'conciliado': True,
+         '$or': [{'tercero': None}, {'tercero': {'$exists': False}}, {'tercero': ''}]}
+    )
+
+    # Muestra de reconciliaciones — ver qué campos tienen
+    muestra_recons = await db.reconciliations.find(
+        {'company_id': company_id},
+        {'_id': 0}
+    ).limit(3).to_list(3)
+
+    # Muestra de bank_transactions conciliadas
+    muestra_txn = await db.bank_transactions.find(
+        {'company_id': company_id, 'conciliado': True},
+        {'_id': 0, 'id': 1, 'descripcion': 1, 'conciliado': 1,
+         'cfdi_uuid': 1, 'cfdi_id': 1, 'tercero': 1, 'tipo_conciliacion': 1}
+    ).limit(5).to_list(5)
+
+    return {
+        'company_id':             company_id,
+        'total_reconciliaciones': total_recons,
+        'total_txn_conciliadas':  total_txn_conciliadas,
+        'txn_sin_tercero':        total_txn_sin_tercero,
+        'muestra_reconciliaciones': muestra_recons,
+        'muestra_txn_conciliadas':  muestra_txn,
+    }
+
+
 @router.post("/backfill-tercero-uuid")
 async def backfill_tercero_uuid(
     request: Request,
