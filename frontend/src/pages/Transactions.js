@@ -88,9 +88,14 @@ const AgingModule = () => {
           uuid:             f.uuid || '',
           fecha_emision:    f.fecha_emision || '',
           fecha_vencimiento: f.fecha_vencimiento || fechaVencCalc.toISOString().split('T')[0],
-          total:            f.total || f.saldo_pendiente || 0,
-          monto_cobrado:    0,
-          monto_pagado:     0,
+          // total_original = monto en la moneda del documento (USD/EUR/MXN)
+          // total          = monto en MXN (para cálculos internos del frontend)
+          // pendiente      = saldo en moneda original (lo que muestra la columna "Pendiente")
+          // pendienteMXN   = saldo en MXN (lo que muestra la columna "Pend. MXN")
+          total:            f.total_original != null ? f.total_original : (f.total || f.saldo_pendiente || 0),
+          totalMXN:         f.total || f.saldo_pendiente || 0,
+          monto_cobrado:    f.monto_cobrado || 0,
+          monto_pagado:     f.monto_pagado  || 0,
           moneda:           f.moneda || 'MXN',
           tipo_cfdi:        tipo === 'cxc' ? 'ingreso' : 'egreso',
           receptor_nombre:  f.cliente_nombre  || f.nombre || '',
@@ -98,8 +103,8 @@ const AgingModule = () => {
           emisor_nombre:    f.proveedor_nombre || f.nombre || '',
           emisor_rfc:       f.proveedor_rfc    || '',
           plazo:            0,
-          pendiente:        (f.saldo_original != null ? f.saldo_original : f.saldo_pendiente) || f.total || 0,
-          pendienteMXN:     (f.saldo_mxn != null ? f.saldo_mxn : f.saldo_pendiente) || f.total || 0,
+          pendiente:        f.saldo_original != null ? f.saldo_original : (f.saldo_pendiente || f.total_original || 0),
+          pendienteMXN:     f.saldo_mxn      != null ? f.saldo_mxn      : (f.saldo_pendiente || f.total || 0),
           // Desglose por bucket del Excel de Contalink (cuando existe):
           // permite repartir el saldo de un proveedor entre varias tarjetas de antigüedad
           desglose_aging: (f.por_vencer != null || f.vencido_1_30 != null || f.vencido_mas90 != null ||
@@ -401,26 +406,22 @@ const AgingModule = () => {
     filtered.forEach(cfdi => {
       const bucket = getAgingBucket(cfdi, tipo);
       const amountField = isIngreso ? 'monto_cobrado' : 'monto_pagado';
-      // Para CxP: descontar retenciones (ISR e IVA retenido) del total
-      // ya que las retenciones las retiene el receptor — no son deuda pendiente
       const retenciones = isIngreso ? 0 : ((cfdi.isr_retenido || 0) + (cfdi.iva_retenido || 0));
-      const baseFactura = cfdi.total - retenciones;
-      const pendiente = cfdi.pendiente > 0 ? cfdi.pendiente : baseFactura - (cfdi[amountField] || 0);
+
+      // pendiente = saldo en MONEDA ORIGINAL (para mostrar en columna "Pendiente")
+      // pendienteMXN = saldo en MXN (para totales, aging, columna "Pend. MXN")
+      const pendiente    = cfdi.pendiente    > 0 ? cfdi.pendiente    : Math.max(0, cfdi.total - retenciones - (cfdi[amountField] || 0));
+      const pendienteMXN = cfdi.pendienteMXN > 0 ? cfdi.pendienteMXN : convertToMXN(pendiente, cfdi.moneda || 'MXN', cfdi.tipo_cambio);
+
       const moneda = cfdi.moneda || 'MXN';
-      const pendienteMXN = cfdi.pendienteMXN > 0
-        ? cfdi.pendienteMXN
-        : convertToMXN(pendiente, moneda, cfdi.tipo_cambio);
       const dueDate = getDueDate(cfdi, tipo);
       const diasVencido = getDaysOverdue(cfdi, tipo);
       const plazo = getPlazo(cfdi, tipo);
-      
-      // Retención implícita: diferencia entre total y lo pagado cuando isr/iva_retenido = 0
-      // Aplica a personas físicas donde el pagador retiene ISR/IVA para el SAT
-      const retencionImplicita = (!isIngreso && cfdi.isr_retenido === 0 && cfdi.iva_retenido === 0)
-        ? Math.max(0, pendiente - 0.01)  // si el pendiente es pequeño vs total, probablemente es retención
-        : 0;
-      // Solo marcar como retención si el pendiente es <= 15% del total (típico de retenciones)
-      const esRetencion = !isIngreso && retencionImplicita > 0 && (pendiente / cfdi.total) <= 0.15;
+
+      // Retención implícita — solo aplica a MXN (personas físicas)
+      const esRetencion = !isIngreso && moneda === 'MXN' &&
+        cfdi.isr_retenido === 0 && cfdi.iva_retenido === 0 &&
+        pendiente > 0 && (pendiente / (cfdi.total || 1)) <= 0.15;
 
       buckets[bucket].cfdis.push({
         ...cfdi,
@@ -1275,11 +1276,11 @@ const AgingModule = () => {
                   <TableHead>Días Venc.</TableHead>
                   <TableHead className="bg-blue-50">Proyección</TableHead>
                   <TableHead>Moneda</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Pagado</TableHead>
-                  <TableHead className="text-right">Pendiente</TableHead>
+                  <TableHead className="text-right">Total (orig.)</TableHead>
+                  <TableHead className="text-right bg-green-50">Total MXN</TableHead>
+                  <TableHead className="text-right">Pendiente (orig.)</TableHead>
                   <TableHead className="text-right bg-amber-50">Ret. SAT</TableHead>
-                  <TableHead className="text-right bg-blue-50">Pend. {displayCurrency}</TableHead>
+                  <TableHead className="text-right bg-blue-50">Pend. MXN</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1418,9 +1419,17 @@ const AgingModule = () => {
                             {cfdi.moneda || 'MXN'}
                           </span>
                         </TableCell>
-                        <TableCell className="text-right font-mono text-xs">{formatCurrency(cfdi.total, cfdi.moneda)}</TableCell>
-                        <TableCell className="text-right font-mono text-xs text-green-600">{formatCurrency(pagado, cfdi.moneda)}</TableCell>
-                        <TableCell className="text-right font-mono text-xs font-bold text-orange-600">{formatCurrency(cfdi.pendiente, cfdi.moneda)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs">
+                          {formatCurrency(cfdi.total, cfdi.moneda)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs bg-green-50 text-green-800">
+                          {cfdi.moneda !== 'MXN'
+                            ? formatCurrency(cfdi.totalMXN || cfdi.pendienteMXN, 'MXN')
+                            : '—'}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs font-bold text-orange-600">
+                          {formatCurrency(cfdi.pendiente, cfdi.moneda)}
+                        </TableCell>
                         <TableCell className="text-right font-mono text-xs bg-amber-50">
                           {cfdi.esRetencion ? (
                             <span className="text-amber-700 font-bold" title="Retención para entero al SAT">
