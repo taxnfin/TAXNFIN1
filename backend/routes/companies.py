@@ -84,9 +84,17 @@ async def list_companies(current_user: Dict = Depends(get_current_user)):
             seen.add(c['id'])
             if isinstance(c.get('created_at'), str):
                 c['created_at'] = datetime.fromisoformat(c['created_at'])
-            # Infer alegra_connected from stored credentials if the flag is missing
+            # Inferir alegra_connected desde credenciales guardadas
             if not c.get('alegra_connected') and c.get('alegra_email') and c.get('alegra_token'):
                 c['alegra_connected'] = True
+            # Inferir ERP si no está guardado explícitamente
+            if not c.get('erp'):
+                if c.get('alegra_email') and c.get('alegra_token'):
+                    c['erp'] = 'alegra'
+                elif c.get('contalink_user') or c.get('contalink_token') or c.get('contalink_empresa_id'):
+                    c['erp'] = 'contalink'
+                else:
+                    c['erp'] = 'ninguno'
             result.append(c)
 
     return result
@@ -108,6 +116,14 @@ async def get_company(company_id: str, current_user: Dict = Depends(get_current_
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
     if isinstance(company.get('created_at'), str):
         company['created_at'] = datetime.fromisoformat(company['created_at'])
+    # Inferir ERP si no está guardado
+    if not company.get('erp'):
+        if company.get('alegra_email') and company.get('alegra_token'):
+            company['erp'] = 'alegra'
+        elif company.get('contalink_user') or company.get('contalink_token') or company.get('contalink_empresa_id'):
+            company['erp'] = 'contalink'
+        else:
+            company['erp'] = 'ninguno'
     return Company(**company)
 
 

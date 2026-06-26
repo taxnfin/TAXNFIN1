@@ -92,15 +92,17 @@ function App() {
       if (!selectedCompany && companiesRes.data.length > 0) {
         const userCompany = companiesRes.data.find(c => c.id === user.company_id);
         const base = userCompany || companiesRes.data[0];
-        // alegra_connected: true si el campo ya viene en el objeto empresa O si está en integraciones
         const alegraConnected = base.alegra_connected === true || alegraViaIntegrations;
-        const enriched = { ...base, alegra_connected: alegraConnected };
+        // Inferir ERP: viene del backend, o lo deducimos del flag alegra_connected
+        const erp = base.erp || (alegraConnected ? 'alegra' : 'ninguno');
+        const enriched = { ...base, alegra_connected: alegraConnected, erp };
         setSelectedCompany(enriched);
         localStorage.setItem('selectedCompany', JSON.stringify(enriched));
       } else if (selectedCompany) {
         const currentBase = companiesRes.data.find(c => c.id === selectedCompany.id) || selectedCompany;
         const alegraConnected = currentBase.alegra_connected === true || alegraViaIntegrations;
-        const enriched = { ...currentBase, alegra_connected: alegraConnected };
+        const erp = currentBase.erp || (alegraConnected ? 'alegra' : selectedCompany.erp || 'ninguno');
+        const enriched = { ...currentBase, alegra_connected: alegraConnected, erp };
         setSelectedCompany(enriched);
         localStorage.setItem('selectedCompany', JSON.stringify(enriched));
       }

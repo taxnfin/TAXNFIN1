@@ -13,12 +13,14 @@ class Company(BaseModel):
     moneda_base: str = "MXN"
     pais: str = "México"
     activo: bool = True
-    inicio_semana: int = 1  # 0=Domingo, 1=Lunes, 2=Martes, etc. Default: Lunes
-    logo_url: Optional[str] = None  # URL or base64 of company logo
+    inicio_semana: int = 1
+    logo_url: Optional[str] = None
     on_hold: bool = False
     hold_reason: Optional[str] = None
     hold_since: Optional[str] = None
     alegra_connected: Optional[bool] = False
+    # ERP que usa la empresa: 'alegra' | 'contalink' | 'ninguno'
+    erp: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -29,6 +31,7 @@ class CompanyCreate(BaseModel):
     pais: str = "México"
     inicio_semana: int = 1
     logo_url: Optional[str] = None
+    erp: Optional[str] = None
 
 
 class CompanyUpdate(BaseModel):
@@ -38,3 +41,4 @@ class CompanyUpdate(BaseModel):
     pais: Optional[str] = None
     inicio_semana: Optional[int] = None
     logo_url: Optional[str] = None
+    erp: Optional[str] = None
