@@ -209,7 +209,11 @@ const AgingModule = () => {
   const handleAutoCategorize = async () => {
     setAutoCategorizing(true);
     try {
-      const res = await api.post('/contalink/auto-categorize-cxc?solo_sin_categoria=true');
+      const { usaAlegra } = getERPEndpoints();
+      const endpoint = usaAlegra
+        ? '/alegra/auto-categorize-cxc?solo_sin_categoria=true'
+        : '/contalink/auto-categorize-cxc?solo_sin_categoria=true';
+      const res = await api.post(endpoint);
       const { updated, processed } = res.data;
       if (updated > 0) {
         toast.success(`✅ ${updated} de ${processed} clientes/proveedores categorizados con IA`);
@@ -226,7 +230,9 @@ const AgingModule = () => {
 
   const handleCategoriaManual = async (nombre, tipo, category_code, category_name) => {
     try {
-      await api.post('/contalink/categoria-cxc', { nombre, tipo, category_code, category_name });
+      const { usaAlegra } = getERPEndpoints();
+      const endpoint = usaAlegra ? '/alegra/categoria-cxc' : '/contalink/categoria-cxc';
+      await api.post(endpoint, { nombre, tipo, category_code, category_name });
       setCategorias(prev => ({ ...prev, [`${nombre}_${tipo}`]: { code: category_code, name: category_name } }));
       toast.success(`Categoría actualizada: ${category_name}`);
     } catch (err) {

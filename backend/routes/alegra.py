@@ -2997,9 +2997,40 @@ async def get_alegra_categorias_cxc(
     """Lista categorías guardadas para CxC/CxP de Alegra."""
     company_id = await get_active_company_id(request, current_user)
     docs = await db.cxc_categorias.find(
-        {'company_id': company_id, 'source': 'alegra'}, {'_id': 0}
+        {'company_id': company_id}, {'_id': 0}
     ).to_list(1000)
     return {'categorias_guardadas': docs, 'catalogo_cxc': _ALEGRA_CXC_CATEGORIES, 'catalogo_cxp': _ALEGRA_CXP_CATEGORIES}
+
+
+@router.post("/categoria-cxc")
+async def save_alegra_categoria_manual(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Guarda o actualiza una categoría manual para un cliente/proveedor de Alegra."""
+    company_id = await get_active_company_id(request, current_user)
+    body = await request.json()
+    nombre        = (body.get('nombre') or '').strip()
+    tipo          = body.get('tipo', 'cxc')
+    category_code = body.get('category_code', '')
+    category_name = body.get('category_name', '')
+    if not nombre or not category_code:
+        raise HTTPException(status_code=400, detail="nombre y category_code son requeridos")
+    doc = {
+        'company_id':    company_id,
+        'nombre':        nombre,
+        'tipo':          tipo,
+        'category_code': category_code,
+        'category_name': category_name,
+        'categorized_by': 'manual',
+        'updated_at':    datetime.now(timezone.utc).isoformat(),
+    }
+    await db.cxc_categorias.update_one(
+        {'company_id': company_id, 'nombre': nombre, 'tipo': tipo},
+        {'$set': doc},
+        upsert=True,
+    )
+    return {'ok': True, 'nombre': nombre, 'category_name': category_name}
 
 
 # ══════════════════════════════════════════════════════════════════════
