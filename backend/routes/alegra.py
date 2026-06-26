@@ -1469,6 +1469,9 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                        'alegra_status': _status,
                        'saldo_pendiente': round(_balance, 2),
                        'monto_cobrado': round(_cobrado, 2),
+                       # Mapear explícitamente dueDate y date a campos normalizados
+                       'fecha_emision': inv.get('date', ''),
+                       'fecha_vencimiento': inv.get('dueDate') or inv.get('date', ''),
                        'synced_at': datetime.now(timezone.utc).isoformat()}
                 res = await db.cfdis.update_one(
                     {'company_id': company_id, 'alegra_id': alegra_id},
@@ -1608,6 +1611,9 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                        'estado_conciliacion': _bill_estado,
                        'saldo_pendiente': _bill_balance,
                        'monto_pagado': _bill_paid,
+                       # Mapear explícitamente dueDate y date a campos normalizados
+                       'fecha_emision': bill.get('date', ''),
+                       'fecha_vencimiento': bill.get('dueDate') or bill.get('date', ''),
                        'synced_at': datetime.now(timezone.utc).isoformat()}
                 res = await db.cfdis.update_one(
                     {'company_id': company_id, 'alegra_id': alegra_id},
@@ -2246,7 +2252,16 @@ async def get_alegra_cxc(
         tc = tc_usd if moneda == 'USD' else (tc_eur if moneda == 'EUR' else 1.0)
         saldo_mxn = round(float(saldo) * tc, 2)
 
-        fecha_venc_raw = inv.get('fecha_vencimiento') or inv.get('fecha_emision', '')
+        # Intentar todos los campos donde puede estar la fecha de vencimiento.
+        # El sync guarda el raw JSON de Alegra ({**inv, ...}) que usa 'dueDate',
+        # pero también guardamos 'fecha_vencimiento' en el doc limpio.
+        fecha_venc_raw = (
+            inv.get('fecha_vencimiento')
+            or inv.get('dueDate')
+            or inv.get('fecha_emision')
+            or inv.get('date')
+            or ''
+        )
         dias_vencido = 0
         if fecha_venc_raw:
             try:
@@ -2263,7 +2278,7 @@ async def get_alegra_cxc(
             'alegra_id':           inv.get('alegra_id', ''),
             'cliente_nombre':      inv.get('receptor_nombre', ''),
             'cliente_rfc':         inv.get('receptor_rfc', ''),
-            'fecha_emision':       str(inv.get('fecha_emision', ''))[:10],
+            'fecha_emision':       str(inv.get('fecha_emision') or inv.get('date', ''))[:10],
             'fecha_vencimiento':   str(fecha_venc_raw)[:10] if fecha_venc_raw else '',
             'saldo_pendiente':     saldo_mxn,
             'saldo_mxn':           saldo_mxn,
@@ -2646,7 +2661,16 @@ async def get_alegra_cxp(
         if saldo < 0.01:
             continue
 
-        fecha_venc_raw = bill.get('fecha_vencimiento') or bill.get('fecha_emision', '')
+        # Intentar todos los campos donde puede estar la fecha de vencimiento.
+        # El sync guarda el raw JSON de Alegra ({**bill, ...}) que usa 'dueDate',
+        # pero también guardamos 'fecha_vencimiento' en el doc limpio.
+        fecha_venc_raw = (
+            bill.get('fecha_vencimiento')
+            or bill.get('dueDate')
+            or bill.get('fecha_emision')
+            or bill.get('date')
+            or ''
+        )
         dias_vencido = 0
         if fecha_venc_raw:
             try:
@@ -2661,9 +2685,9 @@ async def get_alegra_cxp(
         facturas.append({
             'uuid':                bill.get('uuid', ''),
             'alegra_id':           bill.get('alegra_id', ''),
-            'proveedor_nombre':    bill.get('emisor_nombre', ''),
+            'proveedor_nombre':    bill.get('emisor_nombre', '') or bill.get('provider', {}).get('name', '') if isinstance(bill.get('provider'), dict) else bill.get('emisor_nombre', ''),
             'proveedor_rfc':       bill.get('emisor_rfc', ''),
-            'fecha_emision':       str(bill.get('fecha_emision', ''))[:10],
+            'fecha_emision':       str(bill.get('fecha_emision') or bill.get('date', ''))[:10],
             'fecha_vencimiento':   str(fecha_venc_raw)[:10] if fecha_venc_raw else '',
             'saldo_pendiente':     saldo,
             'total':               total_bill,
