@@ -4167,3 +4167,74 @@ async def recategorize_payment_alegra(
     except Exception as e:
         logger.error(f"[recategorize-payment] error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/debug-bills-dates")
+async def debug_bills_dates(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Diagnóstico: muestra los campos de fecha reales en los bills de MongoDB."""
+    company_id = await get_active_company_id(request, current_user)
+    company_doc = await db.companies.find_one(
+        {'id': {'$regex': f'^{company_id}'}}, {'_id': 0, 'id': 1}
+    )
+    if company_doc:
+        company_id = company_doc['id']
+
+    # Traer muestra de bills pendientes/parciales
+    bills = await db.cfdis.find({
+        'company_id': company_id,
+        'source': 'alegra',
+        'tipo_cfdi': 'egreso',
+        'estatus': {'$ne': 'cancelado'},
+        'alegra_status': {'$nin': ['closed', 'paid', 'void']},
+        'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
+    }, {
+        '_id': 0,
+        'alegra_id': 1,
+        'emisor_nombre': 1,
+        'total': 1,
+        'fecha_emision': 1,
+        'fecha_vencimiento': 1,
+        'dueDate': 1,
+        'date': 1,
+        'alegra_status': 1,
+        'estado_conciliacion': 1,
+    }).limit(15).to_list(15)
+
+    today = date.today()
+    resultado = []
+    for b in bills:
+        fv = b.get('fecha_vencimiento') or b.get('dueDate') or b.get('fecha_emision') or b.get('date') or ''
+        try:
+            dias = (today - date.fromisoformat(str(fv)[:10])).days if fv else None
+        except Exception:
+            dias = None
+        resultado.append({
+            'alegra_id':         b.get('alegra_id'),
+            'proveedor':         b.get('emisor_nombre', '')[:30],
+            'total':             b.get('total'),
+            'fecha_vencimiento': b.get('fecha_vencimiento'),   # campo normalizado
+            'dueDate':           b.get('dueDate'),             # campo raw de Alegra
+            'date':              b.get('date'),                 # campo raw de Alegra
+            'fecha_emision':     b.get('fecha_emision'),
+            'campo_usado':       fv,
+            'dias_vencido_calculado': dias,
+        })
+
+    total_bills = await db.cfdis.count_documents({
+        'company_id': company_id,
+        'source': 'alegra',
+        'tipo_cfdi': 'egreso',
+        'estatus': {'$ne': 'cancelado'},
+        'alegra_status': {'$nin': ['closed', 'paid', 'void']},
+        'estado_conciliacion': {'$in': ['pendiente', 'parcial', None]},
+    })
+
+    return {
+        'company_id': company_id,
+        'total_bills_pendientes': total_bills,
+        'muestra': resultado,
+        'hoy': today.isoformat(),
+    }
