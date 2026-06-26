@@ -473,14 +473,13 @@ const AgingModule = () => {
     return buckets;
   };
 
-  // Get party name
+  // Get party name — usa receptor_nombre/emisor_nombre del CFDI directamente
+  // para que coincida con la key del catMap (que viene del backend con esos campos)
   const getPartyName = (cfdi, tipo) => {
     if (tipo === 'cxc') {
-      const customer = customers.find(c => c.id === cfdi.customer_id || c.rfc === cfdi.receptor_rfc);
-      return customer?.nombre || cfdi.receptor_nombre || 'Sin asignar';
+      return cfdi.receptor_nombre || cfdi.cliente_nombre || 'Sin asignar';
     } else {
-      const vendor = vendors.find(v => v.id === cfdi.vendor_id || v.rfc === cfdi.emisor_rfc);
-      return vendor?.nombre || cfdi.emisor_nombre || 'Sin asignar';
+      return cfdi.emisor_nombre || cfdi.proveedor_nombre || 'Sin asignar';
     }
   };
 
