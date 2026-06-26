@@ -67,7 +67,7 @@ const AgingModule = () => {
     setLoading(true);
     const refreshParam = forceRefresh ? '?refresh=true' : '';
     try {
-      const [cxcRes, cxpRes, fxRes, proyRes, semanasRes, catRes, histRes] = await Promise.all([
+      const [cxcRes, cxpRes, fxRes, proyRes, semanasRes, catRes, histRes, alegraGuardadasRes] = await Promise.all([
         api.get(`${getERPEndpoints().cxcEndpoint}${refreshParam}`),
         api.get(`${getERPEndpoints().cxpEndpoint}${refreshParam}`),
         api.get('/fx-rates/latest'),
@@ -77,6 +77,10 @@ const AgingModule = () => {
           ? api.get('/cashflow-sync/categories').catch(() => ({ data: [] }))
           : api.get('/contalink/categorias-cxc').catch(() => ({ data: { categorias_guardadas: [] } })),
         api.get('/cxc-proyecciones/historial-sync').catch(() => ({ data: [] })),
+        // Para Alegra: cargar también las categorías guardadas por cliente/proveedor
+        getERPEndpoints().usaAlegra
+          ? api.get('/alegra/categorias-cxc').catch(() => ({ data: { categorias_guardadas: [] } }))
+          : Promise.resolve({ data: { categorias_guardadas: [] } }),
       ]);
 
       const toLocal = (facturas, tipo) => (facturas || []).map(f => {
@@ -139,8 +143,14 @@ const AgingModule = () => {
       // Construir mapa de categorías: { "NOMBRE_tipo": { code, name } }
       const catMap = {};
       if (getERPEndpoints().usaAlegra) {
+        // catRes = catálogo general de cashflow (para el dropdown)
         const catList = Array.isArray(catRes.data) ? catRes.data : [];
         setCatalogoCategorias(catList);
+        // alegraGuardadasRes = categorías guardadas por cliente/proveedor
+        const guardadas = alegraGuardadasRes.data?.categorias_guardadas || [];
+        guardadas.forEach(c => {
+          catMap[`${c.nombre}_${c.tipo}`] = { code: c.category_code, name: c.category_name };
+        });
       } else {
         const catData = catRes.data?.categorias_guardadas || [];
         catData.forEach(c => {
