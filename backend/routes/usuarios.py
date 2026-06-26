@@ -4,6 +4,9 @@ Invitar, rolar, asignar empresas y desactivar usuarios dentro del scope del CFO.
 Regla de oro: ningún usuario puede ver ni tocar datos de empresas que no le pertenecen.
 """
 import uuid
+import os
+import asyncio
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -12,6 +15,167 @@ from core.auth import get_current_user, hash_password
 from core.database import db
 
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
+logger = logging.getLogger(__name__)
+
+
+async def _send_welcome_email(
+    email: str,
+    nombre: str,
+    temp_password: str,
+    empresas: List[str],
+    invited_by_nombre: str,
+) -> None:
+    """Envía email de bienvenida al usuario invitado con sus credenciales de acceso."""
+    try:
+        import resend
+        api_key = os.environ.get('RESEND_API_KEY', '')
+        if not api_key:
+            logger.warning(
+                "[RESEND] Sin API key — credenciales para %s: pass=%s",
+                email, temp_password
+            )
+            return
+
+        resend.api_key = api_key
+        from_address = os.environ.get('RESEND_FROM', 'TaxnFin <noreply@taxnfin.com>')
+        frontend_url = os.environ.get('FRONTEND_URL', 'https://cashflow.taxnfin.com')
+        empresas_html = ''.join(f'<li style="margin:4px 0">{e}</li>' for e in empresas)
+
+        html_body = f"""
+<!DOCTYPE html>
+<html lang="es">
+<body style="font-family:Arial,sans-serif;background:#F8F9FA;margin:0;padding:24px">
+  <div style="max-width:560px;margin:0 auto;background:#FFF;border-radius:8px;padding:32px;border:1px solid #E2E8F0">
+    <div style="text-align:center;margin-bottom:24px">
+      <span style="font-size:28px;font-weight:800;color:#1B3A6B">T$</span>
+      <span style="font-size:18px;font-weight:700;color:#1B3A6B;margin-left:8px">TaxnFin Cashflow</span>
+    </div>
+    <h2 style="color:#1B3A6B;font-size:20px;margin:0 0 16px">¡Hola {nombre}! 👋</h2>
+    <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 16px">
+      <strong>{invited_by_nombre}</strong> te ha dado acceso a <strong>TaxnFin CFO Intelligence</strong>.
+      Ya puedes ver el flujo de caja e información financiera de:
+    </p>
+    <ul style="color:#374151;font-size:14px;margin:0 0 24px;padding-left:20px">
+      {empresas_html}
+    </ul>
+    <div style="background:#F1F5F9;border-radius:6px;padding:16px;margin:0 0 24px">
+      <p style="color:#64748B;font-size:12px;margin:0 0 8px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Tus credenciales de acceso</p>
+      <p style="margin:4px 0;font-size:13px;color:#374151">📧 <strong>Email:</strong> {email}</p>
+      <p style="margin:4px 0;font-size:13px;color:#374151">🔑 <strong>Contraseña temporal:</strong>
+        <span style="font-family:monospace;font-size:16px;font-weight:700;color:#1B3A6B;letter-spacing:0.1em">{temp_password}</span>
+      </p>
+      <p style="color:#EF4444;font-size:12px;margin:8px 0 0">⚠️ Deberás cambiar tu contraseña en el primer inicio de sesión.</p>
+    </div>
+    <p style="text-align:center;margin:0 0 24px">
+      <a href="{frontend_url}/login"
+         style="background:#1B3A6B;color:#FFF;text-decoration:none;padding:12px 32px;
+                border-radius:6px;display:inline-block;font-weight:600;font-size:14px">
+        Acceder a TaxnFin →
+      </a>
+    </p>
+    <p style="color:#94A3B8;font-size:11px;text-align:center;margin:0">
+      TaxnFin CFO Intelligence · Si tienes problemas para acceder escríbenos a hola@taxnfin.com
+    </p>
+  </div>
+</body>
+</html>"""
+
+        text_body = (
+            f"¡Hola {nombre}!\n\n"
+            f"{invited_by_nombre} te ha dado acceso a TaxnFin CFO Intelligence.\n\n"
+            f"Empresas con acceso:\n" + "\n".join(f"- {e}" for e in empresas) + "\n\n"
+            f"Credenciales:\n"
+            f"Email: {email}\n"
+            f"Contraseña temporal: {temp_password}\n\n"
+            f"Deberás cambiar tu contraseña al iniciar sesión.\n\n"
+            f"Accede en: {frontend_url}/login"
+        )
+
+        params = {
+            "from": from_address,
+            "to": [email],
+            "subject": f"Tu acceso a TaxnFin CFO Intelligence — {', '.join(empresas[:2])}",
+            "html": html_body,
+            "text": text_body,
+        }
+
+        result = await asyncio.wait_for(
+            asyncio.to_thread(resend.Emails.send, params),
+            timeout=30.0,
+        )
+        logger.info("[RESEND] Welcome email enviado a %s — %s", email, result)
+
+    except Exception as e:
+        logger.error("[RESEND] Error enviando welcome email a %s: %s", email, e)
+        # No re-raise — el usuario ya fue creado, el email es best-effort
+
+
+async def _send_access_update_email(
+    email: str,
+    nombre: str,
+    empresas_nuevas: List[str],
+    empresas_todas: List[str],
+) -> None:
+    """Envía email notificando que se agregaron nuevas empresas al acceso del usuario."""
+    try:
+        import resend
+        api_key = os.environ.get('RESEND_API_KEY', '')
+        if not api_key:
+            return
+
+        resend.api_key = api_key
+        from_address = os.environ.get('RESEND_FROM', 'TaxnFin <noreply@taxnfin.com>')
+        frontend_url = os.environ.get('FRONTEND_URL', 'https://cashflow.taxnfin.com')
+        nuevas_html = ''.join(f'<li style="margin:4px 0;color:#1E7145"><strong>{e}</strong></li>' for e in empresas_nuevas)
+
+        html_body = f"""
+<!DOCTYPE html>
+<html lang="es">
+<body style="font-family:Arial,sans-serif;background:#F8F9FA;margin:0;padding:24px">
+  <div style="max-width:560px;margin:0 auto;background:#FFF;border-radius:8px;padding:32px;border:1px solid #E2E8F0">
+    <div style="text-align:center;margin-bottom:24px">
+      <span style="font-size:28px;font-weight:800;color:#1B3A6B">T$</span>
+      <span style="font-size:18px;font-weight:700;color:#1B3A6B;margin-left:8px">TaxnFin Cashflow</span>
+    </div>
+    <h2 style="color:#1B3A6B;font-size:20px;margin:0 0 16px">Nuevo acceso disponible</h2>
+    <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 16px">
+      Hola <strong>{nombre}</strong>, se ha actualizado tu acceso en TaxnFin.
+      Ahora también puedes ver información financiera de:
+    </p>
+    <ul style="margin:0 0 24px;padding-left:20px">
+      {nuevas_html}
+    </ul>
+    <p style="text-align:center;margin:0 0 24px">
+      <a href="{frontend_url}"
+         style="background:#1B3A6B;color:#FFF;text-decoration:none;padding:12px 32px;
+                border-radius:6px;display:inline-block;font-weight:600;font-size:14px">
+        Ir a TaxnFin →
+      </a>
+    </p>
+    <p style="color:#94A3B8;font-size:11px;text-align:center;margin:0">
+      TaxnFin CFO Intelligence · hola@taxnfin.com
+    </p>
+  </div>
+</body>
+</html>"""
+
+        params = {
+            "from": from_address,
+            "to": [email],
+            "subject": f"Nuevo acceso en TaxnFin — {', '.join(empresas_nuevas[:2])}",
+            "html": html_body,
+            "text": f"Hola {nombre}, se agregaron nuevas empresas a tu acceso: {', '.join(empresas_nuevas)}. Accede en {frontend_url}",
+        }
+
+        await asyncio.wait_for(
+            asyncio.to_thread(resend.Emails.send, params),
+            timeout=30.0,
+        )
+        logger.info("[RESEND] Access update email enviado a %s", email)
+
+    except Exception as e:
+        logger.error("[RESEND] Error enviando access update email a %s: %s", email, e)
+
 
 PLATFORM_ADMIN_EMAIL = "hola@taxnfin.com"
 ASSIGNABLE_ROLES     = {"cfo", "contador", "viewer"}
@@ -183,14 +347,25 @@ async def invitar_usuario(
                 "updated_at":         datetime.now(timezone.utc).isoformat(),
             }}
         )
+        # Obtener nombres de empresas nuevas para el email
+        nuevas_docs = await db.companies.find(
+            {"id": {"$in": nuevas}}, {"_id": 0, "nombre": 1}
+        ).to_list(10)
+        nuevas_nombres = [d["nombre"] for d in nuevas_docs]
+        asyncio.create_task(_send_access_update_email(
+            email=email,
+            nombre=existing["nombre"],
+            empresas_nuevas=nuevas_nombres,
+            empresas_todas=[],
+        ))
         return {
-            "success":       True,
-            "user_id":       existing["id"],
-            "nombre":        existing["nombre"],
-            "email":         email,
+            "success":        True,
+            "user_id":        existing["id"],
+            "nombre":         existing["nombre"],
+            "email":          email,
             "empresas_nuevas": nuevas,
-            "message":       f"Se agregaron {len(nuevas)} empresa(s) al acceso de {existing['nombre']}",
-            "ya_registrado": True,
+            "message":        f"Se agregaron {len(nuevas)} empresa(s) al acceso de {existing['nombre']}",
+            "ya_registrado":  True,
         }
 
     temp_password = str(uuid.uuid4()).replace("-", "")[:8].upper()
@@ -228,6 +403,19 @@ async def invitar_usuario(
     # Create indexes on first use (idempotent)
     await db.users.create_index("email", unique=True, background=True)
     await db.users.create_index("invited_by", background=True)
+
+    # Enviar email de bienvenida con credenciales (best-effort, no bloquea)
+    empresa_docs = await db.companies.find(
+        {"id": {"$in": company_ids}}, {"_id": 0, "nombre": 1}
+    ).to_list(10)
+    empresa_nombres = [d["nombre"] for d in empresa_docs]
+    asyncio.create_task(_send_welcome_email(
+        email=email,
+        nombre=nombre,
+        temp_password=temp_password,
+        empresas=empresa_nombres,
+        invited_by_nombre=current_user.get("nombre", "Tu administrador"),
+    ))
 
     return {
         "success":       True,
