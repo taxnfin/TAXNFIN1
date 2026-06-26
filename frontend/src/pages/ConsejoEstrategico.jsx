@@ -99,6 +99,7 @@ export default function ConsejoEstrategico() {
   const [pregunta, setPregunta]           = useState('');
   const [loading, setLoading]             = useState(false);
   const [respuesta, setRespuesta]         = useState(null);
+  const [contexto, setContexto]           = useState('');
   const [error, setError]                 = useState('');
   const [historial, setHistorial]         = useState([]);
   const [historialOpen, setHistorialOpen] = useState(false);
@@ -140,6 +141,7 @@ export default function ConsejoEstrategico() {
       const r = await api.post('/ia/consejo-estrategico', { pregunta }, { timeout: 180000 });
       if (r.data.success) {
         setRespuesta(r.data.respuesta);
+        setContexto(r.data.contexto || '');
         setHistorial(prev => [{
           pregunta,
           respuesta: r.data.respuesta,
@@ -344,6 +346,24 @@ export default function ConsejoEstrategico() {
             Analiza cualquier decisión desde 5 perspectivas independientes
           </p>
         </div>
+
+        {/* Contexto financiero — se muestra después de la primera consulta */}
+        {contexto && (
+          <div style={{
+            background: '#F0F7FF',
+            border: '1px solid #BFDBFE',
+            borderRadius: '6px',
+            padding: '12px 16px',
+            marginBottom: '12px',
+          }}>
+            <p style={{ fontSize: '11px', fontWeight: 700, color: '#1B3A6B', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              📊 Contexto financiero usado por el Consejo
+            </p>
+            <pre style={{ fontSize: '12px', color: '#374151', margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'system-ui, Arial, sans-serif', lineHeight: 1.6 }}>
+              {contexto}
+            </pre>
+          </div>
+        )}
 
         {/* Input */}
         <form onSubmit={handleSubmit} className="space-y-3">
