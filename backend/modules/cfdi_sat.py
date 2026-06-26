@@ -729,7 +729,7 @@ class SATPortalClient:
             try:
                 rdo = self.driver.find_element(By.ID, 'ctl00_MainContent_RdoFechas')
                 self.driver.execute_script("arguments[0].click();", rdo)
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(4)  # esperar más para que carguen los campos de fecha
                 print("[SAT-DEBUG] Clic en RdoFechas exitoso", flush=True)
             except Exception as _e:
                 print(f"[SAT-DEBUG] RdoFechas no encontrado: {_e}", flush=True)
@@ -741,6 +741,17 @@ class SATPortalClient:
                     for el in self.driver.find_elements(By.TAG_NAME, 'input')
                 ]
                 print(f"[SAT-DEBUG] Campos tras RdoFechas: {_inputs_post_rdo}", flush=True)
+                # Segundo dump con todos los atributos para ver los campos de fecha
+                _fecha_inputs = [
+                    f"id={el.get_attribute('id')} name={el.get_attribute('name')} type={el.get_attribute('type')}"
+                    for el in self.driver.find_elements(By.TAG_NAME, 'input')
+                    if 'fecha' in (el.get_attribute('id') or '').lower()
+                    or 'fecha' in (el.get_attribute('name') or '').lower()
+                    or 'cal' in (el.get_attribute('id') or '').lower()
+                    or 'date' in (el.get_attribute('id') or '').lower()
+                    or el.get_attribute('type') == 'text'
+                ]
+                print(f"[SAT-DEBUG] Inputs tipo text o con 'fecha/cal/date': {_fecha_inputs}", flush=True)
             except Exception as _e:
                 print(f"[SAT-DEBUG] Error listando inputs tras RdoFechas: {_e}", flush=True)
 
@@ -750,10 +761,16 @@ class SATPortalClient:
 
             fi_ids = [
                 'ctl00_MainContent_CldFechaInicial2_Calendario_text',
+                'ctl00_MainContent_CldFechaInicial_Calendario_text',
+                'ctl00_MainContent_CldFechaInicial2_text',
+                'ctl00_MainContent_CldFechaInicial_text',
                 'txtFechaInicio', 'FechaInicio',
             ]
             ff_ids = [
                 'ctl00_MainContent_CldFechaFinal2_Calendario_text',
+                'ctl00_MainContent_CldFechaFinal_Calendario_text',
+                'ctl00_MainContent_CldFechaFinal2_text',
+                'ctl00_MainContent_CldFechaFinal_text',
                 'txtFechaFin', 'FechaFin',
             ]
 
