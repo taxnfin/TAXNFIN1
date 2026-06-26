@@ -184,8 +184,9 @@ const BADGE = {
 const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange }) => {
   const location = useLocation();
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-  const isAdmin = storedUser?.role === 'admin';
-  const isCFO = storedUser?.role === 'cfo' || isAdmin;
+  const PLATFORM_ADMIN_EMAIL = 'hola@taxnfin.com';
+  const isAdmin = storedUser?.role === 'admin' && storedUser?.email === PLATFORM_ADMIN_EMAIL;
+  const isCFO = storedUser?.role === 'cfo' || storedUser?.role === 'admin';
   const navigate = useNavigate();
 
   // Theme

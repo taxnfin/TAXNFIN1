@@ -57,8 +57,11 @@ export default function AdminPanel() {
   const [deleteText,  setDeleteText]  = useState('');
   const [saving,      setSaving]      = useState(false);
 
+  const [error, setError] = useState(null);
+
   const cargar = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const [sRes, dRes] = await Promise.all([
         api.get('/admin/stats'),
@@ -66,8 +69,12 @@ export default function AdminPanel() {
       ]);
       setStats(sRes.data);
       setDespachos(dRes.data.despachos || []);
-    } catch {
-      // silently ignore
+    } catch (err) {
+      if (err.response?.status === 403) {
+        setError('Acceso restringido — Solo disponible para el administrador de plataforma (hola@taxnfin.com)');
+      } else {
+        setError('Error al cargar el panel de administración');
+      }
     } finally {
       setLoading(false);
     }
@@ -207,6 +214,15 @@ export default function AdminPanel() {
             Gestión de despachos y planes — Solo visible para administradores de plataforma
           </p>
         </div>
+
+        {/* Error de acceso */}
+        {error && (
+          <div style={{ background: '#FFF5F5', border: '1px solid #FCA5A5', borderRadius: '8px', padding: '24px', textAlign: 'center' }}>
+            <p style={{ fontSize: '32px', margin: '0 0 8px' }}>🔒</p>
+            <p style={{ color: '#B91C1C', fontWeight: 700, fontSize: '16px', margin: '0 0 4px' }}>Sin acceso</p>
+            <p style={{ color: '#64748B', fontSize: '13px', margin: 0 }}>{error}</p>
+          </div>
+        )}
 
         {/* Stats */}
         {stats && (
