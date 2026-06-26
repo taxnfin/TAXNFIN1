@@ -705,92 +705,142 @@ async def backfill_tercero_uuid(
     current_user: Dict = Depends(get_current_user),
 ):
     """
-    Retroalimentación: cruza conciliaciones existentes con CFDIs y actualiza
-    bank_transactions con cfdi_uuid, tercero y tipo_conciliacion que faltaban
-    antes del fix de junio 2026.
+    Retroalimentación: busca el CFDI que corresponde a cada bank_transaction
+    conciliada (por monto exacto ±0.02 y fecha ±60 días) y guarda cfdi_uuid,
+    tercero y tipo_conciliacion que faltaban.
     """
     company_id = await get_active_company_id(request, current_user)
 
-    # 1. Traer todas las conciliaciones con cfdi_id de la empresa
-    recons = await db.reconciliations.find(
-        {'company_id': company_id, 'cfdi_id': {'$exists': True, '$ne': None}},
-        {'_id': 0, 'bank_transaction_id': 1, 'cfdi_id': 1, 'tipo_conciliacion': 1}
+    # 1. Traer todas las txn conciliadas sin tercero
+    txns = await db.bank_transactions.find(
+        {
+            'company_id': company_id,
+            'conciliado': True,
+            '$or': [
+                {'tercero': None},
+                {'tercero': {'$exists': False}},
+                {'tercero': ''},
+            ]
+        },
+        {'_id': 0, 'id': 1, 'monto': 1, 'fecha_movimiento': 1,
+         'descripcion': 1, 'tipo_movimiento': 1, 'cfdi_id': 1}
+    ).to_list(5000)
+
+    # 2. Cargar todos los CFDIs de la empresa en memoria para cruzar rápido
+    cfdis = await db.cfdis.find(
+        {'company_id': company_id, 'source': 'alegra'},
+        {'_id': 0, 'id': 1, 'uuid': 1, 'tipo_cfdi': 1,
+         'total': 1, 'fecha_emision': 1, 'fecha_vencimiento': 1,
+         'emisor_nombre': 1, 'receptor_nombre': 1}
     ).to_list(10000)
 
-    actualizados  = 0
-    sin_cfdi      = 0
-    sin_txn       = 0
-    ya_tenia      = 0
-    errores       = 0
+    # Índice por monto para búsqueda rápida
+    from collections import defaultdict
+    from datetime import timedelta
+    cfdi_by_monto = defaultdict(list)
+    for c in cfdis:
+        monto = round(float(c.get('total', 0) or 0), 2)
+        cfdi_by_monto[monto].append(c)
 
-    for recon in recons:
-        txn_id  = recon.get('bank_transaction_id')
-        cfdi_id = recon.get('cfdi_id')
-        if not txn_id or not cfdi_id:
-            sin_cfdi += 1
-            continue
+    actualizados = 0
+    sin_match    = 0
+    ya_tenia     = 0
+    errores      = 0
 
+    for txn in txns:
         try:
-            # Verificar si la transacción ya tiene tercero (evitar trabajo innecesario)
-            txn = await db.bank_transactions.find_one(
-                {'id': txn_id, 'company_id': company_id},
-                {'_id': 0, 'id': 1, 'tercero': 1, 'cfdi_uuid': 1}
+            # Si ya tiene cfdi_id guardado, usarlo directamente
+            if txn.get('cfdi_id'):
+                cfdi = await db.cfdis.find_one(
+                    {'id': txn['cfdi_id'], 'company_id': company_id},
+                    {'_id': 0, 'uuid': 1, 'tipo_cfdi': 1,
+                     'emisor_nombre': 1, 'receptor_nombre': 1}
+                )
+                if cfdi:
+                    tipo_cfdi = cfdi.get('tipo_cfdi', '')
+                    tercero = (cfdi.get('receptor_nombre') or cfdi.get('emisor_nombre', '')
+                               if tipo_cfdi == 'ingreso'
+                               else cfdi.get('emisor_nombre') or cfdi.get('receptor_nombre', ''))
+                    await db.bank_transactions.update_one(
+                        {'id': txn['id']},
+                        {'$set': {
+                            'cfdi_uuid': cfdi.get('uuid'),
+                            'tercero':   tercero,
+                            'tipo_conciliacion': 'con_uuid',
+                            'updated_at': datetime.now(timezone.utc).isoformat(),
+                        }}
+                    )
+                    actualizados += 1
+                    continue
+
+            # Sin cfdi_id — cruzar por monto ±0.02
+            txn_monto = round(float(txn.get('monto', 0) or 0), 2)
+            txn_fecha_raw = txn.get('fecha_movimiento', '')
+            txn_fecha_str = str(txn_fecha_raw)[:10] if txn_fecha_raw else ''
+
+            # Buscar CFDIs con monto exacto o ±0.02
+            candidatos = (
+                cfdi_by_monto.get(txn_monto, []) +
+                cfdi_by_monto.get(round(txn_monto + 0.01, 2), []) +
+                cfdi_by_monto.get(round(txn_monto - 0.01, 2), []) +
+                cfdi_by_monto.get(round(txn_monto + 0.02, 2), []) +
+                cfdi_by_monto.get(round(txn_monto - 0.02, 2), [])
             )
-            if not txn:
-                sin_txn += 1
-                continue
 
-            if txn.get('tercero') and txn.get('cfdi_uuid'):
-                ya_tenia += 1
-                continue
+            mejor = None
+            mejor_dias = 9999
 
-            # Buscar el CFDI para obtener uuid y nombres
-            cfdi = await db.cfdis.find_one(
-                {'id': cfdi_id, 'company_id': company_id},
-                {'_id': 0, 'uuid': 1, 'tipo_cfdi': 1, 'emisor_nombre': 1, 'receptor_nombre': 1}
-            )
-            if not cfdi:
-                sin_cfdi += 1
-                continue
+            for c in candidatos:
+                # Verificar proximidad de fecha (±60 días)
+                for campo_fecha in ('fecha_vencimiento', 'fecha_emision'):
+                    cfdi_fecha_str = str(c.get(campo_fecha, '') or '')[:10]
+                    if not cfdi_fecha_str or not txn_fecha_str:
+                        continue
+                    try:
+                        from datetime import date as date_type
+                        d1 = date_type.fromisoformat(txn_fecha_str)
+                        d2 = date_type.fromisoformat(cfdi_fecha_str)
+                        dias = abs((d1 - d2).days)
+                        if dias < mejor_dias:
+                            mejor_dias = dias
+                            mejor = c
+                    except Exception:
+                        continue
 
-            # Determinar tercero según tipo CFDI
-            tipo_cfdi = cfdi.get('tipo_cfdi', '')
-            if tipo_cfdi == 'ingreso':
-                tercero = cfdi.get('receptor_nombre') or cfdi.get('emisor_nombre', '')
+            if mejor and mejor_dias <= 60:
+                tipo_cfdi = mejor.get('tipo_cfdi', '')
+                tercero = (mejor.get('receptor_nombre') or mejor.get('emisor_nombre', '')
+                           if tipo_cfdi == 'ingreso'
+                           else mejor.get('emisor_nombre') or mejor.get('receptor_nombre', ''))
+                await db.bank_transactions.update_one(
+                    {'id': txn['id']},
+                    {'$set': {
+                        'cfdi_uuid':  mejor.get('uuid'),
+                        'cfdi_id':    mejor.get('id'),
+                        'tercero':    tercero,
+                        'tipo_conciliacion': 'con_uuid',
+                        'updated_at': datetime.now(timezone.utc).isoformat(),
+                    }}
+                )
+                actualizados += 1
             else:
-                tercero = cfdi.get('emisor_nombre') or cfdi.get('receptor_nombre', '')
-
-            update_fields = {
-                'cfdi_uuid':       cfdi.get('uuid'),
-                'cfdi_id':         cfdi_id,
-                'tercero':         tercero,
-                'tipo_conciliacion': recon.get('tipo_conciliacion') or 'con_uuid',
-                'conciliado':      True,
-                'updated_at':      datetime.now(timezone.utc).isoformat(),
-            }
-
-            await db.bank_transactions.update_one(
-                {'id': txn_id, 'company_id': company_id},
-                {'$set': update_fields}
-            )
-            actualizados += 1
+                sin_match += 1
 
         except Exception as e:
-            logger.error(f"[backfill] Error txn={txn_id} cfdi={cfdi_id}: {e}")
+            logger.error(f"[backfill] Error txn={txn.get('id')}: {e}")
             errores += 1
 
     logger.info(
         f"[backfill-tercero-uuid] company={company_id} "
-        f"actualizados={actualizados} ya_tenia={ya_tenia} "
-        f"sin_cfdi={sin_cfdi} sin_txn={sin_txn} errores={errores}"
+        f"actualizados={actualizados} sin_match={sin_match} "
+        f"ya_tenia={ya_tenia} errores={errores}"
     )
     return {
         'status':       'completed',
-        'total_recons': len(recons),
+        'total_txn':    len(txns),
         'actualizados': actualizados,
+        'sin_match':    sin_match,
         'ya_tenian':    ya_tenia,
-        'sin_cfdi':     sin_cfdi,
-        'sin_txn':      sin_txn,
         'errores':      errores,
-        'message':      f'{actualizados} movimientos actualizados con tercero y UUID'
+        'message':      f'{actualizados} de {len(txns)} movimientos actualizados con tercero y UUID'
     }
