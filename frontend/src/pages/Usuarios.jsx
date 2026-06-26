@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/axios';
+import { sessionGet } from '../utils/sessionStore';
 
 const NAVY    = '#1B3A6B';
 const GOLD    = '#C9A84C';
@@ -39,7 +40,7 @@ function EmpresaTag({ nombre }) {
 }
 
 export default function Usuarios() {
-  const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const storedUser = JSON.parse(sessionGet('user') || localStorage.getItem('user') || '{}');
   const isCFO = ['cfo', 'admin'].includes(storedUser?.role);
 
   const [empresas,    setEmpresas]    = useState([]);

@@ -83,6 +83,10 @@ const CashflowProjections = () => {
   const kpiChartsRef = useRef(null);
   // Ref para el patrón "latest ref": openKpiModal lee de aquí en lugar de closures del render
   const kpiStateRef = useRef({ cfoKPIs: null, KPI_DEFS: null, formatCurrency: null });
+  // Refs para acceso sincrónico en callbacks (evita valores stale de state)
+  const cfdisRef      = useRef([]);
+  const categoriesRef = useRef([]);
+  const paymentsRef   = useRef([]);
   const [newConcept, setNewConcept] = useState({
     nombre: '',
     tipo: 'egreso',
@@ -220,6 +224,9 @@ const CashflowProjections = () => {
       setCategories(catRes.data);
       setCustomers(custRes.data);
       setVendors(vendRes.data);
+      // Actualizar refs para acceso sincrónico en callbacks
+      cfdisRef.current      = cfdiRes.data || [];
+      categoriesRef.current = catRes.data  || [];
       
       // Store payments and bank transactions for drill-down
       setAllPayments(paymentsRes.data || []);
@@ -253,16 +260,20 @@ const CashflowProjections = () => {
       // A payment is valid if:
       // 1. It has no bank_transaction_id (manual payment without reconciliation)
       // 2. OR its bank_transaction_id is in the set of conciliated transactions
-      const allPayments = paymentsRes.data || [];
-      const validPayments = allPayments.filter(p => {
-        if (!p.bank_transaction_id) return true; // Manual payment, include
-        return conciliatedBankTxnIds.has(p.bank_transaction_id); // Only if truly conciliated
+      const rawPayments = paymentsRes.data || [];
+      const validPayments = rawPayments.filter(p => {
+        if (!p.bank_transaction_id) return true;
+        return conciliatedBankTxnIds.has(p.bank_transaction_id);
       });
       
       console.log(`=== FILTRO DE PAGOS ===`);
-      console.log(`Total pagos: ${allPayments.length}`);
+      console.log(`Total pagos: ${rawPayments.length}`);
       console.log(`Pagos válidos (conciliados): ${validPayments.length}`);
-      console.log(`Pagos excluidos (txn pendiente): ${allPayments.length - validPayments.length}`);
+      console.log(`Pagos excluidos (txn pendiente): ${rawPayments.length - validPayments.length}`);
+      
+      // Guardar en state para que el filtro de fecha pueda reusarlos
+      setAllPayments(rawPayments);
+      paymentsRef.current = validPayments; // ref con pagos válidos (conciliados)
       
       const categoriesLoaded = catRes.data || [];
       
@@ -271,14 +282,14 @@ const CashflowProjections = () => {
       // We also fall back to the user's company_id from the stored auth user.
       const getActiveCompanyId = () => {
         try {
-          const sel = localStorage.getItem('selectedCompany');
+          const sel = sessionStorage.getItem('selectedCompany') || localStorage.getItem('selectedCompany');
           if (sel) {
             const parsed = JSON.parse(sel);
             if (parsed?.id) return parsed.id;
           }
         } catch {/* ignore */}
         try {
-          const u = localStorage.getItem('user');
+          const u = sessionStorage.getItem('user') || localStorage.getItem('user');
           if (u) {
             const parsed = JSON.parse(u);
             if (parsed?.company_id) return parsed.company_id;
@@ -295,14 +306,14 @@ const CashflowProjections = () => {
           const compRes = await api.get(`/companies/${companyId}`);
           const weekStart = compRes.data?.inicio_semana ?? 1;
           setCompanyConfig({ ...compRes.data, inicio_semana: weekStart });
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, allPayments, customStartDate);
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, validPayments, customStartDate);
           setWeeklyData(applyBackendData(weeks, backendWeeks));
         } catch {
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, allPayments, customStartDate);
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate);
           setWeeklyData(applyBackendData(weeks, backendWeeks));
         }
       } else {
-        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, allPayments, customStartDate);
+        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate);
         setWeeklyData(applyBackendData(weeks, backendWeeks));
       }
 
@@ -334,15 +345,14 @@ const CashflowProjections = () => {
 
   const handleSaveWeekStart = async (newWeekStart) => {
     try {
-      // Resolve active company id from localStorage (selectedCompany JSON, then user.company_id)
       let companyId = null;
       try {
-        const sel = localStorage.getItem('selectedCompany');
+        const sel = sessionStorage.getItem('selectedCompany') || localStorage.getItem('selectedCompany');
         if (sel) companyId = JSON.parse(sel)?.id || null;
       } catch {/* ignore */}
       if (!companyId) {
         try {
-          const u = localStorage.getItem('user');
+          const u = sessionStorage.getItem('user') || localStorage.getItem('user');
           if (u) companyId = JSON.parse(u)?.company_id || null;
         } catch {/* ignore */}
       }
@@ -352,13 +362,12 @@ const CashflowProjections = () => {
       }
       await api.put(`/companies/${companyId}`, { inicio_semana: newWeekStart });
       setCompanyConfig(prev => ({ ...prev, inicio_semana: newWeekStart }));
-      // Also keep the cached `selectedCompany` in localStorage in sync, so other
-      // pages (e.g. Dashboard) pick up the new inicio_semana without re-login.
       try {
-        const sel = localStorage.getItem('selectedCompany');
+        const sel = sessionStorage.getItem('selectedCompany') || localStorage.getItem('selectedCompany');
         if (sel) {
           const parsed = JSON.parse(sel);
           parsed.inicio_semana = newWeekStart;
+          sessionStorage.setItem('selectedCompany', JSON.stringify(parsed));
           localStorage.setItem('selectedCompany', JSON.stringify(parsed));
         }
       } catch {/* ignore */}
@@ -2045,15 +2054,15 @@ const CashflowProjections = () => {
                 onChange={e => {
                   const val = e.target.value;
                   setFilterFechaInicio(val);
-                  // Regenerar el modelo desde esa fecha para que S1-S8 aparezcan
                   if (val) {
+                    // Usar refs para datos siempre actualizados (evita stale state)
                     const weeks = processWeeklyData(
-                      cfdis,
-                      categories,
+                      cfdisRef.current,
+                      categoriesRef.current,
                       companyConfig.inicio_semana ?? 1,
                       fxRates,
-                      allPayments,
-                      val   // ← usar como customStart para anclar el modelo
+                      paymentsRef.current,
+                      val
                     );
                     setWeeklyData(applyBackendData(weeks, backendWeeksCache));
                   }
@@ -2076,14 +2085,13 @@ const CashflowProjections = () => {
                 onClick={() => {
                   setFilterFechaInicio('');
                   setFilterFechaFin('');
-                  // Restaurar modelo con customStartDate original (o automático)
                   const weeks = processWeeklyData(
-                    cfdis,
-                    categories,
+                    cfdisRef.current,
+                    categoriesRef.current,
                     companyConfig.inicio_semana ?? 1,
                     fxRates,
-                    allPayments,
-                    customStartDate  // vuelve al anchor original
+                    paymentsRef.current,
+                    customStartDate
                   );
                   setWeeklyData(applyBackendData(weeks, backendWeeksCache));
                 }}

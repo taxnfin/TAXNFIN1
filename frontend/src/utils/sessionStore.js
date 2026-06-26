@@ -4,19 +4,23 @@
  * Usa sessionStorage para datos de sesión (token, user, selectedCompany)
  * para que cada pestaña del browser pueda tener una sesión independiente.
  * 
- * IMPORTANTE: NO hereda de localStorage — cada pestaña nueva debe hacer login.
- * Esto permite tener múltiples cuentas abiertas simultáneamente en pestañas distintas.
+ * IMPORTANTE: Lee sessionStorage primero, luego localStorage como fallback
+ * de solo lectura (compatibilidad con páginas que aún usan localStorage directamente).
+ * Los WRITES siempre van a sessionStorage únicamente.
  * 
  * Preferencias de usuario (tema, idioma, etc.) siguen en localStorage.
  */
 
 /**
- * Lee un valor de sessionStorage (solo de la pestaña actual).
- * Si no existe, devuelve null — NO hace fallback a localStorage.
+ * Lee un valor de sessionStorage. Si no existe, lee de localStorage como fallback.
+ * Esto permite compatibilidad con páginas que aún leen localStorage directamente.
  */
 export function sessionGet(key) {
   try {
-    return sessionStorage.getItem(key);
+    const val = sessionStorage.getItem(key);
+    if (val !== null) return val;
+    // Fallback de solo lectura — no migra, solo lee
+    return localStorage.getItem(key);
   } catch {
     return null;
   }

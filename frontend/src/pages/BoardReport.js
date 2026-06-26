@@ -138,7 +138,7 @@ const BoardReport = () => {
       ]);
       
       // Use active company from localStorage, fallback to first
-      const storedCompany = localStorage.getItem('selectedCompany');
+      const storedCompany = sessionStorage.getItem('selectedCompany') || localStorage.getItem('selectedCompany');
       const activeCompany = storedCompany ? JSON.parse(storedCompany) : null;
       if (activeCompany && companyRes.data?.length > 0) {
         const matched = companyRes.data.find(c => c.id === activeCompany.id) || companyRes.data[0];
@@ -661,9 +661,7 @@ const BoardReport = () => {
   const exportToExcel = async () => {
     try {
       toast.info('Generando Excel corporativo...');
-      const company = JSON.parse(localStorage.getItem('selectedCompany') || '{}');
-      const inc = currentMetrics?.income_statement || {};
-      const bal = currentMetrics?.balance_sheet || {};
+      const company = JSON.parse(sessionStorage.getItem('selectedCompany') || localStorage.getItem('selectedCompany') || '{}');
       const payload = {
         empresa: company?.nombre || 'Empresa',
         rfc: getDisplayRfc(company?.rfc),
@@ -831,9 +829,8 @@ const BoardReport = () => {
   // Board Pack — PDF ejecutivo de 1 página para consejo
   const downloadBoardPack = async () => {
     try {
-      const company = JSON.parse(localStorage.getItem('selectedCompany') || '{}');
+      const company = JSON.parse(sessionStorage.getItem('selectedCompany') || localStorage.getItem('selectedCompany') || '{}');
       const fmt = (n) => {
-        if (!n && n !== 0) return '$0';
         const abs = Math.abs(n);
         const sign = n < 0 ? '-' : '';
         if (abs >= 1000000) return `${sign}$${(abs/1000000).toFixed(2)}M`;
