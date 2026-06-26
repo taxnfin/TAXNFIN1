@@ -205,7 +205,22 @@ async def create_reconciliation(reconciliation_data: BankReconciliationCreate, r
         doc[field] = doc[field].isoformat()
     await db.reconciliations.insert_one(doc)
     
-    await db.bank_transactions.update_one({'id': reconciliation.bank_transaction_id}, {'$set': {'conciliado': True}})
+    # Campos a actualizar en bank_transaction tras conciliar
+    txn_update: dict = {'conciliado': True, 'updated_at': datetime.now(timezone.utc).isoformat()}
+    if reconciliation_data.cfdi_id and cfdi:
+        txn_update['tipo_conciliacion'] = reconciliation_data.tipo_conciliacion or 'con_uuid'
+        txn_update['cfdi_uuid']         = cfdi.get('uuid')
+        txn_update['cfdi_id']           = reconciliation_data.cfdi_id
+        # Tercero = nombre del cliente/proveedor según tipo CFDI
+        tipo_cfdi_txn = cfdi.get('tipo_cfdi', '')
+        if tipo_cfdi_txn == 'ingreso':
+            txn_update['tercero'] = cfdi.get('receptor_nombre') or cfdi.get('emisor_nombre', '')
+        else:
+            txn_update['tercero'] = cfdi.get('emisor_nombre') or cfdi.get('receptor_nombre', '')
+    await db.bank_transactions.update_one(
+        {'id': reconciliation.bank_transaction_id},
+        {'$set': txn_update}
+    )
     
     if reconciliation.transaction_id:
         await db.transactions.update_one({'id': reconciliation.transaction_id}, {'$set': {'es_real': True}})

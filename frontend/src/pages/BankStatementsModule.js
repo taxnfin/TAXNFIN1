@@ -2158,6 +2158,16 @@ const BankStatementsModule = () => {
                         </TableCell>
                         <TableCell className="max-w-[250px]">
                           <span className="truncate block">{txn.descripcion}</span>
+                          {txn.conciliado && txn.tercero && (
+                            <span className="text-xs text-green-700 font-medium truncate block mt-0.5">
+                              👤 {txn.tercero}
+                            </span>
+                          )}
+                          {txn.conciliado && txn.cfdi_uuid && (
+                            <span className="text-xs text-gray-400 font-mono truncate block">
+                              {txn.cfdi_uuid.substring(0, 8)}...
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="font-mono text-sm text-gray-500">{txn.referencia || '-'}</TableCell>
                         <TableCell>
