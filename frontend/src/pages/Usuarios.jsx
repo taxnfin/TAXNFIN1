@@ -94,6 +94,11 @@ export default function Usuarios() {
       setInvitacion(r.data);
       setForm({ nombre: '', email: '', rol: 'viewer', company_ids: [] });
       cargarDatos();
+      // Mensaje diferenciado si ya existía o es nuevo
+      if (r.data.ya_registrado) {
+        setInvError(''); // limpiar error
+        // Mostrar como éxito - el backend agregó las empresas
+      }
     } catch (err) {
       setInvError(err.response?.data?.detail || 'Error al invitar usuario');
     } finally {
@@ -268,14 +273,30 @@ export default function Usuarios() {
           {/* Resultado de invitación */}
           {invitacion && (
             <div style={{ marginTop: '16px', background: '#EEF8F2', border: '1px solid #1E7145', borderRadius: '4px', padding: '16px' }}>
-              <p style={{ fontWeight: 700, color: '#1E7145', marginBottom: '8px' }}>✓ Usuario creado correctamente</p>
-              <p style={{ fontSize: '13px', color: '#374151' }}>
-                Comparte esta contraseña con <strong>{invitacion.nombre}</strong> de forma segura:
-              </p>
-              <p style={{ fontFamily: 'monospace', fontSize: '20px', fontWeight: 700, color: NAVY, letterSpacing: '0.1em', margin: '8px 0' }}>
-                {invitacion.temp_password}
-              </p>
-              <p style={{ fontSize: '11px', color: '#64748B' }}>El usuario deberá cambiar su contraseña en el primer inicio de sesión.</p>
+              {invitacion.ya_registrado ? (
+                <>
+                  <p style={{ fontWeight: 700, color: '#1E7145', marginBottom: '8px' }}>
+                    ✓ Acceso actualizado correctamente
+                  </p>
+                  <p style={{ fontSize: '13px', color: '#374151' }}>
+                    {invitacion.message || `Se agregaron empresas al acceso de ${invitacion.nombre}.`}
+                  </p>
+                  <p style={{ fontSize: '11px', color: '#64748B', marginTop: '8px' }}>
+                    El usuario ya tiene su contraseña y puede acceder con sus credenciales existentes.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p style={{ fontWeight: 700, color: '#1E7145', marginBottom: '8px' }}>✓ Usuario creado correctamente</p>
+                  <p style={{ fontSize: '13px', color: '#374151' }}>
+                    Comparte esta contraseña con <strong>{invitacion.nombre}</strong> de forma segura:
+                  </p>
+                  <p style={{ fontFamily: 'monospace', fontSize: '20px', fontWeight: 700, color: NAVY, letterSpacing: '0.1em', margin: '8px 0' }}>
+                    {invitacion.temp_password}
+                  </p>
+                  <p style={{ fontSize: '11px', color: '#64748B' }}>El usuario deberá cambiar su contraseña en el primer inicio de sesión.</p>
+                </>
+              )}
             </div>
           )}
         </div>

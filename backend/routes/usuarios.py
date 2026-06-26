@@ -164,9 +164,34 @@ async def invitar_usuario(
 
     _require_all_companies_owned(company_ids, current_user)
 
-    existing = await db.users.find_one({"email": email}, {"_id": 0, "id": 1})
+    existing = await db.users.find_one({"email": email}, {"_id": 0})
     if existing:
-        raise HTTPException(status_code=400, detail="Este email ya está registrado")
+        # Usuario ya registrado — agregar las empresas nuevas a las que ya tiene
+        existing_company_ids = set(existing.get("company_ids") or existing.get("empresas_asignadas") or [existing.get("company_id", "")])
+        nuevas = [cid for cid in company_ids if cid not in existing_company_ids]
+        if not nuevas:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El usuario ya tiene acceso a todas las empresas seleccionadas"
+            )
+        merged = list(existing_company_ids) + nuevas
+        await db.users.update_one(
+            {"email": email},
+            {"$set": {
+                "company_ids":        merged,
+                "empresas_asignadas": merged,
+                "updated_at":         datetime.now(timezone.utc).isoformat(),
+            }}
+        )
+        return {
+            "success":       True,
+            "user_id":       existing["id"],
+            "nombre":        existing["nombre"],
+            "email":         email,
+            "empresas_nuevas": nuevas,
+            "message":       f"Se agregaron {len(nuevas)} empresa(s) al acceso de {existing['nombre']}",
+            "ya_registrado": True,
+        }
 
     temp_password = str(uuid.uuid4()).replace("-", "")[:8].upper()
     user_id       = str(uuid.uuid4())
