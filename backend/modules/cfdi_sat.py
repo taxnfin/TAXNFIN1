@@ -367,7 +367,7 @@ class SATPortalClient:
         Retorna (True, url) si llegó al portal CFDI, (False, url) si no."""
         import time
         success_keys = [
-            'portalcfdi.facturaelectronica',  # match más específico primero
+            'portalcfdi.facturaelectronica',
             'consulta', 'receptor', 'emisor', 'contribuyente', 'portalcfdi',
         ]
         login_keys = ['cfdiau', 'nidp', 'wsfed', 'credential']
@@ -379,8 +379,38 @@ class SATPortalClient:
             except Exception:
                 title = '(error leyendo título)'
             logger.info(f"[SAT] Polling... URL={self.driver.current_url[:80]} | Title={title}")
+
             if any(s in url for s in success_keys):
                 return True, url
+
+            # ── Detectar pantalla de selección persona física/moral ───────
+            try:
+                page_poll = self.driver.page_source.lower()
+                # El SAT muestra botones/links con texto "persona física" o "física"
+                if 'persona f' in page_poll or 'física' in page_poll or 'fisica' in page_poll:
+                    from selenium.webdriver.common.by import By
+                    clicked = False
+                    for by, sel in [
+                        (By.XPATH, "//*[contains(translate(text(),'ÁÉÍÓÚÑ','aeioun'),'persona f') and (self::a or self::button or self::input)]"),
+                        (By.XPATH, "//*[contains(@class,'fisica') or contains(@id,'fisica') or contains(@href,'fisica')]"),
+                        (By.LINK_TEXT, 'Persona Física'),
+                        (By.PARTIAL_LINK_TEXT, 'Física'),
+                        (By.PARTIAL_LINK_TEXT, 'fisica'),
+                    ]:
+                        try:
+                            elem = self.driver.find_element(by, sel)
+                            elem.click()
+                            logger.info(f"[SAT] Clic en 'Persona Física' (sel={sel})")
+                            clicked = True
+                            time.sleep(3)
+                            break
+                        except Exception:
+                            continue
+                    if not clicked:
+                        logger.info("[SAT] Pantalla persona física detectada pero no se encontró botón para hacer clic")
+            except Exception as pe:
+                logger.debug(f"[SAT] Error verificando pantalla persona física: {pe}")
+
             if any(s in url for s in login_keys) or 'sat.gob.mx' in url:
                 time.sleep(2)
                 continue
