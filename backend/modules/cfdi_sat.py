@@ -759,11 +759,14 @@ class SATPortalClient:
             fi_str = fecha_inicio.strftime('%d/%m/%Y')
             ff_str = fecha_fin.strftime('%d/%m/%Y')
 
+            # El portal SAT usa componentes de calendario custom (no <input> estándar).
+            # Buscamos por ID en cualquier elemento del DOM, no solo inputs.
             fi_ids = [
                 'ctl00_MainContent_CldFechaInicial2_Calendario_text',
                 'ctl00_MainContent_CldFechaInicial_Calendario_text',
                 'ctl00_MainContent_CldFechaInicial2_text',
                 'ctl00_MainContent_CldFechaInicial_text',
+                'ctl00_MainContent_txtFechaInicio',
                 'txtFechaInicio', 'FechaInicio',
             ]
             ff_ids = [
@@ -771,52 +774,118 @@ class SATPortalClient:
                 'ctl00_MainContent_CldFechaFinal_Calendario_text',
                 'ctl00_MainContent_CldFechaFinal2_text',
                 'ctl00_MainContent_CldFechaFinal_text',
+                'ctl00_MainContent_txtFechaFin',
                 'txtFechaFin', 'FechaFin',
             ]
 
             _fi_found = None
             for fid in fi_ids:
                 try:
+                    # Buscar en cualquier elemento del DOM, no solo inputs
                     el = self.driver.find_element(By.ID, fid)
-                    self.driver.execute_script("arguments[0].value = arguments[1]", el, fi_str)
+                    self.driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('change'));", el, fi_str)
                     _fi_found = fid
                     break
                 except Exception:
                     continue
-            # Fallback: cualquier input[type=text] cuyo id/name contenga 'fecha'
+
+            # Fallback: buscar cualquier elemento con 'fecha' en id o name
             if not _fi_found:
                 try:
                     el = self.driver.find_element(
                         By.XPATH,
-                        "//input[@type='text' and (contains(translate(@id,'FECHA','fecha'),'fecha') or contains(translate(@name,'FECHA','fecha'),'fecha'))][1]"
+                        "//*[contains(translate(@id,'FECHA','fecha'),'fecha') or contains(translate(@name,'FECHA','fecha'),'fecha')][1]"
                     )
-                    self.driver.execute_script("arguments[0].value = arguments[1]", el, fi_str)
-                    _fi_found = f"fallback:{el.get_attribute('id') or el.get_attribute('name')}"
+                    tag = el.tag_name
+                    eid = el.get_attribute('id') or el.get_attribute('name')
+                    if tag == 'input':
+                        self.driver.execute_script("arguments[0].value = arguments[1];", el, fi_str)
+                    else:
+                        # Elemento custom — intentar via JS directo al DOM
+                        self.driver.execute_script(f"document.getElementById('{eid}').value = arguments[0];", fi_str)
+                    _fi_found = f"fallback-any:{eid}"
                 except Exception:
                     pass
+
+            # Último fallback: inyectar fecha directamente via JS buscando en todo el DOM
+            if not _fi_found:
+                try:
+                    injected = self.driver.execute_script("""
+                        var els = document.querySelectorAll('[id*="Fecha"],[id*="fecha"],[id*="Initial"],[id*="inicial"],[id*="Start"]');
+                        if (els.length > 0) {
+                            els[0].value = arguments[0];
+                            els[0].dispatchEvent(new Event('change'));
+                            return els[0].id || els[0].name || 'found';
+                        }
+                        return null;
+                    """, fi_str)
+                    if injected:
+                        _fi_found = f"js-queryselector:{injected}"
+                except Exception:
+                    pass
+
             print(f"[SAT-DEBUG] Campo fecha_inicio encontrado: {_fi_found}", flush=True)
 
             _ff_found = None
             for fid in ff_ids:
                 try:
                     el = self.driver.find_element(By.ID, fid)
-                    self.driver.execute_script("arguments[0].value = arguments[1]", el, ff_str)
+                    self.driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('change'));", el, ff_str)
                     _ff_found = fid
                     break
                 except Exception:
                     continue
-            # Fallback: segundo input[type=text] con 'fecha'
+
             if not _ff_found:
                 try:
                     el = self.driver.find_element(
                         By.XPATH,
-                        "(//input[@type='text' and (contains(translate(@id,'FECHA','fecha'),'fecha') or contains(translate(@name,'FECHA','fecha'),'fecha'))])[2]"
+                        "(//*[contains(translate(@id,'FECHA','fecha'),'fecha') or contains(translate(@name,'FECHA','fecha'),'fecha')])[2]"
                     )
-                    self.driver.execute_script("arguments[0].value = arguments[1]", el, ff_str)
-                    _ff_found = f"fallback:{el.get_attribute('id') or el.get_attribute('name')}"
+                    tag = el.tag_name
+                    eid = el.get_attribute('id') or el.get_attribute('name')
+                    if tag == 'input':
+                        self.driver.execute_script("arguments[0].value = arguments[1];", el, ff_str)
+                    else:
+                        self.driver.execute_script(f"document.getElementById('{eid}').value = arguments[0];", ff_str)
+                    _ff_found = f"fallback-any:{eid}"
                 except Exception:
                     pass
+
+            if not _ff_found:
+                try:
+                    injected_ff = self.driver.execute_script("""
+                        var els = document.querySelectorAll('[id*="Final"],[id*="final"],[id*="End"],[id*="Fin"],[id*="fin"]');
+                        if (els.length > 0) {
+                            els[0].value = arguments[0];
+                            els[0].dispatchEvent(new Event('change'));
+                            return els[0].id || els[0].name || 'found';
+                        }
+                        // Segundo elemento con Fecha
+                        var fels = document.querySelectorAll('[id*="Fecha"],[id*="fecha"]');
+                        if (fels.length > 1) {
+                            fels[1].value = arguments[0];
+                            fels[1].dispatchEvent(new Event('change'));
+                            return fels[1].id || fels[1].name || 'found-2nd';
+                        }
+                        return null;
+                    """, ff_str)
+                    if injected_ff:
+                        _ff_found = f"js-queryselector:{injected_ff}"
+                except Exception:
+                    pass
+
             print(f"[SAT-DEBUG] Campo fecha_fin encontrado: {_ff_found}", flush=True)
+
+            # Dump HTML del formulario para diagnóstico si falló
+            if not _fi_found or not _ff_found:
+                try:
+                    form_html = self.driver.execute_script(
+                        "var f = document.querySelector('form'); return f ? f.outerHTML.substring(0,3000) : 'no form';"
+                    )
+                    print(f"[SAT-DEBUG] HTML formulario (primeros 3000 chars): {form_html}", flush=True)
+                except Exception:
+                    pass
 
             await asyncio.sleep(0.5)
 
