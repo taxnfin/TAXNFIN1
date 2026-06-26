@@ -1306,10 +1306,13 @@ const AgingModule = () => {
                             {bucketInfo.label}
                           </span>
                         </TableCell>
-                        <TableCell className="font-medium max-w-[150px] truncate">
-                          <div className="flex items-center gap-2">
-                            {tipo === 'cxc' ? <User size={14} className="text-blue-500" /> : <Building2 size={14} className="text-orange-500" />}
-                            <span className="truncate">{getPartyName(cfdi, tipo)}</span>
+                        <TableCell className="font-medium max-w-[150px]">
+                          <div
+                            className="flex items-center gap-2"
+                            title={getPartyName(cfdi, tipo)}
+                          >
+                            {tipo === 'cxc' ? <User size={14} className="text-blue-500 shrink-0" /> : <Building2 size={14} className="text-orange-500 shrink-0" />}
+                            <span className="truncate text-xs font-semibold">{getPartyName(cfdi, tipo)}</span>
                           </div>
                         </TableCell>
                         <TableCell className="bg-purple-50 min-w-[160px]">
@@ -1346,7 +1349,22 @@ const AgingModule = () => {
                             );
                           })()}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">{cfdi.uuid?.substring(0, 8)}...</TableCell>
+                        <TableCell>
+                          {cfdi.uuid ? (
+                            <button
+                              title={`UUID completo:\n${cfdi.uuid}\n\nClic para copiar`}
+                              onClick={() => {
+                                navigator.clipboard.writeText(cfdi.uuid);
+                                toast.success('UUID copiado');
+                              }}
+                              className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline cursor-pointer bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded transition-colors"
+                            >
+                              {cfdi.uuid.substring(0, 8)}…
+                            </button>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-xs">{(cfdi.fecha_emision ? format(new Date(cfdi.fecha_emision), 'dd/MM/yy') : 'N/A')}</TableCell>
                         <TableCell className="text-center">
                           <span className={`text-xs px-1.5 py-0.5 rounded ${cfdi.plazo === 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>
