@@ -1,6 +1,8 @@
+import { sessionGet } from './sessionStore';
+
 export const getERPEndpoints = () => {
   try {
-    const company = JSON.parse(localStorage.getItem('selectedCompany') || '{}');
+    const company = JSON.parse(sessionGet('selectedCompany') || '{}');
 
     // Prioridad: campo erp explícito → alegra_connected → default contalink
     const erp = company.erp

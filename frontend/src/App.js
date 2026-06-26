@@ -32,6 +32,7 @@ import AuditPublic from './pages/AuditPublic';
 import Layout from './components/Layout';
 import { Toaster } from './components/ui/sonner';
 import api from './api/axios';
+import { sessionGet, sessionSet, sessionRemove } from './utils/sessionStore';
 import './App.css';
 
 // Protege rutas solo para admin — doble candado: rol + email
@@ -58,10 +59,10 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    const storedCompany = localStorage.getItem('selectedCompany');
-    
+    const token = sessionGet('token');
+    const storedUser = sessionGet('user');
+    const storedCompany = sessionGet('selectedCompany');
+
     if (token && storedUser) {
       setUser(JSON.parse(storedUser));
       if (storedCompany) {
@@ -97,14 +98,14 @@ function App() {
         const erp = base.erp || (alegraConnected ? 'alegra' : 'ninguno');
         const enriched = { ...base, alegra_connected: alegraConnected, erp };
         setSelectedCompany(enriched);
-        localStorage.setItem('selectedCompany', JSON.stringify(enriched));
+        sessionSet('selectedCompany', JSON.stringify(enriched));
       } else if (selectedCompany) {
         const currentBase = companiesRes.data.find(c => c.id === selectedCompany.id) || selectedCompany;
         const alegraConnected = currentBase.alegra_connected === true || alegraViaIntegrations;
         const erp = currentBase.erp || (alegraConnected ? 'alegra' : selectedCompany.erp || 'ninguno');
         const enriched = { ...currentBase, alegra_connected: alegraConnected, erp };
         setSelectedCompany(enriched);
-        localStorage.setItem('selectedCompany', JSON.stringify(enriched));
+        sessionSet('selectedCompany', JSON.stringify(enriched));
       }
     } catch (error) {
       console.error('Error fetching companies:', error);
@@ -112,32 +113,32 @@ function App() {
   };
 
   const handleLogin = (userData, token) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
+    sessionSet('token', token);
+    sessionSet('user', JSON.stringify(userData));
     setUser(userData);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('selectedCompany');
+    sessionRemove('token');
+    sessionRemove('user');
+    sessionRemove('selectedCompany');
     setUser(null);
     setSelectedCompany(null);
     setCompanies([]);
   };
 
   const handleCompanyChange = async (company) => {
-    // Re-fetch integrations for the new company before storing, so alegra_connected is accurate
     try {
       const intRes = await api.get('/integrations/connected').catch(() => ({ data: [] }));
       const connections = Array.isArray(intRes.data) ? intRes.data : [];
       const alegraConnected = company.alegra_connected === true || connections.some(i => i.integration_type === 'alegra');
-      const enriched = { ...company, alegra_connected: alegraConnected };
+      const erp = company.erp || (alegraConnected ? 'alegra' : 'ninguno');
+      const enriched = { ...company, alegra_connected: alegraConnected, erp };
       setSelectedCompany(enriched);
-      localStorage.setItem('selectedCompany', JSON.stringify(enriched));
+      sessionSet('selectedCompany', JSON.stringify(enriched));
     } catch {
       setSelectedCompany(company);
-      localStorage.setItem('selectedCompany', JSON.stringify(company));
+      sessionSet('selectedCompany', JSON.stringify(company));
     }
     window.location.reload();
   };

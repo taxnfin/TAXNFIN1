@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { sessionGet } from '@/utils/sessionStore';
 import {
   LayoutDashboard,
   TrendingUp,
@@ -183,7 +184,7 @@ const BADGE = {
 // â”€â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const Layout = ({ user, onLogout, companies, selectedCompany, onCompanyChange }) => {
   const location = useLocation();
-  const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const storedUser = JSON.parse(sessionGet('user') || '{}');
   const PLATFORM_ADMIN_EMAIL = 'hola@taxnfin.com';
   const isAdmin = storedUser?.role === 'admin' && storedUser?.email === PLATFORM_ADMIN_EMAIL;
   const isCFO = storedUser?.role === 'cfo' || storedUser?.role === 'admin';
