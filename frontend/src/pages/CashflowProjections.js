@@ -2038,7 +2038,22 @@ const CashflowProjections = () => {
               <Input
                 type="date"
                 value={filterFechaInicio}
-                onChange={e => setFilterFechaInicio(e.target.value)}
+                onChange={e => {
+                  const val = e.target.value;
+                  setFilterFechaInicio(val);
+                  // Regenerar el modelo desde esa fecha para que S1-S8 aparezcan
+                  if (val) {
+                    const weeks = processWeeklyData(
+                      cfdis,
+                      categories,
+                      companyConfig.inicio_semana ?? 1,
+                      fxRates,
+                      allPayments,
+                      val   // ← usar como customStart para anclar el modelo
+                    );
+                    setWeeklyData(weeks);
+                  }
+                }}
                 className="h-7 w-36 text-xs"
               />
             </div>
@@ -2054,7 +2069,20 @@ const CashflowProjections = () => {
             {(filterFechaInicio || filterFechaFin) ? (
               <button
                 className="text-xs text-blue-600 hover:underline"
-                onClick={() => { setFilterFechaInicio(''); setFilterFechaFin(''); }}
+                onClick={() => {
+                  setFilterFechaInicio('');
+                  setFilterFechaFin('');
+                  // Restaurar modelo con customStartDate original (o automático)
+                  const weeks = processWeeklyData(
+                    cfdis,
+                    categories,
+                    companyConfig.inicio_semana ?? 1,
+                    fxRates,
+                    allPayments,
+                    customStartDate  // vuelve al anchor original
+                  );
+                  setWeeklyData(weeks);
+                }}
               >
                 Ver solo futuras
               </button>
