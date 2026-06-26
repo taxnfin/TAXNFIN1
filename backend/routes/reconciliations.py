@@ -657,3 +657,100 @@ async def delete_all_reconciliations(request: Request, current_user: Dict = Depe
         'message': f'Se eliminaron {result.deleted_count} conciliaciones y se reseteron todos los movimientos',
         'deleted_count': result.deleted_count
     }
+
+
+@router.post("/backfill-tercero-uuid")
+async def backfill_tercero_uuid(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """
+    Retroalimentación: cruza conciliaciones existentes con CFDIs y actualiza
+    bank_transactions con cfdi_uuid, tercero y tipo_conciliacion que faltaban
+    antes del fix de junio 2026.
+    """
+    company_id = await get_active_company_id(request, current_user)
+
+    # 1. Traer todas las conciliaciones con cfdi_id de la empresa
+    recons = await db.reconciliations.find(
+        {'company_id': company_id, 'cfdi_id': {'$exists': True, '$ne': None}},
+        {'_id': 0, 'bank_transaction_id': 1, 'cfdi_id': 1, 'tipo_conciliacion': 1}
+    ).to_list(10000)
+
+    actualizados  = 0
+    sin_cfdi      = 0
+    sin_txn       = 0
+    ya_tenia      = 0
+    errores       = 0
+
+    for recon in recons:
+        txn_id  = recon.get('bank_transaction_id')
+        cfdi_id = recon.get('cfdi_id')
+        if not txn_id or not cfdi_id:
+            sin_cfdi += 1
+            continue
+
+        try:
+            # Verificar si la transacción ya tiene tercero (evitar trabajo innecesario)
+            txn = await db.bank_transactions.find_one(
+                {'id': txn_id, 'company_id': company_id},
+                {'_id': 0, 'id': 1, 'tercero': 1, 'cfdi_uuid': 1}
+            )
+            if not txn:
+                sin_txn += 1
+                continue
+
+            if txn.get('tercero') and txn.get('cfdi_uuid'):
+                ya_tenia += 1
+                continue
+
+            # Buscar el CFDI para obtener uuid y nombres
+            cfdi = await db.cfdis.find_one(
+                {'id': cfdi_id, 'company_id': company_id},
+                {'_id': 0, 'uuid': 1, 'tipo_cfdi': 1, 'emisor_nombre': 1, 'receptor_nombre': 1}
+            )
+            if not cfdi:
+                sin_cfdi += 1
+                continue
+
+            # Determinar tercero según tipo CFDI
+            tipo_cfdi = cfdi.get('tipo_cfdi', '')
+            if tipo_cfdi == 'ingreso':
+                tercero = cfdi.get('receptor_nombre') or cfdi.get('emisor_nombre', '')
+            else:
+                tercero = cfdi.get('emisor_nombre') or cfdi.get('receptor_nombre', '')
+
+            update_fields = {
+                'cfdi_uuid':       cfdi.get('uuid'),
+                'cfdi_id':         cfdi_id,
+                'tercero':         tercero,
+                'tipo_conciliacion': recon.get('tipo_conciliacion') or 'con_uuid',
+                'conciliado':      True,
+                'updated_at':      datetime.now(timezone.utc).isoformat(),
+            }
+
+            await db.bank_transactions.update_one(
+                {'id': txn_id, 'company_id': company_id},
+                {'$set': update_fields}
+            )
+            actualizados += 1
+
+        except Exception as e:
+            logger.error(f"[backfill] Error txn={txn_id} cfdi={cfdi_id}: {e}")
+            errores += 1
+
+    logger.info(
+        f"[backfill-tercero-uuid] company={company_id} "
+        f"actualizados={actualizados} ya_tenia={ya_tenia} "
+        f"sin_cfdi={sin_cfdi} sin_txn={sin_txn} errores={errores}"
+    )
+    return {
+        'status':       'completed',
+        'total_recons': len(recons),
+        'actualizados': actualizados,
+        'ya_tenian':    ya_tenia,
+        'sin_cfdi':     sin_cfdi,
+        'sin_txn':      sin_txn,
+        'errores':      errores,
+        'message':      f'{actualizados} movimientos actualizados con tercero y UUID'
+    }
