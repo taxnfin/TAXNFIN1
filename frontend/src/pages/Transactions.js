@@ -248,7 +248,8 @@ const AgingModule = () => {
       const { asignados, omitidos } = res.data;
       if (asignados > 0) {
         toast.success(`✅ ${asignados} clientes/proveedores asignados a semanas por fecha de vencimiento`);
-        await loadData();
+        // Forzar recarga completa para que React actualice el state correctamente
+        window.location.reload();
       } else {
         toast.info(`Todos ya tienen semana asignada (${omitidos} omitidos)`);
       }
