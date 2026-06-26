@@ -512,7 +512,7 @@ async def auto_assign_semanas(
 
     cxp_docs = await db.cfdis.find(
         {**filtro_base, "tipo_cfdi": "egreso"},
-        {"_id": 0, "emisor_nombre": 1, "proveedor_nombre": 1,
+        {"_id": 0, "emisor_nombre": 1, "proveedor_nombre": 1, "provider": 1,
          "fecha_vencimiento": 1, "dueDate": 1, "total": 1,
          "moneda": 1, "tipo_cambio": 1, "monto_pagado": 1, "saldo_pendiente": 1}
     ).to_list(2000)
@@ -623,7 +623,14 @@ async def auto_assign_semanas(
     # Procesar CxP
     grupos_cxp: dict = {}
     for doc in cxp_docs:
-        nombre = (doc.get("emisor_nombre") or doc.get("proveedor_nombre") or "").strip()
+        # Mismo fallback que /alegra/cxp: emisor_nombre → provider.name → proveedor_nombre
+        provider = doc.get('provider', {})
+        provider_name = provider.get('name', '') if isinstance(provider, dict) else ''
+        nombre = (
+            doc.get("emisor_nombre") or
+            provider_name or
+            doc.get("proveedor_nombre") or ""
+        ).strip()
         if not nombre:
             continue
         fv_raw = doc.get("fecha_vencimiento") or doc.get("dueDate") or ""
