@@ -189,6 +189,7 @@ const CashflowProjections = () => {
         backend_flujo_neto:          bw.flujo_neto       ?? 0,
         backend_ingresos_detalle:    bw.ingresos_detalle || [],
         backend_egresos_detalle:     bw.egresos_detalle  || [],
+        saldo_anclado:               bw.saldo_anclado    ?? false,
         ingresos: {
           total:      bw.total_ingresos ?? week.ingresos.total,
           byCategory: Object.keys(ingBC).length > 0 ? ingBC : week.ingresos.byCategory,
@@ -902,6 +903,14 @@ const CashflowProjections = () => {
       const flujoNetoOperativo = totalIngresos - totalEgresos;
       const flujoDivisas = ventaUSD - compraUSD;
       const flujoNeto    = flujoNetoOperativo + flujoDivisas;
+
+      // Si la semana tiene ancla bancaria verificada, resetear saldoInicial
+      // al saldo real del banco en lugar del acumulado rolling.
+      // Esto garantiza que el saldo de fin de mes cuadre con el estado de cuenta.
+      if (week.saldo_anclado && week.backend_saldo_inicial) {
+        saldoInicial = week.backend_saldo_inicial;
+      }
+
       const saldoFinal   = saldoInicial + flujoNeto;
 
       totals.push({
