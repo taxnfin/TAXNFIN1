@@ -517,3 +517,56 @@ async def reactivar_usuario(
 
     await db.users.update_one({"id": user_id}, {"$set": {"activo": True}})
     return {"success": True}
+
+
+# ── POST /usuarios/{user_id}/reset-password ───────────────────────────────────
+
+@router.post("/{user_id}/reset-password")
+async def reset_password_usuario(
+    user_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """CFO puede resetear la contraseña de un usuario de su empresa."""
+    _require_cfo(current_user)
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    target_companies = set(
+        target.get("empresas_asignadas") or target.get("company_ids") or [target.get("company_id", "")]
+    )
+    if not target_companies.intersection(_cfo_company_ids(current_user)):
+        raise HTTPException(status_code=403, detail="No tienes permisos sobre este usuario")
+
+    # Generar nueva contraseña temporal
+    temp_password = str(uuid.uuid4()).replace("-", "")[:8].upper()
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "password_hash":        hash_password(temp_password),
+            "must_change_password": True,
+            "updated_at":           datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+
+    # Notificar por email (best-effort)
+    empresa_docs = await db.companies.find(
+        {"id": {"$in": list(target_companies)}}, {"_id": 0, "nombre": 1}
+    ).to_list(10)
+    empresa_nombres = [d["nombre"] for d in empresa_docs]
+    asyncio.create_task(_send_welcome_email(
+        email=target["email"],
+        nombre=target["nombre"],
+        temp_password=temp_password,
+        empresas=empresa_nombres,
+        invited_by_nombre=current_user.get("nombre", "Tu administrador"),
+    ))
+
+    return {
+        "success":       True,
+        "user_id":       user_id,
+        "nombre":        target["nombre"],
+        "email":         target["email"],
+        "temp_password": temp_password,
+        "message":       f"Contraseña reseteada para {target['nombre']}",
+    }
