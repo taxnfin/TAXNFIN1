@@ -500,9 +500,11 @@ async def get_dashboard_from_payments(
             continue
         # Excluir traspasos entre cuentas del cálculo de saldo
         concepto_p = (p.get('concepto') or p.get('descripcion') or '').lower()
+        cat_name_p = (p.get('category_name') or '').lower()
         TRASPASO_KW = ['operacion cambios', 'operación cambios', 'cambio de divisa',
                        'traspaso', 'retiro por operacion', 'deposito por operacion']
-        if any(kw in concepto_p for kw in TRASPASO_KW):
+        TRASPASO_CATS = ['traspaso entre cuentas', 'transferencia entre cuentas', 'comisiones bancarias']
+        if any(kw in concepto_p for kw in TRASPASO_KW) or any(cat in cat_name_p for cat in TRASPASO_CATS):
             continue
         monto_mxn = convert_to_mxn(p.get('monto', 0), p.get('moneda', 'MXN'))
         cat_id = p.get('category_id')
@@ -608,9 +610,11 @@ async def get_dashboard_from_payments(
             if not (fecha_saldo_base <= fecha_dt < start_monday):
                 continue
             concepto_adj = (p.get('concepto') or p.get('descripcion') or '').lower()
+            cat_name_adj = (p.get('category_name') or '').lower()
             TRASPASO_KW2 = ['operacion cambios', 'operación cambios', 'cambio de divisa',
                             'traspaso', 'retiro por operacion', 'deposito por operacion']
-            if any(kw in concepto_adj for kw in TRASPASO_KW2):
+            TRASPASO_CATS2 = ['traspaso entre cuentas', 'transferencia entre cuentas', 'comisiones bancarias']
+            if any(kw in concepto_adj for kw in TRASPASO_KW2) or any(cat in cat_name_adj for cat in TRASPASO_CATS2):
                 continue
             monto_adj = convert_to_mxn(p.get('monto', 0), p.get('moneda', 'MXN'))
             cat_id_adj = p.get('category_id')
@@ -664,11 +668,13 @@ async def get_dashboard_from_payments(
             'compra de dólares', 'venta de dolares', 'venta de dólares',
             'retiro por operacion', 'deposito por operacion',
         ]
+        TRASPASO_CAT_NAMES = ['traspaso entre cuentas', 'transferencia entre cuentas', 'comisiones bancarias']
 
         for p in week_payments:
             # Excluir traspasos entre cuentas (USD↔MXN) — se netean solos
             concepto = (p.get('concepto') or p.get('descripcion') or '').lower()
-            if any(kw in concepto for kw in TRASPASO_KEYWORDS):
+            cat_name = (p.get('category_name') or '').lower()
+            if any(kw in concepto for kw in TRASPASO_KEYWORDS) or any(cat in cat_name for cat in TRASPASO_CAT_NAMES):
                 continue
 
             moneda_pago = p.get('moneda', 'MXN')
