@@ -442,19 +442,41 @@ async def get_dashboard_from_payments(
         start_monday = current_monday - timedelta(weeks=4)
         num_weeks = 13
 
-    # ── Saldo actual calculado ─────────────────────────────────────────────────
-    # FUENTE: misma que /bank-accounts/summary (misma que usa CashFlow Projections).
-    # Se consultan TODAS las cuentas activas de la empresa, sin filtrar por
-    # bank_account_id, para que el KPI "Saldo Actual" siempre refleje la empresa
-    # completa aunque el gráfico esté filtrado por una cuenta específica.
+    # ── Saldo base: usa ancla histórica más cercana a fecha_inicio ────────────
+    # Si hay bank_account_history para la fecha del rango, usa ese saldo verificado.
+    # Si no, usa el saldo_inicial actual de bank_accounts (el más reciente).
+    # Esto garantiza que filtrar por enero 2026 use el saldo de enero, no el de mayo.
     all_active_accs = await db.bank_accounts.find(
         {'company_id': company_id, 'activo': True}, {'_id': 0}
     ).to_list(1000)
+
+    # Fecha de referencia: inicio del rango pedido (o hoy si no hay rango)
+    fecha_ref = (rango_inicio or datetime.now()).strftime('%Y-%m-%d')
+
+    # Para cada cuenta, buscar el saldo histórico más cercano ANTERIOR o IGUAL a fecha_ref
     bank_base_mxn = 0.0
     for acc in all_active_accs:
-        s = float(acc.get('saldo_inicial', 0) or 0)
-        m = acc.get('moneda', 'MXN')
-        bank_base_mxn += s if m == 'MXN' else s * fx_map.get(m, 1)
+        acct_id = acc['id']
+        moneda_acc = acc.get('moneda', 'MXN')
+        tc = fx_map.get(moneda_acc, 1.0)
+
+        # Buscar ancla histórica <= fecha_ref, la más reciente
+        hist = await db.bank_account_history.find_one(
+            {'account_id': acct_id, 'company_id': company_id, 'fecha': {'$lte': fecha_ref}},
+            {'_id': 0, 'saldo': 1, 'fecha': 1},
+            sort=[('fecha', -1)]
+        )
+        if hist:
+            saldo_ref = float(hist.get('saldo', 0) or 0)
+            logger.info(f"[dashboard-anchor] cuenta {acct_id[:8]} {moneda_acc}: "
+                        f"ancla {hist['fecha']} → ${saldo_ref:,.2f} (ref={fecha_ref})")
+        else:
+            # Sin historial: usar saldo_inicial actual
+            saldo_ref = float(acc.get('saldo_inicial', 0) or 0)
+            logger.info(f"[dashboard-anchor] cuenta {acct_id[:8]} {moneda_acc}: "
+                        f"sin historial, usando saldo_inicial ${saldo_ref:,.2f}")
+
+        bank_base_mxn += saldo_ref if moneda_acc == 'MXN' else saldo_ref * tc
 
     saldo_actual_mxn = bank_base_mxn
     for p in all_payments:
