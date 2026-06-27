@@ -525,6 +525,63 @@ async def get_dashboard_from_payments(
     weeks_data = []
     running_balance = saldo_bancos_mxn  # base del gráfico (saldo apertura + pagos conciliados)
 
+    # ── Saldo inicial del modelo ──────────────────────────────────────────────
+    # El running_balance debe partir del saldo bancario real AJUSTADO por los
+    # movimientos ocurridos ANTES del inicio de la ventana del modelo.
+    # Así si el saldo bancario es de mayo-30 y el modelo empieza en junio,
+    # el saldo inicial del modelo refleja la realidad.
+    #
+    # Lógica:
+    # 1. Tomar el saldo bancario registrado (fecha_saldo en BD)
+    # 2. Sumar/restar los pagos ocurridos ENTRE fecha_saldo y start_monday
+    # 3. El resultado es el saldo real al inicio de la ventana del modelo
+
+    # Determinar la fecha_saldo más reciente de las cuentas
+    fecha_saldo_base = None
+    for acc in all_active_accs:
+        fs_raw = acc.get('fecha_saldo')
+        if fs_raw:
+            try:
+                fs = datetime.fromisoformat(str(fs_raw).replace('Z', '+00:00').split('+')[0])
+                if fecha_saldo_base is None or fs > fecha_saldo_base:
+                    fecha_saldo_base = fs
+            except (ValueError, AttributeError):
+                pass
+
+    # Ajustar el saldo bancario con pagos entre fecha_saldo y start_monday
+    adjusted_balance = saldo_bancos_mxn
+    if fecha_saldo_base and fecha_saldo_base < start_monday:
+        for p in payments:
+            fecha_str = p.get('fecha_pago') or p.get('fecha_vencimiento')
+            if not fecha_str:
+                continue
+            try:
+                fecha_dt = datetime.fromisoformat(fecha_str.replace('Z', '+00:00').split('+')[0])
+            except (ValueError, AttributeError):
+                continue
+            # Solo pagos entre fecha_saldo y start_monday
+            if not (fecha_saldo_base <= fecha_dt < start_monday):
+                continue
+            concepto_adj = (p.get('concepto') or p.get('descripcion') or '').lower()
+            TRASPASO_KW2 = ['operacion cambios', 'operación cambios', 'cambio de divisa',
+                            'traspaso', 'retiro por operacion', 'deposito por operacion']
+            if any(kw in concepto_adj for kw in TRASPASO_KW2):
+                continue
+            monto_adj = convert_to_mxn(p.get('monto', 0), p.get('moneda', 'MXN'))
+            cat_id_adj = p.get('category_id')
+            if venta_usd_id and cat_id_adj == venta_usd_id:
+                adjusted_balance += monto_adj
+            elif compra_usd_id and cat_id_adj == compra_usd_id:
+                adjusted_balance -= monto_adj
+            elif p.get('tipo') in ('cobro', 'ingreso'):
+                adjusted_balance += monto_adj
+            else:
+                adjusted_balance -= monto_adj
+
+    running_balance = adjusted_balance
+    logger.info(f"[dashboard] saldo_base={saldo_bancos_mxn:,.0f} fecha_saldo={fecha_saldo_base} "
+                f"start_monday={start_monday} adjusted_balance={adjusted_balance:,.0f}")
+
     for i in range(num_weeks):
         week_start = start_monday + timedelta(weeks=i)
         week_end = week_start + timedelta(days=7)
@@ -648,10 +705,15 @@ async def get_dashboard_from_payments(
     # Calculate KPIs
     past_weeks = [w for w in weeks_data if w['is_past'] or w['is_current']]
     total_ingresos = sum(w['ingresos'] + w['venta_usd'] for w in past_weeks)
-    total_egresos = sum(w['egresos'] + w['compra_usd'] for w in past_weeks)
-    
-    burn_rate = total_egresos / len(past_weeks) if past_weeks else 0
-    runway_weeks = running_balance / burn_rate if burn_rate > 0 else float('inf')
+    total_egresos  = sum(w['egresos']  + w['compra_usd'] for w in past_weeks)
+
+    # Burn rate: usar solo semanas con actividad real (egresos > 0)
+    # para evitar que semanas vacías diluyan el promedio
+    active_weeks = [w for w in past_weeks if (w['egresos'] + w['compra_usd']) > 0]
+    burn_rate = total_egresos / len(active_weeks) if active_weeks else 0
+
+    # Runway: saldo actual ÷ burn rate semanal
+    runway_weeks = saldo_actual_mxn / burn_rate if burn_rate > 0 else float('inf')
     
     # Find critical week (first week with negative balance)
     critical_week = None
