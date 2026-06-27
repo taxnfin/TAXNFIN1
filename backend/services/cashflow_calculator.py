@@ -53,19 +53,24 @@ async def _build_bank_anchors(company_id: str, db) -> Dict[str, float]:
     ).to_list(100)
     moneda_by_id = {a['id']: a.get('moneda', 'MXN') for a in accounts}
 
-    # Agrupar historial por fecha
+    # Agrupar historial por fecha — si hay duplicados, queda el de mayor saldo (más reciente cargado)
     history_by_date: Dict[str, Dict[str, dict]] = {}
     for h in history_docs:
         fecha = _parse_date(h.get('fecha'))
         if not fecha:
             continue
         acct_id = h.get('account_id', '')
+        saldo_h = float(h.get('saldo', 0) or 0)
+        # Si ya hay una entrada para (fecha, acct_id), conservar la de mayor saldo
+        # (el script de carga puede haber insertado duplicados antes del fix upsert)
         if fecha not in history_by_date:
             history_by_date[fecha] = {}
-        history_by_date[fecha][acct_id] = {
-            'saldo': float(h.get('saldo', 0) or 0),
-            'moneda': h.get('moneda') or moneda_by_id.get(acct_id, 'MXN'),
-        }
+        prev = history_by_date[fecha].get(acct_id)
+        if prev is None or saldo_h > prev.get('saldo', 0):
+            history_by_date[fecha][acct_id] = {
+                'saldo': saldo_h,
+                'moneda': h.get('moneda') or moneda_by_id.get(acct_id, 'MXN'),
+            }
 
     # ── Fuente 2: Saldo actual de bank_accounts ───────────────────
     for acc in accounts:

@@ -97,12 +97,14 @@ async def get_bank_accounts_summary(request: Request, current_user: Dict = Depen
         acct_id = acc.get('id', '')
         
         # Si hay fecha_ref, buscar saldo histórico más cercano <= fecha_ref
+        # Usamos find+sort+limit para obtener solo el más reciente (evita duplicados)
         if fecha_ref:
-            hist = await db.bank_account_history.find_one(
+            hist_cursor = db.bank_account_history.find(
                 {'account_id': acct_id, 'company_id': company_id, 'fecha': {'$lte': fecha_ref}},
                 {'_id': 0, 'saldo': 1, 'fecha': 1},
-                sort=[('fecha', -1)],
-            )
+            ).sort('fecha', -1).limit(1)
+            hist_list = await hist_cursor.to_list(1)
+            hist = hist_list[0] if hist_list else None
             if hist:
                 saldo = float(hist.get('saldo', 0) or 0)
                 fecha_saldo = hist.get('fecha')
@@ -214,10 +216,7 @@ async def add_saldo_history(
 ):
     """
     Registra un saldo histórico verificado para una cuenta bancaria.
-    Cada entrada queda en db.bank_account_history y es usada por el motor
-    de cashflow como 'ancla bancaria' para esa fecha de corte.
-
-    Body: { "saldo": 65149.37, "fecha": "2026-05-31", "fuente": "estado_cuenta" }
+    Si ya existe una entrada para esa fecha, la ACTUALIZA en lugar de duplicar.
     """
     company_id = await get_active_company_id(request, current_user)
     body = await request.json()
@@ -233,21 +232,42 @@ async def add_saldo_history(
     if saldo is None or not fecha:
         raise HTTPException(status_code=400, detail="Se requieren 'saldo' y 'fecha'")
 
-    doc = {
-        'id': str(uuid.uuid4()),
-        'account_id': account_id,
-        'company_id': company_id,
-        'moneda': existing.get('moneda', 'MXN'),
-        'saldo': float(saldo),
-        'fecha': fecha,
-        'fuente': body.get('fuente', 'manual'),
-        'notas': body.get('notas', ''),
-        'created_at': datetime.utcnow().isoformat(),
-        'created_by': current_user.get('id', ''),
-    }
-    await db.bank_account_history.insert_one(doc)
+    # Upsert: actualizar si ya existe para esa fecha, insertar si no
+    existing_hist = await db.bank_account_history.find_one(
+        {'account_id': account_id, 'company_id': company_id, 'fecha': fecha},
+        {'_id': 0, 'id': 1}
+    )
 
-    # También actualizar el saldo_actual en bank_accounts si es más reciente
+    if existing_hist:
+        # Actualizar entrada existente
+        await db.bank_account_history.update_one(
+            {'account_id': account_id, 'company_id': company_id, 'fecha': fecha},
+            {'$set': {
+                'saldo': float(saldo),
+                'fuente': body.get('fuente', 'manual'),
+                'notas': body.get('notas', ''),
+                'updated_at': datetime.utcnow().isoformat(),
+            }}
+        )
+        doc_id = existing_hist['id']
+    else:
+        # Insertar nueva entrada
+        doc = {
+            'id': str(uuid.uuid4()),
+            'account_id': account_id,
+            'company_id': company_id,
+            'moneda': existing.get('moneda', 'MXN'),
+            'saldo': float(saldo),
+            'fecha': fecha,
+            'fuente': body.get('fuente', 'manual'),
+            'notas': body.get('notas', ''),
+            'created_at': datetime.utcnow().isoformat(),
+            'created_by': current_user.get('id', ''),
+        }
+        await db.bank_account_history.insert_one(doc)
+        doc_id = doc['id']
+
+    # Actualizar saldo_actual en bank_accounts si esta fecha es más reciente
     fecha_actual = existing.get('fecha_saldo', '')
     if not fecha_actual or fecha > fecha_actual:
         await db.bank_accounts.update_one(
@@ -257,11 +277,12 @@ async def add_saldo_history(
 
     return {
         'success': True,
-        'id': doc['id'],
+        'id': doc_id,
         'account_id': account_id,
         'saldo': float(saldo),
         'fecha': fecha,
-        'moneda': doc['moneda'],
+        'moneda': existing.get('moneda', 'MXN'),
+        'updated': existing_hist is not None,
     }
 
 
