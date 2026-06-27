@@ -225,9 +225,48 @@ const Dashboard = () => {
 
       const data = response.data;
       const weeks = data?.weeks || [];
-      const summaryTotalMxn = summaryRes.data?.total_mxn || 0;
+      const summaryData = summaryRes.data || {};
+      const summaryTotalMxn = summaryData?.total_mxn || 0;
       setSaldoBancosActual(summaryTotalMxn);
-      setDashboardData(data);
+
+      // ── Cash Pool y Detalle de Cuentas desde /bank-accounts/summary ──────
+      // El endpoint dashboard-from-payments calcula saldos desde pagos históricos
+      // y mezcla traspasos/comisiones que distorsionan los totales.
+      // /bank-accounts/summary usa las anclas históricas verificadas (MongoDB history)
+      // y es la fuente de verdad para saldos reales. Lo sobreescribimos aquí.
+      const cashPoolFromSummary = {};
+      const accountsFromSummary = [];
+      const porMoneda = summaryData?.por_moneda || {};
+      const porBanco = summaryData?.por_banco || {};
+
+      // Cash pool por moneda (en moneda original, como el backend devolvía)
+      Object.entries(porMoneda).forEach(([moneda, info]) => {
+        cashPoolFromSummary[moneda] = { total: info.saldo || 0, cuentas: info.cuentas || 0 };
+      });
+
+      // Detalle de cuentas (formato compatible con lo que usa el JSX)
+      Object.entries(porBanco).forEach(([banco, bancoInfo]) => {
+        (bancoInfo.cuentas || []).forEach(ct => {
+          accountsFromSummary.push({
+            id: ct.id,
+            nombre: ct.nombre,
+            banco,
+            moneda: ct.moneda,
+            saldo_inicial: ct.saldo,
+            saldo_final: ct.saldo,      // sin movimientos — saldo verificado del corte
+            saldo_inicial_mxn: ct.saldo_mxn,
+            saldo_final_mxn: ct.saldo_mxn,
+            num_movimientos: 0,
+            riesgo: ct.saldo_mxn > 50000 ? 'bajo' : ct.saldo_mxn > 10000 ? 'medio' : 'alto',
+          });
+        });
+      });
+
+      setDashboardData({
+        ...data,
+        cash_pool: cashPoolFromSummary,
+        bank_accounts: accountsFromSummary,
+      });
 
       console.log('[Dashboard diagnóstico]', {
         // Banco base
