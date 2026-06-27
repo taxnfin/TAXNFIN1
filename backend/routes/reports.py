@@ -391,11 +391,20 @@ async def get_dashboard_from_payments(
     logger.info(f"[dashboard-debug] payments de db.payments: {len(all_payments)}")
     logger.info(f"[dashboard-debug] company alegra_connected: {company_doc}")
 
-    # Filter to valid payments (reconciled or without bank_transaction_id)
-    payments = [p for p in all_payments
-                if not p.get('bank_transaction_id')
-                or p.get('bank_transaction_id') in reconciled_ids
-                or p.get('_from_alegra') == True]
+    # Filter to valid payments
+    # Para empresas que usan Alegra con bank_transactions como fuente principal,
+    # incluir TODOS los pagos completados independientemente de si están conciliados
+    uses_alegra = company_doc and company_doc.get('alegra_connected')
+    
+    if uses_alegra:
+        # Alegra: incluir todos los pagos completados
+        payments = [p for p in all_payments if p.get('estatus') == 'completado' or p.get('_from_alegra')]
+    else:
+        # Contalink/manual: solo incluir pagos conciliados o sin bank_transaction
+        payments = [p for p in all_payments
+                    if not p.get('bank_transaction_id')
+                    or p.get('bank_transaction_id') in reconciled_ids
+                    or p.get('_from_alegra') == True]
 
     logger.info(f"[dashboard-debug] payments después de filtro: {len(payments)}")
     logger.info(f"[dashboard-debug] sample payment: {payments[0] if payments else 'VACÍO'}")
