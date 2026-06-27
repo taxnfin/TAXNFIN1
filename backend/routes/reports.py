@@ -451,8 +451,12 @@ async def get_dashboard_from_payments(
         {'company_id': company_id, 'activo': True}, {'_id': 0}
     ).to_list(1000)
 
-    # Fecha de referencia: inicio del rango pedido (o hoy si no hay rango)
-    fecha_ref = (rango_inicio or datetime.now()).strftime('%Y-%m-%d')
+    # Fecha de referencia: inicio de la VENTANA DE SEMANAS (start_monday),
+    # no el rango_inicio del query. Esto garantiza que el saldo base corresponde
+    # exactamente a la semana S1 que se muestra en el modelo de cashflow.
+    # Ejemplo: modo 13S pide fecha_inicio=hoy-56d pero start_monday puede ser dic 2025;
+    # el ancla debe ser el saldo de dic 2025, no el de may 2026.
+    fecha_ref = start_monday.strftime('%Y-%m-%d')
 
     # Para cada cuenta, buscar el saldo histórico más cercano ANTERIOR O IGUAL a fecha_ref
     bank_base_mxn = 0.0
