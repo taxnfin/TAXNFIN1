@@ -454,8 +454,9 @@ async def get_dashboard_from_payments(
     # Fecha de referencia: inicio del rango pedido (o hoy si no hay rango)
     fecha_ref = (rango_inicio or datetime.now()).strftime('%Y-%m-%d')
 
-    # Para cada cuenta, buscar el saldo histórico más cercano ANTERIOR o IGUAL a fecha_ref
+    # Para cada cuenta, buscar el saldo histórico más cercano ANTERIOR O IGUAL a fecha_ref
     bank_base_mxn = 0.0
+    bank_anchors_used = False  # True si al menos una cuenta tiene historial verificado
     for acc in all_active_accs:
         acct_id = acc['id']
         moneda_acc = acc.get('moneda', 'MXN')
@@ -470,10 +471,10 @@ async def get_dashboard_from_payments(
         hist = hist_list[0] if hist_list else None
         if hist:
             saldo_ref = float(hist.get('saldo', 0) or 0)
+            bank_anchors_used = True
             logger.info(f"[dashboard-anchor] cuenta {acct_id[:8]} {moneda_acc}: "
                         f"ancla {hist['fecha']} → ${saldo_ref:,.2f} (ref={fecha_ref})")
         else:
-            # Sin historial: usar saldo_inicial actual
             saldo_ref = float(acc.get('saldo_inicial', 0) or 0)
             logger.info(f"[dashboard-anchor] cuenta {acct_id[:8]} {moneda_acc}: "
                         f"sin historial, usando saldo_inicial ${saldo_ref:,.2f}")
@@ -614,9 +615,14 @@ async def get_dashboard_from_payments(
             else:
                 adjusted_balance -= monto_adj
 
-    running_balance = adjusted_balance
-    logger.info(f"[dashboard] saldo_base={saldo_bancos_mxn:,.0f} fecha_saldo={fecha_saldo_base} "
-                f"start_monday={start_monday} adjusted_balance={adjusted_balance:,.0f}")
+    # Si hay anclas históricas verificadas, NO ajustar con pagos — el saldo ya es correcto.
+    # El adjusted_balance solo aplica cuando NO hay historial (modo legacy: saldo estático + pagos).
+    if bank_anchors_used:
+        running_balance = bank_base_mxn
+        logger.info(f"[dashboard] usando ancla historica: bank_base_mxn={bank_base_mxn:,.0f} (fecha_ref={fecha_ref})")
+    else:
+        running_balance = adjusted_balance
+        logger.info(f"[dashboard] sin ancla: saldo_base={saldo_bancos_mxn:,.0f} adjusted={adjusted_balance:,.0f}")
 
     for i in range(num_weeks):
         week_start = start_monday + timedelta(weeks=i)
