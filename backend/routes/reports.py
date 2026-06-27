@@ -456,7 +456,12 @@ async def get_dashboard_from_payments(
             fecha_dt = datetime.fromisoformat(fecha_str.replace('Z', '+00:00').split('+')[0])
         except (ValueError, AttributeError):
             continue
-        # Sin filtro de fecha futura — misma lógica que CashFlow Projections
+        # Excluir traspasos entre cuentas del cálculo de saldo
+        concepto_p = (p.get('concepto') or p.get('descripcion') or '').lower()
+        TRASPASO_KW = ['operacion cambios', 'operación cambios', 'cambio de divisa',
+                       'traspaso', 'retiro por operacion', 'deposito por operacion']
+        if any(kw in concepto_p for kw in TRASPASO_KW):
+            continue
         monto_mxn = convert_to_mxn(p.get('monto', 0), p.get('moneda', 'MXN'))
         cat_id = p.get('category_id')
         # Mismo fix: solo enrutar a venta/compra_usd si el id existe (None != None guard)
@@ -545,7 +550,20 @@ async def get_dashboard_from_payments(
         venta_usd = 0
         compra_usd = 0
 
+        # Palabras clave de traspasos entre cuentas — no son egresos/ingresos reales
+        TRASPASO_KEYWORDS = [
+            'operacion cambios', 'operación cambios', 'cambio de divisa',
+            'traspaso', 'transferencia entre cuentas', 'compra de dolares',
+            'compra de dólares', 'venta de dolares', 'venta de dólares',
+            'retiro por operacion', 'deposito por operacion',
+        ]
+
         for p in week_payments:
+            # Excluir traspasos entre cuentas (USD↔MXN) — se netean solos
+            concepto = (p.get('concepto') or p.get('descripcion') or '').lower()
+            if any(kw in concepto for kw in TRASPASO_KEYWORDS):
+                continue
+
             moneda_pago = p.get('moneda', 'MXN')
             monto_raw = p.get('monto', 0)
             if p.get('monto_mxn'):
@@ -557,7 +575,7 @@ async def get_dashboard_from_payments(
             cat_id = p.get('category_id')
 
             # IMPORTANTE: solo enrutar a venta_usd/compra_usd si el id existe
-            # (None == None es True en Python, lo que causaría que pagos sin cat vayan a venta_usd)
+            # (None == None es True en Python)
             if venta_usd_id and cat_id == venta_usd_id:
                 venta_usd += monto_mxn
             elif compra_usd_id and cat_id == compra_usd_id:
