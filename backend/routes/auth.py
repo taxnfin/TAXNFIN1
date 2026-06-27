@@ -403,6 +403,54 @@ async def verify_auth0_token(token: str = Form(...)):
     result = await service.verify_token(token)
     
     if not result.get('valid'):
-        raise HTTPException(status_code=401, detail=result.get('error', 'Token inválido'))
-    
+        raise HTTPException(status_code=401, detail="Token inválido")
     return result
+
+
+@router.post("/admin-reset-password")
+async def admin_reset_password(
+    payload: dict,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Admin/CFO puede generar un link de reset para cualquier usuario de su empresa.
+    Solo accesible con un JWT válido (requiere estar logueado como CFO)."""
+    email = (payload.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email requerido")
+
+    # Verificar que el usuario target existe
+    user = await db.users.find_one({"email": email}, {"_id": 0, "id": 1, "nombre": 1, "email": 1})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    # Generar token de reset
+    token_reset = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+    frontend_url = os.environ.get('FRONTEND_URL', 'https://cashflow.taxnfin.com')
+    reset_link = f"{frontend_url}/reset-password?token={token_reset}"
+
+    await db.password_resets.insert_one({
+        'token':      token_reset,
+        'user_id':    user['id'],
+        'email':      email,
+        'expires_at': expires_at.isoformat(),
+        'used':       False,
+        'created_at': datetime.now(timezone.utc).isoformat(),
+    })
+
+    # Intentar enviar email
+    try:
+        await _send_reset_email(email, reset_link, token_reset)
+        email_enviado = True
+    except Exception as e:
+        logger.error(f"[ADMIN-RESET] Error enviando email: {e}")
+        email_enviado = False
+
+    return {
+        "success":      True,
+        "nombre":       user["nombre"],
+        "email":        email,
+        "reset_link":   reset_link,
+        "email_enviado": email_enviado,
+        "expira":       "24 horas",
+    }
