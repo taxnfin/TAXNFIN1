@@ -856,45 +856,47 @@ async def get_payments_with_reconciliation_status(
                 '_from_bank_transactions': True,
             })
 
-    else:
-        # ── Fuente fallback: db.payments (Contalink / manual) ──
-        query: dict = {'company_id': company_id}
-        if tipo:
-            query['tipo'] = tipo
-        if fecha_desde:
-            query['fecha_pago'] = {'$gte': fecha_desde}
-        if fecha_hasta:
-            if 'fecha_pago' in query:
-                query['fecha_pago']['$lte'] = fecha_hasta
+    # ── Fuente: db.payments (Contalink / manual) — siempre incluir ──
+    # Nota: aunque usa_alegra sea True, puede haber pagos de Contalink también
+    query: dict = {'company_id': company_id}
+    if tipo:
+        query['tipo'] = tipo
+    # Filtro de fecha: usar $gte/$lte con prefijo de fecha (funciona con strings ISO)
+    if fecha_desde:
+        query['fecha_pago'] = {'$gte': fecha_desde}
+    if fecha_hasta:
+        fecha_hasta_end = fecha_hasta + 'T23:59:59'  # incluir todo el día
+        if 'fecha_pago' in query:
+            query['fecha_pago']['$lte'] = fecha_hasta_end
+        else:
+            query['fecha_pago'] = {'$lte': fecha_hasta_end}
+
+    bank_txns_all = await db.bank_transactions.find(
+        {'company_id': company_id}, {'_id': 0}
+    ).to_list(5000)
+    bank_txn_map = {t['id']: t for t in bank_txns_all}
+
+    raw = await db.payments.find(query, {'_id': 0}).sort('fecha_pago', -1).limit(limit).to_list(limit)
+
+    for p in raw:
+        bank_txn_id = p.get('bank_transaction_id')
+        if bank_txn_id:
+            bt = bank_txn_map.get(bank_txn_id)
+            if bt:
+                p['estado_real'] = 'completado' if bt.get('conciliado') else 'pendiente'
+                p['conciliacion_real'] = bt.get('conciliado', False)
             else:
-                query['fecha_pago'] = {'$lte': fecha_hasta}
+                p['estado_real'] = 'desconocido'
+                p['conciliacion_real'] = False
+        else:
+            p['estado_real'] = p.get('estatus', 'pendiente')
+            p['conciliacion_real'] = None
 
-        bank_txns_all = await db.bank_transactions.find(
-            {'company_id': company_id}, {'_id': 0}
-        ).to_list(5000)
-        bank_txn_map = {t['id']: t for t in bank_txns_all}
+        for field in ['fecha_vencimiento', 'fecha_pago', 'created_at']:
+            if isinstance(p.get(field), str) and p[field]:
+                p[field] = datetime.fromisoformat(p[field].replace('Z', '+00:00'))
 
-        raw = await db.payments.find(query, {'_id': 0}).sort('fecha_pago', -1).limit(limit).to_list(limit)
-
-        for p in raw:
-            bank_txn_id = p.get('bank_transaction_id')
-            if bank_txn_id:
-                bt = bank_txn_map.get(bank_txn_id)
-                if bt:
-                    p['estado_real'] = 'completado' if bt.get('conciliado') else 'pendiente'
-                    p['conciliacion_real'] = bt.get('conciliado', False)
-                else:
-                    p['estado_real'] = 'desconocido'
-                    p['conciliacion_real'] = False
-            else:
-                p['estado_real'] = p.get('estatus', 'pendiente')
-                p['conciliacion_real'] = None
-
-            for field in ['fecha_vencimiento', 'fecha_pago', 'created_at']:
-                if isinstance(p.get(field), str) and p[field]:
-                    p[field] = datetime.fromisoformat(p[field].replace('Z', '+00:00'))
-
-            payments.append(p)
+        payments.append(p)
 
     payments.sort(
         key=lambda p: str(p.get('fecha_pago') or p.get('fecha_vencimiento') or ''),
