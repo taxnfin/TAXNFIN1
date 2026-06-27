@@ -7,6 +7,7 @@ class UserRole(str, Enum):
     CFO      = "cfo"
     CONTADOR = "contador"
     VIEWER   = "viewer"
+    USER     = "user"    # legacy — equivalente a viewer
 
 
 class TransactionType(str, Enum):
