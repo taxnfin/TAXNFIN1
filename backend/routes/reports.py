@@ -457,6 +457,9 @@ async def get_dashboard_from_payments(
     # Para cada cuenta, buscar el saldo histórico más cercano ANTERIOR O IGUAL a fecha_ref
     bank_base_mxn = 0.0
     bank_anchors_used = False  # True si al menos una cuenta tiene historial verificado
+    # saldo_ref_por_cuenta: {account_id: saldo_en_moneda_original}
+    # usado luego en cash_pool y bank_accounts_detail para mostrar saldo correcto
+    saldo_ref_por_cuenta = {}
     for acc in all_active_accs:
         acct_id = acc['id']
         moneda_acc = acc.get('moneda', 'MXN')
@@ -479,6 +482,7 @@ async def get_dashboard_from_payments(
             logger.info(f"[dashboard-anchor] cuenta {acct_id[:8]} {moneda_acc}: "
                         f"sin historial, usando saldo_inicial ${saldo_ref:,.2f}")
 
+        saldo_ref_por_cuenta[acct_id] = saldo_ref
         bank_base_mxn += saldo_ref if moneda_acc == 'MXN' else saldo_ref * tc
 
     saldo_actual_mxn = bank_base_mxn
@@ -764,11 +768,14 @@ async def get_dashboard_from_payments(
             critical_week = w['week_label']
             break
     
-    # Build cash pool by currency
+    # Build cash pool by currency — usa saldo histórico verificado (ancla) si existe,
+    # saldo_inicial actual si no hay historial para la fecha de referencia
     cash_pool = {}
     for acc in accounts:
         moneda = acc.get('moneda', 'MXN')
-        saldo = acc.get('saldo_inicial', 0) or 0
+        acct_id = acc.get('id', '')
+        # Prioridad: saldo del historial (fecha_ref) > saldo_inicial actual
+        saldo = saldo_ref_por_cuenta.get(acct_id, acc.get('saldo_inicial', 0) or 0)
         if moneda not in cash_pool:
             cash_pool[moneda] = {'total': 0, 'cuentas': 0}
         cash_pool[moneda]['total'] += saldo
@@ -793,9 +800,10 @@ async def get_dashboard_from_payments(
     # Build bank accounts detail with calculated saldo_final
     bank_accounts_detail = []
     for acc in accounts:
-        saldo_inicial = acc.get('saldo_inicial', 0) or 0
-        moneda = acc.get('moneda', 'MXN')
         acc_id = acc.get('id')
+        moneda = acc.get('moneda', 'MXN')
+        # Usa saldo histórico verificado si existe para fecha_ref; si no, saldo_inicial actual
+        saldo_inicial = saldo_ref_por_cuenta.get(acc_id, acc.get('saldo_inicial', 0) or 0)
         
         # Get movements for this account
         movements = account_movements.get(acc_id, {'ingresos': 0, 'egresos': 0, 'count': 0})
