@@ -205,12 +205,11 @@ const CashflowProjections = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cfdiRes, catRes, custRes, vendRes, bankSummaryRes, conceptsRes, fxRes, paymentsRes, bankTxnsRes, reconRes, bankAccountsRes, backendWeeksRes] = await Promise.all([
+      const [cfdiRes, catRes, custRes, vendRes, conceptsRes, fxRes, paymentsRes, bankTxnsRes, reconRes, bankAccountsRes, backendWeeksRes] = await Promise.all([
         api.get('/cfdi?limit=500'),
         api.get('/cashflow-sync/categories'),
         api.get('/customers'),
         api.get('/vendors'),
-        api.get('/bank-accounts/summary'),
         api.get('/manual-projections'),
         api.get('/fx-rates/latest'),
         api.get('/payments?limit=1000'),
@@ -219,6 +218,19 @@ const CashflowProjections = () => {
         api.get('/bank-accounts'),
         api.get('/cashflow/weeks?num_weeks=52').catch(() => ({ data: [] }))
       ]);
+
+      // Obtener saldo inicial bancario con la fecha de S1 del backend
+      // para que refleje el saldo histórico verificado (ancla de fin de mes anterior)
+      // en lugar del saldo actual (que sería el de mayo 2026).
+      const backendWeeksData = backendWeeksRes.data || [];
+      const fechaS1 = backendWeeksData[0]?.fecha_inicio
+        ? backendWeeksData[0].fecha_inicio.slice(0, 10)
+        : null;
+      // Usar fecha un día antes de S1 para capturar el ancla del cierre del mes previo
+      const fechaSummary = fechaS1
+        ? (() => { const d = new Date(fechaS1 + 'T12:00:00'); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0]; })()
+        : null;
+      const bankSummaryRes = await api.get(`/bank-accounts/summary${fechaSummary ? `?fecha=${fechaSummary}` : ''}`);
       
       setCfdis(cfdiRes.data);
       setCategories(catRes.data);
@@ -298,7 +310,7 @@ const CashflowProjections = () => {
         return null;
       };
       
-      const backendWeeks = backendWeeksRes.data || [];
+      const backendWeeks = backendWeeksData;
       setBackendWeeksCache(backendWeeks); // ← guardar para reuso al cambiar filtro
       const companyId = getActiveCompanyId();
       if (companyId) {
