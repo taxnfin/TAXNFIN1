@@ -175,17 +175,20 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             'id': c.get('id', ''),
         })
 
-    # ── Fuente 4: Payments reales de Alegra (cobros/pagos efectivos) ─
-    payments_reales = await db.payments.find({
+    # ── Fuente 4: Payments reales de Alegra ──────────────────────
+    # DESACTIVADO para Alegra: los bank_transactions (Fuente 5) ya representan
+    # los mismos movimientos con category_name correcto. Usar ambos duplica cada pago.
+    # Fuente 4 solo se usa para fuentes no-Alegra (Contalink, manual).
+    payments_reales_no_alegra = await db.payments.find({
         'company_id': company_id,
-        'source': 'alegra',
+        'source': {'$ne': 'alegra'},
         'estatus': 'completado',
         'es_real': True,
     }, {'_id': 0, 'tipo': 1, 'monto': 1, 'fecha_pago': 1,
         'concepto': 1, 'beneficiario': 1, 'nombre': 1, 'id': 1}).to_list(5000)
 
     processed_payments = []
-    for p in payments_reales:
+    for p in payments_reales_no_alegra:
         fecha = _parse_date(p.get('fecha_pago'))
         if not fecha:
             continue
