@@ -330,6 +330,8 @@ async def get_dashboard_from_payments(
     accounts = await db.bank_accounts.find(accounts_query, {'_id': 0}).to_list(50)
     
     # Calculate initial balance using fecha_saldo for FX rate
+    # NOTA: saldo_bancos_mxn usa saldo_inicial actual de bank_accounts (para compatibilidad
+    # con código legacy). El running_balance del gráfico usa bank_base_mxn (con historial).
     saldo_bancos_mxn = 0
     selected_account_moneda = 'MXN'
     selected_account_saldo = 0
@@ -339,7 +341,6 @@ async def get_dashboard_from_payments(
         moneda = acc.get('moneda', 'MXN')
         fecha_saldo = acc.get('fecha_saldo')
         
-        # Use the FX rate from fecha_saldo date
         if fecha_saldo and moneda != 'MXN':
             if isinstance(fecha_saldo, str):
                 fecha_saldo = datetime.fromisoformat(fecha_saldo.replace('Z', '+00:00').split('+')[0])
@@ -555,7 +556,9 @@ async def get_dashboard_from_payments(
         proy_por_semana[_semana][_tipo] = proy_por_semana[_semana][_tipo] + _monto
 
     weeks_data = []
-    running_balance = saldo_bancos_mxn  # base del gráfico (saldo apertura + pagos conciliados)
+    # running_balance usa bank_base_mxn (saldo histórico verificado para la fecha del rango)
+    # NO usa saldo_bancos_mxn (saldo_inicial actual de bank_accounts)
+    running_balance = bank_base_mxn
 
     # ── Saldo inicial del modelo ──────────────────────────────────────────────
     # El running_balance debe partir del saldo bancario real AJUSTADO por los
@@ -581,7 +584,8 @@ async def get_dashboard_from_payments(
                 pass
 
     # Ajustar el saldo bancario con pagos entre fecha_saldo y start_monday
-    adjusted_balance = saldo_bancos_mxn
+    # Usamos bank_base_mxn (saldo histórico correcto) como punto de partida
+    adjusted_balance = bank_base_mxn
     if fecha_saldo_base and fecha_saldo_base < start_monday:
         for p in payments:
             fecha_str = p.get('fecha_pago') or p.get('fecha_vencimiento')
