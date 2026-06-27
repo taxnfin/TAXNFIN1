@@ -904,14 +904,18 @@ const CashflowProjections = () => {
       const flujoDivisas = ventaUSD - compraUSD;
       const flujoNeto    = flujoNetoOperativo + flujoDivisas;
 
-      // Si la semana tiene ancla bancaria verificada, resetear saldoInicial
-      // al saldo real del banco en lugar del acumulado rolling.
-      // Esto garantiza que el saldo de fin de mes cuadre con el estado de cuenta.
+      // Ancla bancaria: cuando la semana contiene el corte de fin de mes,
+      // el SALDO FINAL debe ser el saldo verificado del banco.
+      // El SI se mantiene como el acumulado rolling (SF de la semana anterior).
+      // La próxima semana arranca desde ese SF anclado.
+      let saldoFinal;
       if (week.saldo_anclado && week.backend_saldo_inicial) {
-        saldoInicial = week.backend_saldo_inicial;
+        // backend_saldo_inicial YA es el saldo ancla (el calculator lo pone como SI de la semana anclada)
+        // Lo usamos como SF de esta semana para que el próximo SI sea correcto.
+        saldoFinal = week.backend_saldo_inicial;
+      } else {
+        saldoFinal = saldoInicial + flujoNeto;
       }
-
-      const saldoFinal   = saldoInicial + flujoNeto;
 
       totals.push({
         ...week,
