@@ -140,3 +140,40 @@ async def get_bank_accounts_summary(request: Request, current_user: Dict = Depen
         'por_banco': by_bank,
         'tipos_cambio': fx_rates
     }
+
+
+@router.patch("/{account_id}/saldo")
+async def update_saldo(
+    account_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Actualiza el saldo inicial y fecha de saldo de una cuenta bancaria."""
+    company_id = await get_active_company_id(request, current_user)
+    body = await request.json()
+    
+    existing = await db.bank_accounts.find_one(
+        {'id': account_id, 'company_id': company_id}, {'_id': 0}
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada")
+    
+    update = {}
+    if 'saldo_inicial' in body:
+        update['saldo_inicial'] = float(body['saldo_inicial'])
+    if 'fecha_saldo' in body:
+        update['fecha_saldo'] = body['fecha_saldo']
+    
+    if not update:
+        raise HTTPException(status_code=400, detail="Nada que actualizar")
+    
+    await db.bank_accounts.update_one(
+        {'id': account_id, 'company_id': company_id},
+        {'$set': update}
+    )
+    
+    return {
+        'success': True,
+        'account_id': account_id,
+        **update
+    }
