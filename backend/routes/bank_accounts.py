@@ -75,8 +75,15 @@ async def delete_bank_account(account_id: str, request: Request, current_user: D
 
 @router.get("/summary")
 async def get_bank_accounts_summary(request: Request, current_user: Dict = Depends(get_current_user)):
-    """Get summary of all bank accounts with balances by currency"""
+    """Get summary of all bank accounts with balances by currency.
+    
+    Acepta query param ?fecha=YYYY-MM-DD para obtener el saldo histórico
+    más cercano anterior o igual a esa fecha. Sin fecha usa saldo_inicial actual.
+    """
     company_id = await get_active_company_id(request, current_user)
+    
+    # Fecha de referencia opcional (para que el dashboard filtre por mes)
+    fecha_ref = request.query_params.get('fecha') or None
     
     accounts = await db.bank_accounts.find({'company_id': company_id, 'activo': True}, {'_id': 0}).to_list(1000)
     
@@ -87,13 +94,31 @@ async def get_bank_accounts_summary(request: Request, current_user: Dict = Depen
     for acc in accounts:
         moneda = acc.get('moneda', 'MXN')
         banco = acc.get('banco', 'Sin banco')
-        saldo = acc.get('saldo_inicial', 0)
-        fecha_saldo = acc.get('fecha_saldo')
+        acct_id = acc.get('id', '')
+        
+        # Si hay fecha_ref, buscar saldo histórico más cercano <= fecha_ref
+        if fecha_ref:
+            hist = await db.bank_account_history.find_one(
+                {'account_id': acct_id, 'company_id': company_id, 'fecha': {'$lte': fecha_ref}},
+                {'_id': 0, 'saldo': 1, 'fecha': 1},
+                sort=[('fecha', -1)],
+            )
+            if hist:
+                saldo = float(hist.get('saldo', 0) or 0)
+                fecha_saldo = hist.get('fecha')
+            else:
+                saldo = acc.get('saldo_inicial', 0)
+                fecha_saldo = acc.get('fecha_saldo')
+        else:
+            saldo = acc.get('saldo_inicial', 0)
+            fecha_saldo = acc.get('fecha_saldo')
         
         if fecha_saldo:
             if isinstance(fecha_saldo, str):
-                fecha_saldo = datetime.fromisoformat(fecha_saldo.replace('Z', '+00:00'))
-            rate = await get_fx_rate_by_date(company_id, moneda, fecha_saldo)
+                fecha_saldo_dt = datetime.fromisoformat(fecha_saldo.replace('Z', '+00:00').split('+')[0])
+            else:
+                fecha_saldo_dt = fecha_saldo
+            rate = await get_fx_rate_by_date(company_id, moneda, fecha_saldo_dt)
         else:
             rate = await get_fx_rate_by_date(company_id, moneda, None)
         
@@ -110,13 +135,13 @@ async def get_bank_accounts_summary(request: Request, current_user: Dict = Depen
         
         by_bank[banco]['saldo_mxn'] += saldo_mxn
         by_bank[banco]['cuentas'].append({
-            'id': acc.get('id', ''),
+            'id': acct_id,
             'nombre': acc.get('nombre', acc.get('nombre_banco', 'Sin nombre')),
             'numero_cuenta': acc.get('numero_cuenta', ''),
             'moneda': moneda,
             'saldo': saldo,
             'saldo_mxn': saldo_mxn,
-            'fecha_saldo': acc.get('fecha_saldo'),
+            'fecha_saldo': fecha_saldo,
             'tipo_cambio_usado': rate
         })
         by_bank[banco]['monedas'].add(moneda)
@@ -139,7 +164,8 @@ async def get_bank_accounts_summary(request: Request, current_user: Dict = Depen
         'total_mxn': total_mxn,
         'por_moneda': by_currency,
         'por_banco': by_bank,
-        'tipos_cambio': fx_rates
+        'tipos_cambio': fx_rates,
+        'fecha_ref': fecha_ref,
     }
 
 

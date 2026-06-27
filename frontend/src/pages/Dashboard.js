@@ -220,7 +220,7 @@ const Dashboard = () => {
 
       const [response, summaryRes] = await Promise.all([
         api.get(url),
-        api.get('/bank-accounts/summary'),
+        api.get(`/bank-accounts/summary${dateFrom ? `?fecha=${dateFrom}` : ''}`),
       ]);
 
       const data = response.data;

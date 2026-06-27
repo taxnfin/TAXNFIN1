@@ -464,7 +464,7 @@ async def get_dashboard_from_payments(
         hist = await db.bank_account_history.find_one(
             {'account_id': acct_id, 'company_id': company_id, 'fecha': {'$lte': fecha_ref}},
             {'_id': 0, 'saldo': 1, 'fecha': 1},
-            sort=[('fecha', -1)]
+            sort=[('fecha', -1)],
         )
         if hist:
             saldo_ref = float(hist.get('saldo', 0) or 0)
