@@ -359,11 +359,11 @@ async def get_dashboard_from_payments(
     if bank_account_id:
         bank_txns_query['bank_account_id'] = bank_account_id
     
-    bank_txns = await db.bank_transactions.find(bank_txns_query, {'_id': 0}).to_list(5000)
+    bank_txns = await db.bank_transactions.find(bank_txns_query, {'_id': 0, 'id': 1, 'conciliado': 1, 'bank_account_id': 1}).to_list(20000)
     reconciled_ids = set(t['id'] for t in bank_txns if t.get('conciliado') == True)
     bank_txn_to_account = {t['id']: t.get('bank_account_id') for t in bank_txns}
-    
-    all_payments = await db.payments.find({'company_id': company_id, 'estatus': 'completado'}, {'_id': 0}).to_list(5000)
+
+    all_payments = await db.payments.find({'company_id': company_id, 'estatus': 'completado'}, {'_id': 0}).to_list(10000)
 
     # Si la empresa usa Alegra, incluir bank_transactions como pagos
     company_doc = await db.companies.find_one({'id': company_id}, {'_id': 0, 'alegra_connected': 1})
@@ -459,11 +459,12 @@ async def get_dashboard_from_payments(
         # Sin filtro de fecha futura — misma lógica que CashFlow Projections
         monto_mxn = convert_to_mxn(p.get('monto', 0), p.get('moneda', 'MXN'))
         cat_id = p.get('category_id')
-        if cat_id == venta_usd_id:
+        # Mismo fix: solo enrutar a venta/compra_usd si el id existe (None != None guard)
+        if venta_usd_id and cat_id == venta_usd_id:
             saldo_actual_mxn += monto_mxn
-        elif cat_id == compra_usd_id:
+        elif compra_usd_id and cat_id == compra_usd_id:
             saldo_actual_mxn -= monto_mxn
-        elif p.get('tipo') == 'cobro':
+        elif p.get('tipo') in ('cobro', 'ingreso'):
             saldo_actual_mxn += monto_mxn
         else:
             saldo_actual_mxn -= monto_mxn
@@ -555,11 +556,13 @@ async def get_dashboard_from_payments(
                 monto_mxn = convert_to_mxn(monto_raw, moneda_pago)
             cat_id = p.get('category_id')
 
-            if cat_id == venta_usd_id:
+            # IMPORTANTE: solo enrutar a venta_usd/compra_usd si el id existe
+            # (None == None es True en Python, lo que causaría que pagos sin cat vayan a venta_usd)
+            if venta_usd_id and cat_id == venta_usd_id:
                 venta_usd += monto_mxn
-            elif cat_id == compra_usd_id:
+            elif compra_usd_id and cat_id == compra_usd_id:
                 compra_usd += monto_mxn
-            elif p.get('tipo') == 'cobro':
+            elif p.get('tipo') in ('cobro', 'ingreso'):
                 ingresos += monto_mxn
             else:
                 egresos += monto_mxn
