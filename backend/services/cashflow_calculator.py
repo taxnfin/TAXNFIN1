@@ -1,14 +1,21 @@
 """
-Servicio único de cálculo de semanas de cashflow. v2.1 - 2026-06-17
+Servicio único de cálculo de semanas de cashflow. v2.2 - 2026-06-27
 Fuentes: db.cashflow_weeks (estructura) + db.cfdis (por fecha_emision) + db.cxc_proyecciones + Alegra CxC/CxP pendientes.
+
+CAMBIO v2.2: Anclas bancarias reales.
+El saldo semanal rolling se ancla a los saldos reales de db.bank_accounts (campo fecha_saldo).
+Cada vez que el rolling pasa por una semana que CONTIENE una fecha_saldo de banco,
+se reemplaza el saldo acumulado con el saldo real verificado (MXN + USD×TC).
+Esto garantiza que el saldo de fin de mes siempre cuadre con el estado de cuenta bancario.
 """
 import re
 import uuid as _uuid
 import logging
 from datetime import date, timedelta
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from core.database import db as _db_default
+from services.fx import get_fx_rate_by_date
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +28,111 @@ def _parse_date(val) -> str:
     return m.group(1) if m else ''
 
 
+async def _build_bank_anchors(company_id: str, db) -> Dict[str, float]:
+    """
+    Construye un dict de anclas bancarias: {fecha_iso: saldo_total_mxn}.
+
+    Fuentes (en orden de prioridad):
+    1. db.bank_account_history — saldos históricos verificados por corte mensual
+    2. db.bank_accounts.saldo_inicial + fecha_saldo — saldo actual de la cuenta
+
+    Para cada fecha, suma todos los saldos de todas las cuentas activas,
+    convirtiendo moneda extranjera a MXN con el TC de esa fecha.
+    """
+    # ── Fuente 1: Historial de saldos verificados ─────────────────
+    # Agrupar por fecha → {fecha: {account_id: {saldo, moneda}}}
+    history_docs = await db.bank_account_history.find(
+        {'company_id': company_id},
+        {'_id': 0, 'account_id': 1, 'fecha': 1, 'saldo': 1, 'moneda': 1}
+    ).to_list(1000)
+
+    # Obtener monedas por account_id (para historial que no guarda moneda)
+    accounts = await db.bank_accounts.find(
+        {'company_id': company_id, 'activo': True},
+        {'_id': 0, 'id': 1, 'moneda': 1, 'saldo_inicial': 1, 'fecha_saldo': 1}
+    ).to_list(100)
+    moneda_by_id = {a['id']: a.get('moneda', 'MXN') for a in accounts}
+
+    # Agrupar historial por fecha
+    history_by_date: Dict[str, Dict[str, dict]] = {}
+    for h in history_docs:
+        fecha = _parse_date(h.get('fecha'))
+        if not fecha:
+            continue
+        acct_id = h.get('account_id', '')
+        if fecha not in history_by_date:
+            history_by_date[fecha] = {}
+        history_by_date[fecha][acct_id] = {
+            'saldo': float(h.get('saldo', 0) or 0),
+            'moneda': h.get('moneda') or moneda_by_id.get(acct_id, 'MXN'),
+        }
+
+    # ── Fuente 2: Saldo actual de bank_accounts ───────────────────
+    for acc in accounts:
+        fecha_str = _parse_date(acc.get('fecha_saldo'))
+        if not fecha_str:
+            continue
+        acct_id = acc['id']
+        # Solo agregar si NO hay historial para esta cuenta en esta fecha
+        if fecha_str not in history_by_date:
+            history_by_date[fecha_str] = {}
+        if acct_id not in history_by_date[fecha_str]:
+            history_by_date[fecha_str][acct_id] = {
+                'saldo': float(acc.get('saldo_inicial', 0) or 0),
+                'moneda': acc.get('moneda', 'MXN'),
+            }
+
+    # ── Convertir a MXN y sumar por fecha ────────────────────────
+    anchors: Dict[str, float] = {}
+    for fecha_str, accts in history_by_date.items():
+        total_mxn = 0.0
+        for acct_id, data in accts.items():
+            saldo = data['saldo']
+            moneda = data['moneda']
+            if moneda != 'MXN' and saldo > 0:
+                try:
+                    from datetime import datetime as _dt
+                    fecha_dt = _dt.fromisoformat(fecha_str)
+                    tc = await get_fx_rate_by_date(company_id, moneda, fecha_dt)
+                except Exception:
+                    tc = 1.0
+                total_mxn += saldo * tc
+            else:
+                total_mxn += saldo
+        anchors[fecha_str] = total_mxn
+
+    logger.info(f"[cashflow-anchors] {company_id}: {len(anchors)} anclas → {anchors}")
+    return anchors
+
+
+def _get_anchor_for_week(
+    anchors: Dict[str, float],
+    fi: str,
+    ff: str,
+) -> Optional[float]:
+    """
+    Si alguna fecha de ancla bancaria cae DENTRO de la semana [fi, ff],
+    devuelve el saldo de ancla más reciente de esa semana.
+    Retorna None si no hay ancla en esa semana.
+    """
+    best_date = None
+    best_val = None
+    for fecha_str, saldo_mxn in anchors.items():
+        if fi <= fecha_str <= ff:
+            if best_date is None or fecha_str > best_date:
+                best_date = fecha_str
+                best_val = saldo_mxn
+    return best_val
+
+
 async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=None) -> List[Dict]:
     if db is None:
         db = _db_default
+
+    # ── 0. Cargar anclas bancarias reales ─────────────────────────
+    # Dict {fecha_iso: saldo_total_mxn} — se usa para resetear el rolling
+    # cuando el calendario pasa por una fecha de corte bancario verificada.
+    bank_anchors = await _build_bank_anchors(company_id, db)
 
     # ── 1. Leer semanas de DB ──────────────────────────────────────
     weeks_raw = await db.cashflow_weeks.find(
@@ -256,11 +365,22 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         top_ing = sorted(ingresos, key=lambda x: x['monto'], reverse=True)[:5]
         top_egr = sorted(egresos, key=lambda x: x['monto'], reverse=True)[:5]
 
-        # Rolling saldo_inicial: primera semana usa valor de DB, las siguientes acumulan
-        if saldo_acumulado is None:
+        # ── Saldo rolling con anclas bancarias ─────────────────────
+        # Prioridad: 1) ancla bancaria verificada dentro de la semana
+        #            2) saldo acumulado del periodo anterior
+        #            3) saldo_inicial de DB (solo semana S1 sin ancla)
+        anchor = _get_anchor_for_week(bank_anchors, fi, ff)
+        if anchor is not None:
+            # Hay saldo real bancario para esta semana → anclar
+            saldo_ini = anchor
+            logger.info(f"[cashflow-anchor] S{num} ({fi}→{ff}): anclado a ${anchor:,.2f} MXN")
+        elif saldo_acumulado is None:
+            # Primera semana sin ancla → usar valor de DB (o 0)
             saldo_ini = float(week.get('saldo_inicial', 0) or 0)
         else:
+            # Rolling normal
             saldo_ini = saldo_acumulado
+
         saldo_acumulado = saldo_ini + (total_ing - total_egr)
 
         result.append({
@@ -274,6 +394,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             'week_start': fi,
             'week_end': ff,
             'es_real': es_real,
+            'saldo_anclado': anchor is not None,  # True = saldo verificado con banco
             'saldo_inicial': saldo_ini,
             'total_ingresos': total_ing,
             'total_egresos': total_egr,
@@ -349,8 +470,13 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             total_ing = sum(i['monto'] for i in ingresos)
             total_egr = sum(e['monto'] for e in egresos)
 
-            # Rolling saldo_inicial continúa desde donde terminó el loop anterior
-            saldo_ini = saldo_acumulado if saldo_acumulado is not None else 0
+            # Rolling saldo con anclas (también aplica en semanas futuras generadas)
+            anchor = _get_anchor_for_week(bank_anchors, fi_s, ff_s)
+            if anchor is not None:
+                saldo_ini = anchor
+                logger.info(f"[cashflow-anchor-gen] S{num} ({fi_s}→{ff_s}): anclado a ${anchor:,.2f} MXN")
+            else:
+                saldo_ini = saldo_acumulado if saldo_acumulado is not None else 0
             saldo_acumulado = saldo_ini + (total_ing - total_egr)
 
             result.append({
@@ -365,6 +491,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
                 'week_end': ff_s,
                 'es_real': False,
                 'es_generada': True,
+                'saldo_anclado': anchor is not None,
                 'saldo_inicial': saldo_ini,
                 'total_ingresos': total_ing,
                 'total_egresos': total_egr,

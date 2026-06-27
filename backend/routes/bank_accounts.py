@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import Dict, List
 from datetime import datetime
+import uuid
 
 from core.database import db
 from core.auth import get_current_user, get_active_company_id
@@ -177,3 +178,85 @@ async def update_saldo(
         'account_id': account_id,
         **update
     }
+
+
+@router.post("/{account_id}/history")
+async def add_saldo_history(
+    account_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """
+    Registra un saldo histórico verificado para una cuenta bancaria.
+    Cada entrada queda en db.bank_account_history y es usada por el motor
+    de cashflow como 'ancla bancaria' para esa fecha de corte.
+
+    Body: { "saldo": 65149.37, "fecha": "2026-05-31", "fuente": "estado_cuenta" }
+    """
+    company_id = await get_active_company_id(request, current_user)
+    body = await request.json()
+
+    existing = await db.bank_accounts.find_one(
+        {'id': account_id, 'company_id': company_id}, {'_id': 0}
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada")
+
+    saldo = body.get('saldo')
+    fecha = body.get('fecha')
+    if saldo is None or not fecha:
+        raise HTTPException(status_code=400, detail="Se requieren 'saldo' y 'fecha'")
+
+    doc = {
+        'id': str(uuid.uuid4()),
+        'account_id': account_id,
+        'company_id': company_id,
+        'moneda': existing.get('moneda', 'MXN'),
+        'saldo': float(saldo),
+        'fecha': fecha,
+        'fuente': body.get('fuente', 'manual'),
+        'notas': body.get('notas', ''),
+        'created_at': datetime.utcnow().isoformat(),
+        'created_by': current_user.get('id', ''),
+    }
+    await db.bank_account_history.insert_one(doc)
+
+    # También actualizar el saldo_actual en bank_accounts si es más reciente
+    fecha_actual = existing.get('fecha_saldo', '')
+    if not fecha_actual or fecha > fecha_actual:
+        await db.bank_accounts.update_one(
+            {'id': account_id, 'company_id': company_id},
+            {'$set': {'saldo_inicial': float(saldo), 'fecha_saldo': fecha}}
+        )
+
+    return {
+        'success': True,
+        'id': doc['id'],
+        'account_id': account_id,
+        'saldo': float(saldo),
+        'fecha': fecha,
+        'moneda': doc['moneda'],
+    }
+
+
+@router.get("/{account_id}/history")
+async def get_saldo_history(
+    account_id: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Lista el historial de saldos verificados de una cuenta bancaria."""
+    company_id = await get_active_company_id(request, current_user)
+
+    existing = await db.bank_accounts.find_one(
+        {'id': account_id, 'company_id': company_id}, {'_id': 0}
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada")
+
+    history = await db.bank_account_history.find(
+        {'account_id': account_id, 'company_id': company_id},
+        {'_id': 0}
+    ).sort('fecha', 1).to_list(200)
+
+    return {'account_id': account_id, 'history': history}
