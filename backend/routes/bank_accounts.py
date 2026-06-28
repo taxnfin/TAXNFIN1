@@ -1,5 +1,5 @@
 """Bank accounts routes"""
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from typing import Dict, List
 from datetime import datetime
 import uuid
