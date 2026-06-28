@@ -118,7 +118,12 @@ async def import_bank_statement(request: Request, file: UploadFile = File(...), 
                 'notas': str(row.get('notas', '')) if not pd.isna(row.get('notas')) else '',
                 'created_at': datetime.now(timezone.utc).isoformat()
             }
-            await db.bank_transactions.insert_one(txn)
+            await db.bank_transactions.update_one(
+                {'company_id': txn['company_id'], 'id': txn['id']},
+                {'$set': {k: v for k, v in txn.items() if k != 'created_at'},
+                 '$setOnInsert': {'created_at': txn['created_at']}},
+                upsert=True
+            )
             imported += 1
         except Exception as e:
             errors.append(f"Fila {idx + 2}: {str(e)}")
@@ -1784,7 +1789,12 @@ async def import_bank_statement_pdf(
                     'created_at': datetime.now(timezone.utc).isoformat()
                 }
 
-                await db.bank_transactions.insert_one(new_txn)
+                await db.bank_transactions.update_one(
+                    {'company_id': new_txn['company_id'], 'id': new_txn['id']},
+                    {'$set': {k: v for k, v in new_txn.items() if k != 'created_at'},
+                     '$setOnInsert': {'created_at': new_txn['created_at']}},
+                    upsert=True
+                )
                 imported += 1
 
             except Exception as e:

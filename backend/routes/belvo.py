@@ -356,8 +356,13 @@ async def process_raw_movement(
         'conciliado': False,
         'created_at': datetime.now(timezone.utc).isoformat()
     }
-    
-    await db.bank_transactions.insert_one(txn_doc)
+
+    await db.bank_transactions.update_one(
+        {'company_id': txn_doc['company_id'], 'id': txn_doc['id']},
+        {'$set': {k: v for k, v in txn_doc.items() if k != 'created_at'},
+         '$setOnInsert': {'created_at': txn_doc['created_at']}},
+        upsert=True
+    )
     
     # Mark raw movement as processed
     await db.bank_movements_raw.update_one(
@@ -410,8 +415,13 @@ async def process_all_raw_movements(
                 'conciliado': False,
                 'created_at': datetime.now(timezone.utc).isoformat()
             }
-            
-            await db.bank_transactions.insert_one(txn_doc)
+
+            await db.bank_transactions.update_one(
+                {'company_id': txn_doc['company_id'], 'id': txn_doc['id']},
+                {'$set': {k: v for k, v in txn_doc.items() if k != 'created_at'},
+                 '$setOnInsert': {'created_at': txn_doc['created_at']}},
+                upsert=True
+            )
             await db.bank_movements_raw.update_one(
                 {'id': raw.get('id')},
                 {'$set': {'procesado': True}}

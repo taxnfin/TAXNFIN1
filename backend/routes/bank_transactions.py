@@ -133,7 +133,12 @@ async def create_bank_transaction(
     for field in ['fecha_movimiento', 'fecha_valor', 'created_at']:
         if doc.get(field):
             doc[field] = doc[field].isoformat()
-    await db.bank_transactions.insert_one(doc)
+    await db.bank_transactions.update_one(
+        {'company_id': doc['company_id'], 'id': doc['id']},
+        {'$set': {k: v for k, v in doc.items() if k != 'created_at'},
+         '$setOnInsert': {'created_at': doc.get('created_at')}},
+        upsert=True
+    )
     
     await audit_log(bank_transaction.company_id, 'BankTransaction', bank_transaction.id, 'CREATE', current_user['id'])
     return bank_transaction
