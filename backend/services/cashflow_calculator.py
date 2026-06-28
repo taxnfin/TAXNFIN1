@@ -218,29 +218,55 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         'source': 'alegra',
         'es_real': True,
     }, {'_id': 0, 'tipo': 1, 'monto': 1, 'fecha': 1, 'fecha_movimiento': 1,
-        'descripcion': 1, 'contacto': 1, 'cuenta_bancaria': 1, 'id': 1, 'category_name': 1}).to_list(5000)
+        'descripcion': 1, 'contacto': 1, 'cuenta_bancaria': 1, 'id': 1,
+        'category_name': 1, 'alegra_id': 1}).to_list(5000)
 
     # Categorías que son traspasos internos — no representan flujo real de caja
     TRASPASO_CATS = {'traspaso entre cuentas', 'transferencia entre cuentas', 'comisiones bancarias'}
     TRASPASO_KW   = ['operacion cambios', 'operación cambios', 'cambio de divisa',
                      'traspaso', 'retiro por operacion', 'deposito por operacion']
+    # Categorías genéricas que indican movimiento sin categorizar — preferir las específicas
+    GENERIC_CATS  = {'cobro_alegra', 'banco_alegra', 'pago_alegra', ''}
 
-    processed_bank_txns = []
+    # ── Deduplicar bank_transactions por alegra_id ────────────────
+    # El sync de Alegra puede generar dos registros para el mismo movimiento:
+    # uno desde conciliaciones (categoría real) y otro desde payments (cobro_alegra).
+    # Deduplicamos por alegra_id conservando el de categoría más específica.
+    # Si no hay alegra_id, usamos (fecha, monto, tipo) como clave secundaria.
+    seen: dict = {}  # clave → mejor registro
     for t in bank_txns_alegra:
-        fecha = _parse_date(t.get('fecha') or t.get('fecha_movimiento'))
-        if not fecha:
+        cat_name = (t.get('category_name') or '').lower().strip()
+        descripcion = (t.get('descripcion') or t.get('contacto') or '').lower()
+        # Excluir traspasos
+        if cat_name in TRASPASO_CATS or any(kw in descripcion for kw in TRASPASO_KW):
             continue
         monto = float(t.get('monto', 0) or 0)
         if monto <= 0:
             continue
-        # Excluir traspasos entre cuentas — se netean solos y distorsionan los flujos
-        cat_name = (t.get('category_name') or '').lower().strip()
-        descripcion = (t.get('descripcion') or t.get('contacto') or '').lower()
-        if cat_name in TRASPASO_CATS or any(kw in descripcion for kw in TRASPASO_KW):
+        fecha = _parse_date(t.get('fecha') or t.get('fecha_movimiento'))
+        if not fecha:
             continue
-        tipo_raw = str(t.get('tipo', '') or '').lower()
+        # Clave de deduplicación: alegra_id si existe, sino (fecha, monto, tipo)
+        alegra_id = t.get('alegra_id') or ''
+        tipo_raw  = str(t.get('tipo', '') or '').lower()
+        clave = alegra_id if alegra_id else f"{fecha}|{monto}|{tipo_raw}"
+        # Puntaje: categoría específica > genérica
+        score = 0 if cat_name in GENERIC_CATS else 1
+        prev = seen.get(clave)
+        if prev is None:
+            seen[clave] = (score, t)
+        else:
+            if score > prev[0]:
+                seen[clave] = (score, t)
+
+    processed_bank_txns = []
+    for clave, (score, t) in seen.items():
+        cat_name = (t.get('category_name') or '').lower().strip()
+        tipo_raw  = str(t.get('tipo', '') or '').lower()
         tipo = 'ingreso' if tipo_raw in ('deposito', 'ingreso', 'credito') else 'egreso'
         nombre = t.get('contacto') or t.get('descripcion') or 'Movimiento bancario'
+        fecha  = _parse_date(t.get('fecha') or t.get('fecha_movimiento'))
+        monto  = float(t.get('monto', 0) or 0)
         processed_bank_txns.append({
             'fecha': fecha,
             'monto': monto,
