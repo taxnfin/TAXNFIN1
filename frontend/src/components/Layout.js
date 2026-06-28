@@ -120,8 +120,9 @@ const buildNav = (isAdmin, isCFO) => {
         icon: BarChart3,
         sub: [
           { name: 'Reporte Board',        href: '/board-report' },
-          { name: 'MÃ©tricas financieras', href: '/financial-metrics' },
+          { name: 'Métricas financieras', href: '/financial-metrics' },
           { name: 'Decisiones / Alertas', href: '/treasury' },
+          { name: 'Cash Flow Analítico',  href: '/reports' },
         ],
       },
       {
