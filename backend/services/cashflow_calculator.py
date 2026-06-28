@@ -246,10 +246,12 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         fecha = _parse_date(t.get('fecha') or t.get('fecha_movimiento'))
         if not fecha:
             continue
-        # Clave de deduplicación: alegra_id si existe, sino (fecha, monto, tipo)
+        tipo_raw = str(t.get('tipo', '') or '').lower()
+        # Clave de deduplicación: alegra_id si existe, sino (fecha, monto, tipo_normalizado)
         alegra_id = t.get('alegra_id') or ''
-        tipo_raw  = str(t.get('tipo', '') or '').lower()
-        clave = alegra_id if alegra_id else f"{fecha}|{monto}|{tipo_raw}"
+        # Normalizar tipo: deposito/credito/ingreso → IN, retiro/debito/egreso → OUT
+        tipo_norm = 'IN' if tipo_raw in ('deposito', 'ingreso', 'credito', 'deposito_transferencia') else 'OUT'
+        clave = str(alegra_id) if alegra_id else f"{fecha}|{round(monto,2)}|{tipo_norm}"
         # Puntaje: categoría específica > genérica
         score = 0 if cat_name in GENERIC_CATS else 1
         prev = seen.get(clave)
