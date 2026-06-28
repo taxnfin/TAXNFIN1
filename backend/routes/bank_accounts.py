@@ -309,6 +309,21 @@ async def get_saldo_history(
     return {'account_id': account_id, 'history': history}
 
 
+@router.get("/debug-txn/{monto}")
+async def debug_transaction(
+    monto: float,
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Debug: ver todos los campos raw de bank_transactions para un monto dado."""
+    company_id = await get_active_company_id(request, current_user)
+    txns = await db.bank_transactions.find(
+        {'company_id': company_id, 'monto': {'$gte': monto - 1, '$lte': monto + 1}},
+        {'_id': 0}
+    ).to_list(10)
+    return {'count': len(txns), 'transactions': txns}
+
+
 @router.post("/deduplicate-transactions")
 async def deduplicate_bank_transactions(
     request: Request,
