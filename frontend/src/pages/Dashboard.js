@@ -383,29 +383,25 @@ const Dashboard = () => {
     venta_usd: week.venta_usd || 0,
     compra_usd: week.compra_usd || 0,
     num_payments: week.num_payments || 0,
-    varianza: week.varianza_display ?? week.varianza ?? 0,
+    varianza: week.varianza_display ?? week.varianza ?? week.flujo_neto ?? 0,
     varianza_pct: week.varianza_pct || 0,
-    is_past: week.es_real ?? week.is_past ?? false,
+    // El nuevo endpoint usa is_past/is_current; el legacy usaba es_real
+    is_past:    week.is_past    ?? week.es_real   ?? false,
     is_current: week.is_current ?? false,
-    es_real: week.es_real ?? week.is_past ?? false,
-    es_current: week.is_current ?? (!(week.es_real ?? week.is_past) && (week.ingresos > 0 || week.egresos > 0)),
+    es_real:    week.is_past    ?? week.es_real   ?? false,
+    es_current: week.is_current ?? false,
+    saldo_anclado: week.saldo_anclado ?? false,
   }));
 
-  // En 13S los datos traen 8 semanas pasadas extra (para KPIs y semáforos),
-  // pero los gráficos solo muestran desde la semana actual hacia adelante.
-  // KPIs, semáforos y recomendaciones siguen usando chartData completo.
-  const displayChartData = rangoActivo === '13w'
-    ? chartData.filter(w => !(w.es_real || w.es_current))
-    : chartData;
+  // displayChartData: mostrar TODAS las semanas (pasadas + futuras)
+  // El filtro anterior solo dejaba futuras → SF proyectado = SI (bug)
+  const displayChartData = chartData;
 
   const kpis = dashboardData?.kpis || {};
 
-  // Saldo Final Proyectado: saldo_actual (ya incluye semana actual real) + flujos futuros.
-  // NO se suma currentWeek.flujo_neto: esos pagos reales ya están en saldo_actual.
-  const currentWeek = displayChartData.find(w => (w.es_real || w.es_current));
-  const futureWeeks = displayChartData.filter(w => !(w.es_real || w.es_current));
-  const saldoFinalProyectado = saldoInicial
-    + futureWeeks.reduce((sum, w) => sum + w.flujo_neto, 0);
+  // Saldo Final Proyectado = saldo_final de la última semana del periodo
+  const lastWeek = displayChartData[displayChartData.length - 1];
+  const saldoFinalProyectado = lastWeek?.saldo_final ?? saldoInicial;
 
   // Label dinámico: abs_semana de la última semana proyectada visible
   const lastDisplayWeek = displayChartData[displayChartData.length - 1];
