@@ -288,18 +288,190 @@ async def get_dashboard_from_payments(
     current_user: Dict = Depends(get_current_user),
     moneda_vista: str = Query('MXN', description='Moneda para mostrar datos'),
     bank_account_id: Optional[str] = Query(None, description='Filtrar por cuenta bancaria específica'),
-    fecha_inicio: Optional[str] = Query(None, description='Inicio del rango (YYYY-MM-DD) — genera semanas que cubran el rango'),
+    fecha_inicio: Optional[str] = Query(None, description='Inicio del rango (YYYY-MM-DD)'),
     fecha_fin: Optional[str] = Query(None, description='Fin del rango (YYYY-MM-DD)')
 ):
     """
-    Dashboard alternativo que genera datos directamente desde pagos reales.
-    Usa la misma lógica que CashflowProjections para consistencia.
-    Sin fecha_inicio/fecha_fin genera la ventana default de 13 semanas
-    (4 pasadas + actual + 8 futuras); con rango genera las semanas que lo cubran.
+    Dashboard principal — consume calcular_semanas_cashflow() como única fuente de verdad.
+    Elimina el motor de cálculo propio que duplicaba pagos y divergía del CashFlow.
     """
-    from datetime import datetime, timedelta
-    
+    from services.cashflow_calculator import calcular_semanas_cashflow
+
     company_id = await get_active_company_id(request, current_user)
+
+    # ── FX rates ──────────────────────────────────────────────────
+    fx_rates = await db.fx_rates.find({'company_id': company_id}, {'_id': 0}).to_list(100)
+    fx_map = {'MXN': 1.0, 'USD': 17.5, 'EUR': 20.0}
+    for rate in fx_rates:
+        if rate.get('moneda_destino') == 'MXN' and rate.get('tasa'):
+            fx_map[rate['moneda_origen']] = rate['tasa']
+
+    def to_mxn(amount, currency='MXN'):
+        return amount * fx_map.get(currency, 1.0)
+
+    def to_display(amount_mxn):
+        if moneda_vista == 'MXN':
+            return amount_mxn
+        return amount_mxn / fx_map.get(moneda_vista, 1.0)
+
+    # ── Semanas desde el motor canónico ───────────────────────────
+    weeks_raw = await calcular_semanas_cashflow(company_id, num_weeks=52, db=db)
+
+    # Filtrar por rango si se especifica
+    if fecha_inicio or fecha_fin:
+        fi = fecha_inicio or '2000-01-01'
+        ff = fecha_fin or '2099-12-31'
+        weeks_raw = [w for w in weeks_raw
+                     if w.get('fecha_inicio', '')[:10] >= fi[:10]
+                     and w.get('fecha_fin', '')[:10] <= ff[:10] + 'Z']
+
+    # Limitar a 13 semanas si no hay rango (vista default del Dashboard)
+    if not fecha_inicio and not fecha_fin:
+        weeks_raw = weeks_raw[:13]
+
+    # ── Convertir semanas a formato que espera el frontend ────────
+    from datetime import datetime
+    today = datetime.now()
+    weeks_data = []
+    for w in weeks_raw:
+        fi_str = w.get('fecha_inicio', '')[:10]
+        ff_str = w.get('fecha_fin', '')[:10]
+        try:
+            fi_dt = datetime.fromisoformat(fi_str)
+            ff_dt = datetime.fromisoformat(ff_str)
+            is_past = ff_dt <= today
+            is_current = fi_dt <= today < ff_dt
+        except Exception:
+            is_past = False
+            is_current = False
+
+        ing = float(w.get('total_ingresos', 0) or 0)
+        egr = float(w.get('total_egresos', 0) or 0)
+        flujo = ing - egr
+        si = float(w.get('saldo_inicial', 0) or 0)
+        sf = float(w.get('saldo_final', si + flujo) or 0)
+
+        weeks_data.append({
+            'week_num':            w.get('numero_semana', 0),
+            'week_label':          w.get('label', f"S{w.get('numero_semana',0)}"),
+            'date_label':          fi_dt.strftime('%d %b') if fi_str else '',
+            'fecha_inicio':        w.get('fecha_inicio', ''),
+            'fecha_fin':           w.get('fecha_fin', ''),
+            'is_past':             is_past,
+            'is_current':          is_current,
+            'ingresos':            round(ing, 2),
+            'egresos':             round(egr, 2),
+            'flujo_neto':          round(flujo, 2),
+            'saldo_inicial':       round(si, 2),
+            'saldo_final':         round(sf, 2),
+            'saldo_anclado':       w.get('saldo_anclado', False),
+            'ingresos_display':    round(to_display(ing), 2),
+            'egresos_display':     round(to_display(egr), 2),
+            'flujo_neto_display':  round(to_display(flujo), 2),
+            'saldo_inicial_display': round(to_display(si), 2),
+            'saldo_final_display': round(to_display(sf), 2),
+            'num_payments':        w.get('num_movimientos', 0),
+        })
+
+    # ── KPIs desde las semanas calculadas ─────────────────────────
+    past_weeks   = [w for w in weeks_data if w['is_past'] or w['is_current']]
+    total_ingresos = sum(w['ingresos'] for w in past_weeks)
+    total_egresos  = sum(w['egresos']  for w in past_weeks)
+    active_weeks   = [w for w in past_weeks if w['egresos'] > 0]
+    burn_rate      = total_egresos / len(active_weeks) if active_weeks else 0
+
+    # Saldo actual = saldo_final de la semana actual o la última pasada
+    current_or_last = next((w for w in reversed(weeks_data) if w['is_current']), None) \
+                   or next((w for w in reversed(weeks_data) if w['is_past']), None) \
+                   or (weeks_data[0] if weeks_data else None)
+    saldo_actual_mxn = current_or_last['saldo_final'] if current_or_last else 0
+    saldo_inicial_mxn = weeks_data[0]['saldo_inicial'] if weeks_data else 0
+    saldo_proyectado  = weeks_data[-1]['saldo_final'] if weeks_data else 0
+
+    runway_weeks = saldo_actual_mxn / burn_rate if burn_rate > 0 else None
+    cobranza_vs_pagos = round(total_ingresos / total_egresos * 100, 1) if total_egresos > 0 else 100
+
+    critical_week = next((w['week_label'] for w in weeks_data if w['saldo_final'] < 0), None)
+
+    # ── Cash pool y detalle de cuentas desde summary histórico ────
+    # Usar la fecha de inicio de S1 para obtener el saldo histórico correcto
+    fecha_s1 = weeks_data[0]['fecha_inicio'][:10] if weeks_data else None
+    summary_fecha = None
+    if fecha_s1:
+        from datetime import timedelta
+        d = datetime.fromisoformat(fecha_s1)
+        summary_fecha = (d - timedelta(days=1)).strftime('%Y-%m-%d')
+
+    accs = await db.bank_accounts.find({'company_id': company_id, 'activo': True}, {'_id': 0}).to_list(50)
+    if bank_account_id:
+        accs = [a for a in accs if a.get('id') == bank_account_id]
+
+    cash_pool = {}
+    bank_accounts_detail = []
+
+    for acc in accs:
+        acc_id  = acc.get('id')
+        moneda  = acc.get('moneda', 'MXN')
+        # Buscar ancla histórica para la fecha de S1
+        saldo = acc.get('saldo_inicial', 0) or 0
+        if summary_fecha:
+            hist = await db.bank_account_history.find_one(
+                {'account_id': acc_id, 'company_id': company_id,
+                 'fecha': {'$lte': summary_fecha}},
+                sort=[('fecha', -1)]
+            )
+            if hist:
+                saldo = float(hist.get('saldo', saldo) or saldo)
+
+        saldo_mxn = to_mxn(saldo, moneda)
+
+        if moneda not in cash_pool:
+            cash_pool[moneda] = {'total': 0, 'cuentas': 0}
+        cash_pool[moneda]['total']   += saldo
+        cash_pool[moneda]['cuentas'] += 1
+
+        bank_accounts_detail.append({
+            'id':             acc_id,
+            'nombre':         acc.get('nombre'),
+            'banco':          acc.get('banco'),
+            'numero_cuenta':  acc.get('numero_cuenta'),
+            'moneda':         moneda,
+            'saldo_inicial':  round(saldo, 2),
+            'saldo_final':    round(saldo, 2),
+            'saldo_inicial_mxn': round(saldo_mxn, 2),
+            'saldo_final_mxn':   round(saldo_mxn, 2),
+            'saldo_display':  round(to_display(saldo_mxn), 2),
+            'ingresos':       0,
+            'egresos':        0,
+            'num_movimientos': 0,
+            'riesgo': 'bajo' if saldo_mxn > 50000 else 'medio' if saldo_mxn > 10000 else 'alto',
+        })
+
+    return {
+        'moneda_vista':       moneda_vista,
+        'fx_rate':            fx_map.get(moneda_vista, 1),
+        'saldo_bancos':       round(to_display(saldo_inicial_mxn), 2),
+        'saldo_actual':       round(to_display(saldo_actual_mxn), 2),
+        'saldo_proyectado':   round(to_display(saldo_proyectado), 2),
+        'total_ingresos':     round(to_display(total_ingresos), 2),
+        'total_egresos':      round(to_display(total_egresos), 2),
+        'burn_rate':          round(to_display(burn_rate), 2),
+        'runway_weeks':       round(runway_weeks, 1) if runway_weeks else None,
+        'critical_week':      critical_week,
+        'cobranza_vs_pagos':  cobranza_vs_pagos,
+        'weeks':              weeks_data,
+        'cash_pool':          cash_pool,
+        'bank_accounts':      bank_accounts_detail,
+        'kpis': {
+            'total_payments':   await db.payments.count_documents({'company_id': company_id}),
+            'total_cfdis':      await db.cfdis.count_documents({'company_id': company_id}),
+            'total_customers':  await db.customers.count_documents({'company_id': company_id}),
+            'total_vendors':    await db.vendors.count_documents({'company_id': company_id}),
+        }
+    }
+
+
+# ================== ENDPOINTS AVANZADOS - FASE 2 ==================
     
     # Get FX rates
     fx_rates = await db.fx_rates.find({'company_id': company_id}, {'_id': 0}).to_list(100)
