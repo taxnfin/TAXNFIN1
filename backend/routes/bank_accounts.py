@@ -307,3 +307,60 @@ async def get_saldo_history(
     ).sort('fecha', 1).to_list(200)
 
     return {'account_id': account_id, 'history': history}
+
+
+@router.post("/deduplicate-transactions")
+async def deduplicate_bank_transactions(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    dry_run: bool = Query(True, description="Si True, solo reporta sin eliminar"),
+):
+    """Elimina duplicados en bank_transactions. Solo admin/cfo."""
+    from typing import Optional
+    from collections import defaultdict
+
+    company_id = await get_active_company_id(request, current_user)
+    GENERIC_CATS = {'cobro_alegra', 'banco_alegra', 'pago_alegra', '', None}
+
+    txns = await db.bank_transactions.find(
+        {'company_id': company_id},
+        {'_id': 0, 'id': 1, 'fecha': 1, 'monto': 1, 'tipo': 1,
+         'contacto': 1, 'category_name': 1}
+    ).to_list(50000)
+
+    groups = defaultdict(list)
+    for t in txns:
+        fecha    = str(t.get('fecha', ''))[:10]
+        monto    = round(float(t.get('monto', 0) or 0), 2)
+        tipo     = t.get('tipo', '') or ''
+        contacto = t.get('contacto', '') or ''
+        groups[(fecha, monto, tipo, contacto)].append(t)
+
+    ids_to_delete = []
+    for key, group in groups.items():
+        if len(group) <= 1:
+            continue
+        def score(t):
+            cat = (t.get('category_name') or '').lower().strip()
+            return 0 if cat in GENERIC_CATS else 1
+        sorted_group = sorted(group, key=score, reverse=True)
+        keep = sorted_group[0]
+        for t in sorted_group[1:]:
+            if t['id'] != keep['id']:
+                ids_to_delete.append(t['id'])
+
+    deleted = 0
+    if not dry_run and ids_to_delete:
+        result = await db.bank_transactions.delete_many(
+            {'company_id': company_id, 'id': {'$in': ids_to_delete}}
+        )
+        deleted = result.deleted_count
+
+    return {
+        'dry_run': dry_run,
+        'total_transacciones': len(txns),
+        'grupos_duplicados': sum(1 for g in groups.values() if len(g) > 1),
+        'ids_a_eliminar': len(ids_to_delete),
+        'eliminados': deleted,
+        'mensaje': 'Ejecuta con ?dry_run=false para eliminar' if dry_run else f'{deleted} duplicados eliminados',
+    }
