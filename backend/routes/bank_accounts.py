@@ -316,7 +316,6 @@ async def deduplicate_bank_transactions(
     dry_run: bool = Query(True, description="Si True, solo reporta sin eliminar"),
 ):
     """Elimina duplicados en bank_transactions. Solo admin/cfo."""
-    from typing import Optional
     from collections import defaultdict
 
     company_id = await get_active_company_id(request, current_user)
@@ -340,13 +339,14 @@ async def deduplicate_bank_transactions(
     for key, group in groups.items():
         if len(group) <= 1:
             continue
-        def score(t):
+        # Ordenar: categoría específica primero, genérica al final
+        def get_score(t):
             cat = (t.get('category_name') or '').lower().strip()
             return 0 if cat in GENERIC_CATS else 1
-        sorted_group = sorted(group, key=score, reverse=True)
+        sorted_group = sorted(group, key=get_score, reverse=True)
         keep = sorted_group[0]
         for t in sorted_group[1:]:
-            if t['id'] != keep['id']:
+            if t.get('id') and t['id'] != keep['id']:
                 ids_to_delete.append(t['id'])
 
     deleted = 0
