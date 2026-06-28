@@ -1066,6 +1066,193 @@ async def get_dashboard_from_payments(
     return response
 
 
+@router.get("/reports/cashflow-excel")
+async def download_cashflow_excel(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+):
+    """Genera y descarga el Reporte Analítico de Cash Flow en Excel (4 hojas)."""
+    from services.cashflow_calculator import calcular_semanas_cashflow
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from fastapi.responses import StreamingResponse
+    from datetime import datetime
+    from collections import defaultdict
+    import io
+
+    company_id = await get_active_company_id(request, current_user)
+    company    = await db.companies.find_one({'id': {'$regex': f'^{company_id}'}}, {'_id': 0, 'nombre': 1})
+    nombre_empresa = (company or {}).get('nombre', 'Empresa')
+    weeks    = await calcular_semanas_cashflow(company_id, num_weeks=52, db=db)
+    accounts = await db.bank_accounts.find({'company_id': company_id}, {'_id': 0}).to_list(50)
+
+    NAVY='0B1D3A'; GREEN='1A7C4F'; RED='B71C1C'; GOLD='C9A84C'
+    LGRAY='F5F5F5'; WHITE='FFFFFF'; LGREEN='E8F5E9'; LRED='FFEBEE'
+    FP='#,##0.00;(#,##0.00);"-"'; FPCT='0.0%'; FD='DD/MMM/YYYY'
+
+    def fill(c): return PatternFill('solid', start_color=c, fgColor=c)
+    def tb():
+        s=Side(style='thin',color='BDBDBD'); return Border(left=s,right=s,top=s,bottom=s)
+    def sc(ws,row,col,val,bold=False,color='000000',bg=None,fmt=None,align='left',size=9,italic=False):
+        c=ws.cell(row=row,column=col,value=val)
+        c.font=Font(name='Arial',bold=bold,color=color,size=size,italic=italic)
+        c.alignment=Alignment(horizontal=align,vertical='center'); c.border=tb()
+        if bg: c.fill=fill(bg)
+        if fmt: c.number_format=fmt
+        return c
+
+    wb=Workbook()
+
+    # HOJA 1 — Resumen Semanal
+    ws1=wb.active; ws1.title='Resumen Semanal'; ws1.sheet_view.showGridLines=False
+    ws1.merge_cells('A1:K1')
+    sc(ws1,1,1,f'{nombre_empresa} — REPORTE ANALÍTICO DE CASH FLOW',bold=True,color=WHITE,bg=NAVY,size=12,align='center')
+    ws1.merge_cells('A2:K2')
+    sc(ws1,2,1,f'Generado: {datetime.now().strftime("%d/%m/%Y %H:%M")}  |  {len(weeks)} semanas',italic=True,color='757575',align='center')
+    ws1.row_dimensions[1].height=26; ws1.row_dimensions[2].height=14
+    for i,h in enumerate(['Semana','Fecha Ini','Fecha Fin','Saldo Inicial','Ingresos','Egresos','Flujo Neto','Saldo Final','# Ing','# Egr','Ancla'],1):
+        sc(ws1,4,i,h,bold=True,color=WHITE,bg=NAVY,align='center')
+    ws1.row_dimensions[4].height=20
+    row=5
+    for s in weeks:
+        sf=s['saldo_inicial']+s['flujo_neto']; anc=s.get('saldo_anclado',False)
+        bgr='FFF8E1' if anc else (LGRAY if row%2==0 else WHITE)
+        try: fi=datetime.fromisoformat(s['fecha_inicio'][:10])
+        except: fi=s['fecha_inicio'][:10]
+        try: ff=datetime.fromisoformat(s['fecha_fin'][:10])
+        except: ff=s['fecha_fin'][:10]
+        fn=s['flujo_neto']
+        sc(ws1,row,1,s.get('label',f"S{s['numero_semana']}"),bold=anc,bg=bgr,align='center')
+        sc(ws1,row,2,fi,fmt=FD,bg=bgr,align='center'); sc(ws1,row,3,ff,fmt=FD,bg=bgr,align='center')
+        sc(ws1,row,4,s['saldo_inicial'],fmt=FP,bg=bgr,align='right')
+        sc(ws1,row,5,s['total_ingresos'],fmt=FP,color=GREEN,bg=bgr,align='right')
+        sc(ws1,row,6,s['total_egresos'],fmt=FP,color=RED,bg=bgr,align='right')
+        sc(ws1,row,7,fn,fmt=FP,bold=True,color=GREEN if fn>=0 else RED,bg=bgr,align='right')
+        sc(ws1,row,8,sf,fmt=FP,bold=anc,bg=bgr,align='right')
+        sc(ws1,row,9,len(s.get('ingresos_detalle',[])),bg=bgr,align='center')
+        sc(ws1,row,10,len(s.get('egresos_detalle',[])),bg=bgr,align='center')
+        sc(ws1,row,11,'✓' if anc else '',bold=anc,color=GREEN if anc else '000000',bg=bgr,align='center')
+        row+=1
+    sc(ws1,row,1,'TOTAL',bold=True,color=WHITE,bg=NAVY,align='center')
+    ws1.merge_cells(f'B{row}:C{row}'); sc(ws1,row,2,'',bg=NAVY)
+    for col,fml,clr in [(4,f'=D5',WHITE),(5,f'=SUM(E5:E{row-1})',WHITE),(6,f'=SUM(F5:F{row-1})',WHITE),
+                         (7,f'=E{row}-F{row}',GOLD),(8,f'=D{row}+G{row}',GOLD),
+                         (9,f'=SUM(I5:I{row-1})',WHITE),(10,f'=SUM(J5:J{row-1})',WHITE)]:
+        sc(ws1,row,col,fml,bold=True,color=clr,bg=NAVY,fmt=FP if col>=4 else None,align='right')
+    sc(ws1,row,11,'',bg=NAVY)
+    for i,w in enumerate([10,14,14,18,18,18,18,18,8,8,10],1):
+        ws1.column_dimensions[get_column_letter(i)].width=w
+    ws1.freeze_panes='A5'
+
+    # HOJA 2 — Movimientos Analíticos
+    ws2=wb.create_sheet('Movimientos Analíticos'); ws2.sheet_view.showGridLines=False
+    ws2.merge_cells('A1:I1')
+    sc(ws2,1,1,'MOVIMIENTOS ANALÍTICOS — DETALLE POR SEMANA',bold=True,color=WHITE,bg=NAVY,size=11,align='center')
+    ws2.row_dimensions[1].height=24
+    for i,h in enumerate(['Semana','Fecha Sem','Fecha Mov','Tipo','Categoría','Concepto / Contraparte','Monto','Acum Ing','Acum Egr'],1):
+        sc(ws2,3,i,h,bold=True,color=WHITE,bg=NAVY,align='center')
+    ws2.row_dimensions[3].height=20; row2=4
+    for s in weeks:
+        lbl=s.get('label',f"S{s['numero_semana']}")
+        try: fi_dt=datetime.fromisoformat(s['fecha_inicio'][:10])
+        except: fi_dt=s['fecha_inicio'][:10]
+        movs=[('Ingreso',m) for m in s.get('ingresos_detalle',[])] + [('Egreso',m) for m in s.get('egresos_detalle',[])]
+        if not movs: continue
+        ws2.merge_cells(f'A{row2}:I{row2}')
+        sc(ws2,row2,1,f"{lbl}  |  {s['fecha_inicio'][:10]}  SI:${s['saldo_inicial']:,.0f}  Ing:${s['total_ingresos']:,.0f}  Egr:${s['total_egresos']:,.0f}  Flujo:${s['flujo_neto']:,.0f}",
+           bold=True,color=WHITE,bg='1A3A5C',align='left')
+        ws2.row_dimensions[row2].height=15; row2+=1
+        acum_i=acum_e=0.0
+        for tipo,m in movs:
+            is_ing=tipo=='Ingreso'; monto=float(m.get('monto',0) or 0)
+            if is_ing: acum_i+=monto
+            else: acum_e+=monto
+            bgm=LGREEN if is_ing else LRED; clr=GREEN if is_ing else RED
+            try: fmov=datetime.fromisoformat(m.get('fecha',s['fecha_inicio'])[:10])
+            except: fmov=m.get('fecha','')[:10]
+            sc(ws2,row2,1,lbl,bg=bgm,align='center')
+            sc(ws2,row2,2,fi_dt,fmt=FD,bg=bgm,align='center')
+            sc(ws2,row2,3,fmov,fmt=FD,bg=bgm,align='center')
+            sc(ws2,row2,4,tipo,bold=True,color=clr,bg=bgm,align='center')
+            sc(ws2,row2,5,(m.get('categoria') or '')[:40],bg=bgm)
+            sc(ws2,row2,6,(m.get('concepto') or m.get('nombre',''))[:60],bg=bgm)
+            sc(ws2,row2,7,monto if is_ing else -monto,fmt=FP,bold=True,color=clr,bg=bgm,align='right')
+            sc(ws2,row2,8,acum_i,fmt='#,##0;(#,##0);"-"',color=GREEN,bg=bgm,align='right')
+            sc(ws2,row2,9,acum_e,fmt='#,##0;(#,##0);"-"',color=RED,bg=bgm,align='right')
+            row2+=1
+    for i,w in enumerate([10,14,14,10,28,44,18,18,18],1):
+        ws2.column_dimensions[get_column_letter(i)].width=w
+    ws2.freeze_panes='A4'
+
+    # HOJA 3 — Por Categoría
+    ws3=wb.create_sheet('Por Categoría'); ws3.sheet_view.showGridLines=False
+    ws3.merge_cells('A1:F1')
+    sc(ws3,1,1,'RESUMEN POR CATEGORÍA — ACUMULADO',bold=True,color=WHITE,bg=NAVY,size=11,align='center')
+    ws3.row_dimensions[1].height=24
+    for i,h in enumerate(['Categoría','Tipo','Monto Acumulado','% del Total','# Movimientos','# Semanas'],1):
+        sc(ws3,3,i,h,bold=True,color=WHITE,bg=NAVY,align='center')
+    ws3.row_dimensions[3].height=20
+    cat_d=defaultdict(lambda:{'tipo':'','monto':0.0,'movs':0,'semanas':set()})
+    for s in weeks:
+        lbl=s.get('label','')
+        for m in s.get('ingresos_detalle',[]):
+            cat=m.get('categoria','Sin categoría') or 'Sin categoría'
+            cat_d[cat]['tipo']='Ingreso'; cat_d[cat]['monto']+=float(m.get('monto',0) or 0)
+            cat_d[cat]['movs']+=1; cat_d[cat]['semanas'].add(lbl)
+        for m in s.get('egresos_detalle',[]):
+            cat=m.get('categoria','Sin categoría') or 'Sin categoría'
+            if not cat_d[cat]['tipo']: cat_d[cat]['tipo']='Egreso'
+            cat_d[cat]['monto']+=float(m.get('monto',0) or 0)
+            cat_d[cat]['movs']+=1; cat_d[cat]['semanas'].add(lbl)
+    tot_i=sum(v['monto'] for v in cat_d.values() if v['tipo']=='Ingreso')
+    tot_e=sum(v['monto'] for v in cat_d.values() if v['tipo']!='Ingreso')
+    row3=4
+    ws3.merge_cells(f'A{row3}:F{row3}')
+    sc(ws3,row3,1,f'▲ INGRESOS — Total: ${tot_i:,.2f}',bold=True,color=WHITE,bg=GREEN,align='left'); row3+=1
+    for cat,v in sorted(((k,v) for k,v in cat_d.items() if v['tipo']=='Ingreso'),key=lambda x:-x[1]['monto']):
+        bg=LGREEN if row3%2==0 else WHITE; pct=v['monto']/tot_i if tot_i else 0
+        sc(ws3,row3,1,cat,bg=bg); sc(ws3,row3,2,'Ingreso',bold=True,color=GREEN,bg=bg,align='center')
+        sc(ws3,row3,3,v['monto'],fmt=FP,color=GREEN,bg=bg,align='right'); sc(ws3,row3,4,pct,fmt=FPCT,bg=bg,align='center')
+        sc(ws3,row3,5,v['movs'],bg=bg,align='center'); sc(ws3,row3,6,len(v['semanas']),bg=bg,align='center'); row3+=1
+    row3+=1; ws3.merge_cells(f'A{row3}:F{row3}')
+    sc(ws3,row3,1,f'▼ EGRESOS — Total: ${tot_e:,.2f}',bold=True,color=WHITE,bg=RED,align='left'); row3+=1
+    for cat,v in sorted(((k,v) for k,v in cat_d.items() if v['tipo']!='Ingreso'),key=lambda x:-x[1]['monto']):
+        bg=LRED if row3%2==0 else WHITE; pct=v['monto']/tot_e if tot_e else 0
+        sc(ws3,row3,1,cat,bg=bg); sc(ws3,row3,2,'Egreso',bold=True,color=RED,bg=bg,align='center')
+        sc(ws3,row3,3,v['monto'],fmt=FP,color=RED,bg=bg,align='right'); sc(ws3,row3,4,pct,fmt=FPCT,bg=bg,align='center')
+        sc(ws3,row3,5,v['movs'],bg=bg,align='center'); sc(ws3,row3,6,len(v['semanas']),bg=bg,align='center'); row3+=1
+    for i,w in enumerate([38,12,20,12,16,16],1): ws3.column_dimensions[get_column_letter(i)].width=w
+    ws3.freeze_panes='A4'
+
+    # HOJA 4 — Cuentas Bancarias
+    ws4=wb.create_sheet('Cuentas Bancarias'); ws4.sheet_view.showGridLines=False
+    ws4.merge_cells('A1:G1')
+    sc(ws4,1,1,f'CUENTAS BANCARIAS — {nombre_empresa}',bold=True,color=WHITE,bg=NAVY,size=11,align='center')
+    ws4.row_dimensions[1].height=24
+    for i,h in enumerate(['Nombre','Banco','No. Cuenta','Moneda','Saldo Inicial','Activo','Fecha Saldo'],1):
+        sc(ws4,3,i,h,bold=True,color=WHITE,bg=NAVY,align='center')
+    ws4.row_dimensions[3].height=20
+    for r_idx,acc in enumerate(accounts,4):
+        bg=LGRAY if r_idx%2==0 else WHITE
+        sc(ws4,r_idx,1,acc.get('nombre',''),bold=True,bg=bg); sc(ws4,r_idx,2,acc.get('banco',''),bg=bg)
+        sc(ws4,r_idx,3,acc.get('numero_cuenta',''),bg=bg,align='center')
+        sc(ws4,r_idx,4,acc.get('moneda','MXN'),bg=bg,align='center')
+        sc(ws4,r_idx,5,acc.get('saldo_inicial',0),fmt=FP,bg=bg,align='right')
+        sc(ws4,r_idx,6,'✓ Activo' if acc.get('activo') else '✗ Inactivo',
+           bold=True,color=GREEN if acc.get('activo') else RED,bg=bg,align='center')
+        try: fs=datetime.fromisoformat(str(acc.get('fecha_saldo',''))[:10])
+        except: fs=str(acc.get('fecha_saldo',''))[:10]
+        sc(ws4,r_idx,7,fs,fmt=FD,bg=bg,align='center')
+    for i,w in enumerate([28,20,18,10,18,14,16],1): ws4.column_dimensions[get_column_letter(i)].width=w
+
+    buf=io.BytesIO(); wb.save(buf); buf.seek(0)
+    fname=f'CashFlow_Analitico_{nombre_empresa.replace(" ","_")}_{datetime.now().strftime("%Y%m%d")}.xlsx'
+    return StreamingResponse(buf,
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f'attachment; filename="{fname}"'})
+
+
 # ================== ENDPOINTS AVANZADOS - FASE 2 ==================
 
 # Importar servicios avanzados

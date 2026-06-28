@@ -732,6 +732,37 @@ const Reports = () => {
             <FileSpreadsheet size={16} />
             Excel
           </Button>
+          <Button
+            variant="default"
+            className="gap-2 bg-emerald-700 hover:bg-emerald-800 text-white"
+            onClick={async () => {
+              try {
+                const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+                const token = sessionStorage.getItem('token') || localStorage.getItem('token');
+                const companyId = localStorage.getItem('selectedCompany');
+                const res = await fetch(`${BACKEND_URL}/api/reports/cashflow-excel`, {
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Company-ID': companyId || '',
+                  }
+                });
+                if (!res.ok) throw new Error('Error generando el reporte');
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `CashFlow_Analitico_${new Date().toISOString().split('T')[0]}.xlsx`;
+                a.click();
+                URL.revokeObjectURL(url);
+              } catch (e) {
+                alert('Error al descargar el reporte: ' + e.message);
+              }
+            }}
+            data-testid="export-cashflow-analitico-btn"
+          >
+            <Download size={16} />
+            Reporte Analítico
+          </Button>
           <Button variant="outline" onClick={exportToPDF} disabled={exporting} className="gap-2" data-testid="export-pdf-btn">
             <FileText size={16} />
             {exporting ? t.exporting : 'PDF'}
