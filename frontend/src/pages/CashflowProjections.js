@@ -270,11 +270,16 @@ const CashflowProjections = () => {
       const fechaS1 = backendWeeksData[0]?.fecha_inicio
         ? backendWeeksData[0].fecha_inicio.slice(0, 10)
         : null;
-      // Usar fecha un día antes de S1 para capturar el ancla del cierre del mes previo
-      const fechaSummary = fechaS1
-        ? (() => { const d = new Date(fechaS1 + 'T12:00:00'); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0]; })()
+      // Usar fecha_fin de S1 para capturar la ancla del cierre del mes previo.
+      // "S1 - 1 día" fallaba cuando S1 cae dentro del mismo mes que la ancla
+      // (ej. S1=Dec 29, ancla=Dec 31 → Dec 28 < Dec 31 → ancla no encontrada).
+      // fecha_fin de S1 siempre cae después de la ancla mensual anterior.
+      const fechaFinS1 = backendWeeksData[0]?.fecha_fin
+        ? backendWeeksData[0].fecha_fin.slice(0, 10)
         : null;
+      const fechaSummary = fechaFinS1 || fechaS1;
       const bankSummaryRes = await api.get(`/bank-accounts/summary${fechaSummary ? `?fecha=${fechaSummary}` : ''}`);
+      console.log('[saldo inicial] fechaSummary=', fechaSummary, 'total_mxn=', bankSummaryRes.data?.total_mxn);
       
       setCfdis(cfdiRes.data);
       setCategories(catRes.data);
