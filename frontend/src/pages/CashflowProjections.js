@@ -502,7 +502,13 @@ const CashflowProjections = () => {
     // Window start priority: 1) explicit customStart, 2) earliest payment, 3) 17 weeks ago
     let startWeek;
     if (customStart) {
-      const parsed = new Date(customStart);
+      // Parse as local date — bare 'YYYY-MM-DD' strings are treated as UTC in JS,
+      // which shifts one day back in UTC- timezones (e.g. Mexico City UTC-6),
+      // causing getWeekStart to land on the wrong Monday.
+      const parts = String(customStart).split('-').map(Number);
+      const parsed = parts.length === 3
+        ? new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0)
+        : new Date(customStart);
       if (!isNaN(parsed.getTime())) {
         startWeek = getWeekStart(parsed, weekStartDay);
       }
