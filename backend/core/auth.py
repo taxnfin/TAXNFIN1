@@ -26,11 +26,16 @@ def verify_password(password: str, hashed: str) -> bool:
 
 def create_token(user_id: str, company_id: str, role: str) -> str:
     """Create a JWT token — backwards compatible"""
+    expires = (
+        timedelta(days=7)
+        if role in ('admin', 'cfo')
+        else timedelta(hours=JWT_EXPIRATION_HOURS)
+    )
     payload = {
         'user_id': user_id,
         'company_id': company_id,
         'role': role,
-        'exp': datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
+        'exp': datetime.now(timezone.utc) + expires,
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
