@@ -406,15 +406,13 @@ async def find_suspicious_transactions(
     if not target_amounts:
         raise HTTPException(status_code=400, detail="Parámetro 'montos' inválido")
 
+    # No field projection — return every field so caller can do full forensics.
     txns = await db.bank_transactions.find(
         {
             "company_id": company_id,
             "fecha_movimiento": {"$gte": fecha_inicio, "$lte": fecha_fin},
         },
-        {"_id": 0, "id": 1, "fecha_movimiento": 1, "valor": 1, "monto": 1,
-         "tipo": 1, "descripcion": 1, "concepto": 1, "categoria": 1,
-         "category_name": 1, "contacto": 1, "origen": 1, "source": 1,
-         "alegra_payment_id": 1, "alegra_conciliation_id": 1},
+        {"_id": 0},
     ).to_list(10000)
 
     matches = []
@@ -422,19 +420,7 @@ async def find_suspicious_transactions(
         raw = t.get("valor") or t.get("monto") or 0
         amount = round(float(raw or 0), 2)
         if amount in target_amounts:
-            matches.append({
-                "id":                    t.get("id"),
-                "fecha_movimiento":      t.get("fecha_movimiento"),
-                "monto":                 amount,
-                "tipo":                  t.get("tipo"),
-                "descripcion":           t.get("descripcion") or t.get("concepto"),
-                "categoria":             t.get("category_name") or t.get("categoria"),
-                "contacto":              t.get("contacto"),
-                "origen":                t.get("origen"),
-                "source":                t.get("source"),
-                "alegra_payment_id":     t.get("alegra_payment_id"),
-                "alegra_conciliation_id": t.get("alegra_conciliation_id"),
-            })
+            matches.append(t)
 
     matches.sort(key=lambda x: (x["fecha_movimiento"] or "", x["monto"]))
 
