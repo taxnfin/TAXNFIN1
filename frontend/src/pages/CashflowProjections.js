@@ -156,15 +156,20 @@ const CashflowProjections = () => {
   useEffect(() => {}, [cxcCxpData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Merge backend cashflow/weeks data into local weeks structure.
-  // Overrides ingresos.total, egresos.total, byCategory from backend detalle.
-  // Falls back to local values when backend has no data for a week.
+  // Backend weeks are the authoritative date structure.
+  // Local weeks (from processWeeklyData) provide supplementary data: USD trades, local CFDIs.
+  // Iterates backendWeeks; finds matching local week by fecha_inicio; merges local data in.
   const applyBackendData = (localWeeks, backendWeeks) => {
     if (!backendWeeks || backendWeeks.length === 0) return localWeeks;
-    const byDate = {};
-    backendWeeks.forEach(bw => {
-      const fi = (bw.fecha_inicio || '').slice(0, 10);
-      if (fi) byDate[fi] = bw;
+
+    // Index local weeks by local-time date string (avoids UTC-shift artifacts)
+    const localByDate = {};
+    localWeeks.forEach(w => {
+      const d = w.weekStart instanceof Date ? w.weekStart : new Date(w.weekStart);
+      const fi = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      if (fi) localByDate[fi] = w;
     });
+
     const buildByCategory = (detalle) => {
       const bc = {};
       (detalle || []).forEach(item => {
@@ -175,45 +180,70 @@ const CashflowProjections = () => {
       });
       return bc;
     };
-    // DEBUG — verificar matching de fechas frontend↔backend
-    const _frontendDates = localWeeks.slice(0, 6).map(w =>
-      w.weekStart instanceof Date ? w.weekStart.toISOString().split('T')[0] : String(w.weekStart).slice(0, 10)
-    );
-    const _backendDates  = Object.keys(byDate).slice(0, 6);
-    console.log('[applyBackendData] primeras fechas FRONTEND:', _frontendDates);
-    console.log('[applyBackendData] primeras fechas BACKEND: ', _backendDates);
 
-    let _matched = 0, _missed = 0;
-    const mapped = localWeeks.map(week => {
-      const localFi = week.weekStart instanceof Date
-        ? week.weekStart.toISOString().split('T')[0]
-        : String(week.weekStart).slice(0, 10);
-      const bw = byDate[localFi];
-      if (!bw) { _missed++; return week; }
-      _matched++;
+    // DEBUG — verificar orden y fechas del backend
+    console.log('[applyBackendData] Backend fechas (primeras 6):');
+    backendWeeks.slice(0, 6).forEach((bw, i) =>
+      console.log(`  B${i+1}: ${(bw.fecha_inicio||'').slice(0,10)}  label=${bw.label}`)
+    );
+    console.log('[applyBackendData] Frontend fechas (primeras 6, antes de fix):');
+    localWeeks.slice(0, 6).forEach((w, i) => {
+      const d = w.weekStart instanceof Date ? w.weekStart : new Date(w.weekStart);
+      const fi = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      console.log(`  F${i+1}: ${fi}  label=${w.label}`);
+    });
+    const ascending = backendWeeks.every((bw, i) =>
+      i === 0 || (bw.fecha_inicio||'') >= (backendWeeks[i-1].fecha_inicio||'')
+    );
+    console.log(`[applyBackendData] Backend orden ascendente: ${ascending}`);
+
+    // BACKEND WEEKS AS PRIMARY STRUCTURE
+    let matched = 0, missed = 0;
+    const result = backendWeeks.map((bw, idx) => {
+      const fi = (bw.fecha_inicio || '').slice(0, 10);
+      const localWeek = fi ? localByDate[fi] : null;
+      if (localWeek) matched++; else missed++;
+
+      // Build weekStart from backend fecha_inicio using local midnight (no UTC shift)
+      let weekStart;
+      if (fi) {
+        const [yr, mo, dy] = fi.split('-').map(Number);
+        weekStart = new Date(yr, mo - 1, dy, 0, 0, 0, 0);
+      } else {
+        weekStart = localWeek?.weekStart || new Date();
+      }
+
       const ingBC = buildByCategory(bw.ingresos_detalle);
       const egrBC = buildByCategory(bw.egresos_detalle);
+
       return {
-        ...week,
-        backend_saldo_inicial:       bw.saldo_inicial   ?? 0,
-        backend_saldo_final:         bw.saldo_final      ?? ((bw.saldo_inicial ?? 0) + (bw.flujo_neto ?? 0)),
-        backend_flujo_neto:          bw.flujo_neto       ?? 0,
-        backend_ingresos_detalle:    bw.ingresos_detalle || [],
-        backend_egresos_detalle:     bw.egresos_detalle  || [],
-        saldo_anclado:               bw.saldo_anclado    ?? false,
+        ...(localWeek || {}),              // supplement: compraUSD, ventaUSD, local CFDIs, etc.
+        weekStart,                          // authoritative date from backend
+        weekNum:      idx + 1,
+        label:        bw.label || `S${idx + 1}`,
+        displayLabel: bw.label || `S${idx + 1}`,
+        fecha_inicio: fi,
+        fecha_fin:    (bw.fecha_fin || '').slice(0, 10),
+        backend_saldo_inicial:    bw.saldo_inicial   ?? 0,
+        backend_saldo_final:      bw.saldo_final      ?? ((bw.saldo_inicial ?? 0) + (bw.flujo_neto ?? 0)),
+        backend_flujo_neto:       bw.flujo_neto       ?? 0,
+        backend_ingresos_detalle: bw.ingresos_detalle || [],
+        backend_egresos_detalle:  bw.egresos_detalle  || [],
+        saldo_anclado:            bw.saldo_anclado    ?? false,
         ingresos: {
-          total:      bw.total_ingresos ?? week.ingresos.total,
-          byCategory: Object.keys(ingBC).length > 0 ? ingBC : week.ingresos.byCategory,
+          total:      bw.total_ingresos ?? (localWeek?.ingresos?.total ?? 0),
+          byCategory: Object.keys(ingBC).length > 0 ? ingBC : (localWeek?.ingresos?.byCategory ?? {}),
         },
         egresos: {
-          total:      bw.total_egresos ?? week.egresos.total,
-          byCategory: Object.keys(egrBC).length > 0 ? egrBC : week.egresos.byCategory,
+          total:      bw.total_egresos ?? (localWeek?.egresos?.total ?? 0),
+          byCategory: Object.keys(egrBC).length > 0 ? egrBC : (localWeek?.egresos?.byCategory ?? {}),
         },
-        hasRealData: (bw.total_ingresos > 0 || bw.total_egresos > 0) || week.hasRealData,
+        hasRealData: (bw.total_ingresos > 0 || bw.total_egresos > 0) || (localWeek?.hasRealData ?? false),
       };
     });
-    console.log(`[applyBackendData] ${_matched} matches / ${_missed} misses (total frontend: ${localWeeks.length}, backend: ${Object.keys(byDate).length})`);
-    return mapped;
+
+    console.log(`[applyBackendData] resultado: ${matched} semanas con datos locales / ${missed} solo-backend (total: ${backendWeeks.length})`);
+    return result;
   };
 
   const loadData = async () => {
