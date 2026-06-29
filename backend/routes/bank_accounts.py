@@ -379,3 +379,70 @@ async def deduplicate_bank_transactions(
         'eliminados': deleted,
         'mensaje': 'Ejecuta con ?dry_run=false para eliminar' if dry_run else f'{deleted} duplicados eliminados',
     }
+
+
+@router.get("/find-suspicious")
+async def find_suspicious_transactions(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    fecha_inicio: str = Query("2026-01-01", description="Rango inicio YYYY-MM-DD"),
+    fecha_fin: str = Query("2026-02-28", description="Rango fin YYYY-MM-DD"),
+    montos: str = Query("297500,70000", description="Montos exactos separados por coma"),
+):
+    """
+    Lista bank_transactions cuyo monto exacto coincide con los montos dados.
+    Útil para verificar movimientos fantasma antes de eliminarlos.
+    Devuelve id, fecha, monto, tipo, concepto, categoria, origen, source.
+    """
+    company_id = await get_active_company_id(request, current_user)
+
+    target_amounts = []
+    for m in montos.split(","):
+        try:
+            target_amounts.append(round(float(m.strip()), 2))
+        except ValueError:
+            pass
+
+    if not target_amounts:
+        raise HTTPException(status_code=400, detail="Parámetro 'montos' inválido")
+
+    txns = await db.bank_transactions.find(
+        {
+            "company_id": company_id,
+            "fecha_movimiento": {"$gte": fecha_inicio, "$lte": fecha_fin},
+        },
+        {"_id": 0, "id": 1, "fecha_movimiento": 1, "valor": 1, "monto": 1,
+         "tipo": 1, "descripcion": 1, "concepto": 1, "categoria": 1,
+         "category_name": 1, "contacto": 1, "origen": 1, "source": 1,
+         "alegra_payment_id": 1, "alegra_conciliation_id": 1},
+    ).to_list(10000)
+
+    matches = []
+    for t in txns:
+        raw = t.get("valor") or t.get("monto") or 0
+        amount = round(float(raw or 0), 2)
+        if amount in target_amounts:
+            matches.append({
+                "id":                    t.get("id"),
+                "fecha_movimiento":      t.get("fecha_movimiento"),
+                "monto":                 amount,
+                "tipo":                  t.get("tipo"),
+                "descripcion":           t.get("descripcion") or t.get("concepto"),
+                "categoria":             t.get("category_name") or t.get("categoria"),
+                "contacto":              t.get("contacto"),
+                "origen":                t.get("origen"),
+                "source":                t.get("source"),
+                "alegra_payment_id":     t.get("alegra_payment_id"),
+                "alegra_conciliation_id": t.get("alegra_conciliation_id"),
+            })
+
+    matches.sort(key=lambda x: (x["fecha_movimiento"] or "", x["monto"]))
+
+    return {
+        "company_id":    company_id,
+        "fecha_inicio":  fecha_inicio,
+        "fecha_fin":     fecha_fin,
+        "montos_buscados": target_amounts,
+        "total":         len(matches),
+        "transacciones": matches,
+    }
