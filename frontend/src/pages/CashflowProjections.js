@@ -362,14 +362,22 @@ const CashflowProjections = () => {
           const compRes = await api.get(`/companies/${companyId}`);
           const weekStart = compRes.data?.inicio_semana ?? 1;
           setCompanyConfig({ ...compRes.data, inicio_semana: weekStart });
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, validPayments, customStartDate);
+          // Use backend S1 fecha_inicio as startWeek anchor so all 52 weeks align.
+          // customStartDate (user override) still takes priority when set.
+          const backendStart = (backendWeeks[0]?.fecha_inicio || '').slice(0, 10);
+          const effectiveStart = customStartDate || backendStart;
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, weekStart, loadedRates, validPayments, effectiveStart);
           setWeeklyData(applyBackendData(weeks, backendWeeks));
         } catch {
-          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate);
+          const backendStart = (backendWeeks[0]?.fecha_inicio || '').slice(0, 10);
+          const effectiveStart = customStartDate || backendStart;
+          const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, effectiveStart);
           setWeeklyData(applyBackendData(weeks, backendWeeks));
         }
       } else {
-        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, customStartDate);
+        const backendStart = (backendWeeks[0]?.fecha_inicio || '').slice(0, 10);
+        const effectiveStart = customStartDate || backendStart;
+        const weeks = processWeeklyData(cfdiRes.data, categoriesLoaded, 1, loadedRates, validPayments, effectiveStart);
         setWeeklyData(applyBackendData(weeks, backendWeeks));
       }
 
