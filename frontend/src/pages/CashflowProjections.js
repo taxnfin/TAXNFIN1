@@ -175,12 +175,22 @@ const CashflowProjections = () => {
       });
       return bc;
     };
-    return localWeeks.map(week => {
+    // DEBUG — verificar matching de fechas frontend↔backend
+    const _frontendDates = localWeeks.slice(0, 6).map(w =>
+      w.weekStart instanceof Date ? w.weekStart.toISOString().split('T')[0] : String(w.weekStart).slice(0, 10)
+    );
+    const _backendDates  = Object.keys(byDate).slice(0, 6);
+    console.log('[applyBackendData] primeras fechas FRONTEND:', _frontendDates);
+    console.log('[applyBackendData] primeras fechas BACKEND: ', _backendDates);
+
+    let _matched = 0, _missed = 0;
+    const mapped = localWeeks.map(week => {
       const localFi = week.weekStart instanceof Date
         ? week.weekStart.toISOString().split('T')[0]
         : String(week.weekStart).slice(0, 10);
       const bw = byDate[localFi];
-      if (!bw) return week;
+      if (!bw) { _missed++; return week; }
+      _matched++;
       const ingBC = buildByCategory(bw.ingresos_detalle);
       const egrBC = buildByCategory(bw.egresos_detalle);
       return {
@@ -202,6 +212,8 @@ const CashflowProjections = () => {
         hasRealData: (bw.total_ingresos > 0 || bw.total_egresos > 0) || week.hasRealData,
       };
     });
+    console.log(`[applyBackendData] ${_matched} matches / ${_missed} misses (total frontend: ${localWeeks.length}, backend: ${Object.keys(byDate).length})`);
+    return mapped;
   };
 
   const loadData = async () => {
@@ -911,12 +923,19 @@ const CashflowProjections = () => {
       // La próxima semana arranca desde ese SF anclado.
       let saldoFinal;
       if (week.saldo_anclado && week.backend_saldo_final != null) {
-        // Usar el saldo_final verificado del backend (ancla + flujos de la semana).
-        // backend_saldo_final = saldo_inicial_ancla + flujo_neto, calculado por el servidor.
         saldoFinal = week.backend_saldo_final;
       } else {
         saldoFinal = saldoInicial + flujoNeto;
       }
+      // DEBUG — una línea por semana para rastrear dónde viene cada saldo
+      console.log(
+        `[calcRT] ${(week.label || week.displayLabel || idx).toString().padEnd(4)}`,
+        `anclado=${String(!!week.saldo_anclado).padEnd(5)}`,
+        `bk_sf=${week.backend_saldo_final != null ? Math.round(week.backend_saldo_final).toLocaleString().padStart(12) : '          null'}`,
+        `SI=${Math.round(saldoInicial).toLocaleString().padStart(12)}`,
+        `flujo=${Math.round(flujoNeto).toLocaleString().padStart(12)}`,
+        `SF=${Math.round(saldoFinal).toLocaleString().padStart(12)}`
+      );
 
       totals.push({
         ...week,
