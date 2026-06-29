@@ -966,13 +966,14 @@ const CashflowProjections = () => {
       const flujoDivisas = ventaUSD - compraUSD;
       const flujoNeto    = flujoNetoOperativo + flujoDivisas;
 
-      // Ancla bancaria: cuando la semana contiene el corte de fin de mes,
-      // el SALDO FINAL debe ser el saldo verificado del banco.
-      // El SI se mantiene como el acumulado rolling (SF de la semana anterior).
-      // La próxima semana arranca desde ese SF anclado.
+      // Ancla bancaria: cuando la semana está anclada, usar los saldos
+      // verificados del backend (tanto SI como SF) en lugar del rolling.
+      // Esto garantiza que el dashboard muestra exactamente lo que está en el banco.
       let saldoFinal;
-      if (week.saldo_anclado && week.backend_saldo_final != null) {
-        saldoFinal = week.backend_saldo_final;
+      if (week.saldo_anclado && week.backend_saldo_inicial != null) {
+        // Semana anclada: SI y SF vienen del backend
+        saldoInicial = week.backend_saldo_inicial;
+        saldoFinal   = week.backend_saldo_final ?? (saldoInicial + flujoNeto);
       } else {
         saldoFinal = saldoInicial + flujoNeto;
       }
