@@ -23,6 +23,10 @@ import os
 import sys
 from typing import Optional
 
+# Forzar UTF-8 en stdout para que ✅/❌ y caracteres Unicode funcionen en Windows
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import requests
 
 # ── Configuración ─────────────────────────────────────────────────────────────
@@ -34,9 +38,9 @@ TOLERANCE_PCT = 2.0   # % de tolerancia para comparaciones aproximadas
 
 # Valores esperados
 EXPECTED = {
-    "s1_saldo_inicial":          305_849,
-    "jan31_saldo_final":         387_509,
-    "feb28_saldo_final":         665_865,
+    "s1_saldo_inicial":           305_849,
+    "jan31_saldo_inicial":        387_509,   # ancla bancaria 2026-01-31 → saldo_inicial de S4
+    "feb28_saldo_inicial":        665_865,   # ancla bancaria 2026-02-28 → saldo_inicial de S8
 }
 
 
@@ -135,21 +139,36 @@ def login() -> tuple[str, str]:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def run_checks(base_url: str = BASE_URL) -> bool:
+def run_checks(base_url: str = BASE_URL, jwt_token: str = "") -> bool:
     global BASE_URL
     BASE_URL = base_url.rstrip("/")
 
     print(f"\n{'─'*60}")
     print(f"  Cashflow Integrity Checks")
     print(f"  URL  : {BASE_URL}")
-    print(f"  User : {TEST_EMAIL}")
     print(f"{'─'*60}\n")
 
     # ── Auth ──────────────────────────────────────────────────────────────────
-    print("Autenticando…")
-    token, company_id = login()
+    if jwt_token:
+        token = jwt_token
+        print(f"Usando token externo: {token[:20]}…")
+        # Resolver company_id desde /api/companies con el token dado
+        company_id = ""
+        cr = requests.get(
+            f"{BASE_URL}/api/companies",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=15,
+        )
+        if cr.status_code == 200:
+            companies = cr.json()
+            if companies:
+                company_id = (companies[0].get("id") or "")
+    else:
+        print(f"Autenticando como {TEST_EMAIL}…")
+        token, company_id = login()
+
     print(f"  token       : {token[:20]}…")
-    print(f"  company_id  : {company_id or '(sin company_id — usando header vacío)'}\n")
+    print(f"  company_id  : {company_id or '(vacío — backend usará empresa del JWT)'}\n")
 
     headers: dict = {"Authorization": f"Bearer {token}"}
     if company_id:
@@ -188,38 +207,38 @@ def run_checks(base_url: str = BASE_URL) -> bool:
         s1_si,
     ))
 
-    # ── Check 2: semana que contiene 2026-01-31 → saldo_final ─────────────────
+    # ── Check 2: semana que contiene 2026-01-31 → saldo_inicial (ancla bancaria) ─
+    # El calculador aplica el ancla como saldo_inicial de la semana que la contiene,
+    # no como saldo_final. El ancla de 2026-01-31 aparece en S4 (2026-01-26).
     DATE_JAN31 = "2026-01-31"
     w_jan = week_containing(weeks, DATE_JAN31)
     if w_jan is None:
         print(f"  ❌  No se encontró semana que contenga {DATE_JAN31}")
         results.append(False)
     else:
-        sf_jan = float(w_jan.get("saldo_final") or
-                       (w_jan.get("saldo_inicial", 0) + w_jan.get("flujo_neto", 0)))
-        exp2   = EXPECTED["jan31_saldo_final"]
+        si_jan = float(w_jan.get("saldo_inicial") or 0)
+        exp2   = EXPECTED["jan31_saldo_inicial"]
         results.append(check(
-            f"Semana que contiene {DATE_JAN31} ({w_jan.get('label','?')}) saldo_final",
-            approx_equal(sf_jan, exp2),
+            f"Semana que contiene {DATE_JAN31} ({w_jan.get('label','?')}) saldo_inicial (ancla)",
+            approx_equal(si_jan, exp2),
             exp2,
-            sf_jan,
+            si_jan,
         ))
 
-    # ── Check 3: semana que contiene 2026-02-28 → saldo_final ─────────────────
+    # ── Check 3: semana que contiene 2026-02-28 → saldo_inicial (ancla bancaria) ─
     DATE_FEB28 = "2026-02-28"
     w_feb = week_containing(weeks, DATE_FEB28)
     if w_feb is None:
         print(f"  ❌  No se encontró semana que contenga {DATE_FEB28}")
         results.append(False)
     else:
-        sf_feb = float(w_feb.get("saldo_final") or
-                       (w_feb.get("saldo_inicial", 0) + w_feb.get("flujo_neto", 0)))
-        exp3   = EXPECTED["feb28_saldo_final"]
+        si_feb = float(w_feb.get("saldo_inicial") or 0)
+        exp3   = EXPECTED["feb28_saldo_inicial"]
         results.append(check(
-            f"Semana que contiene {DATE_FEB28} ({w_feb.get('label','?')}) saldo_final",
-            approx_equal(sf_feb, exp3),
+            f"Semana que contiene {DATE_FEB28} ({w_feb.get('label','?')}) saldo_inicial (ancla)",
+            approx_equal(si_feb, exp3),
             exp3,
-            sf_feb,
+            si_feb,
         ))
 
     # ── Check 4: sin ids duplicados en ingresos_detalle ───────────────────────
@@ -287,8 +306,9 @@ def run_checks(base_url: str = BASE_URL) -> bool:
 
 def test_cashflow_integrity():
     """pytest entry point — falla si cualquier check falla."""
-    url = os.environ.get("REACT_APP_BACKEND_URL", "http://localhost:8001")
-    assert run_checks(url), "Uno o más checks de integridad fallaron (ver salida arriba)"
+    url   = os.environ.get("REACT_APP_BACKEND_URL", "http://localhost:8001")
+    token = os.environ.get("TEST_JWT_TOKEN", "")
+    assert run_checks(url, token), "Uno o más checks de integridad fallaron (ver salida arriba)"
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -300,6 +320,11 @@ if __name__ == "__main__":
         default=os.environ.get("REACT_APP_BACKEND_URL", "http://localhost:8001"),
         help="URL base del backend (default: http://localhost:8001)",
     )
+    parser.add_argument(
+        "--token",
+        default=os.environ.get("TEST_JWT_TOKEN", ""),
+        help="JWT token ya obtenido (omite el paso de login)",
+    )
     args = parser.parse_args()
-    ok = run_checks(args.url)
+    ok = run_checks(args.url, args.token)
     sys.exit(0 if ok else 1)
