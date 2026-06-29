@@ -241,6 +241,16 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         # Excluir traspasos
         if cat_name in TRASPASO_CATS or any(kw in descripcion for kw in TRASPASO_KW):
             continue
+        # Excluir retiros/egresos USD con descripción genérica de Alegra — son
+        # conversiones de divisa (USD→MXN) sin nombre real de contraparte,
+        # que Alegra sincroniza sin el texto "operacion cambios" en la descripción.
+        moneda_orig = (t.get('moneda_original') or t.get('moneda') or '').upper()
+        cuenta_bk   = (t.get('cuenta_bancaria') or '').upper()
+        tipo_raw    = (t.get('tipo') or '').lower()
+        if (moneda_orig == 'USD' or 'USD' in cuenta_bk) \
+                and tipo_raw in ('retiro', 'egreso', 'debito') \
+                and descripcion.startswith('movimiento alegra'):
+            continue
         monto = float(t.get('monto', 0) or 0)
         if monto <= 0:
             continue

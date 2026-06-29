@@ -432,3 +432,73 @@ async def find_suspicious_transactions(
         "total":         len(matches),
         "transacciones": matches,
     }
+
+
+@router.post("/fix-cambios-usd")
+async def fix_cambios_usd(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    dry_run: bool = Query(True, description="Si True, solo reporta sin modificar"),
+):
+    """
+    Corrige bank_transactions que son conversiones USD→MXN mal categorizadas.
+    Condiciones: retiro/egreso + (moneda_original=USD o cuenta_bancaria contiene 'USD')
+                 + descripcion empieza con 'Movimiento Alegra' (sin nombre real de contraparte).
+    Actualiza category_name → 'Traspaso entre cuentas' para que el calculador los excluya.
+    """
+    if current_user.get("role") not in ("admin", "cfo"):
+        raise HTTPException(status_code=403, detail="Se requiere rol admin o cfo")
+
+    company_id = await get_active_company_id(request, current_user)
+
+    txns = await db.bank_transactions.find(
+        {"company_id": company_id, "source": "alegra"},
+        {"_id": 0, "id": 1, "fecha_movimiento": 1, "monto": 1, "tipo": 1,
+         "descripcion": 1, "category_name": 1, "moneda_original": 1,
+         "cuenta_bancaria": 1},
+    ).to_list(10000)
+
+    candidates = []
+    for t in txns:
+        moneda_orig = (t.get("moneda_original") or t.get("moneda") or "").upper()
+        cuenta_bk   = (t.get("cuenta_bancaria") or "").upper()
+        tipo_raw    = (t.get("tipo") or "").lower()
+        descripcion = (t.get("descripcion") or "").strip()
+
+        is_usd_account  = moneda_orig == "USD" or "USD" in cuenta_bk
+        is_retiro       = tipo_raw in ("retiro", "egreso", "debito")
+        is_generic_desc = descripcion.lower().startswith("movimiento alegra")
+
+        if is_usd_account and is_retiro and is_generic_desc:
+            candidates.append({
+                "id":             t.get("id"),
+                "fecha":          t.get("fecha_movimiento"),
+                "monto":          t.get("monto"),
+                "descripcion":    descripcion,
+                "category_name":  t.get("category_name"),
+                "moneda_original": moneda_orig,
+                "cuenta_bancaria": t.get("cuenta_bancaria"),
+            })
+
+    updated = 0
+    if not dry_run and candidates:
+        ids = [c["id"] for c in candidates if c["id"]]
+        result = await db.bank_transactions.update_many(
+            {"company_id": company_id, "id": {"$in": ids}},
+            {"$set": {"category_name": "Traspaso entre cuentas",
+                      "categoria":     "Traspaso entre cuentas"}},
+        )
+        updated = result.modified_count
+
+    return {
+        "dry_run":    dry_run,
+        "total":      len(candidates),
+        "updated":    updated,
+        "mensaje":    (
+            f"Se actualizarán {len(candidates)} registros. "
+            "Ejecuta con ?dry_run=false para confirmar."
+            if dry_run else
+            f"{updated} registros actualizados a 'Traspaso entre cuentas'."
+        ),
+        "registros":  candidates,
+    }
