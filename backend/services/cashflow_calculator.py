@@ -218,8 +218,9 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         'source': 'alegra',
         'es_real': True,
     }, {'_id': 0, 'tipo': 1, 'monto': 1, 'fecha': 1, 'fecha_movimiento': 1,
-        'descripcion': 1, 'contacto': 1, 'cuenta_bancaria': 1, 'id': 1,
-        'category_name': 1, 'alegra_id': 1}).to_list(5000)
+        'fecha_valor': 1, 'descripcion': 1, 'contacto': 1, 'cuenta_bancaria': 1,
+        'id': 1, 'category_name': 1, 'alegra_id': 1,
+        'alegra_payment_id': 1}).to_list(5000)
 
     # Categorías que son traspasos internos — no representan flujo real de caja
     TRASPASO_CATS = {'traspaso entre cuentas', 'transferencia entre cuentas', 'comisiones bancarias'}
@@ -243,12 +244,17 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         monto = float(t.get('monto', 0) or 0)
         if monto <= 0:
             continue
-        fecha = _parse_date(t.get('fecha') or t.get('fecha_movimiento'))
+        # Buscar fecha en todos los campos posibles
+        fecha = _parse_date(
+            t.get('fecha') or t.get('fecha_movimiento') or
+            t.get('fecha_valor') or t.get('date') or ''
+        )
         if not fecha:
             continue
         tipo_raw = str(t.get('tipo', '') or '').lower()
-        # Clave de deduplicación: alegra_id si existe, sino (fecha, monto, tipo_normalizado)
-        alegra_id = t.get('alegra_id') or ''
+        # Clave de deduplicación: alegra_id O alegra_payment_id si existe,
+        # sino (fecha, monto, tipo_normalizado). Ambos campos apuntan al mismo pago.
+        alegra_id = t.get('alegra_id') or t.get('alegra_payment_id') or ''
         # Normalizar tipo: deposito/credito/ingreso → IN, retiro/debito/egreso → OUT
         tipo_norm = 'IN' if tipo_raw in ('deposito', 'ingreso', 'credito', 'deposito_transferencia') else 'OUT'
         clave = str(alegra_id) if alegra_id else f"{fecha}|{round(monto,2)}|{tipo_norm}"
