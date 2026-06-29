@@ -997,6 +997,14 @@ const CashflowProjections = () => {
       saldoInicial = saldoFinal;
     });
 
+    // 2do pase: SF anterior a ancla = SI anclado para evitar saltos visuales
+    for (let i = 0; i < totals.length - 1; i++) {
+      const next = totals[i + 1];
+      if (next.saldo_anclado && next.backend_saldo_inicial != null) {
+        totals[i] = { ...totals[i], saldoFinal: next.saldoInicial };
+      }
+    }
+
     return totals;
   };
 
