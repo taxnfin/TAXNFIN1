@@ -148,26 +148,31 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
     # El año fiscal empieza el lunes anterior (o igual) al 1 de enero.
     # Si el DB no incluye esa semana, se prepend en memoria para que S1
     # siempre arranque en el inicio fiscal correcto.
+    # Nota: _parse_date retorna un string 'YYYY-MM-DD', no un date object.
     if weeks_raw:
-        _first_fi = _parse_date(weeks_raw[0].get('fecha_inicio'))
-        if _first_fi:
-            _fiscal_year = _first_fi.year + (1 if _first_fi.month == 12 else 0)
-            _jan1 = date(_fiscal_year, 1, 1)
-            _fiscal_start = _jan1 - timedelta(days=_jan1.weekday())
-            if _first_fi > _fiscal_start:
-                for _w in weeks_raw:
-                    _new_num = _w.get('numero_semana', 1) + 1
-                    _w['numero_semana'] = _new_num
-                    _w['label'] = f'S{_new_num}'
-                weeks_raw = [{
-                    'company_id': company_id,
-                    'fecha_inicio': _fiscal_start.isoformat(),
-                    'fecha_fin': (_fiscal_start + timedelta(days=6)).isoformat(),
-                    'numero_semana': 1,
-                    'label': 'S1',
-                    'saldo_inicial': float(weeks_raw[0].get('saldo_inicial', 0) or 0),
-                    'notas': '',
-                }] + weeks_raw
+        _first_fi_str = _parse_date(weeks_raw[0].get('fecha_inicio'))
+        if _first_fi_str:
+            try:
+                _first_date = date.fromisoformat(_first_fi_str)
+                _fiscal_year = _first_date.year + (1 if _first_date.month == 12 else 0)
+                _jan1 = date(_fiscal_year, 1, 1)
+                _fiscal_start = _jan1 - timedelta(days=_jan1.weekday())
+                if _first_date > _fiscal_start:
+                    for _w in weeks_raw:
+                        _new_num = _w.get('numero_semana', 1) + 1
+                        _w['numero_semana'] = _new_num
+                        _w['label'] = f'S{_new_num}'
+                    weeks_raw = [{
+                        'company_id': company_id,
+                        'fecha_inicio': _fiscal_start.isoformat(),
+                        'fecha_fin': (_fiscal_start + timedelta(days=6)).isoformat(),
+                        'numero_semana': 1,
+                        'label': 'S1',
+                        'saldo_inicial': float(weeks_raw[0].get('saldo_inicial', 0) or 0),
+                        'notas': '',
+                    }] + weeks_raw
+            except (ValueError, AttributeError):
+                pass
 
     # ── 2. Leer CFDIs de fuentes NO-Alegra (Contalink, SAT, manual, etc.) ──
     cfdis = await db.cfdis.find(
