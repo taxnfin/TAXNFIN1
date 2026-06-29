@@ -450,6 +450,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             'es_real': es_real,
             'saldo_anclado': anchor is not None,  # True = saldo verificado con banco
             'saldo_inicial': saldo_ini,
+            'saldo_final': saldo_acumulado,
             'total_ingresos': total_ing,
             'total_egresos': total_egr,
             'flujo_neto': total_ing - total_egr,
@@ -547,6 +548,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
                 'es_generada': True,
                 'saldo_anclado': anchor is not None,
                 'saldo_inicial': saldo_ini,
+                'saldo_final': saldo_acumulado,
                 'total_ingresos': total_ing,
                 'total_egresos': total_egr,
                 'flujo_neto': total_ing - total_egr,

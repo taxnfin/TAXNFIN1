@@ -186,6 +186,7 @@ const CashflowProjections = () => {
       return {
         ...week,
         backend_saldo_inicial:       bw.saldo_inicial   ?? 0,
+        backend_saldo_final:         bw.saldo_final      ?? ((bw.saldo_inicial ?? 0) + (bw.flujo_neto ?? 0)),
         backend_flujo_neto:          bw.flujo_neto       ?? 0,
         backend_ingresos_detalle:    bw.ingresos_detalle || [],
         backend_egresos_detalle:     bw.egresos_detalle  || [],
@@ -909,10 +910,10 @@ const CashflowProjections = () => {
       // El SI se mantiene como el acumulado rolling (SF de la semana anterior).
       // La próxima semana arranca desde ese SF anclado.
       let saldoFinal;
-      if (week.saldo_anclado && week.backend_saldo_inicial) {
-        // backend_saldo_inicial YA es el saldo ancla (el calculator lo pone como SI de la semana anclada)
-        // Lo usamos como SF de esta semana para que el próximo SI sea correcto.
-        saldoFinal = week.backend_saldo_inicial;
+      if (week.saldo_anclado && week.backend_saldo_final != null) {
+        // Usar el saldo_final verificado del backend (ancla + flujos de la semana).
+        // backend_saldo_final = saldo_inicial_ancla + flujo_neto, calculado por el servidor.
+        saldoFinal = week.backend_saldo_final;
       } else {
         saldoFinal = saldoInicial + flujoNeto;
       }
