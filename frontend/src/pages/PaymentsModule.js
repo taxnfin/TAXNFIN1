@@ -53,6 +53,8 @@ const PaymentsModule = () => {
   const [filterFechaDesde, setFilterFechaDesde] = useState('');
   const [filterFechaHasta, setFilterFechaHasta] = useState('');
   const [filterMoneda, setFilterMoneda] = useState('all');
+  const [filterConcepto, setFilterConcepto] = useState('');
+  const [filterBeneficiario, setFilterBeneficiario] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, payment: null });
   const [bankTransactions, setBankTransactions] = useState([]);
@@ -957,6 +959,16 @@ const PaymentsModule = () => {
     if (filterCategoria === 'sin_categoria') { if (p.category_id) return false; }
     else if (filterCategoria !== 'all') { if (p.category_id !== filterCategoria) return false; }
     if (filterMoneda !== 'all' && (p.moneda_original || p.moneda || 'MXN') !== filterMoneda) return false;
+    if (filterConcepto.trim()) {
+      const q = filterConcepto.trim().toLowerCase();
+      const conc = (p.concepto || p.descripcion || '').toLowerCase();
+      if (!conc.includes(q)) return false;
+    }
+    if (filterBeneficiario.trim()) {
+      const q = filterBeneficiario.trim().toLowerCase();
+      const benef = (p.beneficiario || p.contacto || p.nombre || '').toLowerCase();
+      if (!benef.includes(q)) return false;
+    }
     return true;
   });
   const totalPages = Math.max(1, Math.ceil(tableFiltered.length / 50));
@@ -1897,6 +1909,20 @@ const PaymentsModule = () => {
                 className="w-40"
               />
             </div>
+            <input
+              type="text"
+              placeholder="Buscar concepto..."
+              value={filterConcepto}
+              onChange={(e) => { setFilterConcepto(e.target.value); setCurrentPage(1); }}
+              className="border rounded px-3 py-1.5 text-sm w-44 focus:outline-none focus:ring-1 focus:ring-blue-400"
+            />
+            <input
+              type="text"
+              placeholder="Buscar beneficiario..."
+              value={filterBeneficiario}
+              onChange={(e) => { setFilterBeneficiario(e.target.value); setCurrentPage(1); }}
+              className="border rounded px-3 py-1.5 text-sm w-44 focus:outline-none focus:ring-1 focus:ring-blue-400"
+            />
             <Button variant="outline" onClick={() => {
               setFilterTipo('all');
               setFilterEstatus('all');
@@ -1904,6 +1930,8 @@ const PaymentsModule = () => {
               setFilterMoneda('all');
               setFilterFechaDesde('');
               setFilterFechaHasta('');
+              setFilterConcepto('');
+              setFilterBeneficiario('');
               setCurrentPage(1);
             }}>
               Limpiar Filtros
