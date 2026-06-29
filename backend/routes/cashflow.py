@@ -3,9 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, 
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 import uuid
 import io
+import re
 import openpyxl
 from openpyxl import Workbook
 
@@ -1362,4 +1363,140 @@ async def get_cashflow_quarterly(
         'generated_at':   datetime.now(timezone.utc).isoformat(),
     }
 
+
+# ══════════════════════════════════════════════════════════════════════
+# FIX FISCAL START — inserta semana faltante y renumera
+# ══════════════════════════════════════════════════════════════════════
+
+@router.post("/cashflow/fix-fiscal-start")
+async def fix_fiscal_start(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    dry_run: bool = Query(True, description="Si True, solo reporta sin modificar"),
+):
+    """
+    Verifica que la primera semana en db.cashflow_weeks cubra el inicio del año
+    fiscal (lunes anterior al 1 de enero). Si falta esa semana, la inserta y
+    renumera todas las semanas existentes (+1). También actualiza las etiquetas
+    de semana en db.cxc_proyecciones para mantener coherencia.
+
+    dry_run=True (default): solo muestra qué haría sin modificar nada.
+    dry_run=False: aplica los cambios en MongoDB.
+    """
+    if current_user.get('role') not in ('admin', 'cfo'):
+        raise HTTPException(status_code=403, detail="Se requiere rol admin o cfo")
+
+    company_id = await get_active_company_id(request, current_user)
+
+    # Leer primera semana actual
+    first_week = await db.cashflow_weeks.find_one(
+        {'company_id': company_id},
+        {'_id': 0, 'fecha_inicio': 1, 'fecha_fin': 1, 'numero_semana': 1,
+         'label': 1, 'saldo_inicial': 1},
+        sort=[('numero_semana', 1)],
+    )
+    if not first_week:
+        raise HTTPException(status_code=404, detail="No hay semanas de cashflow para esta empresa")
+
+    fi_str = (first_week.get('fecha_inicio') or '')[:10]
+    try:
+        first_date = date.fromisoformat(fi_str)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"fecha_inicio inválida en la primera semana: {fi_str!r}")
+
+    # Calcular inicio fiscal: lunes anterior (o igual) al 1 de enero
+    fiscal_year = first_date.year + (1 if first_date.month == 12 else 0)
+    jan1 = date(fiscal_year, 1, 1)
+    fiscal_start = jan1 - timedelta(days=jan1.weekday())
+    fiscal_end   = fiscal_start + timedelta(days=6)
+
+    if first_date <= fiscal_start:
+        return {
+            'status': 'ok',
+            'message': f'La primera semana ya cubre el inicio fiscal ({fiscal_start}) — no se requiere cambio.',
+            'primera_semana': fi_str,
+            'inicio_fiscal':  fiscal_start.isoformat(),
+        }
+
+    # Contar semanas a renumerar
+    total_weeks = await db.cashflow_weeks.count_documents({'company_id': company_id})
+
+    # Contar proyecciones CxC/CxP afectadas (las que tienen etiqueta S\d+)
+    all_proyecciones = await db.cxc_proyecciones.find(
+        {'company_id': company_id, 'semana': {'$regex': r'^S\d+$'}},
+        {'_id': 0, 'id': 1, 'semana': 1},
+    ).to_list(5000)
+
+    summary = {
+        'dry_run':          dry_run,
+        'primera_semana_actual': fi_str,
+        'nueva_semana_s1':  fiscal_start.isoformat(),
+        'nueva_semana_s1_fin': fiscal_end.isoformat(),
+        'semanas_renumeradas': total_weeks,
+        'proyecciones_actualizadas': len(all_proyecciones),
+        'saldo_inicial_nueva_s1': float(first_week.get('saldo_inicial', 0) or 0),
+    }
+
+    if dry_run:
+        summary['mensaje'] = (
+            f"Se insertaría S1={fiscal_start} → {fiscal_end} y se renumerarían "
+            f"{total_weeks} semanas (+1). {len(all_proyecciones)} proyecciones CxC/CxP actualizadas."
+        )
+        return summary
+
+    # ── Aplicar cambios ──────────────────────────────────────────────
+
+    # 1. Renumerar cxc_proyecciones en orden DESCENDENTE para evitar colisiones
+    proy_sorted = sorted(
+        all_proyecciones,
+        key=lambda p: int(re.search(r'\d+', p['semana']).group()),
+        reverse=True,
+    )
+    for p in proy_sorted:
+        old_label = p['semana']
+        num = int(re.search(r'\d+', old_label).group())
+        new_label = f'S{num + 1}'
+        await db.cxc_proyecciones.update_many(
+            {'company_id': company_id, 'semana': old_label},
+            {'$set': {'semana': new_label}},
+        )
+
+    # 2. Renumerar cashflow_weeks en orden DESCENDENTE para evitar colisiones
+    weeks_all = await db.cashflow_weeks.find(
+        {'company_id': company_id}, {'_id': 0, 'id': 1, 'numero_semana': 1}
+    ).sort('numero_semana', -1).to_list(200)
+
+    for w in weeks_all:
+        old_num = w['numero_semana']
+        new_num = old_num + 1
+        await db.cashflow_weeks.update_one(
+            {'company_id': company_id, 'id': w['id']},
+            {'$set': {'numero_semana': new_num, 'label': f'S{new_num}'}},
+        )
+
+    # 3. Insertar nueva semana S1
+    new_s1 = {
+        'id':             str(uuid.uuid4()),
+        'company_id':     company_id,
+        'numero_semana':  1,
+        'label':          'S1',
+        'fecha_inicio':   fiscal_start.isoformat(),
+        'fecha_fin':      fiscal_end.isoformat(),
+        'saldo_inicial':  float(first_week.get('saldo_inicial', 0) or 0),
+        'ingresos':       0.0,
+        'egresos':        0.0,
+        'saldo_final':    float(first_week.get('saldo_inicial', 0) or 0),
+        'notas':          '',
+        'created_at':     datetime.now(timezone.utc),
+        'updated_at':     datetime.now(timezone.utc),
+    }
+    await db.cashflow_weeks.insert_one(new_s1)
+
+    summary['status'] = 'applied'
+    summary['mensaje'] = (
+        f"S1={fiscal_start} → {fiscal_end} insertada. "
+        f"{total_weeks} semanas renumeradas. "
+        f"{len(all_proyecciones)} proyecciones CxC/CxP actualizadas."
+    )
+    return summary
 
