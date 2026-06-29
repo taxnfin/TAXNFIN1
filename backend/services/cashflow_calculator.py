@@ -359,6 +359,8 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
                     egresos.append(item)
 
         for bt in processed_bank_txns:
+            if not bt['fecha']:   # descartar movimientos sin fecha
+                continue
             if fi <= bt['fecha'] <= ff:
                 item = {
                     'id': bt['id'],
