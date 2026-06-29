@@ -330,39 +330,61 @@ async def deduplicate_bank_transactions(
     current_user: Dict = Depends(get_current_user),
     dry_run: bool = Query(True, description="Si True, solo reporta sin eliminar"),
 ):
-    """Elimina duplicados en bank_transactions. Solo admin/cfo."""
+    """
+    Elimina duplicados en bank_transactions usando alegra_id como clave primaria.
+    Un duplicado es cuando dos registros tienen el mismo alegra_id o alegra_payment_id
+    apuntando al mismo pago. El registro conciliado siempre gana sobre el generico.
+    Fallback: dedup por (fecha, monto, tipo_norm) si no hay alegra_id.
+    Aplica solo a la company activa. Solo admin/cfo.
+    """
     from collections import defaultdict
 
     company_id = await get_active_company_id(request, current_user)
     GENERIC_CATS = {'cobro_alegra', 'banco_alegra', 'pago_alegra', '', None}
 
     txns = await db.bank_transactions.find(
-        {'company_id': company_id},
-        {'_id': 0, 'id': 1, 'fecha': 1, 'monto': 1, 'tipo': 1,
-         'contacto': 1, 'category_name': 1}
+        {'company_id': company_id, 'source': 'alegra', 'es_real': True},
+        {'_id': 0, 'id': 1, 'fecha': 1, 'fecha_movimiento': 1, 'monto': 1,
+         'tipo': 1, 'descripcion': 1, 'contacto': 1, 'category_name': 1,
+         'alegra_id': 1, 'alegra_payment_id': 1, 'conciliado': 1}
     ).to_list(50000)
 
     groups = defaultdict(list)
     for t in txns:
-        fecha    = str(t.get('fecha', ''))[:10]
-        monto    = round(float(t.get('monto', 0) or 0), 2)
-        tipo     = t.get('tipo', '') or ''
-        contacto = t.get('contacto', '') or ''
-        groups[(fecha, monto, tipo, contacto)].append(t)
+        aid = str(t.get('alegra_id') or t.get('alegra_payment_id') or '').strip()
+        if aid and aid not in ('', 'None'):
+            groups[f"alegra:{aid}"].append(t)
+        else:
+            fecha = str(t.get('fecha_movimiento') or t.get('fecha') or '')[:10]
+            monto = round(float(t.get('monto', 0) or 0), 2)
+            tipo_raw = (t.get('tipo') or '').lower()
+            tipo_n = 'IN' if tipo_raw in ('deposito', 'ingreso', 'credito') else 'OUT'
+            groups[f"fallback:{fecha}|{monto}|{tipo_n}"].append(t)
+
+    def score(t):
+        es_conc = 2 if t.get('conciliado') else 0
+        desc = t.get('descripcion') or ''
+        cat  = (t.get('category_name') or '').lower().strip()
+        es_generic = 1 if (desc.startswith('Pago Alegra #') or cat in GENERIC_CATS) else 0
+        return es_conc - es_generic  # mayor = mejor
 
     ids_to_delete = []
+    preview = []
     for key, group in groups.items():
         if len(group) <= 1:
             continue
-        # Ordenar: categoría específica primero, genérica al final
-        def get_score(t):
-            cat = (t.get('category_name') or '').lower().strip()
-            return 0 if cat in GENERIC_CATS else 1
-        sorted_group = sorted(group, key=get_score, reverse=True)
+        sorted_group = sorted(group, key=score, reverse=True)
         keep = sorted_group[0]
         for t in sorted_group[1:]:
             if t.get('id') and t['id'] != keep['id']:
                 ids_to_delete.append(t['id'])
+                preview.append({
+                    'eliminado_id': t['id'],
+                    'ganador_id': keep['id'],
+                    'monto': t.get('monto'),
+                    'descripcion': t.get('descripcion') or t.get('contacto'),
+                    'clave': key,
+                })
 
     deleted = 0
     if not dry_run and ids_to_delete:
@@ -374,9 +396,10 @@ async def deduplicate_bank_transactions(
     return {
         'dry_run': dry_run,
         'total_transacciones': len(txns),
-        'grupos_duplicados': sum(1 for g in groups.values() if len(g) > 1),
+        'grupos_con_duplicados': sum(1 for g in groups.values() if len(g) > 1),
         'ids_a_eliminar': len(ids_to_delete),
         'eliminados': deleted,
+        'preview': preview if dry_run else [],
         'mensaje': 'Ejecuta con ?dry_run=false para eliminar' if dry_run else f'{deleted} duplicados eliminados',
     }
 

@@ -253,7 +253,8 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         'es_real': True,
     }, {'_id': 0, 'tipo': 1, 'monto': 1, 'fecha': 1, 'fecha_movimiento': 1,
         'fecha_valor': 1, 'descripcion': 1, 'contacto': 1, 'cuenta_bancaria': 1,
-        'id': 1, 'category_name': 1, 'alegra_id': 1,
+        'cuenta_banco': 1, 'moneda': 1, 'moneda_original': 1, 'monto_original': 1,
+        'conciliado': 1, 'id': 1, 'category_name': 1, 'alegra_id': 1,
         'alegra_payment_id': 1}).to_list(5000)
 
     # Categorías que son traspasos internos — no representan flujo real de caja
@@ -276,14 +277,17 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         if cat_name in TRASPASO_CATS or any(kw in descripcion for kw in TRASPASO_KW):
             continue
         # Excluir retiros/egresos USD con descripción genérica de Alegra — son
-        # conversiones de divisa (USD→MXN) sin nombre real de contraparte,
-        # que Alegra sincroniza sin el texto "operacion cambios" en la descripción.
+        # Excluir CUALQUIER retiro/egreso de cuenta USD — esos pagos
+        # salen de la cuenta USD, no de la MXN. El impacto en MXN
+        # queda capturado por 'DEPOSITO POR OPERACION CAMBIOS' (ingreso MXN)
+        # o por el bloque compraUSD/ventaUSD. Incluir ambos duplicaria el egreso.
+        # Regla generica: aplica a TODOS los clientes con cuenta USD en Alegra.
         moneda_orig = (t.get('moneda_original') or t.get('moneda') or '').upper()
-        cuenta_bk   = (t.get('cuenta_bancaria') or '').upper()
+        cuenta_bk   = (t.get('cuenta_bancaria') or t.get('cuenta_banco') or '').upper()
         tipo_raw    = (t.get('tipo') or '').lower()
-        if (moneda_orig == 'USD' or 'USD' in cuenta_bk) \
-                and tipo_raw in ('retiro', 'egreso', 'debito') \
-                and descripcion.startswith('movimiento alegra'):
+        es_usd_account = (moneda_orig == 'USD' or 'USD' in cuenta_bk)
+        es_salida      = tipo_raw in ('retiro', 'egreso', 'debito')
+        if es_usd_account and es_salida:
             continue
         monto = float(t.get('monto', 0) or 0)
         if monto <= 0:
@@ -302,8 +306,10 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         # Normalizar tipo: deposito/credito/ingreso → IN, retiro/debito/egreso → OUT
         tipo_norm = 'IN' if tipo_raw in ('deposito', 'ingreso', 'credito', 'deposito_transferencia') else 'OUT'
         clave = str(alegra_id) if alegra_id else f"{fecha}|{round(monto,2)}|{tipo_norm}"
-        # Puntaje: categoría específica > genérica
-        score = 0 if cat_name in GENERIC_CATS else 1
+        # Puntaje: conciliado=True + categoria especifica gana sobre duplicados
+        # score 0-3: conciliado(2) + categoria_especifica(1)
+        es_conciliado = bool(t.get('conciliado'))
+        score = (2 if es_conciliado else 0) + (1 if cat_name not in GENERIC_CATS else 0)
         prev = seen.get(clave)
         if prev is None:
             seen[clave] = (score, t)
