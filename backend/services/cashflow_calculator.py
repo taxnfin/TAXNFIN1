@@ -168,7 +168,11 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
                         'fecha_fin': (_fiscal_start + timedelta(days=6)).isoformat(),
                         'numero_semana': 1,
                         'label': 'S1',
-                        'saldo_inicial': float(weeks_raw[0].get('saldo_inicial', 0) or 0),
+                        'saldo_inicial': (
+                        bank_anchors.get(sorted(bank_anchors.keys())[0])
+                        if bank_anchors
+                        else None
+                    ) or float(weeks_raw[0].get('saldo_inicial', 0) or 0),
                         'notas': '',
                     }] + weeks_raw
             except (ValueError, AttributeError):

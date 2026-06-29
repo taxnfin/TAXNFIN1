@@ -1365,6 +1365,39 @@ async def get_cashflow_quarterly(
 
 
 # ══════════════════════════════════════════════════════════════════════
+# PATCH saldo_inicial de una semana por fecha_inicio
+# ══════════════════════════════════════════════════════════════════════
+
+@router.patch("/cashflow/weeks/fix-saldo-inicial")
+async def fix_week_saldo_inicial(
+    request: Request,
+    current_user: Dict = Depends(get_current_user),
+    fecha_inicio: str = Query(..., description="Fecha de inicio de la semana YYYY-MM-DD"),
+    saldo_inicial: float = Query(..., description="Nuevo saldo_inicial a asignar"),
+):
+    """Actualiza el saldo_inicial de la semana con la fecha_inicio indicada. Admin/cfo only."""
+    if current_user.get('role') not in ('admin', 'cfo'):
+        raise HTTPException(status_code=403, detail="Se requiere rol admin o cfo")
+
+    company_id = await get_active_company_id(request, current_user)
+
+    result = await db.cashflow_weeks.update_one(
+        {'company_id': company_id, 'fecha_inicio': fecha_inicio},
+        {'$set': {'saldo_inicial': saldo_inicial, 'updated_at': datetime.now(timezone.utc)}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404,
+                            detail=f"No se encontró semana con fecha_inicio={fecha_inicio!r}")
+    return {
+        'status': 'updated',
+        'fecha_inicio': fecha_inicio,
+        'saldo_inicial': saldo_inicial,
+        'matched': result.matched_count,
+        'modified': result.modified_count,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════
 # FIX FISCAL START — inserta semana faltante y renumera
 # ══════════════════════════════════════════════════════════════════════
 
