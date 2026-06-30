@@ -257,10 +257,13 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         'conciliado': 1, 'id': 1, 'category_name': 1, 'alegra_id': 1,
         'alegra_payment_id': 1}).to_list(5000)
 
-    # Categorías que son traspasos internos — no representan flujo real de caja
-    TRASPASO_CATS = {'traspaso entre cuentas', 'transferencia entre cuentas', 'comisiones bancarias'}
+    # Categorías que son traspasos internos — se INCLUYEN en el flujo como
+    # ingreso Y egreso para que el saldo cuadre con el banco.
+    # comisiones bancarias también se incluyen (son egresos reales).
+    # Solo excluimos operaciones de cambio de divisa que ya se capturan en compraUSD/ventaUSD.
+    TRASPASO_CATS = {'transferencia entre cuentas'}  # solo excluir si causan doble conteo confirmado
     TRASPASO_KW   = ['operacion cambios', 'operación cambios', 'cambio de divisa',
-                     'traspaso', 'retiro por operacion', 'deposito por operacion']
+                     'retiro por operacion', 'deposito por operacion']
     # Categorías genéricas que indican movimiento sin categorizar — preferir las específicas
     GENERIC_CATS  = {'cobro_alegra', 'banco_alegra', 'pago_alegra', ''}
 
@@ -273,7 +276,8 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
     for t in bank_txns_alegra:
         cat_name = (t.get('category_name') or '').lower().strip()
         descripcion = (t.get('descripcion') or t.get('contacto') or '').lower()
-        # Excluir traspasos
+        # Excluir solo operaciones de cambio de divisa (ya capturadas en compraUSD/ventaUSD)
+        # Los traspasos entre cuentas y comisiones bancarias SÍ se incluyen en el flujo
         if cat_name in TRASPASO_CATS or any(kw in descripcion for kw in TRASPASO_KW):
             continue
         # Excluir retiros/egresos USD con descripción genérica de Alegra — son
