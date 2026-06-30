@@ -280,18 +280,16 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         # Los traspasos entre cuentas y comisiones bancarias SÍ se incluyen en el flujo
         if cat_name in TRASPASO_CATS or any(kw in descripcion for kw in TRASPASO_KW):
             continue
-        # Excluir retiros/egresos USD con descripción genérica de Alegra — son
-        # Excluir CUALQUIER retiro/egreso de cuenta USD — esos pagos
-        # salen de la cuenta USD, no de la MXN. El impacto en MXN
-        # queda capturado por 'DEPOSITO POR OPERACION CAMBIOS' (ingreso MXN)
-        # o por el bloque compraUSD/ventaUSD. Incluir ambos duplicaria el egreso.
-        # Regla generica: aplica a TODOS los clientes con cuenta USD en Alegra.
-        moneda_orig = (t.get('moneda_original') or t.get('moneda') or '').upper()
-        cuenta_bk   = (t.get('cuenta_bancaria') or t.get('cuenta_banco') or '').upper()
-        tipo_raw    = (t.get('tipo') or '').lower()
+        # Excluir retiros de cuenta USD SOLO si son cambio de divisa
+        # (ya capturados en compraUSD/ventaUSD para evitar doble conteo).
+        # Traspasos entre cuentas USD->MXN y otros egresos USD reales SI se incluyen.
+        moneda_orig    = (t.get('moneda_original') or t.get('moneda') or '').upper()
+        cuenta_bk      = (t.get('cuenta_bancaria') or t.get('cuenta_banco') or '').upper()
+        tipo_raw       = (t.get('tipo') or '').lower()
         es_usd_account = (moneda_orig == 'USD' or 'USD' in cuenta_bk)
         es_salida      = tipo_raw in ('retiro', 'egreso', 'debito')
-        if es_usd_account and es_salida:
+        es_cambio_div  = cat_name in {'venta de usd', 'compra de usd', 'operacion cambios'}
+        if es_usd_account and es_salida and es_cambio_div:
             continue
         monto = float(t.get('monto', 0) or 0)
         if monto <= 0:
@@ -323,12 +321,23 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
 
     processed_bank_txns = []
     for clave, (score, t) in seen.items():
-        cat_name = (t.get('category_name') or '').lower().strip()
+        cat_name  = (t.get('category_name') or '').lower().strip()
         tipo_raw  = str(t.get('tipo', '') or '').lower()
-        tipo = 'ingreso' if tipo_raw in ('deposito', 'ingreso', 'credito') else 'egreso'
-        nombre = t.get('contacto') or t.get('descripcion') or 'Movimiento bancario'
-        fecha  = _parse_date(t.get('fecha') or t.get('fecha_movimiento'))
-        monto  = float(t.get('monto', 0) or 0)
+        tipo      = 'ingreso' if tipo_raw in ('deposito', 'ingreso', 'credito') else 'egreso'
+        nombre    = t.get('contacto') or t.get('descripcion') or 'Movimiento bancario'
+        fecha     = _parse_date(t.get('fecha') or t.get('fecha_movimiento'))
+        monto_raw = float(t.get('monto', 0) or 0)
+        # Convertir a MXN si el movimiento es en USD
+        moneda_t  = (t.get('moneda_original') or t.get('moneda') or 'MXN').upper()
+        if moneda_t == 'USD' and monto_raw > 0 and fecha:
+            try:
+                from datetime import datetime as _dt
+                tc = await get_fx_rate_by_date('USD', _dt.fromisoformat(fecha))
+            except Exception:
+                tc = 17.5
+            monto = monto_raw * tc
+        else:
+            monto = monto_raw
         processed_bank_txns.append({
             'fecha': fecha,
             'monto': monto,
