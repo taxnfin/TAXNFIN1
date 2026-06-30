@@ -137,7 +137,7 @@ const PaymentsModule = () => {
     loadBankTransactions();
     loadBankAccounts();
     loadFxRates();
-  }, [filterTipo, filterEstatus, filterEsReal, filterFechaDesde, filterFechaHasta]);
+  }, [filterTipo, filterEstatus, filterEsReal, filterFechaDesde, filterFechaHasta, filterConcepto, filterBeneficiario]);
 
   const loadFxRates = async () => {
     try {
@@ -1913,14 +1913,14 @@ const PaymentsModule = () => {
               type="text"
               placeholder="Buscar concepto..."
               value={filterConcepto}
-              onChange={(e) => { setFilterConcepto(e.target.value); setCurrentPage(1); }}
+              onChange={(e) => { setFilterConcepto(e.target.value); if (e.target.value) { setFilterFechaDesde(''); setFilterFechaHasta(''); } setCurrentPage(1); }}
               className="border rounded px-3 py-1.5 text-sm w-44 focus:outline-none focus:ring-1 focus:ring-blue-400"
             />
             <input
               type="text"
               placeholder="Buscar beneficiario..."
               value={filterBeneficiario}
-              onChange={(e) => { setFilterBeneficiario(e.target.value); setCurrentPage(1); }}
+              onChange={(e) => { setFilterBeneficiario(e.target.value); if (e.target.value) { setFilterFechaDesde(''); setFilterFechaHasta(''); } setCurrentPage(1); }}
               className="border rounded px-3 py-1.5 text-sm w-44 focus:outline-none focus:ring-1 focus:ring-blue-400"
             />
             <Button variant="outline" onClick={() => {
