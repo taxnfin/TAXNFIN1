@@ -257,11 +257,20 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         'conciliado': 1, 'id': 1, 'category_name': 1, 'alegra_id': 1,
         'alegra_payment_id': 1}).to_list(5000)
 
-    # Categorías que son traspasos internos — se INCLUYEN en el flujo como
-    # ingreso Y egreso para que el saldo cuadre con el banco.
-    # comisiones bancarias también se incluyen (son egresos reales).
-    # Solo excluimos operaciones de cambio de divisa que ya se capturan en compraUSD/ventaUSD.
-    TRASPASO_CATS = {'transferencia entre cuentas'}  # solo excluir si causan doble conteo confirmado
+    # ── Reglas de exclusión de bank_transactions ─────────────────
+    # REGLA 1: Excluir por categoría — solo las que causan doble conteo confirmado
+    # - 'traspaso entre cuentas': el retiro USD ya se ve como 'Deposito por operacion
+    #   cambios' en la cuenta MXN. Incluir ambos duplica el monto.
+    # - 'transferencia entre cuentas': mismo caso.
+    # REGLA 2: Excluir por keyword en descripcion — operaciones de cambio de divisa
+    # - 'operacion cambios', 'cambio de divisa': el impacto MXN ya viene del banco MXN.
+    # - 'retiro por operacion', 'deposito por operacion': misma razon.
+    # REGLA 3: Excluir CUALQUIER retiro/egreso de cuenta USD
+    # - Los pagos en USD salen de la cuenta USD. El impacto MXN queda capturado
+    #   por el bloque compraUSD/ventaUSD del frontend O por 'Deposito por operacion
+    #   cambios' en la cuenta MXN. Incluirlos aqui duplicaria el egreso.
+    # Comisiones bancarias SI se incluyen — son egresos reales en cuenta MXN.
+    TRASPASO_CATS = {'traspaso entre cuentas', 'transferencia entre cuentas'}
     TRASPASO_KW   = ['operacion cambios', 'operación cambios', 'cambio de divisa',
                      'retiro por operacion', 'deposito por operacion']
     # Categorías genéricas que indican movimiento sin categorizar — preferir las específicas
@@ -280,16 +289,15 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         # Los traspasos entre cuentas y comisiones bancarias SÍ se incluyen en el flujo
         if cat_name in TRASPASO_CATS or any(kw in descripcion for kw in TRASPASO_KW):
             continue
-        # Excluir retiros de cuenta USD SOLO si son cambio de divisa
-        # (ya capturados en compraUSD/ventaUSD para evitar doble conteo).
-        # Traspasos entre cuentas USD->MXN y otros egresos USD reales SI se incluyen.
+        # Excluir retiros de cuenta USD — su impacto MXN ya está capturado
+        # por 'Deposito por operacion cambios' en cuenta MXN o en compraUSD/ventaUSD.
+        # Incluirlos aquí duplicaría el egreso en MXN.
         moneda_orig    = (t.get('moneda_original') or t.get('moneda') or '').upper()
         cuenta_bk      = (t.get('cuenta_bancaria') or t.get('cuenta_banco') or '').upper()
         tipo_raw       = (t.get('tipo') or '').lower()
         es_usd_account = (moneda_orig == 'USD' or 'USD' in cuenta_bk)
         es_salida      = tipo_raw in ('retiro', 'egreso', 'debito')
-        es_cambio_div  = cat_name in {'venta de usd', 'compra de usd', 'operacion cambios'}
-        if es_usd_account and es_salida and es_cambio_div:
+        if es_usd_account and es_salida:
             continue
         monto = float(t.get('monto', 0) or 0)
         if monto <= 0:
@@ -326,18 +334,7 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         tipo      = 'ingreso' if tipo_raw in ('deposito', 'ingreso', 'credito') else 'egreso'
         nombre    = t.get('contacto') or t.get('descripcion') or 'Movimiento bancario'
         fecha     = _parse_date(t.get('fecha') or t.get('fecha_movimiento'))
-        monto_raw = float(t.get('monto', 0) or 0)
-        # Convertir a MXN si el movimiento es en USD
-        moneda_t  = (t.get('moneda_original') or t.get('moneda') or 'MXN').upper()
-        if moneda_t == 'USD' and monto_raw > 0 and fecha:
-            try:
-                from datetime import datetime as _dt
-                tc = await get_fx_rate_by_date('USD', _dt.fromisoformat(fecha))
-            except Exception:
-                tc = 17.5
-            monto = monto_raw * tc
-        else:
-            monto = monto_raw
+        monto     = float(t.get('monto', 0) or 0)
         processed_bank_txns.append({
             'fecha': fecha,
             'monto': monto,
