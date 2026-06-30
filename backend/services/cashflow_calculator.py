@@ -130,6 +130,19 @@ def _get_anchor_for_week(
     return best_val
 
 
+def _get_anchor_as_saldo_final(
+    anchors: Dict[str, float],
+    fi: str,
+    ff: str,
+) -> Optional[float]:
+    """
+    Busca una ancla cuya fecha sea el ultimo dia de la semana [fi, ff]
+    o dentro de ella. Si existe, se usa como SALDO FINAL verificado
+    de esa semana (no como saldo inicial).
+    """
+    return _get_anchor_for_week(anchors, fi, ff)
+
+
 async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=None) -> List[Dict]:
     if db is None:
         db = _db_default
@@ -480,22 +493,28 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         top_egr = sorted(egresos, key=lambda x: x['monto'], reverse=True)[:5]
 
         # ── Saldo rolling con anclas bancarias ─────────────────────
-        # Prioridad: 1) ancla bancaria verificada dentro de la semana
-        #            2) saldo acumulado del periodo anterior
-        #            3) saldo_inicial de DB (solo semana S1 sin ancla)
-        anchor = _get_anchor_for_week(bank_anchors, fi, ff)
-        if anchor is not None:
-            # Hay saldo real bancario para esta semana → anclar
-            saldo_ini = anchor
-            logger.info(f"[cashflow-anchor] S{num} ({fi}→{ff}): anclado a ${anchor:,.2f} MXN")
+        # La ancla representa el SALDO FINAL verificado de la semana
+        # (último día de la semana según el estado de cuenta).
+        # Usamos ese valor como saldo_final directo, y lo pasamos
+        # como saldo_ini de la semana siguiente. Esto garantiza que
+        # el rolling siempre cuadre con el banco real.
+        anchor_sf = _get_anchor_as_saldo_final(bank_anchors, fi, ff)
+        if anchor_sf is not None:
+            # Semana anclada: SI viene del acumulado anterior (o del anchor previo)
+            saldo_ini = saldo_acumulado if saldo_acumulado is not None else 0.0
+            # SF = saldo real del banco (override del cálculo)
+            saldo_final_real = anchor_sf
+            saldo_acumulado = anchor_sf
+            logger.info(f"[cashflow-anchor] S{num} ({fi}->{ff}): SF anclado a ${anchor_sf:,.2f} MXN")
         elif saldo_acumulado is None:
-            # Primera semana sin ancla → usar valor de DB (o 0)
+            # Primera semana sin ancla previa
             saldo_ini = float(week.get('saldo_inicial', 0) or 0)
+            saldo_final_real = saldo_ini + (total_ing - total_egr)
+            saldo_acumulado = saldo_final_real
         else:
-            # Rolling normal
             saldo_ini = saldo_acumulado
-
-        saldo_acumulado = saldo_ini + (total_ing - total_egr)
+            saldo_final_real = saldo_ini + (total_ing - total_egr)
+            saldo_acumulado = saldo_final_real
 
         result.append({
             'id': week.get('id', ''),
@@ -508,9 +527,9 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             'week_start': fi,
             'week_end': ff,
             'es_real': es_real,
-            'saldo_anclado': anchor is not None,  # True = saldo verificado con banco
+            'saldo_anclado': anchor_sf is not None,  # True = SF verificado con banco
             'saldo_inicial': saldo_ini,
-            'saldo_final': saldo_acumulado,
+            'saldo_final': saldo_final_real,
             'total_ingresos': total_ing,
             'total_egresos': total_egr,
             'flujo_neto': total_ing - total_egr,
