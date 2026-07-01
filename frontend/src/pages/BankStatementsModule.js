@@ -370,6 +370,12 @@ const BankStatementsModule = () => {
   const [importingPdf, setImportingPdf] = useState(false);
   const [pdfPreview, setPdfPreview] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+
+  // ── AMEX Import state ─────────────────────────────────────────
+  const [amexDialogOpen, setAmexDialogOpen] = useState(false);
+  const [amexFile, setAmexFile] = useState(null);
+  const [importingAmex, setImportingAmex] = useState(false);
+  const [amexResult, setAmexResult] = useState(null);
   const [transferFromAccount, setTransferFromAccount] = useState('');
   const [transferToAccount, setTransferToAccount] = useState('');
   const [transferring, setTransferring] = useState(false);
@@ -1078,6 +1084,45 @@ const BankStatementsModule = () => {
     }
   };
 
+  // ── Importar CSV de AMEX ──────────────────────────────────────
+  const handleAmexFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      toast.error('Solo se aceptan archivos CSV descargados de AMEX');
+      e.target.value = '';
+      return;
+    }
+    setAmexFile(file);
+    setAmexResult(null);
+    setAmexDialogOpen(true);
+    e.target.value = '';
+  };
+
+  const handleAmexImport = async () => {
+    if (!amexFile) return;
+    setImportingAmex(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', amexFile);
+      formData.append('cuenta_nombre', 'AMEX');
+      const res = await api.post('/amex/import-csv', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setAmexResult(res.data);
+      if (res.data.insertados > 0) {
+        toast.success(`✅ AMEX: ${res.data.insertados} movimientos importados`);
+        loadData();
+      } else {
+        toast.info('Sin movimientos nuevos — todos ya estaban importados');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al importar AMEX');
+    } finally {
+      setImportingAmex(false);
+    }
+  };
+
   const downloadTemplate = async () => {
     try {
       const response = await api.get('/bank-transactions/template', {
@@ -1663,6 +1708,21 @@ const BankStatementsModule = () => {
               <span>
                 <FileText size={16} />
                 Importar PDF
+              </span>
+            </Button>
+          </label>
+
+          {/* Botón AMEX */}
+          <label className="cursor-pointer">
+            <input type="file" accept=".csv" onChange={handleAmexFileSelect} className="hidden" />
+            <Button variant="outline" className="gap-1 border-[#007BC1] text-[#007BC1] hover:bg-blue-50 font-semibold" asChild>
+              <span className="flex items-center gap-1.5">
+                {/* Logo AMEX simplificado */}
+                <svg width="22" height="14" viewBox="0 0 22 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="22" height="14" rx="2" fill="#007BC1"/>
+                  <text x="2" y="10" fontFamily="Arial" fontWeight="bold" fontSize="7" fill="white">AMEX</text>
+                </svg>
+                Importar AMEX
               </span>
             </Button>
           </label>
@@ -3730,8 +3790,73 @@ const BankStatementsModule = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ===== MODAL IMPORTAR AMEX ===== */}
+      <Dialog open={amexDialogOpen} onOpenChange={(o) => { if (!o) { setAmexDialogOpen(false); setAmexResult(null); setAmexFile(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <svg width="36" height="22" viewBox="0 0 36 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="36" height="22" rx="3" fill="#007BC1"/>
+                <text x="3" y="15" fontFamily="Arial" fontWeight="bold" fontSize="11" fill="white">AMEX</text>
+              </svg>
+              Importar Estado de Cuenta AMEX
+            </DialogTitle>
+            <DialogDescription>
+              Sube el CSV de actividad descargado de americanexpress.com.mx
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800 space-y-1">
+              <p className="font-medium">¿Cómo descargar el CSV de AMEX?</p>
+              <ol className="list-decimal list-inside space-y-0.5 text-xs text-blue-700">
+                <li>Entra a <strong>americanexpress.com.mx</strong></li>
+                <li>Ve a <strong>Cuenta → Actividad de la cuenta</strong></li>
+                <li>Selecciona el rango de fechas</li>
+                <li>Haz clic en <strong>Descargar → CSV</strong></li>
+              </ol>
+            </div>
+            {amexFile && (
+              <div className="flex items-center gap-2 bg-gray-50 rounded p-2 text-sm">
+                <FileText size={16} className="text-blue-600" />
+                <span className="font-medium truncate">{amexFile.name}</span>
+                <span className="text-gray-400 text-xs ml-auto">{(amexFile.size / 1024).toFixed(1)} KB</span>
+              </div>
+            )}
+            {amexResult && (
+              <div className={`rounded-lg p-3 text-sm space-y-1 ${amexResult.insertados > 0 ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}`}>
+                <p className="font-medium text-green-700">Importación completada</p>
+                <div className="grid grid-cols-2 gap-1 text-xs">
+                  <span className="text-gray-500">Movimientos nuevos:</span>
+                  <span className="font-bold text-green-600">{amexResult.insertados}</span>
+                  <span className="text-gray-500">Ya existían:</span>
+                  <span className="font-medium">{amexResult.omitidos_duplicados}</span>
+                  <span className="text-gray-500">Total procesados:</span>
+                  <span className="font-medium">{amexResult.total_procesados}</span>
+                </div>
+                {amexResult.errores?.length > 0 && (
+                  <div className="mt-2 text-xs text-red-600">
+                    {amexResult.errores.map((e, i) => <p key={i}>⚠ {e}</p>)}
+                  </div>
+                )}
+                <p className="text-xs text-gray-500 mt-2">
+                  Los cargos aparecen en el Cash Flow como egresos. Los pagos a AMEX se excluyen — ya están en BanBajío.
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setAmexDialogOpen(false); setAmexResult(null); setAmexFile(null); }}>
+              {amexResult ? 'Cerrar' : 'Cancelar'}
+            </Button>
+            {!amexResult && (
+              <Button onClick={handleAmexImport} disabled={!amexFile || importingAmex} className="bg-[#007BC1] hover:bg-[#006aab] text-white gap-2">
+                {importingAmex ? <><Loader2 size={14} className="animate-spin" /> Importando...</> : <><Upload size={14} /> Importar</>}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
-
-export default BankStatementsModule;
