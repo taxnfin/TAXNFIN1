@@ -115,6 +115,9 @@ const CashflowProjections = () => {
   // View mode toggle: 'categoria' | 'tercero'
   const [tableViewMode, setTableViewMode] = useState('categoria');
 
+  // Modal reclasificación de movimientos sin categoría
+  const [clasificarModal, setClasificarModal] = useState({ open: false, item: null, nuevaCategoria: '' });
+
   // Filters for "Por Proveedor/Cliente" view
   const [partyFilters, setPartyFilters] = useState({
     searchTerm: '',
@@ -230,6 +233,9 @@ const CashflowProjections = () => {
         backend_ingresos_detalle: bw.ingresos_detalle || [],
         backend_egresos_detalle:  bw.egresos_detalle  || [],
         saldo_anclado:            bw.saldo_anclado    ?? false,
+        traspasos_ingreso:        bw.traspasos_ingreso ?? 0,
+        traspasos_egreso:         bw.traspasos_egreso  ?? 0,
+        traspasos_detalle:        bw.traspasos_detalle ?? [],
         ingresos: {
           total:      bw.total_ingresos ?? (localWeek?.ingresos?.total ?? 0),
           byCategory: Object.keys(ingBC).length > 0 ? ingBC : (localWeek?.ingresos?.byCategory ?? {}),
@@ -244,6 +250,23 @@ const CashflowProjections = () => {
 
     console.log(`[applyBackendData] resultado: ${matched} semanas con datos locales / ${missed} solo-backend (total: ${backendWeeks.length})`);
     return result;
+  };
+
+  // ── Reclasificar movimiento sin categoría ────────────────────────────────
+  const handleCategorizar = async () => {
+    const { item, nuevaCategoria } = clasificarModal;
+    if (!item || !nuevaCategoria.trim()) return;
+    try {
+      await api.patch(`/bank-transactions/${item.id}/categorize`, {
+        category_name: nuevaCategoria.trim(),
+        alegra_id: item.alegra_id || '',
+      });
+      toast.success(`Reclasificado como "${nuevaCategoria.trim()}"`);
+      setClasificarModal({ open: false, item: null, nuevaCategoria: '' });
+      loadData(); // recargar para que el cashflow refleje la nueva categoría
+    } catch (err) {
+      toast.error('Error al reclasificar: ' + (err?.response?.data?.detail || err.message));
+    }
   };
 
   const loadData = async () => {
@@ -3338,6 +3361,136 @@ const CashflowProjections = () => {
                       </>
                     )}
 
+                    {/* SIN CLASIFICAR — movimientos con categoría genérica */}
+                    {(() => {
+                      // Recolectar items sin_clasificar de ingresos y egresos
+                      const sinClasIng = weeklyTotals.map(w =>
+                        (w.backend_ingresos_detalle || []).filter(i => i.sin_clasificar)
+                      );
+                      const sinClasEgr = weeklyTotals.map(w =>
+                        (w.backend_egresos_detalle || []).filter(i => i.sin_clasificar)
+                      );
+                      const totalSinClasIng = sinClasIng.reduce((s, arr) => s + arr.reduce((a, i) => a + i.monto, 0), 0);
+                      const totalSinClasEgr = sinClasEgr.reduce((s, arr) => s + arr.reduce((a, i) => a + i.monto, 0), 0);
+                      if (totalSinClasIng === 0 && totalSinClasEgr === 0) return null;
+                      return (
+                        <>
+                          <TableRow className="bg-amber-50 font-semibold border-t-2 border-amber-300">
+                            <TableCell className="sticky left-0 bg-amber-50">
+                              <div className="flex items-center gap-2 text-amber-700">
+                                <AlertTriangle size={14} />
+                                SIN CLASIFICAR
+                                <span className="text-xs font-normal text-amber-500">(haz clic para clasificar)</span>
+                              </div>
+                            </TableCell>
+                            {weeklyTotals.map((_, idx) => columnVisible[idx] ? (
+                              <TableCell key={idx} className="text-center text-amber-600 text-xs">
+                                {(sinClasIng[idx]?.length > 0 || sinClasEgr[idx]?.length > 0)
+                                  ? `${sinClasIng[idx]?.length + sinClasEgr[idx]?.length} mov.` : '-'}
+                              </TableCell>
+                            ) : null)}
+                            <TableCell className="text-center bg-amber-100 text-amber-700 text-xs">
+                              {totalSinClasIng + totalSinClasEgr > 0
+                                ? `${sinClasIng.flat().length + sinClasEgr.flat().length} mov.` : '-'}
+                            </TableCell>
+                          </TableRow>
+                          {/* Sublínea ingresos sin clasificar */}
+                          {totalSinClasIng > 0 && (
+                            <TableRow className="hover:bg-amber-50/50">
+                              <TableCell className="sticky left-0 bg-white pl-8 text-amber-600 text-xs">
+                                ↑ Cobros sin clasificar
+                              </TableCell>
+                              {weeklyTotals.map((_, idx) => {
+                                if (!columnVisible[idx]) return null;
+                                const items = sinClasIng[idx] || [];
+                                const tot = items.reduce((s, i) => s + i.monto, 0);
+                                return (
+                                  <TableCell key={idx} className="text-center text-xs">
+                                    {items.map((item, ii) => (
+                                      <div key={ii} className="flex items-center justify-center gap-1">
+                                        <span className="text-green-600">{formatCurrency(item.monto)}</span>
+                                        <button
+                                          className="text-amber-500 hover:text-amber-700 text-xs underline"
+                                          onClick={() => setClasificarModal({ open: true, item, nuevaCategoria: '' })}
+                                          title="Clasificar"
+                                        >✎</button>
+                                      </div>
+                                    ))}
+                                    {items.length === 0 && '-'}
+                                  </TableCell>
+                                );
+                              })}
+                              <TableCell className="text-center bg-amber-50 text-green-600 text-xs font-medium">
+                                {formatCurrency(totalSinClasIng)}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          {/* Sublínea egresos sin clasificar */}
+                          {totalSinClasEgr > 0 && (
+                            <TableRow className="hover:bg-amber-50/50">
+                              <TableCell className="sticky left-0 bg-white pl-8 text-amber-600 text-xs">
+                                ↓ Pagos sin clasificar
+                              </TableCell>
+                              {weeklyTotals.map((_, idx) => {
+                                if (!columnVisible[idx]) return null;
+                                const items = sinClasEgr[idx] || [];
+                                return (
+                                  <TableCell key={idx} className="text-center text-xs">
+                                    {items.map((item, ii) => (
+                                      <div key={ii} className="flex items-center justify-center gap-1">
+                                        <span className="text-red-600">{formatCurrency(item.monto)}</span>
+                                        <button
+                                          className="text-amber-500 hover:text-amber-700 text-xs underline"
+                                          onClick={() => setClasificarModal({ open: true, item, nuevaCategoria: '' })}
+                                          title="Clasificar"
+                                        >✎</button>
+                                      </div>
+                                    ))}
+                                    {items.length === 0 && '-'}
+                                  </TableCell>
+                                );
+                              })}
+                              <TableCell className="text-center bg-amber-50 text-red-600 text-xs font-medium">
+                                {formatCurrency(totalSinClasEgr)}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </>
+                      );
+                    })()}
+
+                    {/* TRASPASOS ENTRE CUENTAS — fila informativa, neta $0 */}
+                    {(() => {
+                      const grandTrasIng = weeklyTotals.reduce((s, w) => s + (w.traspasos_ingreso || 0), 0);
+                      const grandTrasEgr = weeklyTotals.reduce((s, w) => s + (w.traspasos_egreso || 0), 0);
+                      if (grandTrasIng === 0 && grandTrasEgr === 0) return null;
+                      return (
+                        <TableRow className="bg-purple-50/50 border-t border-purple-200">
+                          <TableCell className="sticky left-0 bg-purple-50/50">
+                            <div className="flex items-center gap-2 text-purple-600 text-sm">
+                              <span>↔</span> Traspasos entre cuentas
+                              <span className="text-xs font-normal text-purple-400">(informativo, no afecta saldo)</span>
+                            </div>
+                          </TableCell>
+                          {weeklyTotals.map((week, idx) => {
+                            if (!columnVisible[idx]) return null;
+                            const ing = week.traspasos_ingreso || 0;
+                            const egr = week.traspasos_egreso || 0;
+                            if (ing === 0 && egr === 0) return <TableCell key={idx} className="text-center text-xs">-</TableCell>;
+                            return (
+                              <TableCell key={idx} className="text-center text-xs text-purple-600">
+                                {ing > 0 && <div>↑{formatCurrency(ing)}</div>}
+                                {egr > 0 && <div>↓{formatCurrency(egr)}</div>}
+                              </TableCell>
+                            );
+                          })}
+                          <TableCell className="text-center bg-purple-50 text-purple-700 text-xs">
+                            ↑{formatCurrency(grandTrasIng)} / ↓{formatCurrency(grandTrasEgr)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })()}
+
                     {/* NET CASH FLOW */}
                     <TableRow className="bg-blue-100 font-bold border-t-2 border-blue-300">
                       <TableCell className="sticky left-0 bg-blue-100">
@@ -4140,6 +4293,78 @@ const CashflowProjections = () => {
                 Cerrar
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== MODAL RECLASIFICAR MOVIMIENTO SIN CATEGORÍA ===== */}
+      <Dialog open={clasificarModal.open} onOpenChange={(o) => !o && setClasificarModal({ open: false, item: null, nuevaCategoria: '' })}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="text-amber-500">⚠️</span> Clasificar Movimiento
+            </DialogTitle>
+          </DialogHeader>
+          {clasificarModal.item && (
+            <div className="space-y-4 py-2">
+              <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Concepto:</span>
+                  <span className="font-medium">{clasificarModal.item.concepto || clasificarModal.item.nombre || '—'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Monto:</span>
+                  <span className="font-bold">{formatCurrency(clasificarModal.item.monto)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Fecha:</span>
+                  <span>{clasificarModal.item.fecha || '—'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Categoría actual:</span>
+                  <span className="text-amber-600">{clasificarModal.item.categoria || 'Sin clasificar'}</span>
+                </div>
+              </div>
+              <div>
+                <Label className="text-sm font-medium mb-1 block">Nueva categoría</Label>
+                <Select
+                  value={clasificarModal.nuevaCategoria}
+                  onValueChange={(v) => setClasificarModal(prev => ({ ...prev, nuevaCategoria: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona una categoría..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* Categorías de ingresos */}
+                    <div className="px-2 py-1 text-xs text-green-600 font-bold">INGRESOS</div>
+                    {['Venta de Cintas','Venta de Stabulon','Venta Cadena de Frío','Ventas de productos','Devoluciones recibidas','Otros ingresos'].map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                    {/* Categorías de egresos */}
+                    <div className="px-2 py-1 text-xs text-red-600 font-bold mt-1">EGRESOS</div>
+                    {categories.map(cat => (
+                      <SelectItem key={cat.id || cat.nombre} value={cat.nombre}>{cat.nombre}</SelectItem>
+                    ))}
+                    {/* Opción para traspaso */}
+                    <div className="px-2 py-1 text-xs text-purple-600 font-bold mt-1">INTERNO</div>
+                    <SelectItem value="Traspaso entre cuentas">Traspaso entre cuentas</SelectItem>
+                    <SelectItem value="Comisiones bancarias">Comisiones bancarias</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClasificarModal({ open: false, item: null, nuevaCategoria: '' })}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleCategorizar}
+              disabled={!clasificarModal.nuevaCategoria}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Guardar clasificación
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

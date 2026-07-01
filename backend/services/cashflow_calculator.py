@@ -257,12 +257,18 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         'conciliado': 1, 'id': 1, 'category_name': 1, 'alegra_id': 1,
         'alegra_payment_id': 1}).to_list(5000)
 
-    # Categorías que son traspasos internos — no representan flujo real de caja
-    TRASPASO_CATS = {'traspaso entre cuentas', 'transferencia entre cuentas', 'comisiones bancarias'}
+    # Categorías que son traspasos internos — se excluyen del flujo operativo
+    # pero se acumulan por separado para mostrarlos como fila informativa.
+    # NOTA: 'comisiones bancarias' se INCLUYE ahora en el flujo (es un egreso real).
+    TRASPASO_CATS = {'traspaso entre cuentas', 'transferencia entre cuentas'}
     TRASPASO_KW   = ['operacion cambios', 'operación cambios', 'cambio de divisa',
                      'traspaso', 'retiro por operacion', 'deposito por operacion']
-    # Categorías genéricas que indican movimiento sin categorizar — preferir las específicas
+    # Categorías genéricas (sin clasificar) — se incluyen en el flujo y se marcan
+    # como 'sin_clasificar' para que el frontend las destaque y permita reclasificar.
     GENERIC_CATS  = {'cobro_alegra', 'banco_alegra', 'pago_alegra', ''}
+
+    # Acumulador de traspasos por fecha (para fila informativa en frontend)
+    traspaso_txns: list = []
 
     # ── Deduplicar bank_transactions por alegra_id ────────────────
     # El sync de Alegra puede generar dos registros para el mismo movimiento:
@@ -273,8 +279,20 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
     for t in bank_txns_alegra:
         cat_name = (t.get('category_name') or '').lower().strip()
         descripcion = (t.get('descripcion') or t.get('contacto') or '').lower()
-        # Excluir traspasos
-        if cat_name in TRASPASO_CATS or any(kw in descripcion for kw in TRASPASO_KW):
+        # Separar traspasos: no entran al flujo operativo pero se acumulan
+        # para la fila informativa de traspasos en la vista mensual/semanal.
+        es_traspaso = cat_name in TRASPASO_CATS or any(kw in descripcion for kw in TRASPASO_KW)
+        if es_traspaso:
+            t_fecha = _parse_date(t.get('fecha') or t.get('fecha_movimiento') or '')
+            t_monto = float(t.get('monto', 0) or 0)
+            if t_fecha and t_monto > 0:
+                traspaso_txns.append({
+                    'fecha': t_fecha,
+                    'monto': t_monto,
+                    'tipo': (t.get('tipo') or '').lower(),
+                    'descripcion': t.get('descripcion') or t.get('contacto') or '',
+                    'category_name': t.get('category_name') or 'traspaso entre cuentas',
+                })
             continue
         # Excluir retiros/egresos USD con descripción genérica de Alegra — son
         # Excluir CUALQUIER retiro/egreso de cuenta USD — esos pagos
@@ -325,6 +343,8 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         nombre = t.get('contacto') or t.get('descripcion') or 'Movimiento bancario'
         fecha  = _parse_date(t.get('fecha') or t.get('fecha_movimiento'))
         monto  = float(t.get('monto', 0) or 0)
+        # Marcar movimientos sin categoría real para que el frontend los destaque
+        sin_clasificar = cat_name in GENERIC_CATS
         processed_bank_txns.append({
             'fecha': fecha,
             'monto': monto,
@@ -332,7 +352,9 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             'nombre': nombre,
             'cuenta_bancaria': t.get('cuenta_bancaria', ''),
             'id': t.get('id', ''),
+            'alegra_id': t.get('alegra_id') or t.get('alegra_payment_id') or '',
             'category_name': t.get('category_name', ''),
+            'sin_clasificar': sin_clasificar,
             'es_real': True,
         })
 
@@ -418,19 +440,28 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             if not bt['fecha']:   # descartar movimientos sin fecha
                 continue
             if fi <= bt['fecha'] <= ff:
+                cat_raw = bt.get('category_name') or ''
+                cat_display = cat_raw if cat_raw else ('cobro_alegra' if bt.get('tipo') == 'ingreso' else 'banco_alegra')
                 item = {
                     'id': bt['id'],
+                    'alegra_id': bt.get('alegra_id', ''),
                     'concepto': bt.get('nombre') or bt.get('descripcion') or bt.get('cuenta_bancaria') or 'Transferencia bancaria',
                     'nombre': bt.get('nombre') or bt.get('descripcion') or bt.get('cuenta_bancaria') or 'Transferencia bancaria',
                     'monto': bt['monto'],
                     'fecha': bt['fecha'],
-                    'categoria': bt.get('category_name') or ('cobro_alegra' if bt.get('tipo') == 'ingreso' else 'banco_alegra'),
+                    'categoria': cat_display,
+                    'sin_clasificar': bt.get('sin_clasificar', False),
                     'es_real': True,
                 }
                 if bt['tipo'] == 'ingreso':
                     ingresos.append(item)
                 else:
                     egresos.append(item)
+
+        # Traspasos de esta semana (para fila informativa)
+        traspasos_semana = [t for t in traspaso_txns if fi <= t['fecha'] <= ff]
+        total_traspaso_ing = sum(t['monto'] for t in traspasos_semana if t['tipo'] in ('deposito', 'ingreso', 'credito'))
+        total_traspaso_egr = sum(t['monto'] for t in traspasos_semana if t['tipo'] not in ('deposito', 'ingreso', 'credito'))
 
         total_ing = sum(i['monto'] for i in ingresos)
         total_egr = sum(e['monto'] for e in egresos)
@@ -515,6 +546,9 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             'top_ingresos': top_ing,
             'top_egresos': top_egr,
             'notas': week.get('notas', ''),
+            'traspasos_ingreso': total_traspaso_ing,
+            'traspasos_egreso': total_traspaso_egr,
+            'traspasos_detalle': traspasos_semana,
         })
 
     # ── 5. Generar semanas futuras si faltan ──────────────────────

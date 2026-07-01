@@ -535,3 +535,50 @@ async def delete_all_bank_transactions(
         'message': f'Se eliminaron {result.deleted_count} movimientos bancarios',
         'deleted_count': result.deleted_count
     }
+
+
+@router.patch("/{transaction_id}/categorize")
+async def categorize_bank_transaction(
+    transaction_id: str,
+    data: dict,
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Reclasifica la categoría de un movimiento bancario sin categoría
+    (cobro_alegra / banco_alegra → categoría real).
+    Body: { "category_name": "Honorarios externos", "alegra_id": "...", "notas": "..." }
+    """
+    company_id = await get_active_company_id(request, current_user)
+
+    category_name = (data.get('category_name') or '').strip()
+    if not category_name:
+        raise HTTPException(status_code=400, detail="category_name es requerido")
+
+    # Buscar por id interno; si no, por alegra_id
+    txn = await db.bank_transactions.find_one(
+        {'id': transaction_id, 'company_id': company_id}, {'_id': 0, 'id': 1}
+    )
+    if not txn:
+        alegra_id = data.get('alegra_id', '')
+        if alegra_id:
+            txn = await db.bank_transactions.find_one(
+                {'company_id': company_id,
+                 '$or': [{'alegra_id': alegra_id}, {'alegra_payment_id': alegra_id}]},
+                {'_id': 0, 'id': 1}
+            )
+        if not txn:
+            raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+        transaction_id = txn['id']
+
+    update: dict = {'category_name': category_name}
+    if data.get('notas'):
+        update['notas'] = data['notas']
+
+    await db.bank_transactions.update_one(
+        {'id': transaction_id, 'company_id': company_id},
+        {'$set': update}
+    )
+    await audit_log(company_id, 'BankTransaction', transaction_id, 'CATEGORIZE', current_user['id'],
+                    {'category_name': category_name})
+    return {'status': 'success', 'message': f'Movimiento reclasificado a "{category_name}"'}
