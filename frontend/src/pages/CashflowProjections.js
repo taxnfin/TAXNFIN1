@@ -295,16 +295,13 @@ const CashflowProjections = () => {
       setReconciliations(reconRes.data || []);
       setBankAccounts(bankAccountsRes.data || []);
       
-      // Saldo inicial = SOLO cuentas MXN.
-      // El cashflow opera en flujos MXN; la cuenta USD no genera flujo directo
-      // (su impacto llega via 'Deposito por operacion cambios' en la cuenta MXN).
-      const porMoneda = bankSummaryRes.data?.por_moneda || {};
-      const saldoSoloMXN = porMoneda['MXN']?.saldo_mxn || porMoneda['MXN']?.saldo || 0;
-      setSaldoInicialBancos(saldoSoloMXN);
+      // Get initial bank balance
+      const totalBancosMXN = bankSummaryRes.data?.total_mxn || 0;
+      setSaldoInicialBancos(totalBancosMXN);
       console.log('[CashFlow base bancaria]', {
-        total_mxn: bankSummaryRes.data?.total_mxn,
-        solo_mxn: saldoSoloMXN,
-        por_moneda: porMoneda,
+        total_mxn: totalBancosMXN,
+        por_banco: bankSummaryRes.data?.por_banco,
+        por_moneda: bankSummaryRes.data?.por_moneda,
       });
       
       // Load FX rates - ensure all currencies have values
@@ -969,13 +966,14 @@ const CashflowProjections = () => {
       const flujoDivisas = ventaUSD - compraUSD;
       const flujoNeto    = flujoNetoOperativo + flujoDivisas;
 
-      // Ancla bancaria: cuando la semana está anclada, el backend_saldo_final
-      // ES el saldo real verificado del banco (del estado de cuenta).
-      // Se usa directamente como SF sin recalcular — el SI sigue del rolling.
+      // Ancla bancaria: cuando la semana está anclada, usar los saldos
+      // verificados del backend (tanto SI como SF) en lugar del rolling.
+      // Esto garantiza que el dashboard muestra exactamente lo que está en el banco.
       let saldoFinal;
-      if (week.saldo_anclado && week.backend_saldo_final != null) {
-        // SF = saldo real del banco (ancla verificada)
-        saldoFinal = week.backend_saldo_final;
+      if (week.saldo_anclado && week.backend_saldo_inicial != null) {
+        // Semana anclada: SI y SF vienen del backend
+        saldoInicial = week.backend_saldo_inicial;
+        saldoFinal   = week.backend_saldo_final ?? (saldoInicial + flujoNeto);
       } else {
         saldoFinal = saldoInicial + flujoNeto;
       }
@@ -999,9 +997,13 @@ const CashflowProjections = () => {
       saldoInicial = saldoFinal;
     });
 
-    // El SF de cada semana anclada ya viene directo del banco.
-    // El SI de la siguiente semana = SF de esta (rolling normal).
-    // No se necesita segundo pase de corrección.
+    // 2do pase: SF anterior a ancla = SI anclado para evitar saltos visuales
+    for (let i = 0; i < totals.length - 1; i++) {
+      const next = totals[i + 1];
+      if (next.saldo_anclado && next.backend_saldo_inicial != null) {
+        totals[i] = { ...totals[i], saldoFinal: next.saldoInicial };
+      }
+    }
 
     return totals;
   };

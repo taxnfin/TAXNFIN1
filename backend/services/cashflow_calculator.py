@@ -88,22 +88,23 @@ async def _build_bank_anchors(company_id: str, db) -> Dict[str, float]:
             }
 
     # ── Convertir a MXN y sumar por fecha ────────────────────────
-    # El cashflow opera en flujos MXN: ingresos y egresos son transacciones
-    # de la cuenta MXN. La cuenta USD no genera flujo directo — su impacto
-    # en pesos llega via 'Deposito por operacion cambios' en la cuenta MXN.
-    # Por tanto las anclas deben ser SOLO el saldo de cuentas MXN para que
-    # el SF del cashflow cuadre con el estado de cuenta MXN del banco.
-    # Si en el futuro hay multiples cuentas MXN se suman todas.
     anchors: Dict[str, float] = {}
     for fecha_str, accts in history_by_date.items():
         total_mxn = 0.0
-        tiene_mxn = False
         for acct_id, data in accts.items():
-            if data.get('moneda', 'MXN') == 'MXN':
-                total_mxn += data['saldo']
-                tiene_mxn = True
-        if tiene_mxn:
-            anchors[fecha_str] = total_mxn
+            saldo = data['saldo']
+            moneda = data['moneda']
+            if moneda != 'MXN' and saldo > 0:
+                try:
+                    from datetime import datetime as _dt
+                    fecha_dt = _dt.fromisoformat(fecha_str)
+                    tc = await get_fx_rate_by_date(company_id, moneda, fecha_dt)
+                except Exception:
+                    tc = 1.0
+                total_mxn += saldo * tc
+            else:
+                total_mxn += saldo
+        anchors[fecha_str] = total_mxn
 
     logger.info(f"[cashflow-anchors] {company_id}: {len(anchors)} anclas → {anchors}")
     return anchors
@@ -127,19 +128,6 @@ def _get_anchor_for_week(
                 best_date = fecha_str
                 best_val = saldo_mxn
     return best_val
-
-
-def _get_anchor_as_saldo_final(
-    anchors: Dict[str, float],
-    fi: str,
-    ff: str,
-) -> Optional[float]:
-    """
-    Busca una ancla cuya fecha sea el ultimo dia de la semana [fi, ff]
-    o dentro de ella. Si existe, se usa como SALDO FINAL verificado
-    de esa semana (no como saldo inicial).
-    """
-    return _get_anchor_for_week(anchors, fi, ff)
 
 
 async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=None) -> List[Dict]:
@@ -269,22 +257,10 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         'conciliado': 1, 'id': 1, 'category_name': 1, 'alegra_id': 1,
         'alegra_payment_id': 1}).to_list(5000)
 
-    # ── Reglas de exclusión de bank_transactions ─────────────────
-    # REGLA 1: Excluir por categoría — solo las que causan doble conteo confirmado
-    # - 'traspaso entre cuentas': el retiro USD ya se ve como 'Deposito por operacion
-    #   cambios' en la cuenta MXN. Incluir ambos duplica el monto.
-    # - 'transferencia entre cuentas': mismo caso.
-    # REGLA 2: Excluir por keyword en descripcion — operaciones de cambio de divisa
-    # - 'operacion cambios', 'cambio de divisa': el impacto MXN ya viene del banco MXN.
-    # - 'retiro por operacion', 'deposito por operacion': misma razon.
-    # REGLA 3: Excluir CUALQUIER retiro/egreso de cuenta USD
-    # - Los pagos en USD salen de la cuenta USD. El impacto MXN queda capturado
-    #   por el bloque compraUSD/ventaUSD del frontend O por 'Deposito por operacion
-    #   cambios' en la cuenta MXN. Incluirlos aqui duplicaria el egreso.
-    # Comisiones bancarias SI se incluyen — son egresos reales en cuenta MXN.
-    TRASPASO_CATS = {'traspaso entre cuentas', 'transferencia entre cuentas'}
+    # Categorías que son traspasos internos — no representan flujo real de caja
+    TRASPASO_CATS = {'traspaso entre cuentas', 'transferencia entre cuentas', 'comisiones bancarias'}
     TRASPASO_KW   = ['operacion cambios', 'operación cambios', 'cambio de divisa',
-                     'retiro por operacion', 'deposito por operacion']
+                     'traspaso', 'retiro por operacion', 'deposito por operacion']
     # Categorías genéricas que indican movimiento sin categorizar — preferir las específicas
     GENERIC_CATS  = {'cobro_alegra', 'banco_alegra', 'pago_alegra', ''}
 
@@ -297,16 +273,18 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
     for t in bank_txns_alegra:
         cat_name = (t.get('category_name') or '').lower().strip()
         descripcion = (t.get('descripcion') or t.get('contacto') or '').lower()
-        # Excluir solo operaciones de cambio de divisa (ya capturadas en compraUSD/ventaUSD)
-        # Los traspasos entre cuentas y comisiones bancarias SÍ se incluyen en el flujo
+        # Excluir traspasos
         if cat_name in TRASPASO_CATS or any(kw in descripcion for kw in TRASPASO_KW):
             continue
-        # Excluir retiros de cuenta USD — su impacto MXN ya está capturado
-        # por 'Deposito por operacion cambios' en cuenta MXN o en compraUSD/ventaUSD.
-        # Incluirlos aquí duplicaría el egreso en MXN.
-        moneda_orig    = (t.get('moneda_original') or t.get('moneda') or '').upper()
-        cuenta_bk      = (t.get('cuenta_bancaria') or t.get('cuenta_banco') or '').upper()
-        tipo_raw       = (t.get('tipo') or '').lower()
+        # Excluir retiros/egresos USD con descripción genérica de Alegra — son
+        # Excluir CUALQUIER retiro/egreso de cuenta USD — esos pagos
+        # salen de la cuenta USD, no de la MXN. El impacto en MXN
+        # queda capturado por 'DEPOSITO POR OPERACION CAMBIOS' (ingreso MXN)
+        # o por el bloque compraUSD/ventaUSD. Incluir ambos duplicaria el egreso.
+        # Regla generica: aplica a TODOS los clientes con cuenta USD en Alegra.
+        moneda_orig = (t.get('moneda_original') or t.get('moneda') or '').upper()
+        cuenta_bk   = (t.get('cuenta_bancaria') or t.get('cuenta_banco') or '').upper()
+        tipo_raw    = (t.get('tipo') or '').lower()
         es_usd_account = (moneda_orig == 'USD' or 'USD' in cuenta_bk)
         es_salida      = tipo_raw in ('retiro', 'egreso', 'debito')
         if es_usd_account and es_salida:
@@ -341,12 +319,12 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
 
     processed_bank_txns = []
     for clave, (score, t) in seen.items():
-        cat_name  = (t.get('category_name') or '').lower().strip()
+        cat_name = (t.get('category_name') or '').lower().strip()
         tipo_raw  = str(t.get('tipo', '') or '').lower()
-        tipo      = 'ingreso' if tipo_raw in ('deposito', 'ingreso', 'credito') else 'egreso'
-        nombre    = t.get('contacto') or t.get('descripcion') or 'Movimiento bancario'
-        fecha     = _parse_date(t.get('fecha') or t.get('fecha_movimiento'))
-        monto     = float(t.get('monto', 0) or 0)
+        tipo = 'ingreso' if tipo_raw in ('deposito', 'ingreso', 'credito') else 'egreso'
+        nombre = t.get('contacto') or t.get('descripcion') or 'Movimiento bancario'
+        fecha  = _parse_date(t.get('fecha') or t.get('fecha_movimiento'))
+        monto  = float(t.get('monto', 0) or 0)
         processed_bank_txns.append({
             'fecha': fecha,
             'monto': monto,
@@ -492,28 +470,22 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         top_egr = sorted(egresos, key=lambda x: x['monto'], reverse=True)[:5]
 
         # ── Saldo rolling con anclas bancarias ─────────────────────
-        # La ancla representa el SALDO FINAL verificado de la semana
-        # (último día de la semana según el estado de cuenta).
-        # Usamos ese valor como saldo_final directo, y lo pasamos
-        # como saldo_ini de la semana siguiente. Esto garantiza que
-        # el rolling siempre cuadre con el banco real.
-        anchor_sf = _get_anchor_as_saldo_final(bank_anchors, fi, ff)
-        if anchor_sf is not None:
-            # Semana anclada: SI viene del acumulado anterior (o del anchor previo)
-            saldo_ini = saldo_acumulado if saldo_acumulado is not None else 0.0
-            # SF = saldo real del banco (override del cálculo)
-            saldo_final_real = anchor_sf
-            saldo_acumulado = anchor_sf
-            logger.info(f"[cashflow-anchor] S{num} ({fi}->{ff}): SF anclado a ${anchor_sf:,.2f} MXN")
+        # Prioridad: 1) ancla bancaria verificada dentro de la semana
+        #            2) saldo acumulado del periodo anterior
+        #            3) saldo_inicial de DB (solo semana S1 sin ancla)
+        anchor = _get_anchor_for_week(bank_anchors, fi, ff)
+        if anchor is not None:
+            # Hay saldo real bancario para esta semana → anclar
+            saldo_ini = anchor
+            logger.info(f"[cashflow-anchor] S{num} ({fi}→{ff}): anclado a ${anchor:,.2f} MXN")
         elif saldo_acumulado is None:
-            # Primera semana sin ancla previa
+            # Primera semana sin ancla → usar valor de DB (o 0)
             saldo_ini = float(week.get('saldo_inicial', 0) or 0)
-            saldo_final_real = saldo_ini + (total_ing - total_egr)
-            saldo_acumulado = saldo_final_real
         else:
+            # Rolling normal
             saldo_ini = saldo_acumulado
-            saldo_final_real = saldo_ini + (total_ing - total_egr)
-            saldo_acumulado = saldo_final_real
+
+        saldo_acumulado = saldo_ini + (total_ing - total_egr)
 
         result.append({
             'id': week.get('id', ''),
@@ -526,9 +498,9 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
             'week_start': fi,
             'week_end': ff,
             'es_real': es_real,
-            'saldo_anclado': anchor_sf is not None,  # True = SF verificado con banco
+            'saldo_anclado': anchor is not None,  # True = saldo verificado con banco
             'saldo_inicial': saldo_ini,
-            'saldo_final': saldo_final_real,
+            'saldo_final': saldo_acumulado,
             'total_ingresos': total_ing,
             'total_egresos': total_egr,
             'flujo_neto': total_ing - total_egr,
