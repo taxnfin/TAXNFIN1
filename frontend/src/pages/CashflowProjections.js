@@ -1931,6 +1931,15 @@ const CashflowProjections = () => {
     }
   };
 
+  // ── Mapa de renombrado de categorías genéricas → legibles ───────────────
+  const CAT_DISPLAY_NAME = {
+    'cobro_alegra':  'Cobranza sin clasificar',
+    'banco_alegra':  'Pagos sin clasificar',
+    'pago_alegra':   'Pagos sin clasificar',
+    'proyeccion':    'Proyección',
+  };
+  const catDisplayName = (cat) => CAT_DISPLAY_NAME[cat] || cat;
+
   // Única fuente de verdad para la vista mensual: agrega weeklyTotals por mes.
   // Garantiza que mensual === semanal para los mismos períodos.
   // saldoInicial del mes = saldoInicial de la primera semana del mes
@@ -1944,33 +1953,46 @@ const CashflowProjections = () => {
         const mStart = startOfMonth(week.weekStart);
         const mEnd   = addMonths(mStart, 1);
         monthMap[key] = {
-          label:        format(mStart, 'MMM yyyy', { locale: es }),
-          monthStart:   mStart,
-          monthEnd:     mEnd,
-          isPast:       mEnd <= todayRef,
-          isCurrent:    mStart <= todayRef && todayRef < mEnd,
-          ingresos:     { total: 0, byCategory: {} },
-          egresos:      { total: 0, byCategory: {} },
-          saldoInicial: null,   // se fija con la primera semana del mes
-          saldoFinal:   null,   // se actualiza con cada semana (queda la última)
-          flujoNeto:    0,
+          label:              format(mStart, 'MMM yyyy', { locale: es }),
+          monthStart:         mStart,
+          monthEnd:           mEnd,
+          isPast:             mEnd <= todayRef,
+          isCurrent:          mStart <= todayRef && todayRef < mEnd,
+          ingresos:           { total: 0, byCategory: {} },
+          egresos:            { total: 0, byCategory: {} },
+          saldoInicial:       null,
+          saldoFinal:         null,
+          flujoNeto:          0,
+          traspasos_ingreso:  0,
+          traspasos_egreso:   0,
+          sinClasificar:      [],   // items sin_clasificar de todas las semanas del mes
         };
       }
       const m = monthMap[key];
-      // Saldo inicial = primera semana del mes
       if (m.saldoInicial === null) m.saldoInicial = week.saldoInicial ?? 0;
-      // Saldo final = última semana procesada del mes
       m.saldoFinal = week.saldoFinal ?? 0;
       m.flujoNeto  = (m.saldoFinal - m.saldoInicial);
 
+      m.traspasos_ingreso += week.traspasos_ingreso || 0;
+      m.traspasos_egreso  += week.traspasos_egreso  || 0;
+
       m.ingresos.total += week.ingresos.total || 0;
       m.egresos.total  += week.egresos.total  || 0;
+
+      // Acumular byCategory con nombre legible
       Object.entries(week.ingresos.byCategory || {}).forEach(([cat, catData]) => {
-        m.ingresos.byCategory[cat] = (m.ingresos.byCategory[cat] || 0) + (catData.total || 0);
+        const nombre = catDisplayName(cat);
+        m.ingresos.byCategory[nombre] = (m.ingresos.byCategory[nombre] || 0) + (catData.total || 0);
       });
       Object.entries(week.egresos.byCategory || {}).forEach(([cat, catData]) => {
-        m.egresos.byCategory[cat] = (m.egresos.byCategory[cat] || 0) + (catData.total || 0);
+        const nombre = catDisplayName(cat);
+        m.egresos.byCategory[nombre] = (m.egresos.byCategory[nombre] || 0) + (catData.total || 0);
       });
+
+      // Recolectar items sin clasificar del detalle backend
+      const sinIng = (week.backend_ingresos_detalle || []).filter(i => i.sin_clasificar);
+      const sinEgr = (week.backend_egresos_detalle || []).filter(i => i.sin_clasificar);
+      m.sinClasificar.push(...sinIng, ...sinEgr);
     });
     return Object.values(monthMap).sort((a, b) => a.monthStart - b.monthStart);
   };
@@ -3816,23 +3838,27 @@ const CashflowProjections = () => {
                       </TableCell>
                     </TableRow>
                     
-                    {/* Ingresos by Category — claves reales del dato, igual que Por Categoría */}
+                    {/* Ingresos by Category */}
                     {(() => {
+                      const SIN_CLAS = ['Cobranza sin clasificar'];
                       const allCats = new Set();
                       monthlyData.forEach(m => Object.keys(m.ingresos.byCategory).forEach(c => allCats.add(c)));
                       return Array.from(allCats).map(catName => {
                         const monthTotals = monthlyData.map(m => m.ingresos.byCategory[catName] || 0);
                         const total = monthTotals.reduce((s, t) => s + t, 0);
                         if (total === 0) return null;
+                        const isSinClas = SIN_CLAS.includes(catName);
                         return (
-                          <TableRow key={`monthly-ing-${catName}`} className="hover:bg-green-50">
-                            <TableCell className="sticky left-0 bg-white pl-8">{catName === 'Sin categoría' ? 'Cobranza' : catName}</TableCell>
+                          <TableRow key={`monthly-ing-${catName}`} className={isSinClas ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-green-50'}>
+                            <TableCell className={`sticky left-0 pl-8 ${isSinClas ? 'bg-amber-50 text-amber-700' : 'bg-white'}`}>
+                              {isSinClas ? <span className="flex items-center gap-1"><AlertTriangle size={12} className="text-amber-500" />{catName}</span> : catName}
+                            </TableCell>
                             {monthTotals.map((t, idx) => (
-                              <TableCell key={idx} className="text-center text-green-600">
+                              <TableCell key={idx} className={`text-center ${isSinClas ? 'text-amber-600' : 'text-green-600'}`}>
                                 {t > 0 ? formatCurrency(t) : '-'}
                               </TableCell>
                             ))}
-                            <TableCell className="text-center bg-green-50">{formatCurrency(total)}</TableCell>
+                            <TableCell className={`text-center ${isSinClas ? 'bg-amber-100 text-amber-700' : 'bg-green-50'}`}>{formatCurrency(total)}</TableCell>
                           </TableRow>
                         );
                       });
@@ -3854,26 +3880,98 @@ const CashflowProjections = () => {
                       </TableCell>
                     </TableRow>
                     
-                    {/* Egresos by Category — claves reales del dato, igual que Por Categoría */}
+                    {/* Egresos by Category */}
                     {(() => {
+                      const SIN_CLAS = ['Pagos sin clasificar'];
                       const allCats = new Set();
                       monthlyData.forEach(m => Object.keys(m.egresos.byCategory).forEach(c => allCats.add(c)));
                       return Array.from(allCats).map(catName => {
                         const monthTotals = monthlyData.map(m => m.egresos.byCategory[catName] || 0);
                         const total = monthTotals.reduce((s, t) => s + t, 0);
                         if (total === 0) return null;
+                        const isSinClas = SIN_CLAS.includes(catName);
                         return (
-                        <TableRow key={`monthly-egr-${catName}`} className="hover:bg-red-50">
-                          <TableCell className="sticky left-0 bg-white pl-8">{catName === 'Sin categoría' ? 'Proveedores Costo' : catName}</TableCell>
-                          {monthTotals.map((t, idx) => (
-                            <TableCell key={idx} className="text-center text-red-600">
-                              {t > 0 ? formatCurrency(t) : '-'}
+                          <TableRow key={`monthly-egr-${catName}`} className={isSinClas ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-red-50'}>
+                            <TableCell className={`sticky left-0 pl-8 ${isSinClas ? 'bg-amber-50 text-amber-700' : 'bg-white'}`}>
+                              {isSinClas ? <span className="flex items-center gap-1"><AlertTriangle size={12} className="text-amber-500" />{catName}</span> : catName}
                             </TableCell>
-                          ))}
-                          <TableCell className="text-center bg-red-50">{formatCurrency(total)}</TableCell>
-                        </TableRow>
+                            {monthTotals.map((t, idx) => (
+                              <TableCell key={idx} className={`text-center ${isSinClas ? 'text-amber-600' : 'text-red-600'}`}>
+                                {t > 0 ? formatCurrency(t) : '-'}
+                              </TableCell>
+                            ))}
+                            <TableCell className={`text-center ${isSinClas ? 'bg-amber-100 text-amber-700' : 'bg-red-50'}`}>{formatCurrency(total)}</TableCell>
+                          </TableRow>
                         );
                       });
+                    })()}
+
+                    {/* TRASPASOS ENTRE CUENTAS — informativo */}
+                    {(() => {
+                      const totalTrasIng = monthlyData.reduce((s, m) => s + (m.traspasos_ingreso || 0), 0);
+                      const totalTrasEgr = monthlyData.reduce((s, m) => s + (m.traspasos_egreso  || 0), 0);
+                      if (totalTrasIng === 0 && totalTrasEgr === 0) return null;
+                      return (
+                        <TableRow className="bg-purple-50/60 border-t border-purple-200">
+                          <TableCell className="sticky left-0 bg-purple-50/60 text-purple-700 text-sm">
+                            <span className="flex items-center gap-1">↔ Traspasos entre cuentas <span className="text-xs text-purple-400">(informativo)</span></span>
+                          </TableCell>
+                          {monthlyData.map((month, idx) => {
+                            const ing = month.traspasos_ingreso || 0;
+                            const egr = month.traspasos_egreso  || 0;
+                            if (ing === 0 && egr === 0) return <TableCell key={idx} className="text-center text-xs text-gray-400">-</TableCell>;
+                            return (
+                              <TableCell key={idx} className="text-center text-xs text-purple-600">
+                                {ing > 0 && <div className="text-green-600">↑ {formatCurrency(ing)}</div>}
+                                {egr > 0 && <div className="text-red-600">↓ {formatCurrency(egr)}</div>}
+                              </TableCell>
+                            );
+                          })}
+                          <TableCell className="text-center text-xs bg-purple-100 text-purple-700">
+                            ↑{formatCurrency(totalTrasIng)}<br/>↓{formatCurrency(totalTrasEgr)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })()}
+
+                    {/* SIN CLASIFICAR — botón para clasificar desde vista mensual */}
+                    {(() => {
+                      const allSin = monthlyData.flatMap(m => m.sinClasificar || []);
+                      if (allSin.length === 0) return null;
+                      return (
+                        <TableRow className="bg-amber-50 border-t-2 border-amber-300">
+                          <TableCell className="sticky left-0 bg-amber-50 text-amber-700 font-semibold text-sm">
+                            <span className="flex items-center gap-1">
+                              <AlertTriangle size={13} className="text-amber-500" />
+                              Sin clasificar ({allSin.length} mov.)
+                              <span className="text-xs font-normal text-amber-500 ml-1">— haz clic en ✎ para clasificar</span>
+                            </span>
+                          </TableCell>
+                          {monthlyData.map((month, idx) => {
+                            const items = month.sinClasificar || [];
+                            if (items.length === 0) return <TableCell key={idx} className="text-center text-xs text-gray-400">-</TableCell>;
+                            return (
+                              <TableCell key={idx} className="text-center text-xs">
+                                {items.map((item, ii) => (
+                                  <div key={ii} className="flex items-center justify-center gap-1 py-0.5">
+                                    <span className={item.tipo === 'ingreso' ? 'text-green-600' : 'text-red-600'}>
+                                      {formatCurrency(item.monto)}
+                                    </span>
+                                    <button
+                                      className="text-amber-500 hover:text-amber-700 underline text-xs"
+                                      onClick={() => setClasificarModal({ open: true, item, nuevaCategoria: '' })}
+                                      title={item.concepto || item.nombre}
+                                    >✎</button>
+                                  </div>
+                                ))}
+                              </TableCell>
+                            );
+                          })}
+                          <TableCell className="text-center bg-amber-100 text-amber-700 text-xs font-bold">
+                            {allSin.length} mov. por clasificar
+                          </TableCell>
+                        </TableRow>
+                      );
                     })()}
 
                     {/* SALDO INICIAL DEL MES */}
