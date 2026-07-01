@@ -4432,33 +4432,33 @@ const CashflowProjections = () => {
                   <SelectTrigger>
                     <SelectValue placeholder="Selecciona una categoría..." />
                   </SelectTrigger>
-                  <SelectContent className="max-h-72">
-                    {/* Ingresos del catálogo real */}
+                  <SelectContent className="max-h-80">
+                    {/* Ingresos */}
                     {categories.filter(c => c.tipo === 'ingreso').length > 0 && (
                       <>
-                        <div className="px-2 py-1 text-xs text-green-700 font-bold bg-green-50">▲ INGRESOS</div>
+                        <SelectItem value="__header_ing__" disabled className="text-xs text-green-700 font-bold bg-green-50 cursor-default">▲ INGRESOS</SelectItem>
                         {categories.filter(c => c.tipo === 'ingreso').map(cat => (
-                          <SelectItem key={cat.code || cat.id || cat.nombre} value={cat.nombre}>
-                            {cat.icon ? `${cat.icon} ` : ''}{cat.nombre}
+                          <SelectItem key={cat.code || cat.nombre} value={cat.nombre} className="pl-4">
+                            {cat.nombre}
                           </SelectItem>
                         ))}
                       </>
                     )}
-                    {/* Egresos del catálogo real */}
+                    {/* Egresos */}
                     {categories.filter(c => c.tipo === 'egreso').length > 0 && (
                       <>
-                        <div className="px-2 py-1 text-xs text-red-700 font-bold bg-red-50">▼ EGRESOS</div>
+                        <SelectItem value="__header_egr__" disabled className="text-xs text-red-700 font-bold bg-red-50 cursor-default">▼ EGRESOS</SelectItem>
                         {categories.filter(c => c.tipo === 'egreso').map(cat => (
-                          <SelectItem key={cat.code || cat.id || cat.nombre} value={cat.nombre}>
-                            {cat.icon ? `${cat.icon} ` : ''}{cat.nombre}
+                          <SelectItem key={cat.code || cat.nombre} value={cat.nombre} className="pl-4">
+                            {cat.nombre}
                           </SelectItem>
                         ))}
                       </>
                     )}
                     {/* Interno */}
-                    <div className="px-2 py-1 text-xs text-purple-700 font-bold bg-purple-50">↔ INTERNO</div>
-                    <SelectItem value="Traspaso entre cuentas">↔ Traspaso entre cuentas</SelectItem>
-                    <SelectItem value="Comisiones bancarias">🏦 Comisiones bancarias</SelectItem>
+                    <SelectItem value="__header_int__" disabled className="text-xs text-purple-700 font-bold bg-purple-50 cursor-default">↔ INTERNO</SelectItem>
+                    <SelectItem value="Traspaso entre cuentas" className="pl-4">Traspaso entre cuentas</SelectItem>
+                    <SelectItem value="Comisiones bancarias" className="pl-4">Comisiones bancarias</SelectItem>
                   </SelectContent>
                 </Select>
                 {/* Campo libre si la categoría no está en el catálogo */}
