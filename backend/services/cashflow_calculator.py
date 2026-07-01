@@ -318,12 +318,22 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         if not fecha:
             continue
         tipo_raw = str(t.get('tipo', '') or '').lower()
-        # Clave de deduplicación: alegra_id O alegra_payment_id si existe,
-        # sino (fecha, monto, tipo_normalizado). Ambos campos apuntan al mismo pago.
-        alegra_id = t.get('alegra_id') or t.get('alegra_payment_id') or ''
-        # Normalizar tipo: deposito/credito/ingreso → IN, retiro/debito/egreso → OUT
+        # Clave de deduplicación:
+        # Prioridad 1: alegra_id  (viene de conciliaciones BanBajío)
+        # Prioridad 2: alegra_payment_id (viene de sync de pagos Alegra)
+        # Prioridad 3: fecha|monto — SIN tipo, para unir registros donde uno
+        #   dice 'deposito' y el otro 'ingreso' por el mismo movimiento.
+        #   El monto se redondea a 2 decimales para evitar diferencias de float.
+        alegra_id = (
+            str(t.get('alegra_id') or '').strip() or
+            str(t.get('alegra_payment_id') or '').strip()
+        )
         tipo_norm = 'IN' if tipo_raw in ('deposito', 'ingreso', 'credito', 'deposito_transferencia') else 'OUT'
-        clave = str(alegra_id) if alegra_id else f"{fecha}|{round(monto,2)}|{tipo_norm}"
+        if alegra_id:
+            clave = f"alegra|{alegra_id}"
+        else:
+            # Fallback sin tipo para absorber discrepancias deposito/ingreso/credito
+            clave = f"{fecha}|{round(monto, 2)}"
         # Puntaje: conciliado=True + categoria especifica gana sobre duplicados
         # score 0-3: conciliado(2) + categoria_especifica(1)
         es_conciliado = bool(t.get('conciliado'))

@@ -1744,14 +1744,18 @@ async def _run_alegra_sync(company_id: str, company: dict, date_from: str = None
                     created += 1
                 # Fix 4: también en bank_transactions para Conciliaciones
                 await db.bank_transactions.update_one(
-                    {'alegra_payment_id': alegra_id, 'company_id': company_id},
+                    {'company_id': company_id,
+                     '$or': [{'alegra_payment_id': alegra_id}, {'alegra_id': alegra_id}]},
                     {'$set': {
                         'company_id':         company_id,
                         'source':             'alegra',
                         'alegra_payment_id':  alegra_id,
+                        'alegra_id':          alegra_id,   # copiar en ambos campos para dedup
                         'descripcion':        pay.get('observations') or f"Pago Alegra #{alegra_id}",
+                        'contacto':           pay.get('client', {}).get('name', '') if isinstance(pay.get('client'), dict) else (pay.get('vendor', {}).get('name', '') if isinstance(pay.get('vendor'), dict) else ''),
                         'monto':              float(pay.get('amount', 0) or 0),
-                        'tipo':               'ingreso' if tipo == 'cobro' else 'egreso',
+                        'tipo':               'deposito' if tipo == 'cobro' else 'retiro',
+                        'fecha':              fecha,
                         'fecha_movimiento':   fecha,
                         'fecha_valor':        pay.get('date'),
                         'tipo_movimiento':    'credito' if pay.get('type') == 'in' else 'debito',
