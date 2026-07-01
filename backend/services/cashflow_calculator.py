@@ -257,6 +257,46 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
         'conciliado': 1, 'id': 1, 'category_name': 1, 'alegra_id': 1,
         'alegra_payment_id': 1}).to_list(5000)
 
+    # ── Fuente 6: Movimientos AMEX importados manualmente ─────────
+    # Solo cargos (retiro/debito) — los abonos "GRACIAS POR SU PAGO" son
+    # traspasos desde BanBajío ya capturados en la Fuente 5.
+    bank_txns_amex = await db.bank_transactions.find({
+        'company_id': company_id,
+        'source': 'amex',
+        'es_real': True,
+        'tipo': 'retiro',   # solo cargos, no abonos/pagos
+    }, {'_id': 0, 'tipo': 1, 'monto': 1, 'fecha': 1, 'fecha_movimiento': 1,
+        'descripcion': 1, 'cuenta_bancaria': 1, 'id': 1, 'category_name': 1,
+        'dedup_key': 1}).to_list(5000)
+
+    # Procesar movimientos AMEX — igual que bank_txns_alegra pero sin dedup cruzada
+    processed_amex_txns = []
+    AMEX_TRASPASO_KW = ['gracias por su pago', 'ecommerce', 'traspaso']
+    for t in bank_txns_amex:
+        desc = (t.get('descripcion') or '').lower()
+        if any(kw in desc for kw in AMEX_TRASPASO_KW):
+            continue  # ignorar pagos/traspasos
+        monto = float(t.get('monto', 0) or 0)
+        if monto <= 0:
+            continue
+        fecha = _parse_date(t.get('fecha') or t.get('fecha_movimiento') or '')
+        if not fecha:
+            continue
+        cat = (t.get('category_name') or '').strip()
+        sin_clasificar = not cat
+        processed_amex_txns.append({
+            'fecha': fecha,
+            'monto': monto,
+            'tipo': 'egreso',
+            'nombre': t.get('descripcion') or 'Cargo AMEX',
+            'cuenta_bancaria': t.get('cuenta_bancaria', 'AMEX'),
+            'id': t.get('id', ''),
+            'alegra_id': '',
+            'category_name': cat or 'banco_alegra',
+            'sin_clasificar': sin_clasificar,
+            'es_real': True,
+        })
+
     # Categorías que son traspasos internos — se excluyen del flujo operativo
     # pero se acumulan por separado para mostrarlos como fila informativa.
     # NOTA: 'comisiones bancarias' se INCLUYE ahora en el flujo (es un egreso real).
@@ -467,6 +507,25 @@ async def calcular_semanas_cashflow(company_id: str, num_weeks: int = 52, db=Non
                     ingresos.append(item)
                 else:
                     egresos.append(item)
+
+        # Fuente 6: AMEX cargos de esta semana
+        for at in processed_amex_txns:
+            if not at['fecha']:
+                continue
+            if fi <= at['fecha'] <= ff:
+                cat_raw = at.get('category_name') or ''
+                egresos.append({
+                    'id': at['id'],
+                    'alegra_id': '',
+                    'concepto': at.get('nombre') or 'Cargo AMEX',
+                    'nombre': at.get('nombre') or 'Cargo AMEX',
+                    'monto': at['monto'],
+                    'fecha': at['fecha'],
+                    'categoria': cat_raw if cat_raw else 'banco_alegra',
+                    'sin_clasificar': at.get('sin_clasificar', False),
+                    'cuenta_bancaria': at.get('cuenta_bancaria', 'AMEX'),
+                    'es_real': True,
+                })
 
         # Traspasos de esta semana (para fila informativa)
         traspasos_semana = [t for t in traspaso_txns if fi <= t['fecha'] <= ff]

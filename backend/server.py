@@ -64,6 +64,7 @@ from routes.usuarios import router as usuarios_router
 from routes.admin import router as admin_router
 from routes.audit_portal import router as audit_portal_router
 from routes.dedup_admin import router as dedup_admin_router
+from routes.amex_import import router as amex_import_router
 
 # ===== REGISTER ROUTERS =====
 api_router.include_router(auth_router)
@@ -111,6 +112,7 @@ api_router.include_router(usuarios_router)
 api_router.include_router(admin_router)
 api_router.include_router(audit_portal_router)
 api_router.include_router(dedup_admin_router)
+api_router.include_router(amex_import_router)
 
 # ===== MIDDLEWARE =====
 _DEFAULT_ORIGINS = [
