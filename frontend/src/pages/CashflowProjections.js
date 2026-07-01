@@ -295,13 +295,16 @@ const CashflowProjections = () => {
       setReconciliations(reconRes.data || []);
       setBankAccounts(bankAccountsRes.data || []);
       
-      // Get initial bank balance
-      const totalBancosMXN = bankSummaryRes.data?.total_mxn || 0;
-      setSaldoInicialBancos(totalBancosMXN);
+      // Saldo inicial = SOLO cuentas MXN.
+      // El cashflow opera en flujos MXN; la cuenta USD no genera flujo directo
+      // (su impacto llega via 'Deposito por operacion cambios' en la cuenta MXN).
+      const porMoneda = bankSummaryRes.data?.por_moneda || {};
+      const saldoSoloMXN = porMoneda['MXN']?.saldo_mxn || porMoneda['MXN']?.saldo || 0;
+      setSaldoInicialBancos(saldoSoloMXN);
       console.log('[CashFlow base bancaria]', {
-        total_mxn: totalBancosMXN,
-        por_banco: bankSummaryRes.data?.por_banco,
-        por_moneda: bankSummaryRes.data?.por_moneda,
+        total_mxn: bankSummaryRes.data?.total_mxn,
+        solo_mxn: saldoSoloMXN,
+        por_moneda: porMoneda,
       });
       
       // Load FX rates - ensure all currencies have values

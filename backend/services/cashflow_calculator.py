@@ -88,27 +88,22 @@ async def _build_bank_anchors(company_id: str, db) -> Dict[str, float]:
             }
 
     # ── Convertir a MXN y sumar por fecha ────────────────────────
-    # Ancla = suma de TODAS las cuentas activas en esa fecha, convertidas a MXN.
-    # - Cuentas MXN: saldo directo
-    # - Cuentas USD/EUR/etc: saldo × TC histórico de esa fecha
-    # Si en el futuro hay más cuentas (Banorte MXN, EUR, etc.) se incluyen automáticamente.
+    # El cashflow opera en flujos MXN: ingresos y egresos son transacciones
+    # de la cuenta MXN. La cuenta USD no genera flujo directo — su impacto
+    # en pesos llega via 'Deposito por operacion cambios' en la cuenta MXN.
+    # Por tanto las anclas deben ser SOLO el saldo de cuentas MXN para que
+    # el SF del cashflow cuadre con el estado de cuenta MXN del banco.
+    # Si en el futuro hay multiples cuentas MXN se suman todas.
     anchors: Dict[str, float] = {}
     for fecha_str, accts in history_by_date.items():
         total_mxn = 0.0
+        tiene_mxn = False
         for acct_id, data in accts.items():
-            saldo = data['saldo']
-            moneda = data['moneda']
-            if moneda != 'MXN' and saldo > 0:
-                try:
-                    from datetime import datetime as _dt
-                    fecha_dt = _dt.fromisoformat(fecha_str)
-                    tc = await get_fx_rate_by_date('USD', fecha_dt)
-                except Exception:
-                    tc = 17.5
-                total_mxn += saldo * tc
-            else:
-                total_mxn += saldo
-        anchors[fecha_str] = total_mxn
+            if data.get('moneda', 'MXN') == 'MXN':
+                total_mxn += data['saldo']
+                tiene_mxn = True
+        if tiene_mxn:
+            anchors[fecha_str] = total_mxn
 
     logger.info(f"[cashflow-anchors] {company_id}: {len(anchors)} anclas → {anchors}")
     return anchors
