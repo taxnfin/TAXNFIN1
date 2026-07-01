@@ -4334,23 +4334,51 @@ const CashflowProjections = () => {
                   <SelectTrigger>
                     <SelectValue placeholder="Selecciona una categoría..." />
                   </SelectTrigger>
-                  <SelectContent>
-                    {/* Categorías de ingresos */}
-                    <div className="px-2 py-1 text-xs text-green-600 font-bold">INGRESOS</div>
-                    {['Venta de Cintas','Venta de Stabulon','Venta Cadena de Frío','Ventas de productos','Devoluciones recibidas','Otros ingresos'].map(c => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
-                    {/* Categorías de egresos */}
-                    <div className="px-2 py-1 text-xs text-red-600 font-bold mt-1">EGRESOS</div>
-                    {categories.map(cat => (
-                      <SelectItem key={cat.id || cat.nombre} value={cat.nombre}>{cat.nombre}</SelectItem>
-                    ))}
-                    {/* Opción para traspaso */}
-                    <div className="px-2 py-1 text-xs text-purple-600 font-bold mt-1">INTERNO</div>
-                    <SelectItem value="Traspaso entre cuentas">Traspaso entre cuentas</SelectItem>
-                    <SelectItem value="Comisiones bancarias">Comisiones bancarias</SelectItem>
+                  <SelectContent className="max-h-72">
+                    {/* Ingresos del catálogo real */}
+                    {categories.filter(c => c.tipo === 'ingreso').length > 0 && (
+                      <>
+                        <div className="px-2 py-1 text-xs text-green-700 font-bold bg-green-50">▲ INGRESOS</div>
+                        {categories.filter(c => c.tipo === 'ingreso').map(cat => (
+                          <SelectItem key={cat.code || cat.id || cat.nombre} value={cat.nombre}>
+                            {cat.icon ? `${cat.icon} ` : ''}{cat.nombre}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                    {/* Egresos del catálogo real */}
+                    {categories.filter(c => c.tipo === 'egreso').length > 0 && (
+                      <>
+                        <div className="px-2 py-1 text-xs text-red-700 font-bold bg-red-50">▼ EGRESOS</div>
+                        {categories.filter(c => c.tipo === 'egreso').map(cat => (
+                          <SelectItem key={cat.code || cat.id || cat.nombre} value={cat.nombre}>
+                            {cat.icon ? `${cat.icon} ` : ''}{cat.nombre}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                    {/* Interno */}
+                    <div className="px-2 py-1 text-xs text-purple-700 font-bold bg-purple-50">↔ INTERNO</div>
+                    <SelectItem value="Traspaso entre cuentas">↔ Traspaso entre cuentas</SelectItem>
+                    <SelectItem value="Comisiones bancarias">🏦 Comisiones bancarias</SelectItem>
                   </SelectContent>
                 </Select>
+                {/* Campo libre si la categoría no está en el catálogo */}
+                <div className="mt-2">
+                  <Label className="text-xs text-gray-500 mb-1 block">O escribe una categoría personalizada:</Label>
+                  <Input
+                    placeholder="Ej. Importaciones, ISN, Arrendamiento..."
+                    value={clasificarModal.nuevaCategoria.startsWith('__custom__')
+                      ? clasificarModal.nuevaCategoria.replace('__custom__', '')
+                      : (!categories.some(c => c.nombre === clasificarModal.nuevaCategoria) && clasificarModal.nuevaCategoria
+                          ? clasificarModal.nuevaCategoria : '')}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setClasificarModal(prev => ({ ...prev, nuevaCategoria: v }));
+                    }}
+                    className="text-sm h-8"
+                  />
+                </div>
               </div>
             </div>
           )}
