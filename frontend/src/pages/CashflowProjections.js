@@ -1910,6 +1910,8 @@ const CashflowProjections = () => {
 
   // Única fuente de verdad para la vista mensual: agrega weeklyTotals por mes.
   // Garantiza que mensual === semanal para los mismos períodos.
+  // saldoInicial del mes = saldoInicial de la primera semana del mes
+  // saldoFinal  del mes = saldoFinal  de la última semana del mes
   const buildMonthlyFromWeeks = (weekTotals) => {
     const monthMap = {};
     const todayRef = new Date();
@@ -1919,16 +1921,25 @@ const CashflowProjections = () => {
         const mStart = startOfMonth(week.weekStart);
         const mEnd   = addMonths(mStart, 1);
         monthMap[key] = {
-          label:      format(mStart, 'MMM yyyy', { locale: es }),
-          monthStart: mStart,
-          monthEnd:   mEnd,
-          isPast:     mEnd <= todayRef,
-          isCurrent:  mStart <= todayRef && todayRef < mEnd,
-          ingresos:   { total: 0, byCategory: {} },
-          egresos:    { total: 0, byCategory: {} },
+          label:        format(mStart, 'MMM yyyy', { locale: es }),
+          monthStart:   mStart,
+          monthEnd:     mEnd,
+          isPast:       mEnd <= todayRef,
+          isCurrent:    mStart <= todayRef && todayRef < mEnd,
+          ingresos:     { total: 0, byCategory: {} },
+          egresos:      { total: 0, byCategory: {} },
+          saldoInicial: null,   // se fija con la primera semana del mes
+          saldoFinal:   null,   // se actualiza con cada semana (queda la última)
+          flujoNeto:    0,
         };
       }
       const m = monthMap[key];
+      // Saldo inicial = primera semana del mes
+      if (m.saldoInicial === null) m.saldoInicial = week.saldoInicial ?? 0;
+      // Saldo final = última semana procesada del mes
+      m.saldoFinal = week.saldoFinal ?? 0;
+      m.flujoNeto  = (m.saldoFinal - m.saldoInicial);
+
       m.ingresos.total += week.ingresos.total || 0;
       m.egresos.total  += week.egresos.total  || 0;
       Object.entries(week.ingresos.byCategory || {}).forEach(([cat, catData]) => {
@@ -3712,19 +3723,69 @@ const CashflowProjections = () => {
                       });
                     })()}
 
+                    {/* SALDO INICIAL DEL MES */}
+                    <TableRow className="bg-gray-800 text-white font-bold border-t-2 border-gray-600">
+                      <TableCell className="sticky left-0 bg-gray-800 text-white">SALDO INICIAL MES</TableCell>
+                      {monthlyData.map((month, idx) => (
+                        <TableCell key={idx} className="text-center text-blue-300 font-bold">
+                          {formatCurrency(month.saldoInicial ?? 0)}
+                        </TableCell>
+                      ))}
+                      <TableCell className="text-center bg-gray-700 text-blue-200 font-bold">
+                        {formatCurrency(monthlyData[0]?.saldoInicial ?? 0)}
+                      </TableCell>
+                    </TableRow>
+
                     {/* FLUJO NETO */}
                     <TableRow className="bg-blue-100 font-bold border-t-2">
                       <TableCell className="sticky left-0 bg-blue-100">FLUJO NETO</TableCell>
                       {monthlyData.map((month, idx) => {
                         const neto = month.ingresos.total - month.egresos.total;
                         return (
-                          <TableCell key={idx} className={`text-center ${neto >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                          <TableCell key={idx} className={`text-center font-bold ${neto >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                             {formatCurrency(neto)}
                           </TableCell>
                         );
                       })}
-                      <TableCell className="text-center bg-blue-200">
+                      <TableCell className="text-center bg-blue-200 font-bold">
                         {formatCurrency(monthlyData.reduce((s, m) => s + m.ingresos.total - m.egresos.total, 0))}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* SALDO FINAL DEL MES — debe cuadrar con estado de cuenta bancario */}
+                    <TableRow className="bg-[#0F172A] text-white font-bold border-t-2">
+                      <TableCell className="sticky left-0 bg-[#0F172A] text-white">SALDO FINAL MES</TableCell>
+                      {monthlyData.map((month, idx) => (
+                        <TableCell
+                          key={idx}
+                          className={`text-center font-bold text-sm ${(month.saldoFinal ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}
+                        >
+                          {formatCurrency(month.saldoFinal ?? 0)}
+                        </TableCell>
+                      ))}
+                      <TableCell className={`text-center font-bold ${(monthlyData[monthlyData.length - 1]?.saldoFinal ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {formatCurrency(monthlyData[monthlyData.length - 1]?.saldoFinal ?? 0)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* VARIACIÓN MES (SF − SI) — comprobación: debe = Flujo Neto */}
+                    <TableRow className="bg-amber-50 font-medium text-xs">
+                      <TableCell className="sticky left-0 bg-amber-50 text-amber-700 text-xs">
+                        ∆ Variación Mes (SF − SI)
+                      </TableCell>
+                      {monthlyData.map((month, idx) => {
+                        const delta = (month.saldoFinal ?? 0) - (month.saldoInicial ?? 0);
+                        return (
+                          <TableCell key={idx} className={`text-center text-xs ${delta >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatCurrency(delta)}
+                          </TableCell>
+                        );
+                      })}
+                      <TableCell className="text-center bg-amber-100 text-amber-700 text-xs font-bold">
+                        {formatCurrency(
+                          (monthlyData[monthlyData.length - 1]?.saldoFinal ?? 0) -
+                          (monthlyData[0]?.saldoInicial ?? 0)
+                        )}
                       </TableCell>
                     </TableRow>
                   </TableBody>
