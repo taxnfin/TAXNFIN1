@@ -1446,6 +1446,8 @@ const CashflowProjections = () => {
     
     const section = tipo === 'ingreso' ? week.ingresos : week.egresos;
     const category = section.byCategory[categoryName];
+    // Nombre legible para el título del modal
+    const categoryDisplayName = catDisplayName(categoryName);
     
     if (!category) return;
     
@@ -1573,7 +1575,7 @@ const CashflowProjections = () => {
       dateLabel: week.dateLabel || '',
       dataType: week.dataType,
       tipo,
-      categoryName,
+      categoryName: categoryDisplayName,
       subcategoryName,
       items: enrichedItems,
       total
